@@ -37,6 +37,17 @@ Configuration is read from environment variables when the Proofline API starts.
 | `SAFE_MAX_UPLOAD_BYTES` | `250MB` | Maximum encrypted file bytes per upload. |
 | `SAFE_DEFAULT_INCIDENT_TOKEN_TTL` | `24h` | Default lifetime for viewer tokens created without `expires_at`. Set to `0` to disable the default for omitted `expires_at` values. |
 | `SAFE_SESSION_TTL` | `12h` | Lifetime for local account sessions created by `/v1/auth/login`. |
+| `SAFE_ACCOUNT_REGISTRATION_MODE` | `disabled` | Public account registration mode. Supported values are `disabled`, `admin_only`, `open`, and `paid`. `open` requires SMTP email verification; `paid` is a fail-closed placeholder. |
+| `SAFE_EMAIL_VERIFICATION_TTL` | `24h` | Lifetime for single-use email verification tokens. Must be positive. |
+| `SAFE_PUBLIC_WEB_ORIGIN` | unset | Web-client origin used to build email verification links such as `/verify-email#token=...`. Required when `SAFE_ACCOUNT_REGISTRATION_MODE=open`. |
+| `SAFE_EMAIL_BACKEND` | `none` | Outbound email backend. Supported values are `none` and `smtp`. `none` cannot be used with open registration. |
+| `SAFE_SMTP_HOST` | unset | SMTP host. Required when `SAFE_EMAIL_BACKEND=smtp`; treat private hostnames as deployment details. |
+| `SAFE_SMTP_PORT` | `587` | SMTP TCP port. Must be positive. |
+| `SAFE_SMTP_USERNAME` | unset | Optional SMTP username. Required when `SAFE_SMTP_PASSWORD` is set. |
+| `SAFE_SMTP_PASSWORD` | unset | Optional SMTP password; treat as a secret. |
+| `SAFE_SMTP_FROM` | unset | Sender email address for verification messages. Required when `SAFE_EMAIL_BACKEND=smtp`. |
+| `SAFE_SMTP_STARTTLS` | `required` | SMTP STARTTLS behavior. Supported values are `required`, `opportunistic`, and `disabled`. |
+| `SAFE_SMTP_TIMEOUT` | `10s` | SMTP dial timeout. Must be positive. |
 | `SAFE_AUTH_BOOTSTRAP_SECRET` | unset | One-time bootstrap secret required to create the first admin account when no admin exists. Remove after bootstrap. |
 | `SAFE_WEB_AUTH_ENABLED` | `false` | Enables main `/v1` browser cookie-session routes for the future web client. Existing bearer-token routes continue to work. |
 | `SAFE_WEB_ALLOWED_ORIGINS` | unset | Comma-separated exact web origins that may receive credentialed CORS responses. Wildcards are rejected. |
@@ -53,6 +64,8 @@ Configuration is read from environment variables when the Proofline API starts.
 | `SAFE_MAIN_API_RATE_LIMIT_ENABLED` | `true` | Enables app-level rate limiting for main API route classes. Set to `false` to disable the app-level limiter. |
 | `SAFE_MAIN_API_RATE_LIMIT_WINDOW` | `1m` | Fixed-window duration for app-level main API limits. |
 | `SAFE_MAIN_API_RATE_LIMIT_AUTH` | `30` | Main API login/logout requests allowed per window per hashed socket peer. Set to `0` to disable this route-class limit. |
+| `SAFE_MAIN_API_RATE_LIMIT_AUTH_REGISTER` | `10` | Public registration requests allowed per window per hashed socket peer. Set to `0` to disable this route-class limit. |
+| `SAFE_MAIN_API_RATE_LIMIT_AUTH_EMAIL_VERIFY` | `30` | Email verification requests allowed per window per hashed socket peer. Set to `0` to disable this route-class limit. |
 | `SAFE_MAIN_API_RATE_LIMIT_BOOTSTRAP` | `5` | Compatibility setting for the legacy JSON bootstrap route class. The current first-admin bootstrap flow is the private `/admin/bootstrap` form. |
 | `SAFE_MAIN_API_RATE_LIMIT_ACCOUNT` | `120` | Account self-service requests allowed per window per hashed socket peer. Set to `0` to disable this route-class limit. |
 | `SAFE_MAIN_API_RATE_LIMIT_INCIDENT_READ` | `300` | Incident metadata read requests allowed per window per hashed socket peer. Set to `0` to disable this route-class limit. |
@@ -275,6 +288,39 @@ The main `/v1` API requires local account sessions. Sessions created by
 The private `/admin` browser flow uses the same session store and TTL, with the
 raw session token held in an HttpOnly SameSite cookie scoped to `/admin`. The
 value uses Go duration strings such as `6h` or `30m`.
+
+Public account registration is disabled by default:
+
+```bash
+SAFE_ACCOUNT_REGISTRATION_MODE=disabled
+```
+
+`admin_only` also rejects public registration while preserving existing
+admin-created account flows. `open` enables public self-registration for
+self-hosted deployments, but it requires email verification before login:
+
+```bash
+SAFE_ACCOUNT_REGISTRATION_MODE=open \
+SAFE_PUBLIC_WEB_ORIGIN=https://app.example.invalid \
+SAFE_EMAIL_BACKEND=smtp \
+SAFE_SMTP_HOST=smtp.example.invalid \
+SAFE_SMTP_PORT=587 \
+SAFE_SMTP_FROM=noreply@example.invalid \
+SAFE_SMTP_STARTTLS=required \
+go run ./cmd/api
+```
+
+If `open` is selected without a usable SMTP backend and public web origin,
+startup fails closed. Verification links use
+`{SAFE_PUBLIC_WEB_ORIGIN}/verify-email#token=<raw-token>`, and the backend
+stores only token hashes. The raw verification token must be treated as a
+secret and must not appear in logs, metrics labels, docs examples, support
+tickets, screenshots, shell history, or public issue drafts.
+
+`SAFE_ACCOUNT_REGISTRATION_MODE=paid` is accepted only as a future
+hosted-service placeholder. `POST /v1/auth/register` returns
+`503 registration_payment_unavailable`; it does not create an active account,
+start checkout, contact a billing provider, or process subscriptions.
 
 When `SAFE_WEB_AUTH_ENABLED=true`, the main `/v1` API also supports a dedicated
 browser session cookie through `POST /v1/auth/web/login`,

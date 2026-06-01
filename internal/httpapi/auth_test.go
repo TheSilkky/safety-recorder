@@ -3,15 +3,19 @@ package httpapi_test
 import (
 	"bytes"
 	"context"
+	"database/sql"
 	"encoding/json"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/open-proofline/server/internal/auth"
+	"github.com/open-proofline/server/internal/email"
 	"github.com/open-proofline/server/internal/httpapi"
 )
 
@@ -306,6 +310,367 @@ func TestBrowserCookieExpiredSessionFailsClosed(t *testing.T) {
 	}
 }
 
+func TestPublicRegistrationModesFailClosedWhenDisabledOrPaid(t *testing.T) {
+	app := newTestApp(t)
+
+	response, body := postUnauthenticated(t, app, "/v1/auth/register", "application/json", bytes.NewBufferString(`{"username":"new-user","email":"new@example.invalid","password":"valid-password"}`))
+	response.Body.Close()
+	if response.StatusCode != http.StatusForbidden {
+		t.Fatalf("disabled registration status = %d, want 403: %s", response.StatusCode, body)
+	}
+	assertErrorCode(t, body, "registration_disabled")
+
+	adminOnly := newTestAppWithOptions(t, httpapi.Options{
+		AccountRegistration: httpapi.AccountRegistrationConfig{Mode: httpapi.AccountRegistrationAdminOnly},
+	})
+	response, body = postUnauthenticated(t, adminOnly, "/v1/auth/register", "application/json", bytes.NewBufferString(`{"username":"new-user","email":"new@example.invalid","password":"valid-password"}`))
+	response.Body.Close()
+	if response.StatusCode != http.StatusForbidden {
+		t.Fatalf("admin-only registration status = %d, want 403: %s", response.StatusCode, body)
+	}
+	assertErrorCode(t, body, "registration_disabled")
+
+	paid := newTestAppWithOptions(t, httpapi.Options{
+		AccountRegistration: httpapi.AccountRegistrationConfig{Mode: httpapi.AccountRegistrationPaid},
+	})
+	response, body = postUnauthenticated(t, paid, "/v1/auth/register", "application/json", bytes.NewBufferString(`{"username":"paid-user","email":"paid@example.invalid","password":"valid-password"}`))
+	response.Body.Close()
+	if response.StatusCode != http.StatusServiceUnavailable {
+		t.Fatalf("paid registration status = %d, want 503: %s", response.StatusCode, body)
+	}
+	assertErrorCode(t, body, "registration_payment_unavailable")
+
+	var count int
+	if err := paid.db.QueryRowContext(context.Background(), `SELECT COUNT(*) FROM accounts WHERE username = ?`, "paid-user").Scan(&count); err != nil {
+		t.Fatalf("count paid-mode account: %v", err)
+	}
+	if count != 0 {
+		t.Fatalf("paid mode created %d accounts", count)
+	}
+}
+
+func TestOpenRegistrationRequiresEmailVerificationBeforeLogin(t *testing.T) {
+	sender := &recordingEmailSender{}
+	app := newTestAppWithOptions(t, httpapi.Options{
+		AccountRegistration: httpapi.AccountRegistrationConfig{
+			Mode:                 httpapi.AccountRegistrationOpen,
+			EmailVerificationTTL: time.Hour,
+			PublicWebOrigin:      "https://app.example.invalid",
+		},
+		EmailSender: sender,
+	})
+
+	response, body := postUnauthenticated(t, app, "/v1/auth/register", "application/json", bytes.NewBufferString(`{"username":"New.User","email":" New.User@Example.Invalid ","password":"valid-password"}`))
+	response.Body.Close()
+	if response.StatusCode != http.StatusAccepted {
+		t.Fatalf("open registration status = %d, want 202: %s", response.StatusCode, body)
+	}
+	assertMainJSONSecurityHeaders(t, response)
+	if bytes.Contains(body, []byte("token")) || bytes.Contains(body, []byte("valid-password")) {
+		t.Fatalf("registration response exposed token or password: %s", body)
+	}
+	if len(sender.messages) != 1 {
+		t.Fatalf("sent emails = %d, want 1", len(sender.messages))
+	}
+	if sender.messages[0].To != "new.user@example.invalid" {
+		t.Fatalf("verification email to = %q", sender.messages[0].To)
+	}
+	rawToken := verificationTokenFromEmail(t, sender.messages[0])
+	if rawToken == "" {
+		t.Fatal("verification email did not contain a token")
+	}
+
+	account := mustGetRegistrationAccount(t, app, "new.user")
+	if account.EmailNormalized != "new.user@example.invalid" {
+		t.Fatalf("account email = %q", account.EmailNormalized)
+	}
+	if account.AccountState != auth.AccountStatePendingEmailVerification {
+		t.Fatalf("account state = %q, want pending email verification", account.AccountState)
+	}
+	if account.EmailVerifiedAt != nil {
+		t.Fatalf("email verified at = %v, want nil", account.EmailVerifiedAt)
+	}
+
+	response, body = postUnauthenticated(t, app, "/v1/auth/login", "application/json", bytes.NewBufferString(`{"username":"new.user","password":"valid-password"}`))
+	response.Body.Close()
+	if response.StatusCode != http.StatusForbidden {
+		t.Fatalf("pending login status = %d, want 403: %s", response.StatusCode, body)
+	}
+	assertErrorCode(t, body, "email_verification_required")
+
+	var storedHash string
+	if err := app.db.QueryRowContext(context.Background(), `
+		SELECT token_hash
+		FROM account_verification_tokens
+		WHERE account_id = ?`,
+		account.ID,
+	).Scan(&storedHash); err != nil {
+		t.Fatalf("read verification token hash: %v", err)
+	}
+	if storedHash == rawToken || len(storedHash) != 64 {
+		t.Fatalf("verification token was not stored as a 64-character hash")
+	}
+
+	response, body = postUnauthenticated(t, app, "/v1/auth/email/verify", "application/json", bytes.NewBufferString(`{"token":"`+rawToken+`"}`))
+	response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("verify email status = %d, want 200: %s", response.StatusCode, body)
+	}
+	assertMainJSONSecurityHeaders(t, response)
+
+	account = mustGetRegistrationAccount(t, app, "new.user")
+	if account.AccountState != auth.AccountStateActive {
+		t.Fatalf("account state after verify = %q, want active", account.AccountState)
+	}
+	if account.EmailVerifiedAt == nil {
+		t.Fatal("email_verified_at was not set")
+	}
+
+	token := loginForTest(t, app, "new.user", "valid-password")
+	if token == "" {
+		t.Fatal("verified account did not receive bearer token")
+	}
+
+	response, body = postUnauthenticated(t, app, "/v1/auth/email/verify", "application/json", bytes.NewBufferString(`{"token":"`+rawToken+`"}`))
+	response.Body.Close()
+	if response.StatusCode != http.StatusBadRequest {
+		t.Fatalf("reuse verify status = %d, want 400: %s", response.StatusCode, body)
+	}
+	assertErrorCode(t, body, "verification_token_invalid")
+}
+
+func TestRegistrationDuplicateResponseIsGenericAndResendsPendingVerificationEmail(t *testing.T) {
+	sender := &recordingEmailSender{}
+	app := newTestAppWithOptions(t, httpapi.Options{
+		AccountRegistration: httpapi.AccountRegistrationConfig{
+			Mode:                 httpapi.AccountRegistrationOpen,
+			EmailVerificationTTL: time.Hour,
+			PublicWebOrigin:      "https://app.example.invalid",
+		},
+		EmailSender: sender,
+	})
+
+	requestBody := `{"username":"dup-user","email":"dup@example.invalid","password":"valid-password"}`
+	response, body := postUnauthenticated(t, app, "/v1/auth/register", "application/json", bytes.NewBufferString(requestBody))
+	response.Body.Close()
+	if response.StatusCode != http.StatusAccepted {
+		t.Fatalf("first registration status = %d, want 202: %s", response.StatusCode, body)
+	}
+	response, duplicateBody := postUnauthenticated(t, app, "/v1/auth/register", "application/json", bytes.NewBufferString(requestBody))
+	response.Body.Close()
+	if response.StatusCode != http.StatusAccepted {
+		t.Fatalf("duplicate registration status = %d, want 202: %s", response.StatusCode, duplicateBody)
+	}
+	if !bytes.Equal(body, duplicateBody) {
+		t.Fatalf("duplicate response differed: first=%s duplicate=%s", body, duplicateBody)
+	}
+	if len(sender.messages) != 2 {
+		t.Fatalf("sent emails = %d, want retry verification email", len(sender.messages))
+	}
+	if firstToken, secondToken := verificationTokenFromEmail(t, sender.messages[0]), verificationTokenFromEmail(t, sender.messages[1]); firstToken == secondToken {
+		t.Fatal("duplicate registration reused verification token")
+	}
+}
+
+func TestRegistrationDuplicateDoesNotSendEmailForActiveAccount(t *testing.T) {
+	sender := &recordingEmailSender{}
+	app := newTestAppWithOptions(t, httpapi.Options{
+		AccountRegistration: httpapi.AccountRegistrationConfig{
+			Mode:                 httpapi.AccountRegistrationOpen,
+			EmailVerificationTTL: time.Hour,
+			PublicWebOrigin:      "https://app.example.invalid",
+		},
+		EmailSender: sender,
+	})
+	registerForVerificationTest(t, app, "active-dup", "active-dup@example.invalid")
+	rawToken := verificationTokenFromEmail(t, sender.messages[0])
+	response, body := postUnauthenticated(t, app, "/v1/auth/email/verify", "application/json", bytes.NewBufferString(`{"token":"`+rawToken+`"}`))
+	response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("verify active duplicate setup status = %d, want 200: %s", response.StatusCode, body)
+	}
+
+	response, body = postUnauthenticated(t, app, "/v1/auth/register", "application/json", bytes.NewBufferString(`{"username":"active-dup","email":"active-dup@example.invalid","password":"valid-password"}`))
+	response.Body.Close()
+	if response.StatusCode != http.StatusAccepted {
+		t.Fatalf("active duplicate registration status = %d, want 202: %s", response.StatusCode, body)
+	}
+	if len(sender.messages) != 1 {
+		t.Fatalf("sent emails = %d, want no email for active duplicate", len(sender.messages))
+	}
+}
+
+func TestRegistrationEmailSendFailureCanBeRetried(t *testing.T) {
+	sender := &recordingEmailSender{err: email.ErrDisabled}
+	app := newTestAppWithOptions(t, httpapi.Options{
+		AccountRegistration: httpapi.AccountRegistrationConfig{
+			Mode:                 httpapi.AccountRegistrationOpen,
+			EmailVerificationTTL: time.Hour,
+			PublicWebOrigin:      "https://app.example.invalid",
+		},
+		EmailSender: sender,
+	})
+
+	requestBody := `{"username":"retry-user","email":"retry@example.invalid","password":"valid-password"}`
+	response, body := postUnauthenticated(t, app, "/v1/auth/register", "application/json", bytes.NewBufferString(requestBody))
+	response.Body.Close()
+	if response.StatusCode != http.StatusAccepted {
+		t.Fatalf("failed email registration status = %d, want 202: %s", response.StatusCode, body)
+	}
+	if len(sender.messages) != 0 {
+		t.Fatalf("sent emails after failed send = %d, want 0", len(sender.messages))
+	}
+
+	sender.err = nil
+	response, body = postUnauthenticated(t, app, "/v1/auth/register", "application/json", bytes.NewBufferString(requestBody))
+	response.Body.Close()
+	if response.StatusCode != http.StatusAccepted {
+		t.Fatalf("retried registration status = %d, want 202: %s", response.StatusCode, body)
+	}
+	if len(sender.messages) != 1 {
+		t.Fatalf("sent emails after retry = %d, want 1", len(sender.messages))
+	}
+}
+
+func TestRegistrationValidationRejectsInvalidFields(t *testing.T) {
+	sender := &recordingEmailSender{}
+	app := newTestAppWithOptions(t, httpapi.Options{
+		AccountRegistration: httpapi.AccountRegistrationConfig{
+			Mode:            httpapi.AccountRegistrationOpen,
+			PublicWebOrigin: "https://app.example.invalid",
+		},
+		EmailSender: sender,
+	})
+
+	tests := map[string]string{
+		"username": `{"username":"no spaces","email":"new@example.invalid","password":"valid-password"}`,
+		"email":    `{"username":"new-user","email":"not-an-address","password":"valid-password"}`,
+		"password": `{"username":"new-user","email":"new@example.invalid","password":"short"}`,
+	}
+	for name, requestBody := range tests {
+		t.Run(name, func(t *testing.T) {
+			response, body := postUnauthenticated(t, app, "/v1/auth/register", "application/json", bytes.NewBufferString(requestBody))
+			response.Body.Close()
+			if response.StatusCode != http.StatusBadRequest {
+				t.Fatalf("invalid %s status = %d, want 400: %s", name, response.StatusCode, body)
+			}
+		})
+	}
+	if len(sender.messages) != 0 {
+		t.Fatalf("invalid registration sent %d emails", len(sender.messages))
+	}
+}
+
+func TestEmailVerificationRejectsInvalidExpiredWrongPurposeAndPathTokens(t *testing.T) {
+	sender := &recordingEmailSender{}
+	app := newTestAppWithOptions(t, httpapi.Options{
+		AccountRegistration: httpapi.AccountRegistrationConfig{
+			Mode:                 httpapi.AccountRegistrationOpen,
+			EmailVerificationTTL: time.Hour,
+			PublicWebOrigin:      "https://app.example.invalid",
+		},
+		EmailSender: sender,
+	})
+	registerForVerificationTest(t, app, "expire-user", "expire@example.invalid")
+	expiredToken := verificationTokenFromEmail(t, sender.messages[len(sender.messages)-1])
+	if _, err := app.db.ExecContext(context.Background(), `UPDATE account_verification_tokens SET expires_at = ? WHERE token_hash = ?`, time.Now().UTC().Add(-time.Hour).Format(time.RFC3339Nano), auth.SessionTokenHash(expiredToken)); err != nil {
+		t.Fatalf("expire verification token: %v", err)
+	}
+	response, body := postUnauthenticated(t, app, "/v1/auth/email/verify", "application/json", bytes.NewBufferString(`{"token":"`+expiredToken+`"}`))
+	response.Body.Close()
+	if response.StatusCode != http.StatusBadRequest {
+		t.Fatalf("expired token status = %d, want 400: %s", response.StatusCode, body)
+	}
+	assertErrorCode(t, body, "verification_token_invalid")
+
+	registerForVerificationTest(t, app, "purpose-user", "purpose@example.invalid")
+	wrongPurposeToken := verificationTokenFromEmail(t, sender.messages[len(sender.messages)-1])
+	if _, err := app.db.ExecContext(context.Background(), `UPDATE account_verification_tokens SET purpose = 'other_purpose' WHERE token_hash = ?`, auth.SessionTokenHash(wrongPurposeToken)); err != nil {
+		t.Fatalf("change token purpose: %v", err)
+	}
+	response, body = postUnauthenticated(t, app, "/v1/auth/email/verify", "application/json", bytes.NewBufferString(`{"token":"`+wrongPurposeToken+`"}`))
+	response.Body.Close()
+	if response.StatusCode != http.StatusBadRequest {
+		t.Fatalf("wrong-purpose token status = %d, want 400: %s", response.StatusCode, body)
+	}
+	assertErrorCode(t, body, "verification_token_invalid")
+
+	response, body = postUnauthenticated(t, app, "/v1/auth/email/verify/not-a-token", "application/json", bytes.NewBufferString(`{}`))
+	response.Body.Close()
+	if response.StatusCode != http.StatusNotFound {
+		t.Fatalf("path token status = %d, want 404: %s", response.StatusCode, body)
+	}
+}
+
+func TestInactiveAccountStatesCannotAuthenticate(t *testing.T) {
+	app := newTestApp(t)
+	for _, state := range []string{
+		auth.AccountStateDisabled,
+		auth.AccountStateSuspended,
+		auth.AccountStatePendingPayment,
+	} {
+		t.Run(state, func(t *testing.T) {
+			username := strings.ReplaceAll(state, "_", "-") + "-user"
+			createAccountForStateTest(t, app, username, "state-password")
+			if _, err := app.db.ExecContext(context.Background(), `UPDATE accounts SET account_state = ? WHERE username = ?`, state, username); err != nil {
+				t.Fatalf("set account state: %v", err)
+			}
+			response, body := postUnauthenticated(t, app, "/v1/auth/login", "application/json", bytes.NewBufferString(`{"username":"`+username+`","password":"state-password"}`))
+			response.Body.Close()
+			if response.StatusCode != http.StatusUnauthorized {
+				t.Fatalf("inactive login status = %d, want 401: %s", response.StatusCode, body)
+			}
+			assertErrorCode(t, body, "invalid_credentials")
+		})
+	}
+}
+
+func TestAdminCreatedAccountsRemainActiveByDefault(t *testing.T) {
+	app := newTestApp(t)
+
+	createAccountForStateTest(t, app, "admin-created-user", "state-password")
+	account := mustGetRegistrationAccount(t, app, "admin-created-user")
+	if account.AccountState != auth.AccountStateActive {
+		t.Fatalf("admin-created account state = %q, want active", account.AccountState)
+	}
+	if account.EmailNormalized != "" {
+		t.Fatalf("admin-created account email = %q, want empty", account.EmailNormalized)
+	}
+	token := loginForTest(t, app, "admin-created-user", "state-password")
+	if token == "" {
+		t.Fatal("admin-created active account did not receive bearer token")
+	}
+}
+
+func TestRegistrationLogsAndResponsesDoNotExposeSecrets(t *testing.T) {
+	var logs bytes.Buffer
+	sender := &recordingEmailSender{}
+	app := newTestAppWithOptions(t, httpapi.Options{
+		AccountRegistration: httpapi.AccountRegistrationConfig{
+			Mode:                 httpapi.AccountRegistrationOpen,
+			EmailVerificationTTL: time.Hour,
+			PublicWebOrigin:      "https://app.example.invalid",
+		},
+		EmailSender: sender,
+		Logger:      slog.New(slog.NewTextHandler(&logs, nil)),
+	})
+
+	response, body := postUnauthenticated(t, app, "/v1/auth/register", "application/json", bytes.NewBufferString(`{"username":"secret-user","email":"secret@example.invalid","password":"very-secret-password"}`))
+	response.Body.Close()
+	if response.StatusCode != http.StatusAccepted {
+		t.Fatalf("registration status = %d, want 202: %s", response.StatusCode, body)
+	}
+	rawToken := verificationTokenFromEmail(t, sender.messages[0])
+	for _, disallowed := range []string{"secret@example.invalid", "very-secret-password", rawToken} {
+		if bytes.Contains(body, []byte(disallowed)) {
+			t.Fatalf("registration response exposed %q: %s", disallowed, body)
+		}
+		if strings.Contains(logs.String(), disallowed) {
+			t.Fatalf("registration log exposed %q: %s", disallowed, logs.String())
+		}
+	}
+}
+
 func TestMixedBearerAndBrowserCookieIsRejected(t *testing.T) {
 	app := newTestAppWithOptions(t, webAuthTestOptions(true, nil))
 	cookie, _ := webLoginForTest(t, app, "test-admin", "test-password")
@@ -505,6 +870,59 @@ func createAccountAndLogin(t *testing.T, app *testApp, username, password, role 
 	return loginForTest(t, app, username, password)
 }
 
+func createAccountForStateTest(t *testing.T, app *testApp, username, password string) {
+	t.Helper()
+	requestBody := bytes.NewBufferString(`{"username":"` + username + `","password":"` + password + `","role":"user"}`)
+	response, body := requestWithAuth(t, app.mainHandler, http.MethodPost, "/v1/admin/accounts", "application/json", requestBody, app.authToken)
+	response.Body.Close()
+	if response.StatusCode != http.StatusCreated {
+		t.Fatalf("expected create account status 201, got %d: %s", response.StatusCode, body)
+	}
+}
+
+func registerForVerificationTest(t *testing.T, app *testApp, username, emailAddress string) {
+	t.Helper()
+	requestBody := `{"username":"` + username + `","email":"` + emailAddress + `","password":"valid-password"}`
+	response, body := postUnauthenticated(t, app, "/v1/auth/register", "application/json", bytes.NewBufferString(requestBody))
+	response.Body.Close()
+	if response.StatusCode != http.StatusAccepted {
+		t.Fatalf("expected registration status 202, got %d: %s", response.StatusCode, body)
+	}
+}
+
+func verificationTokenFromEmail(t *testing.T, message email.Message) string {
+	t.Helper()
+	const marker = "/verify-email#token="
+	index := strings.Index(message.Body, marker)
+	if index < 0 {
+		t.Fatalf("verification email missing token link: %q", message.Body)
+	}
+	start := index + len(marker)
+	end := strings.IndexAny(message.Body[start:], "\r\n")
+	raw := message.Body[start:]
+	if end >= 0 {
+		raw = message.Body[start : start+end]
+	}
+	token, err := url.QueryUnescape(strings.TrimSpace(raw))
+	if err != nil {
+		t.Fatalf("decode verification token: %v", err)
+	}
+	return token
+}
+
+type recordingEmailSender struct {
+	messages []email.Message
+	err      error
+}
+
+func (s *recordingEmailSender) Send(_ context.Context, msg email.Message) error {
+	if s.err != nil {
+		return s.err
+	}
+	s.messages = append(s.messages, msg)
+	return nil
+}
+
 func mustGetAccountByUsername(t *testing.T, app *testApp, username string) auth.Account {
 	t.Helper()
 	row := app.db.QueryRowContext(context.Background(), `
@@ -517,6 +935,44 @@ func mustGetAccountByUsername(t *testing.T, app *testApp, username string) auth.
 	var createdAt, updatedAt, passwordChangedAt string
 	if err := row.Scan(&account.ID, &account.Username, &account.PasswordHash, &account.Role, &createdAt, &updatedAt, &passwordChangedAt); err != nil {
 		t.Fatalf("read account %s: %v", username, err)
+	}
+	return account
+}
+
+func mustGetRegistrationAccount(t *testing.T, app *testApp, username string) auth.Account {
+	t.Helper()
+	row := app.db.QueryRowContext(context.Background(), `
+		SELECT id, username, email_normalized, email_verified_at, account_state, password_hash, role, created_at, updated_at, password_changed_at
+		FROM accounts
+		WHERE username = ?`,
+		username,
+	)
+	var account auth.Account
+	var emailNormalized sql.NullString
+	var emailVerifiedAt sql.NullString
+	var createdAt, updatedAt, passwordChangedAt string
+	if err := row.Scan(&account.ID, &account.Username, &emailNormalized, &emailVerifiedAt, &account.AccountState, &account.PasswordHash, &account.Role, &createdAt, &updatedAt, &passwordChangedAt); err != nil {
+		t.Fatalf("read registration account %s: %v", username, err)
+	}
+	if emailNormalized.Valid {
+		account.EmailNormalized = emailNormalized.String
+	}
+	var err error
+	if account.CreatedAt, err = time.Parse(time.RFC3339Nano, createdAt); err != nil {
+		t.Fatalf("parse created_at: %v", err)
+	}
+	if account.UpdatedAt, err = time.Parse(time.RFC3339Nano, updatedAt); err != nil {
+		t.Fatalf("parse updated_at: %v", err)
+	}
+	if account.PasswordChangedAt, err = time.Parse(time.RFC3339Nano, passwordChangedAt); err != nil {
+		t.Fatalf("parse password_changed_at: %v", err)
+	}
+	if emailVerifiedAt.Valid {
+		parsed, err := time.Parse(time.RFC3339Nano, emailVerifiedAt.String)
+		if err != nil {
+			t.Fatalf("parse email_verified_at: %v", err)
+		}
+		account.EmailVerifiedAt = &parsed
 	}
 	return account
 }

@@ -20,6 +20,7 @@ cmd/api           API server entry point
 cmd/simclient     simulator CLI
 internal/config   environment configuration, backend selectors, and HTTP timeout parsing
 internal/db       SQLite setup, schema_migrations, and compatibility migrations
+internal/email    outbound SMTP email sender boundary for registration verification
 internal/envelope client-side chunk encryption envelope helpers
 internal/httpapi  HTTP handlers, muxes, middleware, bundles, web assets
 internal/incidents incident, stream, chunk, checkin, and token models plus SQLite repository code

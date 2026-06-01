@@ -64,6 +64,10 @@ func (a *API) lookupPrivatePrincipal(w http.ResponseWriter, r *http.Request, raw
 		a.internalError(w, "get auth account", err)
 		return privatePrincipal{}, false
 	}
+	if !auth.CanAuthenticate(account) {
+		writeError(w, http.StatusUnauthorized, "authentication_required", "authentication is required")
+		return privatePrincipal{}, false
+	}
 	return privatePrincipal{Account: account, Session: session, AuthSource: source}, true
 }
 

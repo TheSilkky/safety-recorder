@@ -71,6 +71,16 @@ CSRF header from `GET /v1/auth/web/csrf` on unsafe requests. This does not make
 admin JSON routes unless a future audited public-admin API is explicitly
 designed.
 
+Public self-registration is disabled by default. If a self-hosted deployment
+enables `SAFE_ACCOUNT_REGISTRATION_MODE=open`, configure SMTP and a reviewed
+public web origin for verification links, keep SMTP credentials and private
+mail hostnames out of logs and issue drafts, and keep `/v1/admin/...` blocked
+from any public edge. Open registration creates only pending accounts until
+email verification succeeds; it does not add password recovery, payment
+processing, public admin routes, or public `/v1` readiness. The `paid`
+registration mode is a fail-closed placeholder and must not be used as a
+billing control.
+
 The current listener split does not mount `/v1/health/live` or
 `/v1/health/ready` on either listener. Private/local smoke checks can use the
 token-neutral `/admin/static/styles.css` asset to confirm the private dashboard
@@ -588,6 +598,7 @@ Suggested route groups:
 | Public static assets | `GET /static/...` | Static assets are token-neutral and can usually tolerate a looser limit. |
 | Main chunk uploads | `POST /v1/incidents/{incident_id}/chunks` | Tune for expected chunk cadence, upload retries, body size limits, and client network conditions. |
 | Main incident, stream, check-in, and token actions | Other product `/v1/...` routes | Use limits as an abuse backstop, not as the only security control. |
+| Registration and email verification | `POST /v1/auth/register`, `POST /v1/auth/email/verify` | Keep separate from login limits and never include raw emails, usernames, verification tokens, or request bodies in logs or metrics. |
 | Private admin dashboard actions | `/admin/...` | Keep on the private-admin listener and do not route from public entry points. |
 | Admin JSON API actions | `/v1/admin/...` | Authenticated admin-only routes on the main handler; do not route from public entry points. |
 
@@ -598,8 +609,36 @@ firewall rules, or a private reverse-proxy entry point.
 
 Exact limits are deployment-specific. Start with conservative values, watch legitimate simulator/client behavior, then adjust. Avoid sending raw `/i/{token}` paths or pre-rename compatibility `/e/{token}` paths to metrics, dashboards, or logs while measuring limiter behavior.
 
-The Go app also applies route-class-aware limits to the public incident viewer
-by default:
+The Go app also applies route-class-aware limits to main API routes by default:
+
+| App route class | Default |
+|---|---|
+| Login/logout | 30 requests per 1 minute |
+| Public registration | 10 requests per 1 minute |
+| Email verification | 30 requests per 1 minute |
+| Account self-service | 120 requests per 1 minute |
+| Incident reads | 300 requests per 1 minute |
+| Incident writes | 120 requests per 1 minute |
+| Chunk uploads | 120 requests per 1 minute |
+| Duplicate reconciliation | 120 requests per 1 minute |
+| Stream actions | 120 requests per 1 minute |
+| Token actions | 60 requests per 1 minute |
+| Authenticated downloads | 30 request starts per 1 minute |
+| Admin JSON API | 60 requests per 1 minute |
+
+The main API limits are configured with
+`SAFE_MAIN_API_RATE_LIMIT_WINDOW`,
+`SAFE_MAIN_API_RATE_LIMIT_AUTH`,
+`SAFE_MAIN_API_RATE_LIMIT_AUTH_REGISTER`,
+`SAFE_MAIN_API_RATE_LIMIT_AUTH_EMAIL_VERIFY`,
+`SAFE_MAIN_API_RATE_LIMIT_ACCOUNT`, and the other
+`SAFE_MAIN_API_RATE_LIMIT_*` variables documented in
+[configuration.md](configuration.md). Set an individual limit to `0` to
+disable that route-class limit, or set
+`SAFE_MAIN_API_RATE_LIMIT_ENABLED=false` to disable the app-level main API
+limiter.
+
+Public viewer limits are configured separately:
 
 | App route class | Default |
 |---|---|

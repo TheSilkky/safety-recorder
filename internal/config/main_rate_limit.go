@@ -19,6 +19,14 @@ func mainAPIRateLimitConfigFromEnv() (MainAPIRateLimitConfig, error) {
 	if err != nil {
 		return MainAPIRateLimitConfig{}, err
 	}
+	authRegisterLimit, err := nonNegativeIntFromEnv("SAFE_MAIN_API_RATE_LIMIT_AUTH_REGISTER", defaultMainAPIRateLimitAuthRegisterLimit)
+	if err != nil {
+		return MainAPIRateLimitConfig{}, err
+	}
+	authEmailVerifyLimit, err := nonNegativeIntFromEnv("SAFE_MAIN_API_RATE_LIMIT_AUTH_EMAIL_VERIFY", defaultMainAPIRateLimitAuthEmailVerify)
+	if err != nil {
+		return MainAPIRateLimitConfig{}, err
+	}
 	bootstrapLimit, err := nonNegativeIntFromEnv("SAFE_MAIN_API_RATE_LIMIT_BOOTSTRAP", defaultMainAPIRateLimitBootstrapLimit)
 	if err != nil {
 		return MainAPIRateLimitConfig{}, err
@@ -64,6 +72,8 @@ func mainAPIRateLimitConfigFromEnv() (MainAPIRateLimitConfig, error) {
 		Enabled:            enabled,
 		Window:             window,
 		AuthLimit:          authLimit,
+		AuthRegisterLimit:  authRegisterLimit,
+		AuthEmailVerify:    authEmailVerifyLimit,
 		BootstrapLimit:     bootstrapLimit,
 		AccountLimit:       accountLimit,
 		IncidentReadLimit:  incidentReadLimit,

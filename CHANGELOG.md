@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Added configurable account registration modes for disabled, admin-only, open
+  self-registration, and paid-placeholder deployments. Open registration is
+  disabled by default, requires SMTP-backed email verification, stores
+  verification tokens only as hashes, and keeps paid registration fail-closed
+  until a future billing system exists.
 - Added optional main `/v1` browser cookie-session login/logout support for the
   future web client, including HttpOnly session cookies, session-bound CSRF
   protection for cookie-authenticated unsafe requests, explicit credentialed

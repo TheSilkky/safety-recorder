@@ -13,6 +13,7 @@ const (
 	defaultMaxUploadBytes                     = int64(250 * 1024 * 1024)
 	defaultIncidentTokenTTL                   = 24 * time.Hour
 	defaultSessionTTL                         = 12 * time.Hour
+	defaultEmailVerificationTTL               = 24 * time.Hour
 	defaultDeletionInterval                   = time.Minute
 	defaultTempUploadCleanupAge               = 0
 	defaultTempUploadCleanupDryRun            = false
@@ -20,6 +21,8 @@ const (
 	defaultMainAPIRateLimitEnabled            = true
 	defaultMainAPIRateLimitWindow             = time.Minute
 	defaultMainAPIRateLimitAuthLimit          = 30
+	defaultMainAPIRateLimitAuthRegisterLimit  = 10
+	defaultMainAPIRateLimitAuthEmailVerify    = 30
 	defaultMainAPIRateLimitBootstrapLimit     = 5
 	defaultMainAPIRateLimitAccountLimit       = 120
 	defaultMainAPIRateLimitIncidentReadLimit  = 300
@@ -51,6 +54,20 @@ const (
 	defaultAdminIdleTimeout       = 120 * time.Second
 )
 
+const (
+	AccountRegistrationModeDisabled  = "disabled"
+	AccountRegistrationModeAdminOnly = "admin_only"
+	AccountRegistrationModeOpen      = "open"
+	AccountRegistrationModePaid      = "paid"
+
+	EmailBackendNone = "none"
+	EmailBackendSMTP = "smtp"
+
+	SMTPStartTLSRequired      = "required"
+	SMTPStartTLSOpportunistic = "opportunistic"
+	SMTPStartTLSDisabled      = "disabled"
+)
+
 // Config contains the runtime settings needed by the API server.
 type Config struct {
 	MainBindAddrs              []string
@@ -64,6 +81,8 @@ type Config struct {
 	MaxUploadBytes             int64
 	DefaultIncidentTokenTTL    time.Duration
 	SessionTTL                 time.Duration
+	AccountRegistration        AccountRegistrationConfig
+	Email                      EmailConfig
 	AuthBootstrapSecret        string
 	DeletionWorkerInterval     time.Duration
 	ClosedIncidentRetention    time.Duration
@@ -77,6 +96,30 @@ type Config struct {
 	WebAuth                    WebAuthConfig
 	MainTimeouts               HTTPTimeouts
 	AdminTimeouts              HTTPTimeouts
+}
+
+// AccountRegistrationConfig controls public self-registration behavior.
+type AccountRegistrationConfig struct {
+	Mode                 string
+	EmailVerificationTTL time.Duration
+	PublicWebOrigin      string
+}
+
+// EmailConfig contains outbound verification email settings.
+type EmailConfig struct {
+	Backend string
+	SMTP    SMTPConfig
+}
+
+// SMTPConfig contains SMTP settings for verification email delivery.
+type SMTPConfig struct {
+	Host     string
+	Port     int
+	Username string
+	Password string
+	From     string
+	StartTLS string
+	Timeout  time.Duration
 }
 
 // BackendSelection records the configured storage and coordination backends.
@@ -124,6 +167,8 @@ type MainAPIRateLimitConfig struct {
 	Enabled            bool
 	Window             time.Duration
 	AuthLimit          int
+	AuthRegisterLimit  int
+	AuthEmailVerify    int
 	BootstrapLimit     int
 	AccountLimit       int
 	IncidentReadLimit  int
@@ -208,6 +253,18 @@ func Load() (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
+	accountRegistration, err := accountRegistrationConfigFromEnv()
+	if err != nil {
+		return Config{}, err
+	}
+	email, err := emailConfigFromEnv()
+	if err != nil {
+		return Config{}, err
+	}
+	accountRegistration, err = validateAccountRegistrationConfig(accountRegistration, email)
+	if err != nil {
+		return Config{}, err
+	}
 	deletionWorkerInterval, err := durationFromEnv("SAFE_DELETION_WORKER_INTERVAL", defaultDeletionInterval)
 	if err != nil {
 		return Config{}, err
@@ -274,6 +331,8 @@ func Load() (Config, error) {
 		MaxUploadBytes:             maxUploadBytes,
 		DefaultIncidentTokenTTL:    incidentTokenTTL,
 		SessionTTL:                 sessionTTL,
+		AccountRegistration:        accountRegistration,
+		Email:                      email,
 		AuthBootstrapSecret:        secretFromEnv("SAFE_AUTH_BOOTSTRAP_SECRET"),
 		DeletionWorkerInterval:     deletionWorkerInterval,
 		ClosedIncidentRetention:    closedIncidentRetention,

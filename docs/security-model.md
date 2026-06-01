@@ -4,7 +4,7 @@ This document summarizes the current Proofline backend security assumptions and 
 
 ## Maturity
 
-Proofline is experimental and not production-ready public infrastructure. The main `/v1` API has local username/password accounts and opaque server-side sessions. It still has no OAuth, no JWT protection, no complete public product API hardening, and no public account portal.
+Proofline is experimental and not production-ready public infrastructure. The main `/v1` API has local username/password accounts and opaque server-side sessions. Public self-registration is disabled by default and, when explicitly enabled for self-hosted deployments, requires SMTP-backed email verification before login. Proofline still has no OAuth, no JWT protection, no complete public product API hardening, no password recovery, and no public account portal.
 
 The current backend stores incidents owned by local accounts. Incidents are
 generic by default and may include optional incident-mode, capture-profile,
@@ -50,6 +50,15 @@ as an HttpOnly session cookie and does not return it in JSON. The metadata
 backend stores only a SHA-256 hash. Sessions expire after `SAFE_SESSION_TTL`,
 defaulting to 12 hours, and can be revoked by logout, account password change,
 admin password reset, or admin session revocation.
+
+Open account registration creates `pending_email_verification` accounts and
+sends a verification email only when `SAFE_ACCOUNT_REGISTRATION_MODE=open`, an
+SMTP backend, and `SAFE_PUBLIC_WEB_ORIGIN` are configured. Verification tokens
+are opaque single-use credentials. The raw token is sent only in the email link
+fragment and accepted only in the verification request body; metadata stores
+only a SHA-256 hash, purpose, expiry, and consumed timestamp. Pending accounts
+cannot authenticate until verification activates them. The paid registration
+mode is a fail-closed placeholder and does not create an active account.
 
 When enabled, main `/v1` browser cookie auth uses a dedicated session cookie
 for future web-client calls. Bearer auth remains supported for CLI, simulator,
@@ -113,12 +122,13 @@ Viewer URLs contain bearer tokens and should be treated as secrets. Reverse prox
   keys and errors do not include raw tokens, raw idempotency keys, request
   bodies, uploaded bytes, stored paths, object keys, plaintext, or raw keys.
 - Main API route-class rate limiting is enabled by default for authentication,
-  bootstrap, account, incident, upload, reconciliation, stream, token,
-  download, and admin API classes. Limiter keys use server-controlled class
-  labels and a hash of the socket peer identity. They do not include raw
-  session tokens, Authorization headers, raw idempotency keys, request bodies,
-  uploaded bytes, incident IDs, stored paths, object keys, plaintext, raw keys,
-  or private deployment details.
+  public registration, email verification, bootstrap, account, incident,
+  upload, reconciliation, stream, token, download, and admin API classes.
+  Limiter keys use server-controlled class labels and a hash of the socket peer
+  identity. They do not include raw email addresses, raw usernames,
+  verification tokens, raw session tokens, Authorization headers, raw
+  idempotency keys, request bodies, uploaded bytes, incident IDs, stored paths,
+  object keys, plaintext, raw keys, or private deployment details.
 - The authenticated duplicate chunk reconciliation route compares a requested
   normalized chunk identity and expected immutable fingerprint against accepted
   chunk metadata without re-uploading ciphertext, reading stored bytes, or
@@ -310,7 +320,8 @@ Normal file or object removal is not treated as guaranteed secure erasure. Deplo
   [regional-stream-ingress-relay.md](regional-stream-ingress-relay.md)
 - No implemented mode-driven access, escalation, retention, key-custody,
   trusted-contact account, dead-man switch notification, browser decryption,
-  backend decryption, or public account portal behavior
+  backend decryption, payment-gated registration, password recovery, or public
+  account portal behavior
 - No implemented production client key storage, browser decryption, server-assisted break-glass key access, or emergency-contact key access model; the future designs are documented in [key-custody.md](key-custody.md), [contact-key-sharing-grants.md](contact-key-sharing-grants.md), [browser-decryption.md](browser-decryption.md), and [break-glass-key-access.md](break-glass-key-access.md)
 - No implemented live or partial stream access beyond current read-only stream
   metadata summaries and completed encrypted bundle downloads; the future
@@ -324,5 +335,7 @@ Normal file or object removal is not treated as guaranteed secure erasure. Deplo
   and future policy boundaries in
   [mode-aware retention policy](mode-aware-retention-policy.md)
 - No malware/content scanning for uploaded encrypted blobs
-- No implemented account self-service recovery, email verification, second
-  factor authentication, delegated identity provider, or public account portal
+- No implemented account self-service recovery, second factor authentication,
+  delegated identity provider, or public account portal. The only implemented
+  email delivery path is SMTP-backed registration email verification when open
+  registration is explicitly enabled.

@@ -837,6 +837,69 @@ func TestPostgresRepositoryAccountsAndSessions(t *testing.T) {
 	}
 }
 
+func TestPostgresRepositoryAccountRegistrationAndVerificationTokens(t *testing.T) {
+	ctx := context.Background()
+	conn := openPostgresTestDB(t, ctx)
+	if err := Migrate(ctx, conn); err != nil {
+		t.Fatalf("Migrate: %v", err)
+	}
+	repo := NewRepository(conn)
+
+	account, err := repo.CreateAccount(ctx, auth.CreateAccountParams{
+		Username:        "verify-user",
+		EmailNormalized: "Verify.User@Example.Invalid",
+		AccountState:    auth.AccountStatePendingEmailVerification,
+		PasswordHash:    "hash",
+		Role:            auth.RoleUser,
+	})
+	if err != nil {
+		t.Fatalf("create pending account: %v", err)
+	}
+	if account.EmailNormalized != "verify.user@example.invalid" {
+		t.Fatalf("email normalized = %q", account.EmailNormalized)
+	}
+	if account.AccountState != auth.AccountStatePendingEmailVerification {
+		t.Fatalf("account state = %q", account.AccountState)
+	}
+	if _, err := repo.CreateAccount(ctx, auth.CreateAccountParams{
+		Username:        "verify-other",
+		EmailNormalized: "verify.user@example.invalid",
+		AccountState:    auth.AccountStatePendingEmailVerification,
+		PasswordHash:    "hash",
+		Role:            auth.RoleUser,
+	}); !errors.Is(err, auth.ErrDuplicate) {
+		t.Fatalf("duplicate email error = %v, want ErrDuplicate", err)
+	}
+
+	token, rawToken, err := repo.CreateAccountVerificationToken(ctx, auth.CreateAccountVerificationTokenParams{
+		AccountID: account.ID,
+		Purpose:   auth.VerificationPurposeEmail,
+		ExpiresAt: time.Now().UTC().Add(time.Hour),
+	})
+	if err != nil {
+		t.Fatalf("create verification token: %v", err)
+	}
+	if rawToken == "" || token.TokenHash == rawToken || len(token.TokenHash) != 64 {
+		t.Fatalf("verification token did not use hash storage: raw=%q hash=%q", rawToken, token.TokenHash)
+	}
+	if _, err := repo.ConsumeAccountVerificationToken(ctx, rawToken, "wrong_purpose", time.Now().UTC()); !errors.Is(err, auth.ErrNotFound) {
+		t.Fatalf("wrong purpose consume error = %v, want ErrNotFound", err)
+	}
+	verified, err := repo.ConsumeAccountVerificationToken(ctx, rawToken, auth.VerificationPurposeEmail, time.Now().UTC())
+	if err != nil {
+		t.Fatalf("consume verification token: %v", err)
+	}
+	if verified.AccountState != auth.AccountStateActive {
+		t.Fatalf("verified account state = %q, want active", verified.AccountState)
+	}
+	if verified.EmailVerifiedAt == nil {
+		t.Fatal("verified account missing email_verified_at")
+	}
+	if _, err := repo.ConsumeAccountVerificationToken(ctx, rawToken, auth.VerificationPurposeEmail, time.Now().UTC()); !errors.Is(err, auth.ErrNotFound) {
+		t.Fatalf("reused token error = %v, want ErrNotFound", err)
+	}
+}
+
 func openPostgresTestDB(t *testing.T, ctx context.Context) *sql.DB {
 	t.Helper()
 	conn := openPostgresConnection(t, ctx, postgresTestDSN(t))

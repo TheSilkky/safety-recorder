@@ -12,17 +12,19 @@ const mainRateLimitKeyPrefix = "proofline:main-api-rate:v1"
 type mainRateLimitClass string
 
 const (
-	mainRateLimitAuth          mainRateLimitClass = "auth"
-	mainRateLimitBootstrap     mainRateLimitClass = "bootstrap"
-	mainRateLimitAccount       mainRateLimitClass = "account"
-	mainRateLimitIncidentRead  mainRateLimitClass = "incident_read"
-	mainRateLimitIncidentWrite mainRateLimitClass = "incident_write"
-	mainRateLimitUpload        mainRateLimitClass = "upload"
-	mainRateLimitReconcile     mainRateLimitClass = "reconcile"
-	mainRateLimitStream        mainRateLimitClass = "stream"
-	mainRateLimitToken         mainRateLimitClass = "token"
-	mainRateLimitDownload      mainRateLimitClass = "download"
-	mainRateLimitAdmin         mainRateLimitClass = "admin"
+	mainRateLimitAuth            mainRateLimitClass = "auth"
+	mainRateLimitAuthRegister    mainRateLimitClass = "auth_register"
+	mainRateLimitAuthEmailVerify mainRateLimitClass = "auth_email_verify"
+	mainRateLimitBootstrap       mainRateLimitClass = "bootstrap"
+	mainRateLimitAccount         mainRateLimitClass = "account"
+	mainRateLimitIncidentRead    mainRateLimitClass = "incident_read"
+	mainRateLimitIncidentWrite   mainRateLimitClass = "incident_write"
+	mainRateLimitUpload          mainRateLimitClass = "upload"
+	mainRateLimitReconcile       mainRateLimitClass = "reconcile"
+	mainRateLimitStream          mainRateLimitClass = "stream"
+	mainRateLimitToken           mainRateLimitClass = "token"
+	mainRateLimitDownload        mainRateLimitClass = "download"
+	mainRateLimitAdmin           mainRateLimitClass = "admin"
 )
 
 func (a *API) mainRateLimitMiddleware(next http.Handler) http.Handler {
@@ -79,6 +81,10 @@ func (cfg MainRateLimitConfig) limitFor(class mainRateLimitClass) int {
 	switch class {
 	case mainRateLimitAuth:
 		return cfg.AuthLimit
+	case mainRateLimitAuthRegister:
+		return cfg.AuthRegisterLimit
+	case mainRateLimitAuthEmailVerify:
+		return cfg.AuthEmailVerify
 	case mainRateLimitBootstrap:
 		return cfg.BootstrapLimit
 	case mainRateLimitAccount:
@@ -140,7 +146,12 @@ func classifyMainAPIAuthRateLimit(r *http.Request, segments []string) (mainRateL
 		switch segments[2] {
 		case "login", "logout":
 			return mainRateLimitAuth, true
+		case "register":
+			return mainRateLimitAuthRegister, true
 		}
+	}
+	if r.Method == http.MethodPost && len(segments) == 4 && segments[2] == "email" && segments[3] == "verify" {
+		return mainRateLimitAuthEmailVerify, true
 	}
 	return "", false
 }

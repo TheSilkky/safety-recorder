@@ -18,6 +18,8 @@ func TestMainAPIRateLimitGroupsRoutesWithSafeKeys(t *testing.T) {
 			Enabled:            true,
 			Window:             time.Minute,
 			AuthLimit:          11,
+			AuthRegisterLimit:  22,
+			AuthEmailVerify:    23,
 			BootstrapLimit:     12,
 			AccountLimit:       13,
 			IncidentReadLimit:  14,
@@ -39,6 +41,8 @@ func TestMainAPIRateLimitGroupsRoutesWithSafeKeys(t *testing.T) {
 		limit  int
 	}{
 		{http.MethodPost, "/v1/auth/login", ":auth:", 11},
+		{http.MethodPost, "/v1/auth/register", ":auth_register:", 22},
+		{http.MethodPost, "/v1/auth/email/verify", ":auth_email_verify:", 23},
 		{http.MethodGet, "/v1/account", ":account:", 13},
 		{http.MethodGet, "/v1/incidents/inc_secret", ":incident_read:", 14},
 		{http.MethodPost, "/v1/incidents", ":incident_write:", 15},

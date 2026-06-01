@@ -45,6 +45,9 @@ func (a *API) webLogin(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusUnauthorized, "invalid_credentials", "username or password is invalid")
 		return
 	}
+	if !a.loginAccountAllowed(w, account) {
+		return
+	}
 
 	session, rawToken, err := a.repo.CreateSession(r.Context(), account.ID, time.Now().UTC().Add(a.sessionTTL))
 	if err != nil {
@@ -114,6 +117,9 @@ func (a *API) webCookiePrincipal(r *http.Request, rawToken string) (privatePrinc
 	}
 	if err != nil {
 		return privatePrincipal{}, false, err
+	}
+	if !auth.CanAuthenticate(account) {
+		return privatePrincipal{}, false, nil
 	}
 	return privatePrincipal{Account: account, Session: session, AuthSource: privateAuthSourceWebCookie}, true, nil
 }

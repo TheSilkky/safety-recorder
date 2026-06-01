@@ -48,6 +48,151 @@ func TestLoadDefaultSessionTTL(t *testing.T) {
 	}
 }
 
+func TestLoadDefaultAccountRegistrationAndEmailConfig(t *testing.T) {
+	cfg := loadConfigForTest(t, nil)
+
+	if cfg.AccountRegistration.Mode != AccountRegistrationModeDisabled {
+		t.Fatalf("registration mode = %q, want disabled", cfg.AccountRegistration.Mode)
+	}
+	if cfg.AccountRegistration.EmailVerificationTTL != 24*time.Hour {
+		t.Fatalf("email verification ttl = %s, want 24h", cfg.AccountRegistration.EmailVerificationTTL)
+	}
+	if cfg.AccountRegistration.PublicWebOrigin != "" {
+		t.Fatalf("public web origin = %q, want empty", cfg.AccountRegistration.PublicWebOrigin)
+	}
+	if cfg.Email.Backend != EmailBackendNone {
+		t.Fatalf("email backend = %q, want none", cfg.Email.Backend)
+	}
+}
+
+func TestLoadAccountRegistrationOpenRequiresUsableEmail(t *testing.T) {
+	tests := map[string]map[string]string{
+		"missing email backend": {
+			"SAFE_ACCOUNT_REGISTRATION_MODE": "open",
+			"SAFE_PUBLIC_WEB_ORIGIN":         "https://app.example.invalid",
+		},
+		"missing public web origin": {
+			"SAFE_ACCOUNT_REGISTRATION_MODE": "open",
+			"SAFE_EMAIL_BACKEND":             "smtp",
+			"SAFE_SMTP_HOST":                 "smtp.example.invalid",
+			"SAFE_SMTP_FROM":                 "noreply@example.invalid",
+		},
+		"invalid mode": {
+			"SAFE_ACCOUNT_REGISTRATION_MODE": "public",
+		},
+		"invalid ttl": {
+			"SAFE_EMAIL_VERIFICATION_TTL": "0",
+		},
+	}
+
+	for name, env := range tests {
+		t.Run(name, func(t *testing.T) {
+			_, err := loadConfigForTestErr(t, env)
+			if err == nil {
+				t.Fatal("expected account registration config error")
+			}
+			if !strings.Contains(err.Error(), "SAFE_ACCOUNT_REGISTRATION_MODE") &&
+				!strings.Contains(err.Error(), "SAFE_EMAIL_BACKEND") &&
+				!strings.Contains(err.Error(), "SAFE_PUBLIC_WEB_ORIGIN") &&
+				!strings.Contains(err.Error(), "SAFE_EMAIL_VERIFICATION_TTL") {
+				t.Fatalf("expected registration config env context, got %v", err)
+			}
+		})
+	}
+}
+
+func TestLoadPaidRegistrationModeDoesNotRequireEmail(t *testing.T) {
+	cfg := loadConfigForTest(t, map[string]string{
+		"SAFE_ACCOUNT_REGISTRATION_MODE": "paid",
+	})
+
+	if cfg.AccountRegistration.Mode != AccountRegistrationModePaid {
+		t.Fatalf("registration mode = %q, want paid", cfg.AccountRegistration.Mode)
+	}
+	if cfg.Email.Backend != EmailBackendNone {
+		t.Fatalf("email backend = %q, want none", cfg.Email.Backend)
+	}
+}
+
+func TestLoadSMTPEmailConfig(t *testing.T) {
+	cfg := loadConfigForTest(t, map[string]string{
+		"SAFE_EMAIL_BACKEND":     "smtp",
+		"SAFE_SMTP_HOST":         "smtp.example.invalid",
+		"SAFE_SMTP_PORT":         "2525",
+		"SAFE_SMTP_USERNAME":     "proofline",
+		"SAFE_SMTP_PASSWORD":     "smtp-secret",
+		"SAFE_SMTP_FROM":         "Proofline <noreply@example.invalid>",
+		"SAFE_SMTP_STARTTLS":     "opportunistic",
+		"SAFE_SMTP_TIMEOUT":      "5s",
+		"SAFE_PUBLIC_WEB_ORIGIN": "https://app.example.invalid/",
+	})
+
+	if cfg.Email.Backend != EmailBackendSMTP {
+		t.Fatalf("email backend = %q, want smtp", cfg.Email.Backend)
+	}
+	want := SMTPConfig{
+		Host:     "smtp.example.invalid",
+		Port:     2525,
+		Username: "proofline",
+		Password: "smtp-secret",
+		From:     "noreply@example.invalid",
+		StartTLS: SMTPStartTLSOpportunistic,
+		Timeout:  5 * time.Second,
+	}
+	if cfg.Email.SMTP != want {
+		t.Fatalf("smtp config = %+v, want %+v", cfg.Email.SMTP, want)
+	}
+	if cfg.AccountRegistration.PublicWebOrigin != "https://app.example.invalid" {
+		t.Fatalf("public web origin = %q, want normalized origin", cfg.AccountRegistration.PublicWebOrigin)
+	}
+}
+
+func TestLoadRejectsUnsafeSMTPConfigWithoutExposingSecrets(t *testing.T) {
+	tests := map[string]map[string]string{
+		"missing host": {
+			"SAFE_EMAIL_BACKEND": "smtp",
+			"SAFE_SMTP_FROM":     "noreply@example.invalid",
+		},
+		"invalid port": {
+			"SAFE_EMAIL_BACKEND": "smtp",
+			"SAFE_SMTP_HOST":     "smtp.example.invalid",
+			"SAFE_SMTP_FROM":     "noreply@example.invalid",
+			"SAFE_SMTP_PORT":     "0",
+		},
+		"missing from": {
+			"SAFE_EMAIL_BACKEND": "smtp",
+			"SAFE_SMTP_HOST":     "smtp.example.invalid",
+		},
+		"invalid starttls": {
+			"SAFE_EMAIL_BACKEND": "smtp",
+			"SAFE_SMTP_HOST":     "smtp.example.invalid",
+			"SAFE_SMTP_FROM":     "noreply@example.invalid",
+			"SAFE_SMTP_STARTTLS": "sometimes",
+		},
+		"password without username": {
+			"SAFE_EMAIL_BACKEND": "smtp",
+			"SAFE_SMTP_HOST":     "smtp.example.invalid",
+			"SAFE_SMTP_FROM":     "noreply@example.invalid",
+			"SAFE_SMTP_PASSWORD": "smtp-secret",
+		},
+	}
+
+	for name, env := range tests {
+		t.Run(name, func(t *testing.T) {
+			_, err := loadConfigForTestErr(t, env)
+			if err == nil {
+				t.Fatal("expected smtp config error")
+			}
+			if !strings.Contains(err.Error(), "SAFE_SMTP_") {
+				t.Fatalf("expected SAFE_SMTP error, got %v", err)
+			}
+			if strings.Contains(err.Error(), "smtp-secret") || strings.Contains(err.Error(), "smtp.example.invalid") {
+				t.Fatalf("smtp config error exposed secret or private host: %v", err)
+			}
+		})
+	}
+}
+
 func TestLoadDefaultWebAuthConfig(t *testing.T) {
 	cfg := loadConfigForTest(t, nil)
 
@@ -249,6 +394,8 @@ func TestLoadDefaultMainAPIRateLimitConfig(t *testing.T) {
 		Enabled:            true,
 		Window:             time.Minute,
 		AuthLimit:          30,
+		AuthRegisterLimit:  10,
+		AuthEmailVerify:    30,
 		BootstrapLimit:     5,
 		AccountLimit:       120,
 		IncidentReadLimit:  300,
@@ -729,25 +876,29 @@ func TestLoadPublicViewerRateLimitConfigFromEnv(t *testing.T) {
 
 func TestLoadMainAPIRateLimitConfigFromEnv(t *testing.T) {
 	cfg := loadConfigForTest(t, map[string]string{
-		"SAFE_MAIN_API_RATE_LIMIT_ENABLED":        "false",
-		"SAFE_MAIN_API_RATE_LIMIT_WINDOW":         "30s",
-		"SAFE_MAIN_API_RATE_LIMIT_AUTH":           "11",
-		"SAFE_MAIN_API_RATE_LIMIT_BOOTSTRAP":      "12",
-		"SAFE_MAIN_API_RATE_LIMIT_ACCOUNT":        "13",
-		"SAFE_MAIN_API_RATE_LIMIT_INCIDENT_READ":  "14",
-		"SAFE_MAIN_API_RATE_LIMIT_INCIDENT_WRITE": "15",
-		"SAFE_MAIN_API_RATE_LIMIT_UPLOAD":         "16",
-		"SAFE_MAIN_API_RATE_LIMIT_RECONCILE":      "17",
-		"SAFE_MAIN_API_RATE_LIMIT_STREAM":         "18",
-		"SAFE_MAIN_API_RATE_LIMIT_TOKEN":          "19",
-		"SAFE_MAIN_API_RATE_LIMIT_DOWNLOAD":       "20",
-		"SAFE_MAIN_API_RATE_LIMIT_ADMIN":          "21",
+		"SAFE_MAIN_API_RATE_LIMIT_ENABLED":           "false",
+		"SAFE_MAIN_API_RATE_LIMIT_WINDOW":            "30s",
+		"SAFE_MAIN_API_RATE_LIMIT_AUTH":              "11",
+		"SAFE_MAIN_API_RATE_LIMIT_AUTH_REGISTER":     "22",
+		"SAFE_MAIN_API_RATE_LIMIT_AUTH_EMAIL_VERIFY": "23",
+		"SAFE_MAIN_API_RATE_LIMIT_BOOTSTRAP":         "12",
+		"SAFE_MAIN_API_RATE_LIMIT_ACCOUNT":           "13",
+		"SAFE_MAIN_API_RATE_LIMIT_INCIDENT_READ":     "14",
+		"SAFE_MAIN_API_RATE_LIMIT_INCIDENT_WRITE":    "15",
+		"SAFE_MAIN_API_RATE_LIMIT_UPLOAD":            "16",
+		"SAFE_MAIN_API_RATE_LIMIT_RECONCILE":         "17",
+		"SAFE_MAIN_API_RATE_LIMIT_STREAM":            "18",
+		"SAFE_MAIN_API_RATE_LIMIT_TOKEN":             "19",
+		"SAFE_MAIN_API_RATE_LIMIT_DOWNLOAD":          "20",
+		"SAFE_MAIN_API_RATE_LIMIT_ADMIN":             "21",
 	})
 
 	want := MainAPIRateLimitConfig{
 		Enabled:            false,
 		Window:             30 * time.Second,
 		AuthLimit:          11,
+		AuthRegisterLimit:  22,
+		AuthEmailVerify:    23,
 		BootstrapLimit:     12,
 		AccountLimit:       13,
 		IncidentReadLimit:  14,
@@ -815,6 +966,12 @@ func TestLoadRejectsInvalidMainAPIRateLimitConfig(t *testing.T) {
 		},
 		"invalid auth": {
 			"SAFE_MAIN_API_RATE_LIMIT_AUTH": "many",
+		},
+		"invalid auth register": {
+			"SAFE_MAIN_API_RATE_LIMIT_AUTH_REGISTER": "many",
+		},
+		"invalid auth email verify": {
+			"SAFE_MAIN_API_RATE_LIMIT_AUTH_EMAIL_VERIFY": "-1",
 		},
 		"negative bootstrap": {
 			"SAFE_MAIN_API_RATE_LIMIT_BOOTSTRAP": "-1",
@@ -1187,6 +1344,17 @@ func loadConfigForTestErr(t *testing.T, env map[string]string) (Config, error) {
 		"SAFE_MAX_UPLOAD_BYTES",
 		"SAFE_DEFAULT_INCIDENT_TOKEN_TTL",
 		"SAFE_SESSION_TTL",
+		"SAFE_ACCOUNT_REGISTRATION_MODE",
+		"SAFE_EMAIL_VERIFICATION_TTL",
+		"SAFE_PUBLIC_WEB_ORIGIN",
+		"SAFE_EMAIL_BACKEND",
+		"SAFE_SMTP_HOST",
+		"SAFE_SMTP_PORT",
+		"SAFE_SMTP_USERNAME",
+		"SAFE_SMTP_PASSWORD",
+		"SAFE_SMTP_FROM",
+		"SAFE_SMTP_STARTTLS",
+		"SAFE_SMTP_TIMEOUT",
 		"SAFE_AUTH_BOOTSTRAP_SECRET",
 		"SAFE_DELETION_WORKER_INTERVAL",
 		"SAFE_CLOSED_INCIDENT_RETENTION",
@@ -1198,6 +1366,8 @@ func loadConfigForTestErr(t *testing.T, env map[string]string) (Config, error) {
 		"SAFE_MAIN_API_RATE_LIMIT_ENABLED",
 		"SAFE_MAIN_API_RATE_LIMIT_WINDOW",
 		"SAFE_MAIN_API_RATE_LIMIT_AUTH",
+		"SAFE_MAIN_API_RATE_LIMIT_AUTH_REGISTER",
+		"SAFE_MAIN_API_RATE_LIMIT_AUTH_EMAIL_VERIFY",
 		"SAFE_MAIN_API_RATE_LIMIT_BOOTSTRAP",
 		"SAFE_MAIN_API_RATE_LIMIT_ACCOUNT",
 		"SAFE_MAIN_API_RATE_LIMIT_INCIDENT_READ",
