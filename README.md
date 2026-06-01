@@ -8,7 +8,7 @@
 [![Security Policy](https://img.shields.io/badge/security-policy-blue.svg)](SECURITY.md)
 [![GHCR](https://img.shields.io/static/v1?label=GHCR&message=ghcr.io%2Fopen-proofline%2Fserver&color=blue&logo=github)](https://github.com/orgs/open-proofline/packages/container/package/server)
 
-Proofline Server is the experimental Go server backend for encrypted incident capture. It receives already-encrypted recording chunks through authenticated main `/v1` routes, stores metadata in SQLite by default or optional PostgreSQL, keeps encrypted blobs on local disk by default or in optional S3-compatible object storage, serves a private admin dashboard under `/admin`, uses optional Valkey/Redis-compatible coordination for startup checks, route-class counters, and short-lived complete-upload leases when explicitly configured, supports optional browser cookie sessions for a future web client, and exposes a token-scoped read-only viewer for incident review.
+Proofline Server is the experimental Go server backend for encrypted incident capture. It receives already-encrypted recording chunks through authenticated main `/v1` routes, stores metadata in SQLite by default or optional PostgreSQL, keeps encrypted blobs on local disk by default or in optional S3-compatible object storage, serves a private admin dashboard under `/admin`, uses optional Valkey/Redis-compatible coordination for startup checks, route-class counters, and short-lived complete-upload leases when explicitly configured, supports optional browser cookie sessions for a future web client, supports disabled-by-default configurable account registration with SMTP-backed email verification for open self-hosted registration, and exposes a token-scoped read-only viewer for incident review.
 
 > Repository role: this repository is the server/backend component only. In the multi-repo layout it is `open-proofline/server`, not the full Proofline product suite.
 >
@@ -16,7 +16,7 @@ Proofline Server is the experimental Go server backend for encrypted incident ca
 
 ## Security Warning
 
-> This project is not production-ready public infrastructure. The main `/v1` API now requires local account sessions and shares a listener with the read-only incident viewer, but public exposure still needs deployment-specific TLS, abuse controls, browser credential review, logging review, and operational hardening. Optional browser cookie sessions add CSRF checks and configured credentialed CORS for future web-client use, but they do not make `/v1` or `/v1/admin/...` public-ready. Existing `/v1/admin/...` JSON routes remain authenticated admin-only routes on the main handler and must not be routed from a public edge. The private-admin listener is the `/admin` dashboard surface only and must stay behind localhost, LAN, WireGuard, a firewall, or a strict reverse proxy. Separate bind addresses are a deployment boundary, not a complete security model.
+> This project is not production-ready public infrastructure. The main `/v1` API now requires local account sessions for most routes and shares a listener with the read-only incident viewer, but public exposure still needs deployment-specific TLS, abuse controls, browser credential review, logging review, and operational hardening. Configurable public self-registration is disabled by default; enabling open registration adds only email-verified account creation and does not make `/v1` or `/v1/admin/...` public-ready. Optional browser cookie sessions add CSRF checks and configured credentialed CORS for future web-client use, but they also do not make `/v1` or `/v1/admin/...` public-ready. Existing `/v1/admin/...` JSON routes remain authenticated admin-only routes on the main handler and must not be routed from a public edge. The private-admin listener is the `/admin` dashboard surface only and must stay behind localhost, LAN, WireGuard, a firewall, or a strict reverse proxy. Separate bind addresses are a deployment boundary, not a complete security model.
 
 ## What It Is
 
@@ -88,6 +88,9 @@ public viewer changes, notifications, raw key storage, or key escrow.
 - Private-admin dashboard listener for `/admin` and `/admin/static/...`
 - Read-only incident viewer routes mounted on the main listener
 - Local username/password accounts for regular users and admins
+- Configurable account registration modes: disabled, admin-created accounts
+  only, open self-registration with email verification, and a paid-registration
+  placeholder that fails closed until billing is implemented
 - Opaque server-side sessions with expiry and revocation
 - Optional main `/v1` browser cookie-session login/logout, session recovery,
   CSRF protection for cookie-authenticated unsafe requests, and credentialed
@@ -139,8 +142,10 @@ public viewer changes, notifications, raw key storage, or key escrow.
 - No implemented live or partial stream chunk access before stream completion
 - No trusted-contact account delivery, backend/browser decryption, raw key
   handling, server escrow, break-glass key access, or playable media export
+- No payment processing, subscriptions, checkout sessions, billing webhooks,
+  password recovery, OAuth, or JWT
 - No push notifications, SMS, or Messenger integration
-- No OAuth, JWT, public account portal, or public admin dashboard
+- No public account portal or public admin dashboard
 - No built-in TLS, mode-specific retention policy, backup lifecycle enforcement, or production deployment hardening
 - No emergency-services integration; users or trusted contacts remain responsible for contacting emergency services
 

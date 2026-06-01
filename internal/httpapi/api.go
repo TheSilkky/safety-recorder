@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/open-proofline/server/internal/coordination"
+	"github.com/open-proofline/server/internal/email"
 	"github.com/open-proofline/server/internal/storage"
 	"golang.org/x/crypto/bcrypt"
 )
@@ -15,6 +16,7 @@ const (
 	defaultMaxUploadBytes   = int64(250 * 1024 * 1024)
 	defaultIncidentTokenTTL = 24 * time.Hour
 	defaultSessionTTL       = 12 * time.Hour
+	defaultVerificationTTL  = 24 * time.Hour
 	jsonBodyLimit           = int64(64 * 1024)
 	fieldLimit              = int64(64 * 1024)
 	multipartOverhead       = int64(1024 * 1024)
@@ -28,6 +30,8 @@ type Options struct {
 	SessionTTL                 time.Duration
 	BootstrapSecret            string
 	WebAuth                    WebAuthConfig
+	AccountRegistration        AccountRegistrationConfig
+	EmailSender                email.Sender
 	MainRateLimit              MainRateLimitConfig
 	MainRateLimiter            RateLimiter
 	PublicRateLimit            PublicRateLimitConfig
@@ -43,6 +47,8 @@ type MainRateLimitConfig struct {
 	Enabled            bool
 	Window             time.Duration
 	AuthLimit          int
+	AuthRegisterLimit  int
+	AuthEmailVerify    int
 	BootstrapLimit     int
 	AccountLimit       int
 	IncidentReadLimit  int
@@ -77,6 +83,20 @@ type WebAuthConfig struct {
 	CSRFHeaderName        string
 }
 
+// AccountRegistrationConfig controls unauthenticated account registration.
+type AccountRegistrationConfig struct {
+	Mode                 string
+	EmailVerificationTTL time.Duration
+	PublicWebOrigin      string
+}
+
+const (
+	AccountRegistrationDisabled  = "disabled"
+	AccountRegistrationAdminOnly = "admin_only"
+	AccountRegistrationOpen      = "open"
+	AccountRegistrationPaid      = "paid"
+)
+
 // RateLimiter records one request against a safe limiter key.
 type RateLimiter interface {
 	Allow(ctx context.Context, key string, limit int, window time.Duration) (bool, error)
@@ -95,6 +115,8 @@ type API struct {
 	sessionTTL                 time.Duration
 	bootstrapSecret            string
 	webAuth                    WebAuthConfig
+	accountRegistration        AccountRegistrationConfig
+	emailSender                email.Sender
 	mainRateLimit              MainRateLimitConfig
 	mainRateLimiter            RateLimiter
 	publicRateLimit            PublicRateLimitConfig
@@ -180,6 +202,13 @@ func newAPI(repo MetadataRepository, store storage.BlobStore, opts Options) *API
 	if webAuth.CSRFHeaderName == "" {
 		webAuth.CSRFHeaderName = "X-CSRF-Token"
 	}
+	accountRegistration := opts.AccountRegistration
+	if accountRegistration.Mode == "" {
+		accountRegistration.Mode = AccountRegistrationDisabled
+	}
+	if accountRegistration.EmailVerificationTTL <= 0 {
+		accountRegistration.EmailVerificationTTL = defaultVerificationTTL
+	}
 
 	return &API{
 		repo:                       repo,
@@ -189,6 +218,8 @@ func newAPI(repo MetadataRepository, store storage.BlobStore, opts Options) *API
 		sessionTTL:                 sessionTTL,
 		bootstrapSecret:            opts.BootstrapSecret,
 		webAuth:                    webAuth,
+		accountRegistration:        accountRegistration,
+		emailSender:                opts.EmailSender,
 		mainRateLimit:              opts.MainRateLimit,
 		mainRateLimiter:            mainRateLimiter,
 		publicRateLimit:            opts.PublicRateLimit,

@@ -30,11 +30,12 @@ contact key-sharing boundaries in
 - `.dockerignore`: excludes local runtime, review, and build artifacts from the root Docker build context used by `Dockerfile`.
 - `cmd/api`: starts one main API/viewer HTTP server per main bind address and one private-admin dashboard HTTP server per admin bind address, loads config, enforces the local account bootstrap gate, checks the selected coordination backend, opens the selected metadata backend, creates storage, wires shared handlers including main API, admin JSON API, public viewer rate limiting, upload coordination, and the private `/admin` dashboard, starts the deletion worker, and handles graceful shutdown.
 - `cmd/simclient`: simulates future client flows by logging in, creating an incident, creating a media stream, encrypting and uploading complete chunks, completing or failing streams, sending periodic checkins, and optionally testing hash-failure retry, bundle download, local decrypt verification, durable desktop-recorder staging, local file input, ffmpeg segment capture, restart/resume behavior, and poor-network retry controls. Token-bearing viewer URLs are omitted from simulator output.
-- `internal/config`: reads environment variables such as backend selectors, backend-specific settings, main and private-admin bind address lists, legacy singular bind addresses, data directory, database path, max upload size, upload coordination lease TTL, main API and public viewer rate limits, optional web-auth cookie/CORS/CSRF settings, HTTP server timeouts, local account bootstrap secret, session TTL, deletion worker interval, closed-incident retention window, token metadata retention window, and tombstone retention window.
+- `internal/config`: reads environment variables such as backend selectors, backend-specific settings, main and private-admin bind address lists, legacy singular bind addresses, data directory, database path, max upload size, upload coordination lease TTL, main API and public viewer rate limits, account registration and SMTP email settings, optional web-auth cookie/CORS/CSRF settings, HTTP server timeouts, local account bootstrap secret, session TTL, deletion worker interval, closed-incident retention window, token metadata retention window, and tombstone retention window.
 - `internal/coordination`: defines the small optional coordination boundary, the default no-coordination backend, and the Valkey/Redis-compatible startup check, main API/public viewer rate-limit counter backend, and short-lived complete-upload lease backend.
 - `internal/db`: opens SQLite, enables foreign keys and WAL mode, applies embedded SQLite migrations, records `schema_migrations`, and runs named compatibility migrations.
+- `internal/email`: defines the outbound email sender boundary and the SMTP-backed verification email implementation. The backend has no stdout/file development mailer and does not send notification, recovery, billing, or trusted-contact emails.
 - `internal/envelope`: implements the simulator/test AES-256-GCM client-side chunk envelope, associated data builder, and local simulator key file helpers.
-- `internal/auth`: normalizes local account usernames, validates passwords, hashes passwords with bcrypt, and hashes opaque session tokens before storage.
+- `internal/auth`: normalizes local account usernames and email addresses, validates passwords, hashes passwords with bcrypt, and hashes opaque session or verification tokens before storage.
 - `internal/httpapi`: owns separate main and private-admin dashboard muxes, JSON responses, request logging, recovery, local account/session authentication, request validation, upload handling, stream state handlers, contact public-key handlers, sharing-grant handlers, wrapped-key handlers, incident deletion handlers, ZIP bundle streaming, app-level main API, admin JSON API, and public viewer rate limiting, the private admin web surface, the incident viewer, and the narrow metadata repository boundary consumed by handlers.
 - `internal/incidents`: defines incident/stream/chunk/checkin/account/session/deletion/contact-key/sharing-grant/wrapped-key models and provides the SQLite metadata repository implementation, including deletion decisions, tombstones, retry item state, contact public-key records, sharing-grant records, wrapped-key records, and write guards for deleting incidents.
 - `internal/postgresdb`: opens optional PostgreSQL metadata connections, applies PostgreSQL migrations, and implements the metadata repository behavior with PostgreSQL transaction, row-locking, deletion, and constraint semantics.
@@ -57,9 +58,10 @@ idempotency, durable blob commits, and metadata.
 ## Main Request Flow
 
 Main `/v1` routes require `Authorization: Bearer <session_token>` except for
-login, or a browser session cookie when `SAFE_WEB_AUTH_ENABLED=true` and no
-bearer token is present. Browser login uses `POST /v1/auth/web/login`, returns
-safe session metadata without a raw token, and sets an HttpOnly session cookie.
+login, disabled-by-default registration, and email verification; authenticated
+routes can also use a browser session cookie when `SAFE_WEB_AUTH_ENABLED=true`
+and no bearer token is present. Browser login uses `POST /v1/auth/web/login`,
+returns safe session metadata without a raw token, and sets an HttpOnly session cookie.
 `GET /v1/auth/web/csrf` returns a session-bound CSRF token for unsafe
 cookie-authenticated requests, and `POST /v1/auth/web/logout` revokes the
 session and clears the cookie. Requests that send both bearer and browser
@@ -68,7 +70,12 @@ require an admin account. First-admin bootstrap uses the private
 `/admin/bootstrap` form when no admin exists and `SAFE_AUTH_BOOTSTRAP_SECRET`
 is configured.
 Session tokens are opaque, returned only to the client, and stored as hashes by
-the metadata repository.
+the metadata repository. `POST /v1/auth/register` is controlled by
+`SAFE_ACCOUNT_REGISTRATION_MODE`: disabled and admin-only modes reject public
+registration, open mode creates pending email-verification accounts and sends
+SMTP verification messages, and paid mode fails closed without creating active
+accounts. `POST /v1/auth/email/verify` consumes single-use token hashes and
+activates pending accounts without creating a session.
 
 The current listener split does not mount `/v1/health/live` or
 `/v1/health/ready` on either listener.
@@ -270,9 +277,9 @@ Before public exposure, review and add:
 - operational monitoring for failed uploads and storage/DB errors
 - a production review of viewer-token sharing, expiry defaults, and revocation operations
 - mode-driven access, escalation, retention, sharing, viewer, key-custody,
-  trusted-contact, public product API, and broader
-  admin/operator authorization
-  design before implementing public account workflows or broad public `/v1`
+  trusted-contact, public product API, payment-gated registration, account
+  recovery, and broader admin/operator authorization
+  design before implementing broad public `/v1`
   exposure
 
 ## Out Of Scope Today
@@ -282,7 +289,8 @@ protocol repository, production local recording client, mode-driven access,
 escalation, retention, viewer behavior, trusted-contact accounts, wrapped-key
 delivery outside owner-authenticated private `/v1`, dead-man switch
 notifications, production client key storage, browser/client-side decryption,
-server-assisted break-glass key access,
-playable media export, push notifications, SMS, Messenger integration, OAuth,
-JWT, public account workflows, or a public admin dashboard. The local
+server-assisted break-glass key access, payment processing, subscriptions,
+checkout sessions, billing webhooks, password recovery, playable media export,
+push notifications, SMS, Messenger integration, OAuth, JWT, public account
+portal, or a public admin dashboard. The local
 desktop-recorder behavior in `cmd/simclient` is simulator/reference flow only.

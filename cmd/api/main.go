@@ -13,6 +13,7 @@ import (
 	"github.com/open-proofline/server/internal/config"
 	"github.com/open-proofline/server/internal/coordination"
 	"github.com/open-proofline/server/internal/db"
+	"github.com/open-proofline/server/internal/email"
 	"github.com/open-proofline/server/internal/httpapi"
 	"github.com/open-proofline/server/internal/incidents"
 	"github.com/open-proofline/server/internal/postgresdb"
@@ -73,6 +74,8 @@ func run(logger *slog.Logger) error {
 		SessionTTL:                 cfg.SessionTTL,
 		BootstrapSecret:            cfg.AuthBootstrapSecret,
 		WebAuth:                    webAuthConfig(cfg.WebAuth),
+		AccountRegistration:        accountRegistrationConfig(cfg.AccountRegistration),
+		EmailSender:                newEmailSender(cfg.Email),
 		MainRateLimit:              mainRateLimitConfig(cfg.MainAPIRateLimit),
 		MainRateLimiter:            newMainRateLimiter(cfg, coord),
 		PublicRateLimit:            publicRateLimitConfig(cfg.PublicViewerRateLimit),
@@ -112,6 +115,8 @@ func mainRateLimitConfig(cfg config.MainAPIRateLimitConfig) httpapi.MainRateLimi
 		Enabled:            cfg.Enabled,
 		Window:             cfg.Window,
 		AuthLimit:          cfg.AuthLimit,
+		AuthRegisterLimit:  cfg.AuthRegisterLimit,
+		AuthEmailVerify:    cfg.AuthEmailVerify,
 		BootstrapLimit:     cfg.BootstrapLimit,
 		AccountLimit:       cfg.AccountLimit,
 		IncidentReadLimit:  cfg.IncidentReadLimit,
@@ -149,6 +154,29 @@ func webAuthConfig(cfg config.WebAuthConfig) httpapi.WebAuthConfig {
 		SessionCookieSameSite: sameSite,
 		CSRFHeaderName:        cfg.CSRFHeaderName,
 	}
+}
+
+func accountRegistrationConfig(cfg config.AccountRegistrationConfig) httpapi.AccountRegistrationConfig {
+	return httpapi.AccountRegistrationConfig{
+		Mode:                 cfg.Mode,
+		EmailVerificationTTL: cfg.EmailVerificationTTL,
+		PublicWebOrigin:      cfg.PublicWebOrigin,
+	}
+}
+
+func newEmailSender(cfg config.EmailConfig) email.Sender {
+	if cfg.Backend != config.EmailBackendSMTP {
+		return email.NoneSender{}
+	}
+	return email.NewSMTPSender(email.SMTPOptions{
+		Host:     cfg.SMTP.Host,
+		Port:     cfg.SMTP.Port,
+		Username: cfg.SMTP.Username,
+		Password: cfg.SMTP.Password,
+		From:     cfg.SMTP.From,
+		StartTLS: email.SMTPStartTLSMode(cfg.SMTP.StartTLS),
+		Timeout:  cfg.SMTP.Timeout,
+	})
 }
 
 func newMainRateLimiter(cfg config.Config, coord coordination.Coordinator) httpapi.RateLimiter {

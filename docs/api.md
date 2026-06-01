@@ -1,6 +1,6 @@
 # API
 
-This is the current backend-only HTTP surface for Proofline. The API binary starts a main API/viewer listener and a private-admin listener on one or more configured bind addresses. Main `/v1` routes require local account authentication except for login. Existing `/v1/admin/...` JSON routes require an admin account and are mounted on the main handler; they are not public-ready routes. The private-admin listener serves only the `/admin` dashboard route tree. Incident viewer routes are token-gated, read-only, and mounted on the main listener. Planned web, iOS, and Android clients are not part of this repository yet.
+This is the current backend-only HTTP surface for Proofline. The API binary starts a main API/viewer listener and a private-admin listener on one or more configured bind addresses. Main `/v1` routes require local account authentication except for login and the disabled-by-default registration/email-verification routes. Existing `/v1/admin/...` JSON routes require an admin account and are mounted on the main handler; they are not public-ready routes. The private-admin listener serves only the `/admin` dashboard route tree. Incident viewer routes are token-gated, read-only, and mounted on the main listener. Planned web, iOS, and Android clients are not part of this repository yet.
 
 Media bundle downloads are encrypted chunk bundles. The backend does not decrypt, merge, or produce playable media. The simulator's current encrypted uploads use the envelope documented in [encryption.md](encryption.md), but the API treats uploaded bytes as opaque ciphertext.
 
@@ -46,13 +46,15 @@ Non-upload JSON bodies are limited to 64 KiB. Upload file bytes are limited by `
 
 Main API route classes are rate limited by default before authentication using
 safe server-controlled keys based on route class and a hash of the socket peer
-identity. Rate-limit keys do not include raw session tokens, Authorization
-headers, raw idempotency keys, request bodies, uploaded bytes, incident IDs,
-stored paths, object keys, plaintext, raw keys, or private deployment details.
-Exhausted limits return `429 rate_limited` with `Retry-After`. A configured
-coordination limiter failure returns `503 rate_limit_unavailable` with a
-generic response. See [configuration](configuration.md) for
-`SAFE_MAIN_API_RATE_LIMIT_*` settings.
+identity. Login/logout, public registration, and email verification have
+separate authentication-related route classes. Rate-limit keys do not include
+raw email addresses, raw usernames, verification tokens, raw session tokens,
+Authorization headers, raw idempotency keys, request bodies, uploaded bytes,
+incident IDs, stored paths, object keys, plaintext, raw keys, or private
+deployment details. Exhausted limits return `429 rate_limited` with
+`Retry-After`. A configured coordination limiter failure returns
+`503 rate_limit_unavailable` with a generic response. See
+[configuration](configuration.md) for `SAFE_MAIN_API_RATE_LIMIT_*` settings.
 
 ## Health And Readiness
 
@@ -94,6 +96,27 @@ to `POST /admin/bootstrap`, then remove the environment variable and restart or
 redeploy without it. JSON `POST /v1/bootstrap/admin` is not mounted on either
 listener.
 
+Public account registration is controlled by
+`SAFE_ACCOUNT_REGISTRATION_MODE`, defaulting to `disabled`. Supported modes are:
+
+| Mode | Public registration behavior |
+|---|---|
+| `disabled` | `POST /v1/auth/register` returns `403 registration_disabled`. Existing accounts and sessions continue to work. |
+| `admin_only` | Public registration returns `403 registration_disabled`; admins can still create accounts through existing admin-only routes. |
+| `open` | Public self-registration accepts a username, email, and password, creates a pending account, and sends an email verification link before login is allowed. |
+| `paid` | Reserved for future hosted-service billing. Registration returns `503 registration_payment_unavailable` and does not create an active account. |
+
+Open registration requires an email backend and public web origin at startup.
+Verification links use:
+
+```text
+{SAFE_PUBLIC_WEB_ORIGIN}/verify-email#token=<raw-token>
+```
+
+The token is placed in the URL fragment so a future web client can submit it in
+the JSON request body without sending it to the web server as a path or query
+value. The backend stores only token hashes, not raw verification tokens.
+
 ### `POST /v1/auth/login`
 
 Authenticates a local account and returns a raw session token once.
@@ -115,6 +138,7 @@ Response `201`:
   "account": {
     "id": "acct_...",
     "username": "admin",
+    "account_state": "active",
     "role": "admin",
     "created_at": "2026-05-31T10:00:00Z",
     "updated_at": "2026-05-31T10:00:00Z",
@@ -125,6 +149,84 @@ Response `201`:
   "expires_at": "2026-05-31T22:00:00Z"
 }
 ```
+
+### `POST /v1/auth/register`
+
+Unauthenticated public registration endpoint. It is disabled unless
+`SAFE_ACCOUNT_REGISTRATION_MODE=open` or `paid`.
+
+Request for open registration:
+
+```json
+{
+  "username": "new-user",
+  "email": "user@example.com",
+  "password": "long local password"
+}
+```
+
+In `open` mode the server validates the username, email, and password, creates
+a `pending_email_verification` user account, stores a single-use
+`email_verification` token hash, sends a verification email, and returns
+`202`:
+
+```json
+{
+  "status": "verification_required",
+  "message": "If registration can be completed, a verification email will be sent."
+}
+```
+
+The response does not include a session token. Duplicate username or email
+registrations return the same generic `202` response and do not expose whether
+the username or email already exists. Invalid fields can still return specific
+validation errors such as `invalid_username`, `invalid_email`, or
+`invalid_password`. A repeated registration with the same username and email
+for a still-pending account may send a fresh verification email so transient
+mail delivery failures can be retried without exposing the account state in the
+HTTP response. Runtime mail delivery failures are logged with safe error
+categories and keep the same generic `202` response shape.
+
+In `paid` mode this route returns:
+
+```json
+{
+  "error": {
+    "code": "registration_payment_unavailable",
+    "message": "paid registration is not available"
+  }
+}
+```
+
+No payment provider, checkout session, subscription state, active account, or
+billing webhook is created by this placeholder mode.
+
+### `POST /v1/auth/email/verify`
+
+Unauthenticated email verification endpoint. The raw verification token is
+accepted only in the JSON body:
+
+```json
+{
+  "token": "verification-token-from-email"
+}
+```
+
+The server hashes the token, looks up an unexpired and unconsumed
+`email_verification` record, consumes it once, marks the email verified, and
+activates the account if it was `pending_email_verification`. It does not
+create a session automatically.
+
+Success response:
+
+```json
+{
+  "status": "verified"
+}
+```
+
+Invalid, expired, already consumed, wrong-purpose, or missing tokens return the
+same generic `400 verification_token_invalid` response.
 
 ### `POST /v1/auth/logout`
 

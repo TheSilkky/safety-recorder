@@ -3,12 +3,14 @@
 This document defines the current local access-control boundary for Proofline's
 authenticated main `/v1` control plane and the future direction for broader
 product access.
-Local username/password accounts and opaque server-side sessions are implemented
-for the main `/v1` API. Account-owner contact public-key registration,
-sharing-grant metadata routes, and grant-bound wrapped-key record routes are
-implemented behind that same reviewed boundary. OAuth, JWT, public account
-portals, trusted-contact accounts, notifications, browser decryption, key
-escrow, and server-side decryption are not implemented.
+Local username/password accounts, opaque server-side sessions, and
+disabled-by-default email-verified self-registration are implemented for the
+main `/v1` API. Account-owner contact public-key registration, sharing-grant
+metadata routes, and grant-bound wrapped-key record routes are implemented
+behind that same reviewed boundary. OAuth, JWT, public account portals,
+trusted-contact accounts, notification delivery beyond registration email
+verification, browser decryption, key escrow, and server-side decryption are
+not implemented.
 
 ## Summary
 
@@ -60,8 +62,8 @@ Related source-of-truth docs:
 - No broad public exposure of the current main `/v1` API.
 - No OAuth, JWT, public account portal, or identity-provider implementation.
 - No web-client, iOS-client, Android-client, or protocol implementation.
-- No push notification, SMS, Messenger, email, or emergency-services
-  integration.
+- No push notification, SMS, Messenger, email notification beyond registration
+  verification, password recovery email, or emergency-services integration.
 - No backend decryption, browser decryption, key escrow, trusted-contact
   accounts, or break-glass implementation.
 - No public admin dashboard.
@@ -73,15 +75,16 @@ Today the backend has two listener groups:
 
 | Listener group | Current routes | Exposure |
 |---|---|---|
-| Main API and viewer | `/v1/...` with local account/session auth except login, including existing admin-only JSON APIs; `/i/{token}` plus legacy `/e/{token}` aliases and `/static/...` | Reviewed main API deployment boundary; viewer paths may be routed publicly when only viewer paths are forwarded. Public edges must not route `/v1/admin/...`. |
+| Main API and viewer | `/v1/...` with local account/session auth except login, disabled-by-default registration, and email verification, including existing admin-only JSON APIs; `/i/{token}` plus legacy `/e/{token}` aliases and `/static/...` | Reviewed main API deployment boundary; viewer paths may be routed publicly when only viewer paths are forwarded. Public edges must not route `/v1/admin/...`. |
 | Private admin dashboard | `/admin`, `/admin/...`, `/admin/static/...` | Localhost, LAN, WireGuard, firewall, or strict private reverse proxy only. |
 
 Current `/v1` routes are on the main handler. The implemented local auth model has admin and user roles, incident ownership, hashed password storage,
 hashed session-token storage, bearer sessions, optional browser cookie sessions
 with CSRF checks for unsafe cookie-authenticated requests, session expiry,
-logout, account password change, admin account creation, admin session
-revocation, owner-scoped contact public-key metadata, owner-managed sharing
-grants, and owner-managed wrapped-key records. Sharing-grant and wrapped-key management are deliberately
+logout, account password change, admin account creation, configurable
+registration modes with email verification for open self-registration, admin
+session revocation, owner-scoped contact public-key metadata, owner-managed
+sharing grants, and owner-managed wrapped-key records. Sharing-grant and wrapped-key management are deliberately
 stricter than ordinary incident reads: they require the authenticated account
 to own the incident, and an admin account cannot manage another account's
 grants or wrapped-key records through the product route set unless it is also
@@ -155,7 +158,7 @@ describe policy shape; they are not implementation commitments.
 
 | Route class | Future exposure | Notes |
 |---|---|---|
-| Current main `/v1` routes | Main listener with local account/session authentication. | Includes login/logout, account/password routes, incident creation, stream creation, chunk upload, checkins, close/fail/complete actions, incident-token creation/revocation, contact public-key registration, owner-scoped sharing-grant management, authenticated chunk reads, and existing admin-only JSON APIs. Public edges must not route `/v1/admin/...`. |
+| Current main `/v1` routes | Main listener with local account/session authentication. | Includes login/logout, disabled-by-default registration/email verification, account/password routes, incident creation, stream creation, chunk upload, checkins, close/fail/complete actions, incident-token creation/revocation, contact public-key registration, owner-scoped sharing-grant management, authenticated chunk reads, and existing admin-only JSON APIs. Public edges must not route `/v1/admin/...`. |
 | Current private-admin dashboard routes | Private only with admin web session authentication or first-admin bootstrap secret. | Includes `/admin` bootstrap, login, logout, account-list, password-change, password-reset forms, and token-neutral `/admin/static/...` assets. |
 | Public product API routes | Public-authenticated only after account/device/contact authz, upload abuse controls, request-size controls, and audit are implemented. | Should cover non-admin product flows: account-owner incidents, capture uploads, trusted-contact access, account-owner public-link grant issuance/revocation, sharing, and wrapped-key delivery. |
 | Public-link viewer routes | Public read-only viewer routes can remain separate from the public product API. | Current `/i/{token}` and `/e/{token}` paths are bearer-token URLs and must not become write or admin routes. |
@@ -170,7 +173,11 @@ account, contact, admin, or escrow routes on any listener.
 ## Authentication Expectations
 
 The current main `/v1` API uses local username/password accounts, bcrypt
-password hashing, and opaque server-side sessions. Bearer login returns the raw
+password hashing, configurable registration modes, and opaque server-side
+sessions. Public registration defaults to disabled. Open self-registration must
+be explicitly configured with SMTP email verification and activates accounts
+only after a single-use verification token is consumed. Paid registration fails
+closed until a future billing system exists. Bearer login returns the raw
 session token once for CLI/simulator/API clients. Optional browser login sets a
 dedicated HttpOnly cookie for future web-client calls and does not return the
 raw token in JSON. Stored session material is hashed. Sessions expire and can
@@ -197,6 +204,8 @@ Authentication must provide:
 - credential expiry and rotation
 - revocation for lost devices, removed contacts, leaked links, and operator
   access changes
+- account-state enforcement so pending, disabled, suspended, or future
+  payment-pending accounts cannot authenticate as active users
 - replay and token-theft risk analysis
 - CSRF protection for browser-cookie flows that perform state-changing actions;
   the current main web-cookie flow and private `/admin` authenticated

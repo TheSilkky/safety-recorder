@@ -113,6 +113,10 @@ func (a *API) adminWebLogin(w http.ResponseWriter, r *http.Request) {
 		a.renderAdminWeb(w, http.StatusUnauthorized, makeAdminWebLoginData("Username or password is invalid."))
 		return
 	}
+	if !auth.CanAuthenticate(account) {
+		a.renderAdminWeb(w, http.StatusUnauthorized, makeAdminWebLoginData("Username or password is invalid."))
+		return
+	}
 	if account.Role != auth.RoleAdmin {
 		a.renderAdminWeb(w, http.StatusForbidden, makeAdminWebLoginData("Admin role is required."))
 		return
@@ -386,6 +390,9 @@ func (a *API) adminWebPrincipal(r *http.Request) (privatePrincipal, bool, error)
 	}
 	if err != nil {
 		return privatePrincipal{}, false, err
+	}
+	if !auth.CanAuthenticate(account) {
+		return privatePrincipal{}, false, nil
 	}
 	return privatePrincipal{Account: account, Session: session}, true, nil
 }

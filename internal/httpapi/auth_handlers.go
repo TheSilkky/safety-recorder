@@ -12,12 +12,15 @@ import (
 )
 
 type accountResponse struct {
-	ID                string    `json:"id"`
-	Username          string    `json:"username"`
-	Role              string    `json:"role"`
-	CreatedAt         time.Time `json:"created_at"`
-	UpdatedAt         time.Time `json:"updated_at"`
-	PasswordChangedAt time.Time `json:"password_changed_at"`
+	ID                string     `json:"id"`
+	Username          string     `json:"username"`
+	Email             string     `json:"email,omitempty"`
+	EmailVerifiedAt   *time.Time `json:"email_verified_at,omitempty"`
+	AccountState      string     `json:"account_state"`
+	Role              string     `json:"role"`
+	CreatedAt         time.Time  `json:"created_at"`
+	UpdatedAt         time.Time  `json:"updated_at"`
+	PasswordChangedAt time.Time  `json:"password_changed_at"`
 }
 
 type authSessionResponse struct {
@@ -49,6 +52,9 @@ func (a *API) login(w http.ResponseWriter, r *http.Request) {
 	}
 	if !auth.VerifyPassword(account.PasswordHash, request.Password) {
 		writeError(w, http.StatusUnauthorized, "invalid_credentials", "username or password is invalid")
+		return
+	}
+	if !a.loginAccountAllowed(w, account) {
 		return
 	}
 
@@ -281,9 +287,24 @@ func makeAccountResponse(account auth.Account) accountResponse {
 	return accountResponse{
 		ID:                account.ID,
 		Username:          account.Username,
+		Email:             account.EmailNormalized,
+		EmailVerifiedAt:   account.EmailVerifiedAt,
+		AccountState:      account.AccountState,
 		Role:              account.Role,
 		CreatedAt:         account.CreatedAt,
 		UpdatedAt:         account.UpdatedAt,
 		PasswordChangedAt: account.PasswordChangedAt,
 	}
+}
+
+func (a *API) loginAccountAllowed(w http.ResponseWriter, account auth.Account) bool {
+	if auth.CanAuthenticate(account) {
+		return true
+	}
+	if account.AccountState == auth.AccountStatePendingEmailVerification {
+		writeError(w, http.StatusForbidden, "email_verification_required", "email verification is required before login")
+		return false
+	}
+	writeError(w, http.StatusUnauthorized, "invalid_credentials", "username or password is invalid")
+	return false
 }

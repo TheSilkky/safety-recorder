@@ -53,6 +53,8 @@ metadata, grant-bound wrapped-key metadata, and encrypted evidence bundles.
 - Local account records, bcrypt password hashes, and opaque session-token hashes
 - Raw session tokens returned once by login and then presented in Authorization
   headers
+- Optional account email addresses, email verification timestamps, and
+  single-use email verification token hashes when open registration is enabled
 - Raw viewer/incident tokens returned once at creation time
 - Incident viewer URLs containing bearer tokens
 - Simulator-only local encryption key files when developers opt into `--key-file`
@@ -81,11 +83,12 @@ metadata, grant-bound wrapped-key metadata, and encrypted evidence bundles.
   default it listens on `127.0.0.1:8081`, and it can listen on multiple
   addresses through `SAFE_ADMIN_BIND_ADDRS`.
 - Main `/v1` routes are authenticated product and admin JSON routes except for
-  `/v1/auth/login`. Authenticated product routes can create incidents, create
-  streams, upload chunks, complete/fail streams, close incidents, create viewer
-  tokens, revoke tokens, manage account-owned contact public keys, manage
-  owner-scoped sharing grants, manage grant-bound wrapped-key records, and read
-  encrypted bytes. Existing
+  `/v1/auth/login`, disabled-by-default `/v1/auth/register`, and
+  `/v1/auth/email/verify`. Authenticated product routes can create incidents,
+  create streams, upload chunks, complete/fail streams, close incidents, create
+  viewer tokens, revoke tokens, manage account-owned contact public keys,
+  manage owner-scoped sharing grants, manage grant-bound wrapped-key records,
+  and read encrypted bytes. Existing
   `/v1/admin/...` JSON routes require an admin account and must not be routed
   from public entry points. They are mounted on the main API/viewer server.
 - `/v1/bootstrap/admin`, `/v1/health/live`, and `/v1/health/ready` are not
@@ -127,12 +130,14 @@ metadata, grant-bound wrapped-key metadata, and encrypted evidence bundles.
   derived from a server-controlled hash of normalized chunk identity. Busy
   leases return `409 upload_in_progress` with a retry hint, while runtime
   coordination failures return a retryable safe error.
-- Route-class rate limiting groups main API authentication, account, incident,
-  upload, reconciliation, stream, token, and download requests, plus
-  admin API requests, by safe class labels and a hash of the socket peer identity. Limiter
-  keys do not include raw session tokens, Authorization headers, raw
-  idempotency keys, request bodies, uploaded bytes, incident IDs, stored paths,
-  object keys, plaintext, raw keys, or private deployment details.
+- Route-class rate limiting groups main API authentication, public
+  registration, email verification, account, incident, upload, reconciliation,
+  stream, token, and download requests, plus admin API requests, by safe class
+  labels and a hash of the socket peer identity. Limiter keys do not include
+  raw email addresses, raw usernames, verification tokens, raw session tokens,
+  Authorization headers, raw idempotency keys, request bodies, uploaded bytes,
+  incident IDs, stored paths, object keys, plaintext, raw keys, or private
+  deployment details.
 - The current listener split does not expose `/v1/health/live` or
   `/v1/health/ready`; operator readiness details should not be published on
   the main API/viewer origin or on the dashboard-only private-admin listener.
@@ -143,6 +148,12 @@ metadata, grant-bound wrapped-key metadata, and encrypted evidence bundles.
   bearer login and stored only as SHA-256 hashes. Optional browser login uses
   the same session store but sends the raw session token only in an HttpOnly
   browser cookie.
+- Public self-registration is disabled by default. When explicitly configured
+  for open self-hosted registration, it requires SMTP-backed email
+  verification, creates `pending_email_verification` accounts, stores only
+  verification token hashes, and activates accounts only after one successful
+  token consumption. Paid registration fails closed and does not create active
+  accounts.
 - Cookie-authenticated unsafe `/v1` requests require a session-bound HMAC CSRF
   token in the configured header. Bearer-authenticated requests keep their
   existing behavior. Credentialed CORS is emitted only for exact configured web
@@ -268,8 +279,10 @@ The current backend does not implement incident-mode-specific controls yet, so f
 - No malware/content scanning; uploaded bytes are assumed to be client-encrypted blobs.
 - Bundle downloads are encrypted chunk bundles, not decrypted or playable media exports.
 - No implemented live or partial stream chunk access before stream completion.
-- No account self-service recovery, email verification, second factor
-  authentication, delegated identity provider, or public account portal.
+- No account self-service recovery, second factor authentication, delegated
+  identity provider, or public account portal. The only implemented email
+  delivery path is SMTP-backed registration email verification when open
+  registration is explicitly enabled.
 - Viewer links are bearer tokens and must be shared carefully.
 - No implemented production key recovery, Keychain storage, trusted-contact
   account access, browser decryption, break-glass key access, or playable

@@ -36,6 +36,8 @@ func (a *API) adminRoutes() http.Handler {
 
 func (a *API) registerMainAuthRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /v1/auth/login", a.login)
+	mux.HandleFunc("POST /v1/auth/register", a.registerAccount)
+	mux.HandleFunc("POST /v1/auth/email/verify", a.verifyAccountEmail)
 	mux.HandleFunc("POST /v1/auth/logout", a.withPrivateAuth(a.logout))
 	mux.HandleFunc("POST /v1/auth/web/login", a.webLogin)
 	mux.HandleFunc("POST /v1/auth/web/logout", a.webLogout)
