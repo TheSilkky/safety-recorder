@@ -181,6 +181,14 @@ SAFE_AUTH_BOOTSTRAP_SECRET='replace-with-local-bootstrap-secret' \
 go run ./cmd/api
 ```
 
+The repository root includes `proofline.toml`, a safe local-first example
+config that matches the built-in defaults. TOML config is the recommended
+deployment shape; existing `SAFE_*` environment variables remain supported and
+override TOML values. Use `--config /path/to/proofline.toml` or
+`SAFE_CONFIG_FILE=/path/to/proofline.toml` for a custom file, and prefer
+`*_file` TOML keys or `SAFE_*_FILE` environment variables for secret-bearing
+settings.
+
 By default this starts:
 
 | Listener | Address |
@@ -245,6 +253,10 @@ fields, to create the first admin account. Then restart the container without
 `SAFE_AUTH_BOOTSTRAP_SECRET`.
 
 Container defaults bind to `0.0.0.0` inside the container. Restrict host exposure with port publishing, firewall rules, WireGuard, or a reverse proxy. See [docs/deployment.md](docs/deployment.md).
+
+For file-based container configuration, mount a reviewed TOML file and point
+`SAFE_CONFIG_FILE` at it. Keep real secrets in mounted secret files rather than
+in committed TOML.
 
 ## Documentation
 

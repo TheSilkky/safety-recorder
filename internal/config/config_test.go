@@ -1,7 +1,9 @@
 package config
 
 import (
+	"fmt"
 	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -45,6 +47,18 @@ func TestLoadDefaultSessionTTL(t *testing.T) {
 
 	if cfg.SessionTTL != 12*time.Hour {
 		t.Fatalf("default session ttl = %s, want 12h", cfg.SessionTTL)
+	}
+}
+
+func TestLoadNoConfigFileUsesBuiltInDefaults(t *testing.T) {
+	t.Chdir(t.TempDir())
+
+	cfg := loadConfigForTest(t, nil)
+
+	assertStringsEqual(t, cfg.MainBindAddrs, []string{defaultMainBindAddr})
+	assertStringsEqual(t, cfg.AdminBindAddrs, []string{defaultAdminBindAddr})
+	if cfg.DataDir != defaultDataDir || cfg.DBPath != defaultDBPath {
+		t.Fatalf("paths = data_dir %q db_path %q", cfg.DataDir, cfg.DBPath)
 	}
 }
 
@@ -419,6 +433,319 @@ func TestLoadAuthBootstrapSecret(t *testing.T) {
 
 	if cfg.AuthBootstrapSecret != "bootstrap-secret" {
 		t.Fatalf("bootstrap secret was not trimmed")
+	}
+}
+
+func TestLoadRootExampleTOMLParses(t *testing.T) {
+	cfg := loadConfigWithOptionsForTest(t, LoadOptions{
+		ConfigFilePath: filepath.Join("..", "..", "proofline.toml"),
+	}, nil)
+
+	assertStringsEqual(t, cfg.MainBindAddrs, []string{"127.0.0.1:8080"})
+	assertStringsEqual(t, cfg.AdminBindAddrs, []string{"127.0.0.1:8081"})
+	if cfg.Backends != (BackendSelection{
+		Metadata:     MetadataBackendSQLite,
+		Blob:         BlobBackendLocal,
+		Coordination: CoordinationBackendNone,
+	}) {
+		t.Fatalf("root example backends = %+v", cfg.Backends)
+	}
+	if cfg.AuthBootstrapSecret != "" {
+		t.Fatal("root example must not contain a bootstrap secret")
+	}
+}
+
+func TestLoadExplicitTOMLConfig(t *testing.T) {
+	path := writeConfigFile(t, `
+[server]
+main_bind_addrs = ["127.0.0.1:19080"]
+admin_bind_addrs = ["127.0.0.1:19081"]
+
+[paths]
+data_dir = "/tmp/proofline-data"
+sqlite_db_path = "/tmp/proofline-data/proofline.db"
+
+[metadata]
+backend = "sqlite"
+
+[blob_storage]
+backend = "local"
+
+[coordination]
+backend = "none"
+
+[uploads]
+max_upload_bytes = "1KB"
+
+[auth]
+session_ttl = "6h"
+
+[retention]
+default_incident_token_ttl = "12h"
+
+[rate_limits.main_api]
+auth_register = 14
+
+[http.admin]
+read_timeout = "45s"
+`)
+
+	cfg := loadConfigWithOptionsForTest(t, LoadOptions{ConfigFilePath: path}, nil)
+
+	assertStringsEqual(t, cfg.MainBindAddrs, []string{"127.0.0.1:19080"})
+	assertStringsEqual(t, cfg.AdminBindAddrs, []string{"127.0.0.1:19081"})
+	if cfg.DataDir != "/tmp/proofline-data" || cfg.DBPath != "/tmp/proofline-data/proofline.db" {
+		t.Fatalf("paths = data_dir %q db_path %q", cfg.DataDir, cfg.DBPath)
+	}
+	if cfg.MaxUploadBytes != 1024 {
+		t.Fatalf("max upload bytes = %d, want 1024", cfg.MaxUploadBytes)
+	}
+	if cfg.SessionTTL != 6*time.Hour || cfg.DefaultIncidentTokenTTL != 12*time.Hour {
+		t.Fatalf("durations = session %s token %s", cfg.SessionTTL, cfg.DefaultIncidentTokenTTL)
+	}
+	if cfg.MainAPIRateLimit.AuthRegisterLimit != 14 {
+		t.Fatalf("auth register limit = %d, want 14", cfg.MainAPIRateLimit.AuthRegisterLimit)
+	}
+	if cfg.AdminTimeouts.ReadTimeout != 45*time.Second {
+		t.Fatalf("admin read timeout = %s, want 45s", cfg.AdminTimeouts.ReadTimeout)
+	}
+}
+
+func TestLoadTOMLConfigFromEnvPath(t *testing.T) {
+	path := writeConfigFile(t, `
+[server]
+main_bind_addrs = ["127.0.0.1:19080"]
+`)
+
+	cfg := loadConfigForTest(t, map[string]string{
+		"SAFE_CONFIG_FILE": path,
+	})
+
+	assertStringsEqual(t, cfg.MainBindAddrs, []string{"127.0.0.1:19080"})
+}
+
+func TestLoadRejectsMissingExplicitTOMLConfig(t *testing.T) {
+	missingPath := filepath.Join(t.TempDir(), "missing-proofline.toml")
+
+	_, err := loadConfigWithOptionsForTestErr(t, LoadOptions{ConfigFilePath: missingPath}, nil)
+	if err == nil {
+		t.Fatal("expected missing explicit config error")
+	}
+	if !strings.Contains(err.Error(), "--config") || strings.Contains(err.Error(), missingPath) {
+		t.Fatalf("unexpected missing config error: %v", err)
+	}
+}
+
+func TestLoadEnvOverridesTOMLConfig(t *testing.T) {
+	path := writeConfigFile(t, `
+[server]
+main_bind_addrs = ["127.0.0.1:19080"]
+
+[uploads]
+max_upload_bytes = "1KB"
+`)
+
+	cfg := loadConfigWithOptionsForTest(t, LoadOptions{ConfigFilePath: path}, map[string]string{
+		"SAFE_MAIN_BIND_ADDRS":  "127.0.0.1:29080",
+		"SAFE_MAX_UPLOAD_BYTES": "2KB",
+	})
+
+	assertStringsEqual(t, cfg.MainBindAddrs, []string{"127.0.0.1:29080"})
+	if cfg.MaxUploadBytes != 2048 {
+		t.Fatalf("max upload bytes = %d, want 2048", cfg.MaxUploadBytes)
+	}
+}
+
+func TestLoadRejectsMalformedTOMLConfig(t *testing.T) {
+	path := writeConfigFile(t, `not = [`)
+
+	_, err := loadConfigWithOptionsForTestErr(t, LoadOptions{ConfigFilePath: path}, nil)
+	if err == nil {
+		t.Fatal("expected malformed TOML error")
+	}
+	if !strings.Contains(err.Error(), "config file") || !strings.Contains(err.Error(), "invalid TOML") {
+		t.Fatalf("unexpected malformed TOML error: %v", err)
+	}
+}
+
+func TestLoadRejectsUnknownTOMLKeys(t *testing.T) {
+	path := writeConfigFile(t, `
+[server]
+main_bind_addr = "127.0.0.1:8080"
+`)
+
+	_, err := loadConfigWithOptionsForTestErr(t, LoadOptions{ConfigFilePath: path}, nil)
+	if err == nil {
+		t.Fatal("expected unknown TOML key error")
+	}
+	if !strings.Contains(err.Error(), "unknown TOML key") || !strings.Contains(err.Error(), "server.main_bind_addr") {
+		t.Fatalf("unexpected unknown-key error: %v", err)
+	}
+}
+
+func TestLoadSecretFilesFromEnv(t *testing.T) {
+	secretPath := writeSecretFile(t, "file-bootstrap-secret\n")
+
+	cfg := loadConfigForTest(t, map[string]string{
+		"SAFE_AUTH_BOOTSTRAP_SECRET":      "direct-bootstrap-secret",
+		"SAFE_AUTH_BOOTSTRAP_SECRET_FILE": secretPath,
+	})
+
+	if cfg.AuthBootstrapSecret != "file-bootstrap-secret" {
+		t.Fatalf("bootstrap secret = %q, want file value", cfg.AuthBootstrapSecret)
+	}
+}
+
+func TestLoadTOMLSecretFile(t *testing.T) {
+	secretPath := writeSecretFile(t, "toml-bootstrap-secret\r\n")
+	configPath := writeConfigFile(t, fmt.Sprintf(`
+[auth]
+bootstrap_secret_file = %q
+`, secretPath))
+
+	cfg := loadConfigWithOptionsForTest(t, LoadOptions{ConfigFilePath: configPath}, nil)
+
+	if cfg.AuthBootstrapSecret != "toml-bootstrap-secret" {
+		t.Fatalf("bootstrap secret = %q, want toml file value", cfg.AuthBootstrapSecret)
+	}
+}
+
+func TestLoadEnvDirectSecretOverridesTOMLSecretFile(t *testing.T) {
+	secretPath := writeSecretFile(t, "toml-bootstrap-secret\n")
+	configPath := writeConfigFile(t, fmt.Sprintf(`
+[auth]
+bootstrap_secret_file = %q
+`, secretPath))
+
+	cfg := loadConfigWithOptionsForTest(t, LoadOptions{ConfigFilePath: configPath}, map[string]string{
+		"SAFE_AUTH_BOOTSTRAP_SECRET": "env-bootstrap-secret",
+	})
+
+	if cfg.AuthBootstrapSecret != "env-bootstrap-secret" {
+		t.Fatalf("bootstrap secret = %q, want env value", cfg.AuthBootstrapSecret)
+	}
+}
+
+func TestLoadRejectsSecretFileFailuresWithoutExposingValues(t *testing.T) {
+	missingPath := filepath.Join(t.TempDir(), "private-secret-path")
+	_, err := loadConfigForTestErr(t, map[string]string{
+		"SAFE_AUTH_BOOTSTRAP_SECRET_FILE": missingPath,
+	})
+	if err == nil {
+		t.Fatal("expected missing secret file error")
+	}
+	if strings.Contains(err.Error(), missingPath) || strings.Contains(err.Error(), "private-secret-path") {
+		t.Fatalf("secret file error exposed path: %v", err)
+	}
+
+	emptyPath := writeSecretFile(t, "")
+	_, err = loadConfigForTestErr(t, map[string]string{
+		"SAFE_AUTH_BOOTSTRAP_SECRET_FILE": emptyPath,
+	})
+	if err == nil {
+		t.Fatal("expected empty secret file error")
+	}
+	if strings.Contains(err.Error(), emptyPath) {
+		t.Fatalf("empty secret file error exposed path: %v", err)
+	}
+}
+
+func TestLoadRejectsTOMLDirectSecretAndSecretFileConflict(t *testing.T) {
+	secretPath := writeSecretFile(t, "file-secret\n")
+	configPath := writeConfigFile(t, fmt.Sprintf(`
+[auth]
+bootstrap_secret = "direct-secret"
+bootstrap_secret_file = %q
+`, secretPath))
+
+	_, err := loadConfigWithOptionsForTestErr(t, LoadOptions{ConfigFilePath: configPath}, nil)
+	if err == nil {
+		t.Fatal("expected direct/file conflict error")
+	}
+	if !strings.Contains(err.Error(), "SAFE_AUTH_BOOTSTRAP_SECRET") ||
+		strings.Contains(err.Error(), "direct-secret") ||
+		strings.Contains(err.Error(), secretPath) {
+		t.Fatalf("conflict error exposed sensitive detail or lacked field context: %v", err)
+	}
+}
+
+func TestResolveSecretTrimsOnlyOneTrailingLineEnding(t *testing.T) {
+	tests := map[string]struct {
+		contents string
+		want     string
+	}{
+		"lf":                  {"secret\n", "secret"},
+		"crlf":                {"secret\r\n", "secret"},
+		"one line only":       {"secret\n\n", "secret\n"},
+		"internal whitespace": {"a b\tc\n", "a b\tc"},
+	}
+
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			path := writeSecretFile(t, tt.contents)
+			got, err := ResolveSecret("SAFE_TEST_SECRET", SecretValue{File: path})
+			if err != nil {
+				t.Fatalf("ResolveSecret: %v", err)
+			}
+			if got != tt.want {
+				t.Fatalf("resolved secret = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestResolveSecretRejectsDirectAndFileConflict(t *testing.T) {
+	path := writeSecretFile(t, "file-secret\n")
+
+	_, err := ResolveSecret("SAFE_TEST_SECRET", SecretValue{Value: "direct-secret", File: path})
+	if err == nil {
+		t.Fatal("expected direct/file conflict")
+	}
+	if strings.Contains(err.Error(), "direct-secret") || strings.Contains(err.Error(), path) {
+		t.Fatalf("conflict error exposed sensitive detail: %v", err)
+	}
+}
+
+func TestLoadBackendSecretsFromFiles(t *testing.T) {
+	postgresDSN := writeSecretFile(t, "postgres://proofline:secret@example.invalid/proofline\n")
+	s3AccessKey := writeSecretFile(t, "test-access-key\n")
+	s3SecretKey := writeSecretFile(t, "test-secret-key\n")
+	s3SessionToken := writeSecretFile(t, "test-session-token\n")
+	valkeyPassword := writeSecretFile(t, "valkey-password\n")
+	smtpPassword := writeSecretFile(t, "smtp-password\n")
+
+	cfg := loadConfigForTest(t, map[string]string{
+		"SAFE_METADATA_BACKEND":          "postgresql",
+		"SAFE_POSTGRES_DSN_FILE":         postgresDSN,
+		"SAFE_BLOB_BACKEND":              "s3",
+		"SAFE_S3_ENDPOINT":               "https://s3.example.test",
+		"SAFE_S3_BUCKET":                 "proofline-evidence",
+		"SAFE_S3_ACCESS_KEY_ID_FILE":     s3AccessKey,
+		"SAFE_S3_SECRET_ACCESS_KEY_FILE": s3SecretKey,
+		"SAFE_S3_SESSION_TOKEN_FILE":     s3SessionToken,
+		"SAFE_COORDINATION_BACKEND":      "valkey",
+		"SAFE_VALKEY_ADDR":               "127.0.0.1:6379",
+		"SAFE_VALKEY_PASSWORD_FILE":      valkeyPassword,
+		"SAFE_EMAIL_BACKEND":             "smtp",
+		"SAFE_SMTP_HOST":                 "smtp.example.invalid",
+		"SAFE_SMTP_USERNAME":             "proofline",
+		"SAFE_SMTP_PASSWORD_FILE":        smtpPassword,
+		"SAFE_SMTP_FROM":                 "noreply@example.invalid",
+	})
+
+	if cfg.Postgres.DSN != "postgres://proofline:secret@example.invalid/proofline" {
+		t.Fatalf("postgres DSN was not read from file")
+	}
+	if cfg.S3Blob.AccessKeyID != "test-access-key" ||
+		cfg.S3Blob.SecretAccessKey != "test-secret-key" ||
+		cfg.S3Blob.SessionToken != "test-session-token" {
+		t.Fatalf("s3 secrets were not read from files: %+v", cfg.S3Blob)
+	}
+	if cfg.Valkey.Password != "valkey-password" {
+		t.Fatalf("valkey password = %q, want file value", cfg.Valkey.Password)
+	}
+	if cfg.Email.SMTP.Password != "smtp-password" {
+		t.Fatalf("smtp password = %q, want file value", cfg.Email.SMTP.Password)
 	}
 }
 
@@ -1325,9 +1652,24 @@ func loadConfigForTest(t *testing.T, env map[string]string) Config {
 	return cfg
 }
 
+func loadConfigWithOptionsForTest(t *testing.T, opts LoadOptions, env map[string]string) Config {
+	t.Helper()
+	cfg, err := loadConfigWithOptionsForTestErr(t, opts, env)
+	if err != nil {
+		t.Fatalf("LoadWithOptions: %v", err)
+	}
+	return cfg
+}
+
 func loadConfigForTestErr(t *testing.T, env map[string]string) (Config, error) {
 	t.Helper()
+	return loadConfigWithOptionsForTestErr(t, LoadOptions{}, env)
+}
+
+func loadConfigWithOptionsForTestErr(t *testing.T, opts LoadOptions, env map[string]string) (Config, error) {
+	t.Helper()
 	names := []string{
+		"SAFE_CONFIG_FILE",
 		"SAFE_MAIN_BIND_ADDRS",
 		"SAFE_ADMIN_BIND_ADDRS",
 		"SAFE_MAIN_BIND_ADDR",
@@ -1352,10 +1694,12 @@ func loadConfigForTestErr(t *testing.T, env map[string]string) (Config, error) {
 		"SAFE_SMTP_PORT",
 		"SAFE_SMTP_USERNAME",
 		"SAFE_SMTP_PASSWORD",
+		"SAFE_SMTP_PASSWORD_FILE",
 		"SAFE_SMTP_FROM",
 		"SAFE_SMTP_STARTTLS",
 		"SAFE_SMTP_TIMEOUT",
 		"SAFE_AUTH_BOOTSTRAP_SECRET",
+		"SAFE_AUTH_BOOTSTRAP_SECRET_FILE",
 		"SAFE_DELETION_WORKER_INTERVAL",
 		"SAFE_CLOSED_INCIDENT_RETENTION",
 		"SAFE_TOKEN_METADATA_RETENTION",
@@ -1407,6 +1751,7 @@ func loadConfigForTestErr(t *testing.T, env map[string]string) (Config, error) {
 		"SAFE_PUBLIC_WRITE_TIMEOUT",
 		"SAFE_PUBLIC_IDLE_TIMEOUT",
 		"SAFE_POSTGRES_DSN",
+		"SAFE_POSTGRES_DSN_FILE",
 		"SAFE_POSTGRES_MAX_OPEN_CONNS",
 		"SAFE_POSTGRES_MAX_IDLE_CONNS",
 		"SAFE_POSTGRES_CONN_MAX_LIFETIME",
@@ -1416,12 +1761,16 @@ func loadConfigForTestErr(t *testing.T, env map[string]string) (Config, error) {
 		"SAFE_S3_BUCKET",
 		"SAFE_S3_PREFIX",
 		"SAFE_S3_ACCESS_KEY_ID",
+		"SAFE_S3_ACCESS_KEY_ID_FILE",
 		"SAFE_S3_SECRET_ACCESS_KEY",
+		"SAFE_S3_SECRET_ACCESS_KEY_FILE",
 		"SAFE_S3_SESSION_TOKEN",
+		"SAFE_S3_SESSION_TOKEN_FILE",
 		"SAFE_S3_FORCE_PATH_STYLE",
 		"SAFE_VALKEY_ADDR",
 		"SAFE_VALKEY_USERNAME",
 		"SAFE_VALKEY_PASSWORD",
+		"SAFE_VALKEY_PASSWORD_FILE",
 		"SAFE_VALKEY_DB",
 		"SAFE_VALKEY_TLS",
 		"SAFE_VALKEY_DIAL_TIMEOUT",
@@ -1434,7 +1783,25 @@ func loadConfigForTestErr(t *testing.T, env map[string]string) (Config, error) {
 			t.Fatalf("set %s: %v", name, err)
 		}
 	}
-	return Load()
+	return LoadWithOptions(opts)
+}
+
+func writeConfigFile(t *testing.T, contents string) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "proofline.toml")
+	if err := os.WriteFile(path, []byte(strings.TrimSpace(contents)+"\n"), 0o600); err != nil {
+		t.Fatalf("write config file: %v", err)
+	}
+	return path
+}
+
+func writeSecretFile(t *testing.T, contents string) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "secret")
+	if err := os.WriteFile(path, []byte(contents), 0o600); err != nil {
+		t.Fatalf("write secret file: %v", err)
+	}
+	return path
 }
 
 func restoreEnv(t *testing.T, names []string) {

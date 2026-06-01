@@ -3,7 +3,6 @@ package config
 import (
 	"fmt"
 	"net"
-	"os"
 	"strings"
 	"time"
 )
@@ -16,11 +15,10 @@ const (
 	defaultValkeyWriteTimeout = 5 * time.Second
 )
 
-func valkeyConfigFromEnv(coordinationBackend string) (ValkeyConfig, error) {
+func valkeyConfigFromSource(source configSource, coordinationBackend string) (ValkeyConfig, error) {
 	cfg := ValkeyConfig{
-		Addr:         strings.TrimSpace(os.Getenv("SAFE_VALKEY_ADDR")),
-		Username:     strings.TrimSpace(os.Getenv("SAFE_VALKEY_USERNAME")),
-		Password:     strings.TrimSpace(os.Getenv("SAFE_VALKEY_PASSWORD")),
+		Addr:         strings.TrimSpace(source.Get("SAFE_VALKEY_ADDR")),
+		Username:     strings.TrimSpace(source.Get("SAFE_VALKEY_USERNAME")),
 		DB:           defaultValkeyDB,
 		UseTLS:       defaultValkeyUseTLS,
 		DialTimeout:  defaultValkeyDialTimeout,
@@ -38,27 +36,32 @@ func valkeyConfigFromEnv(coordinationBackend string) (ValkeyConfig, error) {
 		return ValkeyConfig{}, err
 	}
 
-	db, err := nonNegativeIntFromEnv("SAFE_VALKEY_DB", defaultValkeyDB)
+	password, err := secretFromSource(source, "SAFE_VALKEY_PASSWORD", "SAFE_VALKEY_PASSWORD_FILE")
 	if err != nil {
 		return ValkeyConfig{}, err
 	}
-	useTLS, err := boolFromEnv("SAFE_VALKEY_TLS", defaultValkeyUseTLS)
+	db, err := nonNegativeIntFromSource(source, "SAFE_VALKEY_DB", defaultValkeyDB)
 	if err != nil {
 		return ValkeyConfig{}, err
 	}
-	dialTimeout, err := durationFromEnv("SAFE_VALKEY_DIAL_TIMEOUT", defaultValkeyDialTimeout)
+	useTLS, err := boolFromSource(source, "SAFE_VALKEY_TLS", defaultValkeyUseTLS)
 	if err != nil {
 		return ValkeyConfig{}, err
 	}
-	readTimeout, err := durationFromEnv("SAFE_VALKEY_READ_TIMEOUT", defaultValkeyReadTimeout)
+	dialTimeout, err := durationFromSource(source, "SAFE_VALKEY_DIAL_TIMEOUT", defaultValkeyDialTimeout)
 	if err != nil {
 		return ValkeyConfig{}, err
 	}
-	writeTimeout, err := durationFromEnv("SAFE_VALKEY_WRITE_TIMEOUT", defaultValkeyWriteTimeout)
+	readTimeout, err := durationFromSource(source, "SAFE_VALKEY_READ_TIMEOUT", defaultValkeyReadTimeout)
+	if err != nil {
+		return ValkeyConfig{}, err
+	}
+	writeTimeout, err := durationFromSource(source, "SAFE_VALKEY_WRITE_TIMEOUT", defaultValkeyWriteTimeout)
 	if err != nil {
 		return ValkeyConfig{}, err
 	}
 
+	cfg.Password = password
 	cfg.DB = db
 	cfg.UseTLS = useTLS
 	cfg.DialTimeout = dialTimeout

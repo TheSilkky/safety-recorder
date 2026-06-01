@@ -4,28 +4,14 @@ services:
       context: ..
       dockerfile: Dockerfile
     environment:
-      SAFE_MAIN_BIND_ADDRS: 0.0.0.0:8080
-      SAFE_ADMIN_BIND_ADDRS: 0.0.0.0:8081
-      SAFE_AUTH_BOOTSTRAP_SECRET: ${PROOFLINE_SMOKE_BOOTSTRAP_SECRET:-replace-with-local-compose-bootstrap-secret}
-      SAFE_DATA_DIR: /data
-      SAFE_DB_PATH: /data/safety.db
-      SAFE_METADATA_BACKEND: postgresql
-      SAFE_POSTGRES_DSN: postgres://proofline:proofline@postgres:5432/proofline?sslmode=disable
-      SAFE_BLOB_BACKEND: s3
-      SAFE_S3_ENDPOINT: http://minio:9000
-      SAFE_S3_REGION: us-east-1
-      SAFE_S3_BUCKET: proofline-evidence
-      SAFE_S3_PREFIX: smoke/full
-      SAFE_S3_ACCESS_KEY_ID: proofline
-      SAFE_S3_SECRET_ACCESS_KEY: proofline-minio-password
-      SAFE_S3_FORCE_PATH_STYLE: "true"
-      SAFE_COORDINATION_BACKEND: valkey
-      SAFE_VALKEY_ADDR: valkey:6379
+      SAFE_CONFIG_FILE: /config/proofline-full.toml
     ports:
       - "127.0.0.1:${PROOFLINE_MAIN_PORT:-18080}:8080"
       - "127.0.0.1:${PROOFLINE_ADMIN_PORT:-18081}:8081"
     volumes:
       - server-data:/data
+      - ./smoke/proofline-full.toml:/config/proofline-full.toml:ro
+      - ${PROOFLINE_SMOKE_SECRETS_DIR:-./smoke/secrets}:/run/proofline-secrets:ro
     depends_on:
       postgres:
         condition: service_healthy
@@ -78,9 +64,11 @@ services:
 
   valkey:
     image: valkey/valkey:9-alpine
-    command: ["valkey-server", "--save", "", "--appendonly", "no"]
+    command: ["valkey-server", "--save", "", "--appendonly", "no", "--requirepass", "${PROOFLINE_SMOKE_VALKEY_PASSWORD:-proofline-valkey-password}"]
+    environment:
+      PROOFLINE_SMOKE_VALKEY_PASSWORD: ${PROOFLINE_SMOKE_VALKEY_PASSWORD:-proofline-valkey-password}
     healthcheck:
-      test: ["CMD", "valkey-cli", "ping"]
+      test: ["CMD", "valkey-cli", "-a", "${PROOFLINE_SMOKE_VALKEY_PASSWORD:-proofline-valkey-password}", "ping"]
       interval: 2s
       timeout: 5s
       retries: 30

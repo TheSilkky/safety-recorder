@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -77,6 +78,43 @@ func TestStartupErrorLogDoesNotExposeFilesystemPath(t *testing.T) {
 	}
 	if !bytes.Contains(logs.Bytes(), []byte("error_category=permission")) {
 		t.Fatalf("startup log omitted safe error category: %s", logs.String())
+	}
+}
+
+func TestStartupErrorLogDoesNotExposeConfigSecretDetail(t *testing.T) {
+	var logs bytes.Buffer
+	logger := slog.New(slog.NewTextHandler(&logs, nil))
+	err := config.ParseError{
+		Name:    "SAFE_AUTH_BOOTSTRAP_SECRET_FILE",
+		Message: "secret file cannot be read",
+	}
+
+	logStartupError(logger, err)
+
+	if !bytes.Contains(logs.Bytes(), []byte("error_category=config")) {
+		t.Fatalf("startup log omitted config category: %s", logs.String())
+	}
+	if bytes.Contains(logs.Bytes(), []byte("SAFE_AUTH_BOOTSTRAP_SECRET_FILE")) ||
+		bytes.Contains(logs.Bytes(), []byte("secret file cannot be read")) {
+		t.Fatalf("startup log exposed config detail: %s", logs.String())
+	}
+}
+
+func TestExtractConfigFlag(t *testing.T) {
+	path, rest, err := extractConfigFlag([]string{"--config", "/tmp/proofline.toml", "operator", "deletion-status"})
+	if err != nil {
+		t.Fatalf("extractConfigFlag: %v", err)
+	}
+	if path != "/tmp/proofline.toml" || !reflect.DeepEqual(rest, []string{"operator", "deletion-status"}) {
+		t.Fatalf("path=%q rest=%v", path, rest)
+	}
+
+	path, rest, err = extractConfigFlag([]string{"operator", "--config=/tmp/proofline.toml", "retention-preview"})
+	if err != nil {
+		t.Fatalf("extractConfigFlag with equals: %v", err)
+	}
+	if path != "/tmp/proofline.toml" || !reflect.DeepEqual(rest, []string{"operator", "retention-preview"}) {
+		t.Fatalf("path=%q rest=%v", path, rest)
 	}
 }
 

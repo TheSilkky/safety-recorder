@@ -29,6 +29,26 @@ SAFE_AUTH_BOOTSTRAP_SECRET='replace-with-local-bootstrap-secret' \
 go run ./cmd/api
 ```
 
+The repository root `proofline.toml` is loaded automatically when running from
+the root directory and matches the local built-in defaults. Use a custom TOML
+file with:
+
+```bash
+go run ./cmd/api --config /path/to/proofline.toml
+```
+
+or set:
+
+```bash
+SAFE_CONFIG_FILE=/path/to/proofline.toml
+```
+
+Existing `SAFE_*` variables remain supported and override TOML values. For
+secret-bearing settings such as the bootstrap secret, PostgreSQL DSN, S3
+credentials, Valkey password, and SMTP password, prefer `*_file` TOML keys or
+`SAFE_*_FILE` variables that point to private secret files. Do not publish real
+config files containing private endpoints or secret paths.
+
 Defaults:
 
 | Listener | Address |
@@ -195,6 +215,23 @@ Container defaults:
 | `SAFE_CLOSED_INCIDENT_RETENTION` | `0` |
 
 Inside containers, bind to container addresses such as `0.0.0.0`, then restrict host exposure with Docker port publishing, firewall rules, WireGuard, or a reverse proxy.
+
+For TOML-based container configuration, mount the config file read-only and
+point `SAFE_CONFIG_FILE` at it:
+
+```bash
+docker run --rm \
+  -e SAFE_CONFIG_FILE=/etc/proofline/proofline.toml \
+  -p 127.0.0.1:8080:8080 \
+  -p 127.0.0.1:8081:8081 \
+  -v ./proofline.toml:/etc/proofline/proofline.toml:ro \
+  -v proofline-server-data:/data \
+  proofline-server
+```
+
+Mount secret files separately and reference them from TOML `*_file` keys or
+`SAFE_*_FILE` environment variables. Do not bake real secrets into images or
+committed config files.
 
 ## SQLite WAL Operations
 

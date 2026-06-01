@@ -1,11 +1,165 @@
 # Configuration
 
-Configuration is read from environment variables when the Proofline API starts.
+Proofline Server now treats a TOML config file as the recommended default
+configuration shape, while preserving the existing `SAFE_*` environment
+variables as compatibility inputs and deployment overrides.
+
+Configuration is applied in this order:
+
+```text
+built-in defaults
+  < TOML config file
+  < SAFE_* environment variables
+  < SAFE_*_FILE environment variables for secret-capable fields
+  < CLI flags
+```
+
+The only current config CLI flag is `--config`, which selects the TOML file
+path. It does not replace the existing environment override surface.
+
+Config file path resolution:
+
+1. `--config /path/to/proofline.toml`
+2. `SAFE_CONFIG_FILE=/path/to/proofline.toml`
+3. `./proofline.toml`, when present in the process working directory
+4. `/etc/proofline/proofline.toml`, when present
+5. built-in defaults plus environment variables only
+
+Explicit config paths must exist and contain valid TOML. Discovered config
+files are optional, but if a discovered file exists and is invalid startup
+fails. Unknown TOML keys fail startup so misspelled config is not silently
+accepted.
+
+Run with a custom config file:
+
+```bash
+go run ./cmd/api --config /path/to/proofline.toml
+```
+
+or:
+
+```bash
+SAFE_CONFIG_FILE=/path/to/proofline.toml go run ./cmd/api
+```
+
+The repository root `proofline.toml` is a safe local-first example. It matches
+the built-in local defaults and does not contain real secrets. Do not commit or
+publish real config files that include private endpoints, secret-file paths, or
+deployment credentials.
+
+Secret-bearing values support direct `SAFE_*` environment variables and
+matching `SAFE_*_FILE` variables. File-backed secrets are read once at startup.
+Missing files, empty files, and direct-secret plus secret-file conflicts within
+one TOML config fail startup. A single trailing LF or CRLF is trimmed for
+Docker, Kubernetes, Nomad, and systemd secret compatibility; internal
+whitespace is preserved. Secret values and secret file contents must not be
+logged or copied into public issues, PRs, screenshots, or support tickets.
+
+Within environment configuration, `SAFE_*_FILE` values override direct `SAFE_*`
+values for the same field. Within TOML, set either the direct secret key or the
+`*_file` key, not both. Prefer `*_file` keys for deployments.
+
+## TOML To Environment Mapping
+
+| TOML key | Environment variable |
+|---|---|
+| `[server].main_bind_addrs` | `SAFE_MAIN_BIND_ADDRS` |
+| `[server].admin_bind_addrs` | `SAFE_ADMIN_BIND_ADDRS` |
+| `[paths].data_dir` | `SAFE_DATA_DIR` |
+| `[paths].sqlite_db_path` | `SAFE_DB_PATH` |
+| `[metadata].backend` | `SAFE_METADATA_BACKEND` |
+| `[metadata].postgres_dsn` | `SAFE_POSTGRES_DSN` |
+| `[metadata].postgres_dsn_file` | `SAFE_POSTGRES_DSN_FILE` |
+| `[metadata].postgres_max_open_conns` | `SAFE_POSTGRES_MAX_OPEN_CONNS` |
+| `[metadata].postgres_max_idle_conns` | `SAFE_POSTGRES_MAX_IDLE_CONNS` |
+| `[metadata].postgres_conn_max_lifetime` | `SAFE_POSTGRES_CONN_MAX_LIFETIME` |
+| `[blob_storage].backend` | `SAFE_BLOB_BACKEND` |
+| `[blob_storage].s3_endpoint` | `SAFE_S3_ENDPOINT` |
+| `[blob_storage].s3_region` | `SAFE_S3_REGION` |
+| `[blob_storage].s3_bucket` | `SAFE_S3_BUCKET` |
+| `[blob_storage].s3_prefix` | `SAFE_S3_PREFIX` |
+| `[blob_storage].s3_access_key_id` | `SAFE_S3_ACCESS_KEY_ID` |
+| `[blob_storage].s3_access_key_id_file` | `SAFE_S3_ACCESS_KEY_ID_FILE` |
+| `[blob_storage].s3_secret_access_key` | `SAFE_S3_SECRET_ACCESS_KEY` |
+| `[blob_storage].s3_secret_access_key_file` | `SAFE_S3_SECRET_ACCESS_KEY_FILE` |
+| `[blob_storage].s3_session_token` | `SAFE_S3_SESSION_TOKEN` |
+| `[blob_storage].s3_session_token_file` | `SAFE_S3_SESSION_TOKEN_FILE` |
+| `[blob_storage].s3_force_path_style` | `SAFE_S3_FORCE_PATH_STYLE` |
+| `[coordination].backend` | `SAFE_COORDINATION_BACKEND` |
+| `[coordination].valkey_addr` | `SAFE_VALKEY_ADDR` |
+| `[coordination].valkey_username` | `SAFE_VALKEY_USERNAME` |
+| `[coordination].valkey_password` | `SAFE_VALKEY_PASSWORD` |
+| `[coordination].valkey_password_file` | `SAFE_VALKEY_PASSWORD_FILE` |
+| `[coordination].valkey_db` | `SAFE_VALKEY_DB` |
+| `[coordination].valkey_tls` | `SAFE_VALKEY_TLS` |
+| `[coordination].valkey_dial_timeout` | `SAFE_VALKEY_DIAL_TIMEOUT` |
+| `[coordination].valkey_read_timeout` | `SAFE_VALKEY_READ_TIMEOUT` |
+| `[coordination].valkey_write_timeout` | `SAFE_VALKEY_WRITE_TIMEOUT` |
+| `[uploads].max_upload_bytes` | `SAFE_MAX_UPLOAD_BYTES` |
+| `[uploads].upload_coordination_lease_ttl` | `SAFE_UPLOAD_COORDINATION_LEASE_TTL` |
+| `[uploads].temp_upload_cleanup_age` | `SAFE_TEMP_UPLOAD_CLEANUP_AGE` |
+| `[uploads].temp_upload_cleanup_dry_run` | `SAFE_TEMP_UPLOAD_CLEANUP_DRY_RUN` |
+| `[auth].session_ttl` | `SAFE_SESSION_TTL` |
+| `[auth].bootstrap_secret` | `SAFE_AUTH_BOOTSTRAP_SECRET` |
+| `[auth].bootstrap_secret_file` | `SAFE_AUTH_BOOTSTRAP_SECRET_FILE` |
+| `[account_registration].mode` | `SAFE_ACCOUNT_REGISTRATION_MODE` |
+| `[account_registration].email_verification_ttl` | `SAFE_EMAIL_VERIFICATION_TTL` |
+| `[account_registration].public_web_origin` | `SAFE_PUBLIC_WEB_ORIGIN` |
+| `[email].backend` | `SAFE_EMAIL_BACKEND` |
+| `[email].smtp_host` | `SAFE_SMTP_HOST` |
+| `[email].smtp_port` | `SAFE_SMTP_PORT` |
+| `[email].smtp_username` | `SAFE_SMTP_USERNAME` |
+| `[email].smtp_password` | `SAFE_SMTP_PASSWORD` |
+| `[email].smtp_password_file` | `SAFE_SMTP_PASSWORD_FILE` |
+| `[email].smtp_from` | `SAFE_SMTP_FROM` |
+| `[email].smtp_starttls` | `SAFE_SMTP_STARTTLS` |
+| `[email].smtp_timeout` | `SAFE_SMTP_TIMEOUT` |
+| `[web_auth].enabled` | `SAFE_WEB_AUTH_ENABLED` |
+| `[web_auth].allowed_origins` | `SAFE_WEB_ALLOWED_ORIGINS` |
+| `[web_auth].session_cookie_name` | `SAFE_WEB_SESSION_COOKIE_NAME` |
+| `[web_auth].session_cookie_secure` | `SAFE_WEB_SESSION_COOKIE_SECURE` |
+| `[web_auth].session_cookie_samesite` | `SAFE_WEB_SESSION_COOKIE_SAMESITE` |
+| `[web_auth].csrf_header_name` | `SAFE_WEB_CSRF_HEADER_NAME` |
+| `[retention].default_incident_token_ttl` | `SAFE_DEFAULT_INCIDENT_TOKEN_TTL` |
+| `[retention].closed_incident_retention` | `SAFE_CLOSED_INCIDENT_RETENTION` |
+| `[retention].token_metadata_retention` | `SAFE_TOKEN_METADATA_RETENTION` |
+| `[retention].deletion_tombstone_retention` | `SAFE_DELETION_TOMBSTONE_RETENTION` |
+| `[retention].deletion_worker_interval` | `SAFE_DELETION_WORKER_INTERVAL` |
+| `[rate_limits.main_api].enabled` | `SAFE_MAIN_API_RATE_LIMIT_ENABLED` |
+| `[rate_limits.main_api].window` | `SAFE_MAIN_API_RATE_LIMIT_WINDOW` |
+| `[rate_limits.main_api].auth` | `SAFE_MAIN_API_RATE_LIMIT_AUTH` |
+| `[rate_limits.main_api].auth_register` | `SAFE_MAIN_API_RATE_LIMIT_AUTH_REGISTER` |
+| `[rate_limits.main_api].auth_email_verify` | `SAFE_MAIN_API_RATE_LIMIT_AUTH_EMAIL_VERIFY` |
+| `[rate_limits.main_api].bootstrap` | `SAFE_MAIN_API_RATE_LIMIT_BOOTSTRAP` |
+| `[rate_limits.main_api].account` | `SAFE_MAIN_API_RATE_LIMIT_ACCOUNT` |
+| `[rate_limits.main_api].incident_read` | `SAFE_MAIN_API_RATE_LIMIT_INCIDENT_READ` |
+| `[rate_limits.main_api].incident_write` | `SAFE_MAIN_API_RATE_LIMIT_INCIDENT_WRITE` |
+| `[rate_limits.main_api].upload` | `SAFE_MAIN_API_RATE_LIMIT_UPLOAD` |
+| `[rate_limits.main_api].reconcile` | `SAFE_MAIN_API_RATE_LIMIT_RECONCILE` |
+| `[rate_limits.main_api].stream` | `SAFE_MAIN_API_RATE_LIMIT_STREAM` |
+| `[rate_limits.main_api].token` | `SAFE_MAIN_API_RATE_LIMIT_TOKEN` |
+| `[rate_limits.main_api].download` | `SAFE_MAIN_API_RATE_LIMIT_DOWNLOAD` |
+| `[rate_limits.main_api].admin` | `SAFE_MAIN_API_RATE_LIMIT_ADMIN` |
+| `[rate_limits.public_viewer].enabled` | `SAFE_PUBLIC_VIEWER_RATE_LIMIT_ENABLED` |
+| `[rate_limits.public_viewer].window` | `SAFE_PUBLIC_VIEWER_RATE_LIMIT_WINDOW` |
+| `[rate_limits.public_viewer].page` | `SAFE_PUBLIC_VIEWER_RATE_LIMIT_PAGE` |
+| `[rate_limits.public_viewer].data` | `SAFE_PUBLIC_VIEWER_RATE_LIMIT_DATA` |
+| `[rate_limits.public_viewer].download` | `SAFE_PUBLIC_VIEWER_RATE_LIMIT_DOWNLOAD` |
+| `[rate_limits.public_viewer].static` | `SAFE_PUBLIC_VIEWER_RATE_LIMIT_STATIC` |
+| `[http.main].read_header_timeout` | `SAFE_MAIN_READ_HEADER_TIMEOUT` |
+| `[http.main].read_timeout` | `SAFE_MAIN_READ_TIMEOUT` |
+| `[http.main].write_timeout` | `SAFE_MAIN_WRITE_TIMEOUT` |
+| `[http.main].idle_timeout` | `SAFE_MAIN_IDLE_TIMEOUT` |
+| `[http.admin].read_header_timeout` | `SAFE_ADMIN_READ_HEADER_TIMEOUT` |
+| `[http.admin].read_timeout` | `SAFE_ADMIN_READ_TIMEOUT` |
+| `[http.admin].write_timeout` | `SAFE_ADMIN_WRITE_TIMEOUT` |
+| `[http.admin].idle_timeout` | `SAFE_ADMIN_IDLE_TIMEOUT` |
 
 ## Environment Variables
 
 | Variable | Default | Notes |
 |---|---|---|
+| `SAFE_CONFIG_FILE` | unset | Optional TOML config path. Overridden by `--config`; otherwise checked before automatic `./proofline.toml` and `/etc/proofline/proofline.toml` discovery. |
 | `SAFE_MAIN_BIND_ADDRS` | `127.0.0.1:8080` | Comma-separated main listener addresses for authenticated `/v1` routes and the read-only incident viewer. Existing `/v1/admin/...` JSON routes are admin-only and not public-ready. |
 | `SAFE_ADMIN_BIND_ADDRS` | `127.0.0.1:8081` | Comma-separated private-admin listener addresses for the `/admin` dashboard route tree only. |
 | `SAFE_DATA_DIR` | `./data` | Local directory for SQLite, temp uploads, and encrypted blobs unless `SAFE_DB_PATH` points elsewhere. |
@@ -14,6 +168,7 @@ Configuration is read from environment variables when the Proofline API starts.
 | `SAFE_BLOB_BACKEND` | `local` | Encrypted blob backend selector. Supported values are `local` and `s3`. |
 | `SAFE_COORDINATION_BACKEND` | `none` | Coordination backend selector. Supported values are `none`, `valkey`, and `redis`. |
 | `SAFE_POSTGRES_DSN` | unset | PostgreSQL connection string. Required when `SAFE_METADATA_BACKEND=postgresql`; treat as secret-bearing. |
+| `SAFE_POSTGRES_DSN_FILE` | unset | File containing the PostgreSQL connection string. Overrides `SAFE_POSTGRES_DSN` when set. |
 | `SAFE_POSTGRES_MAX_OPEN_CONNS` | `10` | Maximum open PostgreSQL connections when the PostgreSQL metadata backend is selected. |
 | `SAFE_POSTGRES_MAX_IDLE_CONNS` | `5` | Maximum idle PostgreSQL connections when the PostgreSQL metadata backend is selected. |
 | `SAFE_POSTGRES_CONN_MAX_LIFETIME` | `30m` | Maximum lifetime for PostgreSQL connections. |
@@ -22,12 +177,16 @@ Configuration is read from environment variables when the Proofline API starts.
 | `SAFE_S3_BUCKET` | unset | S3 bucket for committed encrypted chunks. Required when `SAFE_BLOB_BACKEND=s3`. |
 | `SAFE_S3_PREFIX` | unset | Optional server-controlled object key prefix for committed chunks. |
 | `SAFE_S3_ACCESS_KEY_ID` | unset | Static S3 access key. Required when `SAFE_BLOB_BACKEND=s3`. |
+| `SAFE_S3_ACCESS_KEY_ID_FILE` | unset | File containing the static S3 access key. Overrides `SAFE_S3_ACCESS_KEY_ID` when set. |
 | `SAFE_S3_SECRET_ACCESS_KEY` | unset | Static S3 secret access key. Required when `SAFE_BLOB_BACKEND=s3`; treat as a secret. |
+| `SAFE_S3_SECRET_ACCESS_KEY_FILE` | unset | File containing the static S3 secret access key. Overrides `SAFE_S3_SECRET_ACCESS_KEY` when set. |
 | `SAFE_S3_SESSION_TOKEN` | unset | Optional static S3 session token. Requires static S3 credentials. |
+| `SAFE_S3_SESSION_TOKEN_FILE` | unset | File containing an optional static S3 session token. Overrides `SAFE_S3_SESSION_TOKEN` when set. |
 | `SAFE_S3_FORCE_PATH_STYLE` | `true` | Use path-style bucket addressing for S3-compatible services. Set to `false` for virtual-hosted-style services that require it. |
 | `SAFE_VALKEY_ADDR` | unset | Valkey/Redis-compatible `host:port`. Required when `SAFE_COORDINATION_BACKEND=valkey` or `redis`. |
 | `SAFE_VALKEY_USERNAME` | unset | Optional Valkey ACL username. |
 | `SAFE_VALKEY_PASSWORD` | unset | Optional Valkey password; treat as a secret. |
+| `SAFE_VALKEY_PASSWORD_FILE` | unset | File containing the optional Valkey password. Overrides `SAFE_VALKEY_PASSWORD` when set. |
 | `SAFE_VALKEY_DB` | `0` | Non-negative Valkey database number. |
 | `SAFE_VALKEY_TLS` | `false` | Use TLS for the Valkey connection. |
 | `SAFE_VALKEY_DIAL_TIMEOUT` | `5s` | Valkey dial timeout. |
@@ -45,10 +204,12 @@ Configuration is read from environment variables when the Proofline API starts.
 | `SAFE_SMTP_PORT` | `587` | SMTP TCP port. Must be positive. |
 | `SAFE_SMTP_USERNAME` | unset | Optional SMTP username. Required when `SAFE_SMTP_PASSWORD` is set. |
 | `SAFE_SMTP_PASSWORD` | unset | Optional SMTP password; treat as a secret. |
+| `SAFE_SMTP_PASSWORD_FILE` | unset | File containing the optional SMTP password. Overrides `SAFE_SMTP_PASSWORD` when set. |
 | `SAFE_SMTP_FROM` | unset | Sender email address for verification messages. Required when `SAFE_EMAIL_BACKEND=smtp`. |
 | `SAFE_SMTP_STARTTLS` | `required` | SMTP STARTTLS behavior. Supported values are `required`, `opportunistic`, and `disabled`. |
 | `SAFE_SMTP_TIMEOUT` | `10s` | SMTP dial timeout. Must be positive. |
 | `SAFE_AUTH_BOOTSTRAP_SECRET` | unset | One-time bootstrap secret required to create the first admin account when no admin exists. Remove after bootstrap. |
+| `SAFE_AUTH_BOOTSTRAP_SECRET_FILE` | unset | File containing the one-time bootstrap secret. Overrides `SAFE_AUTH_BOOTSTRAP_SECRET` when set. |
 | `SAFE_WEB_AUTH_ENABLED` | `false` | Enables main `/v1` browser cookie-session routes for the future web client. Existing bearer-token routes continue to work. |
 | `SAFE_WEB_ALLOWED_ORIGINS` | unset | Comma-separated exact web origins that may receive credentialed CORS responses. Wildcards are rejected. |
 | `SAFE_WEB_SESSION_COOKIE_NAME` | `__Host-proofline_session` | Browser session cookie name. The default production name requires `SAFE_WEB_SESSION_COOKIE_SECURE=true`; local plain-HTTP development should use a non-`__Host-` name. |
@@ -109,6 +270,21 @@ keys, private endpoints, or other private deployment details.
 
 The backend selector variables are a startup validation scaffold for cluster support. Local-first values remain the defaults:
 
+Using TOML:
+
+```toml
+[metadata]
+backend = "sqlite"
+
+[blob_storage]
+backend = "local"
+
+[coordination]
+backend = "none"
+```
+
+Environment-only deployments remain supported:
+
 ```bash
 SAFE_METADATA_BACKEND=sqlite \
 SAFE_BLOB_BACKEND=local \
@@ -118,7 +294,16 @@ go run ./cmd/api
 
 Values are matched case-insensitively after trimming surrounding whitespace. Unsupported names fail startup with a clear configuration error.
 
-PostgreSQL metadata is implemented as an optional backend for new deployments:
+PostgreSQL metadata is implemented as an optional backend for new deployments.
+Prefer a secret file for the DSN:
+
+```toml
+[metadata]
+backend = "postgresql"
+postgres_dsn_file = "/run/secrets/proofline-postgres-dsn"
+```
+
+The equivalent environment-only shape remains supported:
 
 ```bash
 SAFE_METADATA_BACKEND=postgresql \
@@ -133,7 +318,21 @@ or include it in public issues, support tickets, screenshots, shell history, or
 deployment notes. `SAFE_DB_PATH` remains the SQLite database path and is ignored
 by the PostgreSQL metadata backend.
 
-S3-compatible object storage is implemented as an optional encrypted blob backend for committed chunks:
+S3-compatible object storage is implemented as an optional encrypted blob backend for committed chunks. Prefer secret files for static credentials:
+
+```toml
+[blob_storage]
+backend = "s3"
+s3_endpoint = "https://s3.example.invalid"
+s3_region = "us-east-1"
+s3_bucket = "proofline-evidence"
+s3_prefix = "prod/server"
+s3_access_key_id_file = "/run/secrets/proofline-s3-access-key-id"
+s3_secret_access_key_file = "/run/secrets/proofline-s3-secret-access-key"
+s3_force_path_style = true
+```
+
+The equivalent environment-only shape remains supported:
 
 ```bash
 SAFE_METADATA_BACKEND=sqlite \
@@ -204,6 +403,19 @@ Bundle downloads continue to generate server-controlled ZIP entry names such as 
 No coordination backend is used by default. To enable Valkey or another
 Redis-compatible service for short-lived coordination, explicitly set the
 coordination selector and connection settings:
+
+Using TOML with a password file:
+
+```toml
+[coordination]
+backend = "valkey"
+valkey_addr = "valkey.example.invalid:6379"
+valkey_username = "proofline"
+valkey_password_file = "/run/secrets/proofline-valkey-password"
+valkey_tls = true
+```
+
+Environment-only deployments remain supported:
 
 ```bash
 SAFE_COORDINATION_BACKEND=valkey \
@@ -354,9 +566,10 @@ Production deployments should keep the default `__Host-proofline_session`,
 Browser token persistence should not use localStorage in production.
 
 For a new metadata database, startup fails until an admin account exists unless
-`SAFE_AUTH_BOOTSTRAP_SECRET` is set. Use that secret only long enough to
-create the first admin through the private `/admin` bootstrap screen or
-`POST /admin/bootstrap`, then remove it from the environment and restart.
+`SAFE_AUTH_BOOTSTRAP_SECRET` or `SAFE_AUTH_BOOTSTRAP_SECRET_FILE` is set. Use
+that secret only long enough to create the first admin through the private
+`/admin` bootstrap screen or `POST /admin/bootstrap`, then remove it from the
+environment or secret mount and restart.
 Treat the bootstrap secret, account passwords, session tokens, raw
 idempotency keys, and Authorization headers as secrets. They must not appear in
 public issues, logs, dashboards, screenshots, support tickets, or shell

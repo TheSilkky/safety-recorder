@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"strings"
 	"time"
 
 	"github.com/open-proofline/server/internal/config"
@@ -47,18 +48,30 @@ type operatorDeletionStatusOutput struct {
 }
 
 func runCommand(args []string, stdout io.Writer, logger *slog.Logger) error {
-	if len(args) > 0 && args[0] == "operator" {
-		return runOperatorCommand(context.Background(), args[1:], stdout)
+	configFilePath, args, err := extractConfigFlag(args)
+	if err != nil {
+		return err
 	}
-	return run(logger)
+	if len(args) > 0 && args[0] == "operator" {
+		return runOperatorCommand(context.Background(), args[1:], stdout, configFilePath)
+	}
+	if len(args) != 0 {
+		return fmt.Errorf("unknown command or flag %q", args[0])
+	}
+	return run(logger, configFilePath)
 }
 
-func runOperatorCommand(ctx context.Context, args []string, stdout io.Writer) error {
+func runOperatorCommand(ctx context.Context, args []string, stdout io.Writer, configFilePath string) error {
+	var err error
+	configFilePath, args, err = extractConfigFlagWithExisting(args, configFilePath)
+	if err != nil {
+		return err
+	}
 	if len(args) == 0 {
 		return fmt.Errorf("operator command required: retention-preview or deletion-status")
 	}
 
-	cfg, err := config.Load()
+	cfg, err := config.LoadWithOptions(config.LoadOptions{ConfigFilePath: configFilePath})
 	if err != nil {
 		return err
 	}
@@ -76,6 +89,40 @@ func runOperatorCommand(ctx context.Context, args []string, stdout io.Writer) er
 	default:
 		return fmt.Errorf("unknown operator command %q", args[0])
 	}
+}
+
+func extractConfigFlag(args []string) (string, []string, error) {
+	return extractConfigFlagWithExisting(args, "")
+}
+
+func extractConfigFlagWithExisting(args []string, existing string) (string, []string, error) {
+	configFilePath := existing
+	rest := make([]string, 0, len(args))
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		switch {
+		case arg == "--config":
+			if i+1 >= len(args) {
+				return "", nil, fmt.Errorf("--config requires a path")
+			}
+			if configFilePath != "" {
+				return "", nil, fmt.Errorf("--config may be set only once")
+			}
+			configFilePath = args[i+1]
+			i++
+		case strings.HasPrefix(arg, "--config="):
+			if configFilePath != "" {
+				return "", nil, fmt.Errorf("--config may be set only once")
+			}
+			configFilePath = strings.TrimPrefix(arg, "--config=")
+			if configFilePath == "" {
+				return "", nil, fmt.Errorf("--config requires a path")
+			}
+		default:
+			rest = append(rest, arg)
+		}
+	}
+	return configFilePath, rest, nil
 }
 
 func newOperatorRepository(ctx context.Context, cfg config.Config) (operatorRepository, func(), error) {

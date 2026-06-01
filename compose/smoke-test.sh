@@ -16,6 +16,7 @@ Environment:
   PROOFLINE_SMOKE_BOOTSTRAP_SECRET  Local bootstrap secret for the container.
   PROOFLINE_SMOKE_USERNAME          Local account username. Default: admin
   PROOFLINE_SMOKE_PASSWORD          Local account password.
+  PROOFLINE_SMOKE_SECRETS_DIR       Secret-file directory mounted into TOML stacks.
   COMPOSE_PROJECT_NAME    Compose project name. Default: proofline-smoke-<variant>
   KEEP_COMPOSE=1          Leave containers and volumes running after the test.
 USAGE
@@ -75,7 +76,13 @@ export PROOFLINE_ADMIN_PORT="${PROOFLINE_ADMIN_PORT:-${PROOFLINE_PUBLIC_PORT:-18
 export PROOFLINE_SMOKE_BOOTSTRAP_SECRET="${PROOFLINE_SMOKE_BOOTSTRAP_SECRET:-replace-with-local-compose-bootstrap-secret}"
 export PROOFLINE_SMOKE_USERNAME="${PROOFLINE_SMOKE_USERNAME:-admin}"
 export PROOFLINE_SMOKE_PASSWORD="${PROOFLINE_SMOKE_PASSWORD:-replace-with-a-long-local-password}"
+export PROOFLINE_SMOKE_POSTGRES_DSN="${PROOFLINE_SMOKE_POSTGRES_DSN:-postgres://proofline:proofline@postgres:5432/proofline?sslmode=disable}"
+export PROOFLINE_SMOKE_S3_ACCESS_KEY_ID="${PROOFLINE_SMOKE_S3_ACCESS_KEY_ID:-proofline}"
+export PROOFLINE_SMOKE_S3_SECRET_ACCESS_KEY="${PROOFLINE_SMOKE_S3_SECRET_ACCESS_KEY:-proofline-minio-password}"
+export PROOFLINE_SMOKE_VALKEY_PASSWORD="${PROOFLINE_SMOKE_VALKEY_PASSWORD:-proofline-valkey-password}"
 project="${COMPOSE_PROJECT_NAME:-proofline-smoke-${variant}}"
+default_runtime_secrets_dir="$script_dir/.smoke-secrets/$project"
+export PROOFLINE_SMOKE_SECRETS_DIR="${PROOFLINE_SMOKE_SECRETS_DIR:-$default_runtime_secrets_dir}"
 sim_args=("$@")
 
 cleanup() {
@@ -85,9 +92,21 @@ cleanup() {
     exit "$status"
   fi
   "${compose[@]}" -p "$project" -f "$compose_file" down -v --remove-orphans >/dev/null 2>&1 || true
+  rm -rf "$default_runtime_secrets_dir" 2>/dev/null || true
   exit "$status"
 }
 trap cleanup EXIT
+
+prepare_smoke_secrets() {
+  mkdir -p "$PROOFLINE_SMOKE_SECRETS_DIR"
+  chmod 755 "$PROOFLINE_SMOKE_SECRETS_DIR"
+  printf '%s\n' "$PROOFLINE_SMOKE_BOOTSTRAP_SECRET" >"$PROOFLINE_SMOKE_SECRETS_DIR/auth-bootstrap-secret.example"
+  printf '%s\n' "$PROOFLINE_SMOKE_POSTGRES_DSN" >"$PROOFLINE_SMOKE_SECRETS_DIR/postgres-dsn.example"
+  printf '%s\n' "$PROOFLINE_SMOKE_S3_ACCESS_KEY_ID" >"$PROOFLINE_SMOKE_SECRETS_DIR/s3-access-key-id.example"
+  printf '%s\n' "$PROOFLINE_SMOKE_S3_SECRET_ACCESS_KEY" >"$PROOFLINE_SMOKE_SECRETS_DIR/s3-secret-access-key.example"
+  printf '%s\n' "$PROOFLINE_SMOKE_VALKEY_PASSWORD" >"$PROOFLINE_SMOKE_SECRETS_DIR/valkey-password.example"
+  chmod 644 "$PROOFLINE_SMOKE_SECRETS_DIR"/*.example
+}
 
 wait_for_admin_dashboard() {
   local url="http://127.0.0.1:${PROOFLINE_ADMIN_PORT}/admin/static/styles.css"
@@ -130,6 +149,7 @@ bootstrap_admin() {
 
 cd "$repo_root"
 
+prepare_smoke_secrets
 "${compose[@]}" -p "$project" -f "$compose_file" down -v --remove-orphans >/dev/null 2>&1 || true
 if ! "${compose[@]}" -p "$project" -f "$compose_file" up --build -d; then
   "${compose[@]}" -p "$project" -f "$compose_file" ps || true

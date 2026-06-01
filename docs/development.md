@@ -18,7 +18,7 @@ For rollback points, scoped prompts, review steps, and backlog handling, see [co
 go.mod            root Go module for the server repository
 cmd/api           API server entry point
 cmd/simclient     simulator CLI
-internal/config   environment configuration, backend selectors, and HTTP timeout parsing
+internal/config   TOML/environment configuration, secret-file resolution, backend selectors, and HTTP timeout parsing
 internal/db       SQLite setup, schema_migrations, and compatibility migrations
 internal/email    outbound SMTP email sender boundary for registration verification
 internal/envelope client-side chunk encryption envelope helpers
@@ -86,6 +86,9 @@ SQLite/local, PostgreSQL/local, SQLite/S3-compatible MinIO, and full
 PostgreSQL/MinIO/Valkey backend combinations. These stacks are local
 development helpers, use fixed test credentials, publish API ports on loopback
 by default, and do not make Proofline production-ready public infrastructure.
+The full PostgreSQL/MinIO/Valkey stack loads server settings from a
+compose-specific TOML file and fake local secret files so config-file and
+secret-file loading stay covered by the smoke path.
 
 ## Go Readability Standards
 
