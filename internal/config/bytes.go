@@ -3,14 +3,13 @@ package config
 import (
 	"fmt"
 	"math/big"
-	"os"
 	"strconv"
 	"strings"
 )
 
-func maxUploadBytesFromEnv() (int64, error) {
+func maxUploadBytesFromSource(source configSource) (int64, error) {
 	maxUploadBytes := defaultMaxUploadBytes
-	if raw := os.Getenv("SAFE_MAX_UPLOAD_BYTES"); raw != "" {
+	if raw := source.Get("SAFE_MAX_UPLOAD_BYTES"); raw != "" {
 		parsed, err := parseBytes(raw)
 		if err != nil {
 			return 0, fmt.Errorf("parse SAFE_MAX_UPLOAD_BYTES: %w", err)

@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"net"
 	"net/url"
-	"os"
 	"strings"
 )
 
@@ -18,20 +17,20 @@ const (
 	webSessionCookieSameSiteStrict  = "strict"
 )
 
-func webAuthConfigFromEnv() (WebAuthConfig, error) {
-	enabled, err := boolFromEnv("SAFE_WEB_AUTH_ENABLED", defaultWebAuthEnabled)
+func webAuthConfigFromSource(source configSource) (WebAuthConfig, error) {
+	enabled, err := boolFromSource(source, "SAFE_WEB_AUTH_ENABLED", defaultWebAuthEnabled)
 	if err != nil {
 		return WebAuthConfig{}, err
 	}
-	allowedOrigins, err := webAllowedOriginsFromEnv()
+	allowedOrigins, err := webAllowedOriginsFromSource(source)
 	if err != nil {
 		return WebAuthConfig{}, err
 	}
-	cookieSecure, err := boolFromEnv("SAFE_WEB_SESSION_COOKIE_SECURE", defaultWebSessionCookieSecure)
+	cookieSecure, err := boolFromSource(source, "SAFE_WEB_SESSION_COOKIE_SECURE", defaultWebSessionCookieSecure)
 	if err != nil {
 		return WebAuthConfig{}, err
 	}
-	cookieName := strings.TrimSpace(envOrDefault("SAFE_WEB_SESSION_COOKIE_NAME", defaultWebSessionCookieName))
+	cookieName := strings.TrimSpace(envOrDefault(source, "SAFE_WEB_SESSION_COOKIE_NAME", defaultWebSessionCookieName))
 	if cookieName == "" {
 		return WebAuthConfig{}, fmt.Errorf("parse SAFE_WEB_SESSION_COOKIE_NAME: cookie name is required")
 	}
@@ -42,14 +41,14 @@ func webAuthConfigFromEnv() (WebAuthConfig, error) {
 		return WebAuthConfig{}, fmt.Errorf("parse SAFE_WEB_SESSION_COOKIE_NAME: __Host- cookies require SAFE_WEB_SESSION_COOKIE_SECURE=true")
 	}
 
-	sameSite := strings.ToLower(strings.TrimSpace(envOrDefault("SAFE_WEB_SESSION_COOKIE_SAMESITE", defaultWebSessionCookieSameSite)))
+	sameSite := strings.ToLower(strings.TrimSpace(envOrDefault(source, "SAFE_WEB_SESSION_COOKIE_SAMESITE", defaultWebSessionCookieSameSite)))
 	switch sameSite {
 	case webSessionCookieSameSiteLax, webSessionCookieSameSiteStrict:
 	default:
 		return WebAuthConfig{}, fmt.Errorf("parse SAFE_WEB_SESSION_COOKIE_SAMESITE: value must be lax or strict")
 	}
 
-	csrfHeaderName := strings.TrimSpace(envOrDefault("SAFE_WEB_CSRF_HEADER_NAME", defaultWebCSRFHeaderName))
+	csrfHeaderName := strings.TrimSpace(envOrDefault(source, "SAFE_WEB_CSRF_HEADER_NAME", defaultWebCSRFHeaderName))
 	if csrfHeaderName == "" {
 		return WebAuthConfig{}, fmt.Errorf("parse SAFE_WEB_CSRF_HEADER_NAME: header name is required")
 	}
@@ -78,8 +77,8 @@ func webAuthConfigFromEnv() (WebAuthConfig, error) {
 	}, nil
 }
 
-func webAllowedOriginsFromEnv() ([]string, error) {
-	raw := strings.TrimSpace(os.Getenv("SAFE_WEB_ALLOWED_ORIGINS"))
+func webAllowedOriginsFromSource(source configSource) ([]string, error) {
+	raw := strings.TrimSpace(source.Get("SAFE_WEB_ALLOWED_ORIGINS"))
 	if raw == "" {
 		return nil, nil
 	}

@@ -2,7 +2,6 @@ package config
 
 import (
 	"fmt"
-	"os"
 	"strconv"
 	"strings"
 )
@@ -12,26 +11,38 @@ const (
 	defaultS3ForcePathStyle = true
 )
 
-func s3BlobConfigFromEnv(blobBackend string) (S3BlobConfig, error) {
+func s3BlobConfigFromSource(source configSource, blobBackend string) (S3BlobConfig, error) {
 	cfg := S3BlobConfig{
-		Endpoint:        strings.TrimSpace(os.Getenv("SAFE_S3_ENDPOINT")),
-		Region:          strings.TrimSpace(envOrDefault("SAFE_S3_REGION", defaultS3Region)),
-		Bucket:          strings.TrimSpace(os.Getenv("SAFE_S3_BUCKET")),
-		Prefix:          strings.TrimSpace(os.Getenv("SAFE_S3_PREFIX")),
-		AccessKeyID:     strings.TrimSpace(os.Getenv("SAFE_S3_ACCESS_KEY_ID")),
-		SecretAccessKey: strings.TrimSpace(os.Getenv("SAFE_S3_SECRET_ACCESS_KEY")),
-		SessionToken:    strings.TrimSpace(os.Getenv("SAFE_S3_SESSION_TOKEN")),
-		ForcePathStyle:  defaultS3ForcePathStyle,
+		Endpoint:       strings.TrimSpace(source.Get("SAFE_S3_ENDPOINT")),
+		Region:         strings.TrimSpace(envOrDefault(source, "SAFE_S3_REGION", defaultS3Region)),
+		Bucket:         strings.TrimSpace(source.Get("SAFE_S3_BUCKET")),
+		Prefix:         strings.TrimSpace(source.Get("SAFE_S3_PREFIX")),
+		ForcePathStyle: defaultS3ForcePathStyle,
 	}
 
 	if blobBackend != BlobBackendS3 {
 		return cfg, nil
 	}
 
-	forcePathStyle, err := boolFromEnv("SAFE_S3_FORCE_PATH_STYLE", defaultS3ForcePathStyle)
+	accessKeyID, err := secretFromSource(source, "SAFE_S3_ACCESS_KEY_ID", "SAFE_S3_ACCESS_KEY_ID_FILE")
 	if err != nil {
 		return S3BlobConfig{}, err
 	}
+	secretAccessKey, err := secretFromSource(source, "SAFE_S3_SECRET_ACCESS_KEY", "SAFE_S3_SECRET_ACCESS_KEY_FILE")
+	if err != nil {
+		return S3BlobConfig{}, err
+	}
+	sessionToken, err := secretFromSource(source, "SAFE_S3_SESSION_TOKEN", "SAFE_S3_SESSION_TOKEN_FILE")
+	if err != nil {
+		return S3BlobConfig{}, err
+	}
+	forcePathStyle, err := boolFromSource(source, "SAFE_S3_FORCE_PATH_STYLE", defaultS3ForcePathStyle)
+	if err != nil {
+		return S3BlobConfig{}, err
+	}
+	cfg.AccessKeyID = accessKeyID
+	cfg.SecretAccessKey = secretAccessKey
+	cfg.SessionToken = sessionToken
 	cfg.ForcePathStyle = forcePathStyle
 
 	if cfg.Endpoint == "" {
@@ -52,8 +63,8 @@ func s3BlobConfigFromEnv(blobBackend string) (S3BlobConfig, error) {
 	return cfg, nil
 }
 
-func boolFromEnv(name string, fallback bool) (bool, error) {
-	raw, ok := os.LookupEnv(name)
+func boolFromSource(source configSource, name string, fallback bool) (bool, error) {
+	raw, ok := source.Lookup(name)
 	if !ok {
 		return fallback, nil
 	}

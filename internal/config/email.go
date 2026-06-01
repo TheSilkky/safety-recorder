@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"net"
 	"net/mail"
-	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -17,8 +16,8 @@ const (
 	defaultSMTPTimeout  = 10 * time.Second
 )
 
-func emailConfigFromEnv() (EmailConfig, error) {
-	backend := strings.ToLower(strings.TrimSpace(envOrDefault("SAFE_EMAIL_BACKEND", defaultEmailBackend)))
+func emailConfigFromSource(source configSource) (EmailConfig, error) {
+	backend := strings.ToLower(strings.TrimSpace(envOrDefault(source, "SAFE_EMAIL_BACKEND", defaultEmailBackend)))
 	switch backend {
 	case EmailBackendNone, EmailBackendSMTP:
 	default:
@@ -37,7 +36,7 @@ func emailConfigFromEnv() (EmailConfig, error) {
 		return cfg, nil
 	}
 
-	smtpCfg, err := smtpConfigFromEnv()
+	smtpCfg, err := smtpConfigFromSource(source)
 	if err != nil {
 		return EmailConfig{}, err
 	}
@@ -45,18 +44,18 @@ func emailConfigFromEnv() (EmailConfig, error) {
 	return cfg, nil
 }
 
-func smtpConfigFromEnv() (SMTPConfig, error) {
-	port, err := positiveIntFromEnv("SAFE_SMTP_PORT", defaultSMTPPort)
+func smtpConfigFromSource(source configSource) (SMTPConfig, error) {
+	port, err := positiveIntFromSource(source, "SAFE_SMTP_PORT", defaultSMTPPort)
 	if err != nil {
 		return SMTPConfig{}, err
 	}
-	startTLS := strings.ToLower(strings.TrimSpace(envOrDefault("SAFE_SMTP_STARTTLS", defaultSMTPStartTLS)))
+	startTLS := strings.ToLower(strings.TrimSpace(envOrDefault(source, "SAFE_SMTP_STARTTLS", defaultSMTPStartTLS)))
 	switch startTLS {
 	case SMTPStartTLSRequired, SMTPStartTLSOpportunistic, SMTPStartTLSDisabled:
 	default:
 		return SMTPConfig{}, fmt.Errorf("parse SAFE_SMTP_STARTTLS: value must be required, opportunistic, or disabled")
 	}
-	timeout, err := durationFromEnv("SAFE_SMTP_TIMEOUT", defaultSMTPTimeout)
+	timeout, err := durationFromSource(source, "SAFE_SMTP_TIMEOUT", defaultSMTPTimeout)
 	if err != nil {
 		return SMTPConfig{}, err
 	}
@@ -64,12 +63,16 @@ func smtpConfigFromEnv() (SMTPConfig, error) {
 		return SMTPConfig{}, fmt.Errorf("parse SAFE_SMTP_TIMEOUT: duration must be positive")
 	}
 
+	password, err := secretFromSource(source, "SAFE_SMTP_PASSWORD", "SAFE_SMTP_PASSWORD_FILE")
+	if err != nil {
+		return SMTPConfig{}, err
+	}
 	cfg := SMTPConfig{
-		Host:     strings.TrimSpace(os.Getenv("SAFE_SMTP_HOST")),
+		Host:     strings.TrimSpace(source.Get("SAFE_SMTP_HOST")),
 		Port:     port,
-		Username: strings.TrimSpace(os.Getenv("SAFE_SMTP_USERNAME")),
-		Password: secretFromEnv("SAFE_SMTP_PASSWORD"),
-		From:     strings.TrimSpace(os.Getenv("SAFE_SMTP_FROM")),
+		Username: strings.TrimSpace(source.Get("SAFE_SMTP_USERNAME")),
+		Password: password,
+		From:     strings.TrimSpace(source.Get("SAFE_SMTP_FROM")),
 		StartTLS: startTLS,
 		Timeout:  timeout,
 	}
@@ -93,8 +96,8 @@ func smtpConfigFromEnv() (SMTPConfig, error) {
 	return cfg, nil
 }
 
-func positiveIntFromEnv(name string, fallback int) (int, error) {
-	raw, ok := os.LookupEnv(name)
+func positiveIntFromSource(source configSource, name string, fallback int) (int, error) {
+	raw, ok := source.Lookup(name)
 	if !ok {
 		return fallback, nil
 	}

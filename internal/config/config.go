@@ -212,52 +212,73 @@ type HTTPTimeouts struct {
 	IdleTimeout       time.Duration
 }
 
-// Load reads configuration from environment variables and applies defaults for
-// unset values.
+// Load reads configuration from the discovered config file and environment
+// variables, then applies defaults for unset values.
 func Load() (Config, error) {
-	mainBindAddrs, err := mainBindAddrsFromEnv()
+	return LoadWithOptions(LoadOptions{})
+}
+
+// LoadWithOptions reads configuration from the selected config file and
+// environment variables, then applies defaults for unset values.
+func LoadWithOptions(opts LoadOptions) (Config, error) {
+	configFilePath, ok, err := resolveConfigFilePath(opts.ConfigFilePath)
 	if err != nil {
 		return Config{}, err
 	}
-	adminBindAddrs, err := adminBindAddrsFromEnv()
+	fileValues := map[string]string{}
+	if ok {
+		fileValues, err = configValuesFromFile(configFilePath)
+		if err != nil {
+			return Config{}, err
+		}
+	}
+	return loadFromSource(newConfigSource(fileValues))
+}
+
+func loadFromSource(source configSource) (Config, error) {
+	mainBindAddrs, err := mainBindAddrsFromSource(source)
+	if err != nil {
+		return Config{}, err
+	}
+	adminBindAddrs, err := adminBindAddrsFromSource(source)
 	if err != nil {
 		return Config{}, err
 	}
 
-	backends, err := backendSelectionFromEnv()
+	backends, err := backendSelectionFromSource(source)
 	if err != nil {
 		return Config{}, err
 	}
-	postgres, err := postgresConfigFromEnv(backends.Metadata)
+	postgres, err := postgresConfigFromSource(source, backends.Metadata)
 	if err != nil {
 		return Config{}, err
 	}
-	s3Blob, err := s3BlobConfigFromEnv(backends.Blob)
+	s3Blob, err := s3BlobConfigFromSource(source, backends.Blob)
 	if err != nil {
 		return Config{}, err
 	}
-	valkey, err := valkeyConfigFromEnv(backends.Coordination)
+	valkey, err := valkeyConfigFromSource(source, backends.Coordination)
 	if err != nil {
 		return Config{}, err
 	}
 
-	maxUploadBytes, err := maxUploadBytesFromEnv()
+	maxUploadBytes, err := maxUploadBytesFromSource(source)
 	if err != nil {
 		return Config{}, err
 	}
-	incidentTokenTTL, err := durationFromEnv("SAFE_DEFAULT_INCIDENT_TOKEN_TTL", defaultIncidentTokenTTL)
+	incidentTokenTTL, err := durationFromSource(source, "SAFE_DEFAULT_INCIDENT_TOKEN_TTL", defaultIncidentTokenTTL)
 	if err != nil {
 		return Config{}, err
 	}
-	sessionTTL, err := durationFromEnv("SAFE_SESSION_TTL", defaultSessionTTL)
+	sessionTTL, err := durationFromSource(source, "SAFE_SESSION_TTL", defaultSessionTTL)
 	if err != nil {
 		return Config{}, err
 	}
-	accountRegistration, err := accountRegistrationConfigFromEnv()
+	accountRegistration, err := accountRegistrationConfigFromSource(source)
 	if err != nil {
 		return Config{}, err
 	}
-	email, err := emailConfigFromEnv()
+	email, err := emailConfigFromSource(source)
 	if err != nil {
 		return Config{}, err
 	}
@@ -265,31 +286,35 @@ func Load() (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
-	deletionWorkerInterval, err := durationFromEnv("SAFE_DELETION_WORKER_INTERVAL", defaultDeletionInterval)
+	authBootstrapSecret, err := secretFromSource(source, "SAFE_AUTH_BOOTSTRAP_SECRET", "SAFE_AUTH_BOOTSTRAP_SECRET_FILE")
 	if err != nil {
 		return Config{}, err
 	}
-	closedIncidentRetention, err := durationFromEnv("SAFE_CLOSED_INCIDENT_RETENTION", 0)
+	deletionWorkerInterval, err := durationFromSource(source, "SAFE_DELETION_WORKER_INTERVAL", defaultDeletionInterval)
 	if err != nil {
 		return Config{}, err
 	}
-	tokenMetadataRetention, err := durationFromEnv("SAFE_TOKEN_METADATA_RETENTION", 0)
+	closedIncidentRetention, err := durationFromSource(source, "SAFE_CLOSED_INCIDENT_RETENTION", 0)
 	if err != nil {
 		return Config{}, err
 	}
-	tombstoneRetention, err := durationFromEnv("SAFE_DELETION_TOMBSTONE_RETENTION", 0)
+	tokenMetadataRetention, err := durationFromSource(source, "SAFE_TOKEN_METADATA_RETENTION", 0)
 	if err != nil {
 		return Config{}, err
 	}
-	tempUploadCleanupAge, err := durationFromEnv("SAFE_TEMP_UPLOAD_CLEANUP_AGE", defaultTempUploadCleanupAge)
+	tombstoneRetention, err := durationFromSource(source, "SAFE_DELETION_TOMBSTONE_RETENTION", 0)
 	if err != nil {
 		return Config{}, err
 	}
-	tempUploadCleanupDryRun, err := boolFromEnv("SAFE_TEMP_UPLOAD_CLEANUP_DRY_RUN", defaultTempUploadCleanupDryRun)
+	tempUploadCleanupAge, err := durationFromSource(source, "SAFE_TEMP_UPLOAD_CLEANUP_AGE", defaultTempUploadCleanupAge)
 	if err != nil {
 		return Config{}, err
 	}
-	uploadCoordinationLeaseTTL, err := durationFromEnv("SAFE_UPLOAD_COORDINATION_LEASE_TTL", defaultUploadCoordinationLeaseTTL)
+	tempUploadCleanupDryRun, err := boolFromSource(source, "SAFE_TEMP_UPLOAD_CLEANUP_DRY_RUN", defaultTempUploadCleanupDryRun)
+	if err != nil {
+		return Config{}, err
+	}
+	uploadCoordinationLeaseTTL, err := durationFromSource(source, "SAFE_UPLOAD_COORDINATION_LEASE_TTL", defaultUploadCoordinationLeaseTTL)
 	if err != nil {
 		return Config{}, err
 	}
@@ -297,24 +322,24 @@ func Load() (Config, error) {
 		return Config{}, fmt.Errorf("parse SAFE_UPLOAD_COORDINATION_LEASE_TTL: duration must be positive")
 	}
 
-	mainAPIRateLimit, err := mainAPIRateLimitConfigFromEnv()
+	mainAPIRateLimit, err := mainAPIRateLimitConfigFromSource(source)
 	if err != nil {
 		return Config{}, err
 	}
-	publicViewerRateLimit, err := publicViewerRateLimitConfigFromEnv()
+	publicViewerRateLimit, err := publicViewerRateLimitConfigFromSource(source)
 	if err != nil {
 		return Config{}, err
 	}
-	webAuth, err := webAuthConfigFromEnv()
+	webAuth, err := webAuthConfigFromSource(source)
 	if err != nil {
 		return Config{}, err
 	}
 
-	mainTimeouts, err := mainTimeoutsFromEnv()
+	mainTimeouts, err := mainTimeoutsFromSource(source)
 	if err != nil {
 		return Config{}, err
 	}
-	adminTimeouts, err := adminTimeoutsFromEnv()
+	adminTimeouts, err := adminTimeoutsFromSource(source)
 	if err != nil {
 		return Config{}, err
 	}
@@ -326,14 +351,14 @@ func Load() (Config, error) {
 		Postgres:                   postgres,
 		S3Blob:                     s3Blob,
 		Valkey:                     valkey,
-		DataDir:                    envOrDefault("SAFE_DATA_DIR", defaultDataDir),
-		DBPath:                     envOrDefault("SAFE_DB_PATH", defaultDBPath),
+		DataDir:                    envOrDefault(source, "SAFE_DATA_DIR", defaultDataDir),
+		DBPath:                     envOrDefault(source, "SAFE_DB_PATH", defaultDBPath),
 		MaxUploadBytes:             maxUploadBytes,
 		DefaultIncidentTokenTTL:    incidentTokenTTL,
 		SessionTTL:                 sessionTTL,
 		AccountRegistration:        accountRegistration,
 		Email:                      email,
-		AuthBootstrapSecret:        secretFromEnv("SAFE_AUTH_BOOTSTRAP_SECRET"),
+		AuthBootstrapSecret:        authBootstrapSecret,
 		DeletionWorkerInterval:     deletionWorkerInterval,
 		ClosedIncidentRetention:    closedIncidentRetention,
 		TokenMetadataRetention:     tokenMetadataRetention,

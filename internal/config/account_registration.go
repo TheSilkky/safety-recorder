@@ -3,12 +3,11 @@ package config
 import (
 	"fmt"
 	"net/url"
-	"os"
 	"strings"
 )
 
-func accountRegistrationConfigFromEnv() (AccountRegistrationConfig, error) {
-	mode := strings.ToLower(strings.TrimSpace(envOrDefault("SAFE_ACCOUNT_REGISTRATION_MODE", AccountRegistrationModeDisabled)))
+func accountRegistrationConfigFromSource(source configSource) (AccountRegistrationConfig, error) {
+	mode := strings.ToLower(strings.TrimSpace(envOrDefault(source, "SAFE_ACCOUNT_REGISTRATION_MODE", AccountRegistrationModeDisabled)))
 	switch mode {
 	case AccountRegistrationModeDisabled,
 		AccountRegistrationModeAdminOnly,
@@ -18,7 +17,7 @@ func accountRegistrationConfigFromEnv() (AccountRegistrationConfig, error) {
 		return AccountRegistrationConfig{}, fmt.Errorf("parse SAFE_ACCOUNT_REGISTRATION_MODE: value must be disabled, admin_only, open, or paid")
 	}
 
-	ttl, err := durationFromEnv("SAFE_EMAIL_VERIFICATION_TTL", defaultEmailVerificationTTL)
+	ttl, err := durationFromSource(source, "SAFE_EMAIL_VERIFICATION_TTL", defaultEmailVerificationTTL)
 	if err != nil {
 		return AccountRegistrationConfig{}, err
 	}
@@ -26,7 +25,7 @@ func accountRegistrationConfigFromEnv() (AccountRegistrationConfig, error) {
 		return AccountRegistrationConfig{}, fmt.Errorf("parse SAFE_EMAIL_VERIFICATION_TTL: duration must be positive")
 	}
 
-	origin := strings.TrimSpace(os.Getenv("SAFE_PUBLIC_WEB_ORIGIN"))
+	origin := strings.TrimSpace(source.Get("SAFE_PUBLIC_WEB_ORIGIN"))
 	if origin != "" {
 		origin, err = normalizePublicWebOrigin(origin)
 		if err != nil {

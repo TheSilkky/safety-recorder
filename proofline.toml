@@ -1,0 +1,117 @@
+# Proofline Server local-first example configuration.
+# Keep real secrets out of committed TOML files. Prefer *_file settings or
+# SAFE_*_FILE environment variables that point at private secret files.
+
+[server]
+main_bind_addrs = ["127.0.0.1:8080"]
+admin_bind_addrs = ["127.0.0.1:8081"]
+
+[paths]
+data_dir = "./data"
+sqlite_db_path = "./data/safety.db"
+
+[metadata]
+backend = "sqlite"
+postgres_dsn_file = ""
+postgres_max_open_conns = 10
+postgres_max_idle_conns = 5
+postgres_conn_max_lifetime = "30m"
+
+[blob_storage]
+backend = "local"
+s3_endpoint = ""
+s3_region = "us-east-1"
+s3_bucket = ""
+s3_prefix = ""
+s3_access_key_id_file = ""
+s3_secret_access_key_file = ""
+s3_session_token_file = ""
+s3_force_path_style = true
+
+[coordination]
+backend = "none"
+valkey_addr = ""
+valkey_username = ""
+valkey_password_file = ""
+valkey_db = 0
+valkey_tls = false
+valkey_dial_timeout = "5s"
+valkey_read_timeout = "5s"
+valkey_write_timeout = "5s"
+
+[uploads]
+max_upload_bytes = "250MB"
+upload_coordination_lease_ttl = "2m"
+temp_upload_cleanup_age = "0"
+temp_upload_cleanup_dry_run = false
+
+[auth]
+session_ttl = "12h"
+bootstrap_secret_file = ""
+
+[account_registration]
+mode = "disabled"
+email_verification_ttl = "24h"
+public_web_origin = ""
+
+[email]
+backend = "none"
+smtp_host = ""
+smtp_port = 587
+smtp_username = ""
+smtp_password_file = ""
+smtp_from = ""
+smtp_starttls = "required"
+smtp_timeout = "10s"
+
+[web_auth]
+enabled = false
+allowed_origins = []
+session_cookie_name = "__Host-proofline_session"
+session_cookie_secure = true
+session_cookie_samesite = "lax"
+csrf_header_name = "X-CSRF-Token"
+
+[retention]
+default_incident_token_ttl = "24h"
+closed_incident_retention = "0"
+token_metadata_retention = "0"
+deletion_tombstone_retention = "0"
+deletion_worker_interval = "1m"
+
+[rate_limits.main_api]
+enabled = true
+window = "1m"
+auth = 30
+auth_register = 10
+auth_email_verify = 30
+bootstrap = 5
+account = 120
+incident_read = 300
+incident_write = 120
+upload = 120
+reconcile = 120
+stream = 120
+token = 60
+download = 30
+admin = 60
+
+[rate_limits.public_viewer]
+enabled = true
+window = "1m"
+page = 60
+data = 300
+download = 12
+static = 600
+
+[http.main]
+read_header_timeout = "10s"
+read_timeout = "0"
+write_timeout = "0"
+idle_timeout = "120s"
+
+[http.admin]
+read_header_timeout = "10s"
+read_timeout = "30s"
+write_timeout = "300s"
+idle_timeout = "120s"

@@ -2,7 +2,6 @@ package config
 
 import (
 	"fmt"
-	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -14,9 +13,8 @@ const (
 	defaultPostgresConnMaxLifetime = 30 * time.Minute
 )
 
-func postgresConfigFromEnv(metadataBackend string) (PostgresConfig, error) {
+func postgresConfigFromSource(source configSource, metadataBackend string) (PostgresConfig, error) {
 	cfg := PostgresConfig{
-		DSN:             strings.TrimSpace(os.Getenv("SAFE_POSTGRES_DSN")),
 		MaxOpenConns:    defaultPostgresMaxOpenConns,
 		MaxIdleConns:    defaultPostgresMaxIdleConns,
 		ConnMaxLifetime: defaultPostgresConnMaxLifetime,
@@ -25,19 +23,24 @@ func postgresConfigFromEnv(metadataBackend string) (PostgresConfig, error) {
 		return cfg, nil
 	}
 
+	dsn, err := secretFromSource(source, "SAFE_POSTGRES_DSN", "SAFE_POSTGRES_DSN_FILE")
+	if err != nil {
+		return PostgresConfig{}, err
+	}
+	cfg.DSN = dsn
 	if cfg.DSN == "" {
 		return PostgresConfig{}, fmt.Errorf("parse SAFE_POSTGRES_DSN: required when SAFE_METADATA_BACKEND=postgresql")
 	}
 
-	maxOpenConns, err := nonNegativeIntFromEnv("SAFE_POSTGRES_MAX_OPEN_CONNS", defaultPostgresMaxOpenConns)
+	maxOpenConns, err := nonNegativeIntFromSource(source, "SAFE_POSTGRES_MAX_OPEN_CONNS", defaultPostgresMaxOpenConns)
 	if err != nil {
 		return PostgresConfig{}, err
 	}
-	maxIdleConns, err := nonNegativeIntFromEnv("SAFE_POSTGRES_MAX_IDLE_CONNS", defaultPostgresMaxIdleConns)
+	maxIdleConns, err := nonNegativeIntFromSource(source, "SAFE_POSTGRES_MAX_IDLE_CONNS", defaultPostgresMaxIdleConns)
 	if err != nil {
 		return PostgresConfig{}, err
 	}
-	connMaxLifetime, err := durationFromEnv("SAFE_POSTGRES_CONN_MAX_LIFETIME", defaultPostgresConnMaxLifetime)
+	connMaxLifetime, err := durationFromSource(source, "SAFE_POSTGRES_CONN_MAX_LIFETIME", defaultPostgresConnMaxLifetime)
 	if err != nil {
 		return PostgresConfig{}, err
 	}
@@ -48,8 +51,8 @@ func postgresConfigFromEnv(metadataBackend string) (PostgresConfig, error) {
 	return cfg, nil
 }
 
-func nonNegativeIntFromEnv(name string, fallback int) (int, error) {
-	raw, ok := os.LookupEnv(name)
+func nonNegativeIntFromSource(source configSource, name string, fallback int) (int, error) {
+	raw, ok := source.Lookup(name)
 	if !ok {
 		return fallback, nil
 	}

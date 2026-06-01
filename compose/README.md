@@ -15,6 +15,15 @@ only. The script waits for token-neutral `/admin/static/styles.css` on the
 private-admin loopback port before bootstrapping the test account through
 `POST /admin/bootstrap`.
 
+The `full` stack loads the server's primary settings from
+`compose/smoke/proofline-full.toml` and mounts fake local secret files under
+`/run/proofline-secrets` for the bootstrap secret, PostgreSQL DSN, S3
+credentials, and Valkey password. The committed files in
+`compose/smoke/secrets/*.example` are example-only placeholders so
+`docker compose config` works before the smoke runner executes. The runner
+creates an ignored runtime secrets directory from the current
+`PROOFLINE_SMOKE_*` environment variables before starting the stack.
+
 ## Variants
 
 | Variant | File | Metadata | Blob storage | Coordination |
@@ -62,8 +71,23 @@ PROOFLINE_SMOKE_PASSWORD='replace-with-a-long-local-password' \
 compose/smoke-test.sh sqlite-local
 ```
 
+For the `full` variant, the runner also writes matching runtime secret files
+for `PROOFLINE_SMOKE_BOOTSTRAP_SECRET`,
+`PROOFLINE_SMOKE_POSTGRES_DSN`, `PROOFLINE_SMOKE_S3_ACCESS_KEY_ID`,
+`PROOFLINE_SMOKE_S3_SECRET_ACCESS_KEY`, and
+`PROOFLINE_SMOKE_VALKEY_PASSWORD`. By default those files are written under
+the ignored `compose/.smoke-secrets/` directory; set
+`PROOFLINE_SMOKE_SECRETS_DIR` to use another disposable directory. Do not point
+these values at production services or real credentials.
+
 Set `KEEP_COMPOSE=1` to leave containers and volumes running after the smoke
 test for manual inspection.
+
+Validate the full stack Compose model without starting containers:
+
+```bash
+docker compose -f compose/compose-full.yml config
+```
 
 ## Optional S3 Deletion Smoke
 

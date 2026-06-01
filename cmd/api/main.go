@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"syscall"
 
 	"github.com/open-proofline/server/internal/config"
@@ -23,7 +24,7 @@ import (
 
 func main() {
 	logOutput := os.Stdout
-	if len(os.Args) > 1 && os.Args[1] == "operator" {
+	if commandIsOperator(os.Args[1:]) {
 		logOutput = os.Stderr
 	}
 	logger := slog.New(slog.NewJSONHandler(logOutput, nil))
@@ -33,8 +34,23 @@ func main() {
 	}
 }
 
-func run(logger *slog.Logger) error {
-	cfg, err := config.Load()
+func commandIsOperator(args []string) bool {
+	for i := 0; i < len(args); i++ {
+		switch {
+		case args[i] == "--config":
+			i++
+			continue
+		case strings.HasPrefix(args[i], "--config="):
+			continue
+		default:
+			return args[i] == "operator"
+		}
+	}
+	return false
+}
+
+func run(logger *slog.Logger, configFilePath string) error {
+	cfg, err := config.LoadWithOptions(config.LoadOptions{ConfigFilePath: configFilePath})
 	if err != nil {
 		return err
 	}

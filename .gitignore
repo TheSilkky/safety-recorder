@@ -16,6 +16,14 @@
 .env.local
 .env.*.local
 
+# Local Compose smoke secrets. Only committed *.example files under
+# compose/smoke/secrets are allowed.
+compose/.smoke-secrets/
+compose/secrets/
+compose/smoke/secrets/*
+!compose/smoke/secrets/README.md
+!compose/smoke/secrets/*.example
+
 # Local simulator encryption keys
 *.key.json
 simulator-key.json

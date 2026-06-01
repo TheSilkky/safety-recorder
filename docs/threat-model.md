@@ -14,6 +14,11 @@ metadata, grant-bound wrapped-key metadata, and encrypted evidence bundles.
 
 - Already-encrypted uploaded chunk files under `SAFE_DATA_DIR` for local storage, or committed encrypted objects in the configured S3-compatible bucket
 - Incident, media stream, chunk, checkin, and viewer/incident-token metadata in SQLite by default or optional PostgreSQL
+- Deployment configuration and secret material used for startup, including the
+  one-time bootstrap secret, optional PostgreSQL DSN, optional S3 credentials,
+  optional Valkey password, and optional SMTP password. These values may be
+  supplied by environment variables or secret files and must not be committed
+  or logged.
 - Optional chunk `original_filename` display metadata. The server strips it to a
   basename, but it can still contain user-supplied contextual or personal
   information and may appear in viewer summaries and bundle manifests.
@@ -126,6 +131,12 @@ metadata, grant-bound wrapped-key metadata, and encrypted evidence bundles.
   details, or conflicting stored values.
 - Optional Valkey/Redis-compatible coordination fails closed at startup when
   explicitly configured but unavailable.
+- TOML configuration can reference selected secret files. Secret files are read
+  once during startup, reject missing or empty files, trim only one trailing
+  line ending, and preserve `SAFE_*` environment compatibility. `SAFE_*_FILE`
+  variables override direct environment values for the same secret. Secret-file
+  failures are reported as configuration errors without logging secret values or
+  file contents.
 - Optional complete-upload coordination uses short-lived Valkey lease keys
   derived from a server-controlled hash of normalized chunk identity. Busy
   leases return `409 upload_in_progress` with a retry hint, while runtime

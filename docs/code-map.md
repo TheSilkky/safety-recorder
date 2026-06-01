@@ -26,11 +26,21 @@ contact key-sharing boundaries in
 ## Package Layout
 
 - `go.mod`: defines the root Go module `github.com/open-proofline/server`.
+- `proofline.toml`: safe local-first example TOML config loaded automatically
+  when running from the repository root.
 - `.github/workflows/ci.yml`: runs Go tests with a coverage signal on pull requests and pushes, runs `govulncheck`, builds the `proofline-server-linux-amd64` binary artifact, gates release binary attestation and trusted GHCR publishing on the vulnerability scan, uploads the binary as a GitHub Release asset on `v*` tag pushes, builds the Docker image, and publishes attested images to GitHub Container Registry from a trusted job limited to `main`, `develop`, and `v*` tag pushes.
 - `.dockerignore`: excludes local runtime, review, and build artifacts from the root Docker build context used by `Dockerfile`.
 - `cmd/api`: starts one main API/viewer HTTP server per main bind address and one private-admin dashboard HTTP server per admin bind address, loads config, enforces the local account bootstrap gate, checks the selected coordination backend, opens the selected metadata backend, creates storage, wires shared handlers including main API, admin JSON API, public viewer rate limiting, upload coordination, and the private `/admin` dashboard, starts the deletion worker, and handles graceful shutdown.
 - `cmd/simclient`: simulates future client flows by logging in, creating an incident, creating a media stream, encrypting and uploading complete chunks, completing or failing streams, sending periodic checkins, and optionally testing hash-failure retry, bundle download, local decrypt verification, durable desktop-recorder staging, local file input, ffmpeg segment capture, restart/resume behavior, and poor-network retry controls. Token-bearing viewer URLs are omitted from simulator output.
-- `internal/config`: reads environment variables such as backend selectors, backend-specific settings, main and private-admin bind address lists, legacy singular bind addresses, data directory, database path, max upload size, upload coordination lease TTL, main API and public viewer rate limits, account registration and SMTP email settings, optional web-auth cookie/CORS/CSRF settings, HTTP server timeouts, local account bootstrap secret, session TTL, deletion worker interval, closed-incident retention window, token metadata retention window, and tombstone retention window.
+- `internal/config`: reads TOML config files, `SAFE_*` environment overrides,
+  and `SAFE_*_FILE` secret files for backend selectors, backend-specific
+  settings, main and private-admin bind address lists, legacy singular bind
+  addresses, data directory, database path, max upload size, upload
+  coordination lease TTL, main API and public viewer rate limits, account
+  registration and SMTP email settings, optional web-auth cookie/CORS/CSRF
+  settings, HTTP server timeouts, local account bootstrap secret, session TTL,
+  deletion worker interval, closed-incident retention window, token metadata
+  retention window, and tombstone retention window.
 - `internal/coordination`: defines the small optional coordination boundary, the default no-coordination backend, and the Valkey/Redis-compatible startup check, main API/public viewer rate-limit counter backend, and short-lived complete-upload lease backend.
 - `internal/db`: opens SQLite, enables foreign keys and WAL mode, applies embedded SQLite migrations, records `schema_migrations`, and runs named compatibility migrations.
 - `internal/email`: defines the outbound email sender boundary and the SMTP-backed verification email implementation. The backend has no stdout/file development mailer and does not send notification, recovery, billing, or trusted-contact emails.
@@ -45,7 +55,8 @@ contact key-sharing boundaries in
 - `migrations/postgres`: embeds the PostgreSQL schema.
 - `compose`: contains local Docker Compose smoke-test stacks and a runner script
   for disposable SQLite/local, PostgreSQL/local, SQLite/S3-compatible MinIO, and
-  full PostgreSQL/MinIO/Valkey validation. These files are local release-smoke
+  full PostgreSQL/MinIO/Valkey validation. The full stack exercises TOML config
+  loading and fake secret-file mounts. These files are local release-smoke
   helpers, not production deployment manifests.
 
 There is no implemented `cmd/stream-ingress` package. The future regional

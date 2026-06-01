@@ -69,10 +69,18 @@ requests do not require this CSRF header. Credentialed CORS is emitted only for
 exact configured web origins and never with a wildcard origin.
 
 The server fails closed on startup unless an admin account exists or
-`SAFE_AUTH_BOOTSTRAP_SECRET` is set for the one-time private `/admin`
-bootstrap form. The bootstrap form is disabled once an admin account exists. Treat the bootstrap
-secret, account passwords, session tokens, and Authorization headers as
-secrets.
+`SAFE_AUTH_BOOTSTRAP_SECRET` or `SAFE_AUTH_BOOTSTRAP_SECRET_FILE` is set for
+the one-time private `/admin` bootstrap form. The bootstrap form is disabled
+once an admin account exists. Treat the bootstrap secret, account passwords,
+session tokens, and Authorization headers as secrets.
+
+The server can load configuration from built-in defaults, TOML files,
+`SAFE_*` environment variables, and selected `SAFE_*_FILE` secret files. Secret
+files are read once at startup for the bootstrap secret, PostgreSQL DSN, S3
+credentials, Valkey password, and SMTP password. Startup errors for missing,
+empty, or conflicting secret files are categorized as configuration errors and
+must not log secret values, secret file contents, request bodies, tokens,
+plaintext, raw keys, or Authorization headers.
 
 The current listener split does not mount `/v1/health/live` or
 `/v1/health/ready` on either listener. Avoid publishing operator readiness
@@ -174,6 +182,12 @@ hold incident metadata, viewer-token metadata, committed encrypted bytes,
 retention decisions, plaintext, or keys, and does not change the private
 `/v1` boundary. Its upload leases are retry hints only; metadata constraints,
 upload-operation rows, and blob no-overwrite behavior remain authoritative.
+
+Configuration files and secret-file references are deployment inputs, not
+incident evidence. The committed example TOML and Compose smoke secret files
+contain only local placeholder values. Real deployments should mount reviewed
+configuration and secret files outside public source history and keep raw
+credentials out of logs and support artifacts.
 
 The current HTTP listener split does not expose readiness checks. Future
 operator readiness routes should report only coarse metadata, blob, and

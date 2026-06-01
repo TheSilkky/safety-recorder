@@ -51,6 +51,10 @@ func safeStartupErrorCategory(err error) string {
 	if errors.As(err, &unsupportedBackendErr) {
 		return "config"
 	}
+	var configParseErr config.ParseError
+	if errors.As(err, &configParseErr) {
+		return "config"
+	}
 
 	var netErr net.Error
 	if errors.As(err, &netErr) && netErr.Timeout() {

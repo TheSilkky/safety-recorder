@@ -2,12 +2,12 @@ package config
 
 import "fmt"
 
-func mainAPIRateLimitConfigFromEnv() (MainAPIRateLimitConfig, error) {
-	enabled, err := boolFromEnv("SAFE_MAIN_API_RATE_LIMIT_ENABLED", defaultMainAPIRateLimitEnabled)
+func mainAPIRateLimitConfigFromSource(source configSource) (MainAPIRateLimitConfig, error) {
+	enabled, err := boolFromSource(source, "SAFE_MAIN_API_RATE_LIMIT_ENABLED", defaultMainAPIRateLimitEnabled)
 	if err != nil {
 		return MainAPIRateLimitConfig{}, err
 	}
-	window, err := durationFromEnv("SAFE_MAIN_API_RATE_LIMIT_WINDOW", defaultMainAPIRateLimitWindow)
+	window, err := durationFromSource(source, "SAFE_MAIN_API_RATE_LIMIT_WINDOW", defaultMainAPIRateLimitWindow)
 	if err != nil {
 		return MainAPIRateLimitConfig{}, err
 	}
@@ -15,55 +15,55 @@ func mainAPIRateLimitConfigFromEnv() (MainAPIRateLimitConfig, error) {
 		return MainAPIRateLimitConfig{}, fmt.Errorf("parse SAFE_MAIN_API_RATE_LIMIT_WINDOW: duration must be positive when rate limiting is enabled")
 	}
 
-	authLimit, err := nonNegativeIntFromEnv("SAFE_MAIN_API_RATE_LIMIT_AUTH", defaultMainAPIRateLimitAuthLimit)
+	authLimit, err := nonNegativeIntFromSource(source, "SAFE_MAIN_API_RATE_LIMIT_AUTH", defaultMainAPIRateLimitAuthLimit)
 	if err != nil {
 		return MainAPIRateLimitConfig{}, err
 	}
-	authRegisterLimit, err := nonNegativeIntFromEnv("SAFE_MAIN_API_RATE_LIMIT_AUTH_REGISTER", defaultMainAPIRateLimitAuthRegisterLimit)
+	authRegisterLimit, err := nonNegativeIntFromSource(source, "SAFE_MAIN_API_RATE_LIMIT_AUTH_REGISTER", defaultMainAPIRateLimitAuthRegisterLimit)
 	if err != nil {
 		return MainAPIRateLimitConfig{}, err
 	}
-	authEmailVerifyLimit, err := nonNegativeIntFromEnv("SAFE_MAIN_API_RATE_LIMIT_AUTH_EMAIL_VERIFY", defaultMainAPIRateLimitAuthEmailVerify)
+	authEmailVerifyLimit, err := nonNegativeIntFromSource(source, "SAFE_MAIN_API_RATE_LIMIT_AUTH_EMAIL_VERIFY", defaultMainAPIRateLimitAuthEmailVerify)
 	if err != nil {
 		return MainAPIRateLimitConfig{}, err
 	}
-	bootstrapLimit, err := nonNegativeIntFromEnv("SAFE_MAIN_API_RATE_LIMIT_BOOTSTRAP", defaultMainAPIRateLimitBootstrapLimit)
+	bootstrapLimit, err := nonNegativeIntFromSource(source, "SAFE_MAIN_API_RATE_LIMIT_BOOTSTRAP", defaultMainAPIRateLimitBootstrapLimit)
 	if err != nil {
 		return MainAPIRateLimitConfig{}, err
 	}
-	accountLimit, err := nonNegativeIntFromEnv("SAFE_MAIN_API_RATE_LIMIT_ACCOUNT", defaultMainAPIRateLimitAccountLimit)
+	accountLimit, err := nonNegativeIntFromSource(source, "SAFE_MAIN_API_RATE_LIMIT_ACCOUNT", defaultMainAPIRateLimitAccountLimit)
 	if err != nil {
 		return MainAPIRateLimitConfig{}, err
 	}
-	incidentReadLimit, err := nonNegativeIntFromEnv("SAFE_MAIN_API_RATE_LIMIT_INCIDENT_READ", defaultMainAPIRateLimitIncidentReadLimit)
+	incidentReadLimit, err := nonNegativeIntFromSource(source, "SAFE_MAIN_API_RATE_LIMIT_INCIDENT_READ", defaultMainAPIRateLimitIncidentReadLimit)
 	if err != nil {
 		return MainAPIRateLimitConfig{}, err
 	}
-	incidentWriteLimit, err := nonNegativeIntFromEnv("SAFE_MAIN_API_RATE_LIMIT_INCIDENT_WRITE", defaultMainAPIRateLimitIncidentWriteLimit)
+	incidentWriteLimit, err := nonNegativeIntFromSource(source, "SAFE_MAIN_API_RATE_LIMIT_INCIDENT_WRITE", defaultMainAPIRateLimitIncidentWriteLimit)
 	if err != nil {
 		return MainAPIRateLimitConfig{}, err
 	}
-	uploadLimit, err := nonNegativeIntFromEnv("SAFE_MAIN_API_RATE_LIMIT_UPLOAD", defaultMainAPIRateLimitUploadLimit)
+	uploadLimit, err := nonNegativeIntFromSource(source, "SAFE_MAIN_API_RATE_LIMIT_UPLOAD", defaultMainAPIRateLimitUploadLimit)
 	if err != nil {
 		return MainAPIRateLimitConfig{}, err
 	}
-	reconcileLimit, err := nonNegativeIntFromEnv("SAFE_MAIN_API_RATE_LIMIT_RECONCILE", defaultMainAPIRateLimitReconcileLimit)
+	reconcileLimit, err := nonNegativeIntFromSource(source, "SAFE_MAIN_API_RATE_LIMIT_RECONCILE", defaultMainAPIRateLimitReconcileLimit)
 	if err != nil {
 		return MainAPIRateLimitConfig{}, err
 	}
-	streamLimit, err := nonNegativeIntFromEnv("SAFE_MAIN_API_RATE_LIMIT_STREAM", defaultMainAPIRateLimitStreamLimit)
+	streamLimit, err := nonNegativeIntFromSource(source, "SAFE_MAIN_API_RATE_LIMIT_STREAM", defaultMainAPIRateLimitStreamLimit)
 	if err != nil {
 		return MainAPIRateLimitConfig{}, err
 	}
-	tokenLimit, err := nonNegativeIntFromEnv("SAFE_MAIN_API_RATE_LIMIT_TOKEN", defaultMainAPIRateLimitTokenLimit)
+	tokenLimit, err := nonNegativeIntFromSource(source, "SAFE_MAIN_API_RATE_LIMIT_TOKEN", defaultMainAPIRateLimitTokenLimit)
 	if err != nil {
 		return MainAPIRateLimitConfig{}, err
 	}
-	downloadLimit, err := nonNegativeIntFromEnv("SAFE_MAIN_API_RATE_LIMIT_DOWNLOAD", defaultMainAPIRateLimitDownloadLimit)
+	downloadLimit, err := nonNegativeIntFromSource(source, "SAFE_MAIN_API_RATE_LIMIT_DOWNLOAD", defaultMainAPIRateLimitDownloadLimit)
 	if err != nil {
 		return MainAPIRateLimitConfig{}, err
 	}
-	adminLimit, err := nonNegativeIntFromEnv("SAFE_MAIN_API_RATE_LIMIT_ADMIN", defaultMainAPIRateLimitAdminLimit)
+	adminLimit, err := nonNegativeIntFromSource(source, "SAFE_MAIN_API_RATE_LIMIT_ADMIN", defaultMainAPIRateLimitAdminLimit)
 	if err != nil {
 		return MainAPIRateLimitConfig{}, err
 	}
