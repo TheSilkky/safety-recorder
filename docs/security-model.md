@@ -44,10 +44,20 @@ viewer routes are read-only.
 
 Local accounts are stored in the configured metadata backend. Passwords are
 stored as bcrypt password hashes, not plaintext. Session tokens are opaque
-server-side bearer credentials. The raw session token is returned only by
-login; the metadata backend stores only a SHA-256 hash. Sessions expire after
-`SAFE_SESSION_TTL`, defaulting to 12 hours, and can be revoked by logout,
-account password change, admin password reset, or admin session revocation.
+server-side credentials. The raw bearer session token is returned only by
+`POST /v1/auth/login`; the optional browser login route sets the raw token only
+as an HttpOnly session cookie and does not return it in JSON. The metadata
+backend stores only a SHA-256 hash. Sessions expire after `SAFE_SESSION_TTL`,
+defaulting to 12 hours, and can be revoked by logout, account password change,
+admin password reset, or admin session revocation.
+
+When enabled, main `/v1` browser cookie auth uses a dedicated session cookie
+for future web-client calls. Bearer auth remains supported for CLI, simulator,
+and API clients. If bearer and browser-cookie credentials are sent together,
+the request is rejected as ambiguous. Cookie-authenticated unsafe requests
+require a session-bound HMAC CSRF token in the configured header; bearer
+requests do not require this CSRF header. Credentialed CORS is emitted only for
+exact configured web origins and never with a wildcard origin.
 
 The server fails closed on startup unless an admin account exists or
 `SAFE_AUTH_BOOTSTRAP_SECRET` is set for the one-time private `/admin`
@@ -278,8 +288,8 @@ Normal file or object removal is not treated as guaranteed secure erasure. Deplo
 ## Known Security Gaps
 
 - No implemented public product API exposure model for `/v1`; local account
-  sessions are an authenticated main-API control, not a complete public security
-  model
+  sessions and optional browser cookie sessions are authenticated main-API
+  controls, not a complete public security model
 - No built-in TLS
 - No general-purpose abuse-throttling system beyond main API and public viewer
   route-class rate limiting

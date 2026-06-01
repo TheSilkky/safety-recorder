@@ -58,8 +58,7 @@ Related source-of-truth docs:
 ## Non-Goals
 
 - No broad public exposure of the current main `/v1` API.
-- No OAuth, JWT, public account portal, broad CSRF framework, or
-  identity-provider implementation.
+- No OAuth, JWT, public account portal, or identity-provider implementation.
 - No web-client, iOS-client, Android-client, or protocol implementation.
 - No push notification, SMS, Messenger, email, or emergency-services
   integration.
@@ -78,10 +77,11 @@ Today the backend has two listener groups:
 | Private admin dashboard | `/admin`, `/admin/...`, `/admin/static/...` | Localhost, LAN, WireGuard, firewall, or strict private reverse proxy only. |
 
 Current `/v1` routes are on the main handler. The implemented local auth model has admin and user roles, incident ownership, hashed password storage,
-hashed session-token storage, session expiry, logout, account password change,
-admin account creation, admin session revocation, owner-scoped contact
-public-key metadata, owner-managed sharing grants, and owner-managed
-wrapped-key records. Sharing-grant and wrapped-key management are deliberately
+hashed session-token storage, bearer sessions, optional browser cookie sessions
+with CSRF checks for unsafe cookie-authenticated requests, session expiry,
+logout, account password change, admin account creation, admin session
+revocation, owner-scoped contact public-key metadata, owner-managed sharing
+grants, and owner-managed wrapped-key records. Sharing-grant and wrapped-key management are deliberately
 stricter than ordinary incident reads: they require the authenticated account
 to own the incident, and an admin account cannot manage another account's
 grants or wrapped-key records through the product route set unless it is also
@@ -170,8 +170,10 @@ account, contact, admin, or escrow routes on any listener.
 ## Authentication Expectations
 
 The current main `/v1` API uses local username/password accounts, bcrypt
-password hashing, and opaque bearer session tokens. Raw session tokens are
-returned only to the client and stored only as hashes. Sessions expire and can
+password hashing, and opaque server-side sessions. Bearer login returns the raw
+session token once for CLI/simulator/API clients. Optional browser login sets a
+dedicated HttpOnly cookie for future web-client calls and does not return the
+raw token in JSON. Stored session material is hashed. Sessions expire and can
 be revoked.
 
 The first admin account is created through a one-time bootstrap flow:
@@ -183,9 +185,10 @@ The first admin account is created through a one-time bootstrap flow:
 - bootstrap is disabled after an admin account exists
 - operators should remove the bootstrap secret after creating the first admin
 
-A future public product API may choose cookie sessions, delegated identity,
-device-bound credentials, or another reviewed mechanism. That choice must be
-made in a separate task with tests and deployment guidance.
+Browser cookie sessions are implemented for the current main route tree, but
+they do not make `/v1` a public product API and do not make `/v1/admin/...`
+public-ready. Any broader public product API still needs reviewed exposure,
+abuse controls, audit behavior, TLS, and deployment guidance.
 
 Authentication must provide:
 
@@ -196,8 +199,8 @@ Authentication must provide:
   access changes
 - replay and token-theft risk analysis
 - CSRF protection for browser-cookie flows that perform state-changing actions;
-  the current private `/admin` authenticated state-changing forms use a
-  session-bound token
+  the current main web-cookie flow and private `/admin` authenticated
+  state-changing forms use session-bound tokens
 - avoidance of raw credential logging, including Authorization headers and
   token-bearing URLs
 - clear handling for offline or intermittent capture devices

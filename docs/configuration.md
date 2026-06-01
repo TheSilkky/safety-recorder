@@ -38,6 +38,12 @@ Configuration is read from environment variables when the Proofline API starts.
 | `SAFE_DEFAULT_INCIDENT_TOKEN_TTL` | `24h` | Default lifetime for viewer tokens created without `expires_at`. Set to `0` to disable the default for omitted `expires_at` values. |
 | `SAFE_SESSION_TTL` | `12h` | Lifetime for local account sessions created by `/v1/auth/login`. |
 | `SAFE_AUTH_BOOTSTRAP_SECRET` | unset | One-time bootstrap secret required to create the first admin account when no admin exists. Remove after bootstrap. |
+| `SAFE_WEB_AUTH_ENABLED` | `false` | Enables main `/v1` browser cookie-session routes for the future web client. Existing bearer-token routes continue to work. |
+| `SAFE_WEB_ALLOWED_ORIGINS` | unset | Comma-separated exact web origins that may receive credentialed CORS responses. Wildcards are rejected. |
+| `SAFE_WEB_SESSION_COOKIE_NAME` | `__Host-proofline_session` | Browser session cookie name. The default production name requires `SAFE_WEB_SESSION_COOKIE_SECURE=true`; local plain-HTTP development should use a non-`__Host-` name. |
+| `SAFE_WEB_SESSION_COOKIE_SECURE` | `true` | Sets the browser session cookie `Secure` attribute. `false` is accepted only with local loopback web origins. |
+| `SAFE_WEB_SESSION_COOKIE_SAMESITE` | `lax` | Browser session cookie SameSite policy. Supported values are `lax` and `strict`. |
+| `SAFE_WEB_CSRF_HEADER_NAME` | `X-CSRF-Token` | Header required on unsafe browser-cookie-authenticated requests. |
 | `SAFE_DELETION_WORKER_INTERVAL` | `1m` | Background deletion maintenance interval. Set to `0` to disable the automatic scheduler while keeping deletion decisions durable for a later run. |
 | `SAFE_CLOSED_INCIDENT_RETENTION` | `0` | Retention window for closed incidents. `0` disables automatic retention deletion; positive Go durations delete closed incidents older than the window. |
 | `SAFE_TOKEN_METADATA_RETENTION` | `0` | Audit window for pruning expired or revoked viewer-token metadata. `0` disables token metadata pruning. |
@@ -270,8 +276,39 @@ The private `/admin` browser flow uses the same session store and TTL, with the
 raw session token held in an HttpOnly SameSite cookie scoped to `/admin`. The
 value uses Go duration strings such as `6h` or `30m`.
 
+When `SAFE_WEB_AUTH_ENABLED=true`, the main `/v1` API also supports a dedicated
+browser session cookie through `POST /v1/auth/web/login`,
+`GET /v1/auth/web/csrf`, and `POST /v1/auth/web/logout`. Browser login creates
+the same hashed server-side session records as bearer login, but it does not
+return the raw session token in JSON. `GET /v1/account` and other authenticated
+`/v1` routes can use the browser cookie when no bearer token is present.
+Requests that send both bearer and browser-cookie credentials are rejected as
+ambiguous.
+
+Cookie-authenticated unsafe requests require the configured CSRF header. The
+token returned by `/v1/auth/web/csrf` is bound to the server-side session with
+HMAC and is not stored separately in SQLite or PostgreSQL. Bearer clients keep
+their existing behavior and do not need the CSRF header.
+
+Credentialed CORS is disabled unless `SAFE_WEB_ALLOWED_ORIGINS` is configured.
+Origins must match exactly and `*` is rejected because credentials are allowed.
+For local plain-HTTP web-client development, use a non-`__Host-` cookie name and
+local origins only, for example:
+
+```bash
+SAFE_WEB_AUTH_ENABLED=true \
+SAFE_WEB_ALLOWED_ORIGINS=http://127.0.0.1:5173 \
+SAFE_WEB_SESSION_COOKIE_NAME=proofline_session \
+SAFE_WEB_SESSION_COOKIE_SECURE=false \
+go run ./cmd/api
+```
+
+Production deployments should keep the default `__Host-proofline_session`,
+`Secure`, host-only, `Path=/` cookie shape and serve the web client over HTTPS.
+Browser token persistence should not use localStorage in production.
+
 For a new metadata database, startup fails until an admin account exists unless
-`SAFE_AUTH_BOOTSTRAP_SECRET` is set. Use that secret only long enough to call
+`SAFE_AUTH_BOOTSTRAP_SECRET` is set. Use that secret only long enough to
 create the first admin through the private `/admin` bootstrap screen or
 `POST /admin/bootstrap`, then remove it from the environment and restart.
 Treat the bootstrap secret, account passwords, session tokens, raw

@@ -65,13 +65,27 @@ admin bootstrap/login flow to prove both listener trees are serving.
 
 ## Authentication And Accounts
 
-Private `/v1` routes require:
+Private `/v1` routes require a bearer session token by default:
 
 ```http
 Authorization: Bearer <session_token>
 ```
 
 Session tokens are opaque server-side credentials. The raw token is returned only by login, while the metadata backend stores only its SHA-256 hash. Sessions expire after `SAFE_SESSION_TTL`, defaulting to `12h`, and can be revoked by logout, password reset, or the admin session-revocation route.
+
+When `SAFE_WEB_AUTH_ENABLED=true`, the main API also accepts a dedicated
+browser session cookie for `/v1` routes when no bearer token is present. Browser
+cookie mode is intended for the future `open-proofline/web-client`: web clients
+should call with `credentials: "include"` and should not store raw bearer
+tokens in localStorage in production. If a request sends both
+`Authorization: Bearer ...` and the browser session cookie, the server rejects
+it with `400 ambiguous_credentials`.
+
+Cookie-authenticated unsafe requests such as `POST` and `PATCH` require a
+session-bound CSRF token in the configured header, defaulting to
+`X-CSRF-Token`. Bearer-authenticated requests keep their existing behavior and
+do not require this CSRF header. Credentialed CORS is sent only for exact
+origins configured with `SAFE_WEB_ALLOWED_ORIGINS`; CORS is not authentication.
 
 On startup, the server fails closed unless an admin account already exists or
 `SAFE_AUTH_BOOTSTRAP_SECRET` is set. With that secret set, create the first
@@ -116,9 +130,35 @@ Response `201`:
 
 Revokes the current session.
 
+### `POST /v1/auth/web/login`
+
+Enabled only when `SAFE_WEB_AUTH_ENABLED=true`. Authenticates a local account,
+creates a normal hashed server-side session, sets the browser session cookie,
+and returns safe session metadata without returning the raw session token in
+JSON.
+
+The preferred production cookie is `__Host-proofline_session` with `HttpOnly`,
+`Secure`, `SameSite=Lax`, `Path=/`, no `Domain` attribute, and expiry aligned
+with the server-side session. Local plain-HTTP development can opt into a
+non-`Secure` non-`__Host-` cookie only for local web origins.
+
+### `GET /v1/auth/web/csrf`
+
+Enabled only when browser cookie auth is enabled and the request is
+authenticated by the browser session cookie. Returns the CSRF header name and a
+session-bound CSRF token for unsafe cookie-authenticated requests.
+
+### `POST /v1/auth/web/logout`
+
+Enabled only when browser cookie auth is enabled. Requires the browser session
+cookie and a valid CSRF header for an active session, revokes that server-side
+session, and clears the browser session cookie. Existing `POST /v1/auth/logout`
+continues to support bearer-token logout.
+
 ### `GET /v1/account`
 
-Returns the authenticated account.
+Returns the authenticated account for either bearer authentication or, when
+enabled, browser cookie authentication.
 
 ### `POST /v1/account/password`
 

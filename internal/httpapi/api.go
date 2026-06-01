@@ -27,6 +27,7 @@ type Options struct {
 	DefaultIncidentTokenTTL    *time.Duration
 	SessionTTL                 time.Duration
 	BootstrapSecret            string
+	WebAuth                    WebAuthConfig
 	MainRateLimit              MainRateLimitConfig
 	MainRateLimiter            RateLimiter
 	PublicRateLimit            PublicRateLimitConfig
@@ -65,6 +66,17 @@ type PublicRateLimitConfig struct {
 	StaticLimit   int
 }
 
+// WebAuthConfig configures optional browser cookie-session authentication for
+// the main API route tree.
+type WebAuthConfig struct {
+	Enabled               bool
+	AllowedOrigins        []string
+	SessionCookieName     string
+	SessionCookieSecure   bool
+	SessionCookieSameSite http.SameSite
+	CSRFHeaderName        string
+}
+
 // RateLimiter records one request against a safe limiter key.
 type RateLimiter interface {
 	Allow(ctx context.Context, key string, limit int, window time.Duration) (bool, error)
@@ -82,6 +94,7 @@ type API struct {
 	defaultIncidentTokenTTL    time.Duration
 	sessionTTL                 time.Duration
 	bootstrapSecret            string
+	webAuth                    WebAuthConfig
 	mainRateLimit              MainRateLimitConfig
 	mainRateLimiter            RateLimiter
 	publicRateLimit            PublicRateLimitConfig
@@ -157,6 +170,16 @@ func newAPI(repo MetadataRepository, store storage.BlobStore, opts Options) *API
 	if opts.PublicRateLimit.Enabled && publicRateLimiter == nil {
 		publicRateLimiter = NewMemoryRateLimiter()
 	}
+	webAuth := opts.WebAuth
+	if webAuth.SessionCookieName == "" {
+		webAuth.SessionCookieName = "__Host-proofline_session"
+	}
+	if webAuth.SessionCookieSameSite == 0 {
+		webAuth.SessionCookieSameSite = http.SameSiteLaxMode
+	}
+	if webAuth.CSRFHeaderName == "" {
+		webAuth.CSRFHeaderName = "X-CSRF-Token"
+	}
 
 	return &API{
 		repo:                       repo,
@@ -165,6 +188,7 @@ func newAPI(repo MetadataRepository, store storage.BlobStore, opts Options) *API
 		defaultIncidentTokenTTL:    incidentTokenTTL,
 		sessionTTL:                 sessionTTL,
 		bootstrapSecret:            opts.BootstrapSecret,
+		webAuth:                    webAuth,
 		mainRateLimit:              opts.MainRateLimit,
 		mainRateLimiter:            mainRateLimiter,
 		publicRateLimit:            opts.PublicRateLimit,

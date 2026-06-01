@@ -8,7 +8,7 @@
 [![Security Policy](https://img.shields.io/badge/security-policy-blue.svg)](SECURITY.md)
 [![GHCR](https://img.shields.io/static/v1?label=GHCR&message=ghcr.io%2Fopen-proofline%2Fserver&color=blue&logo=github)](https://github.com/orgs/open-proofline/packages/container/package/server)
 
-Proofline Server is the experimental Go server backend for encrypted incident capture. It receives already-encrypted recording chunks through authenticated main `/v1` routes, stores metadata in SQLite by default or optional PostgreSQL, keeps encrypted blobs on local disk by default or in optional S3-compatible object storage, serves a private admin dashboard under `/admin`, uses optional Valkey/Redis-compatible coordination for startup checks, route-class counters, and short-lived complete-upload leases when explicitly configured, and exposes a token-scoped read-only viewer for incident review.
+Proofline Server is the experimental Go server backend for encrypted incident capture. It receives already-encrypted recording chunks through authenticated main `/v1` routes, stores metadata in SQLite by default or optional PostgreSQL, keeps encrypted blobs on local disk by default or in optional S3-compatible object storage, serves a private admin dashboard under `/admin`, uses optional Valkey/Redis-compatible coordination for startup checks, route-class counters, and short-lived complete-upload leases when explicitly configured, supports optional browser cookie sessions for a future web client, and exposes a token-scoped read-only viewer for incident review.
 
 > Repository role: this repository is the server/backend component only. In the multi-repo layout it is `open-proofline/server`, not the full Proofline product suite.
 >
@@ -16,7 +16,7 @@ Proofline Server is the experimental Go server backend for encrypted incident ca
 
 ## Security Warning
 
-> This project is not production-ready public infrastructure. The main `/v1` API now requires local account sessions and shares a listener with the read-only incident viewer, but public exposure still needs deployment-specific TLS, abuse controls, browser credential review, logging review, and operational hardening. Existing `/v1/admin/...` JSON routes remain authenticated admin-only routes on the main handler and must not be routed from a public edge. The private-admin listener is the `/admin` dashboard surface only and must stay behind localhost, LAN, WireGuard, a firewall, or a strict reverse proxy. Separate bind addresses are a deployment boundary, not a complete security model.
+> This project is not production-ready public infrastructure. The main `/v1` API now requires local account sessions and shares a listener with the read-only incident viewer, but public exposure still needs deployment-specific TLS, abuse controls, browser credential review, logging review, and operational hardening. Optional browser cookie sessions add CSRF checks and configured credentialed CORS for future web-client use, but they do not make `/v1` or `/v1/admin/...` public-ready. Existing `/v1/admin/...` JSON routes remain authenticated admin-only routes on the main handler and must not be routed from a public edge. The private-admin listener is the `/admin` dashboard surface only and must stay behind localhost, LAN, WireGuard, a firewall, or a strict reverse proxy. Separate bind addresses are a deployment boundary, not a complete security model.
 
 ## What It Is
 
@@ -89,6 +89,9 @@ public viewer changes, notifications, raw key storage, or key escrow.
 - Read-only incident viewer routes mounted on the main listener
 - Local username/password accounts for regular users and admins
 - Opaque server-side sessions with expiry and revocation
+- Optional main `/v1` browser cookie-session login/logout, session recovery,
+  CSRF protection for cookie-authenticated unsafe requests, and credentialed
+  CORS for explicitly configured web origins
 - Private admin-only HTML surface under `/admin` for bootstrap, login, local
   account listing, and password workflows
 - SQLite metadata and local disk encrypted blob storage by default
@@ -125,7 +128,7 @@ public viewer changes, notifications, raw key storage, or key escrow.
 
 - No iOS app
 - No Android app
-- No web client or account portal
+- No implemented web client or account portal
 - No protocol repository or shared conformance test suite
 - No production recording client implementation
 - No mode-driven access, notification, retention, trusted-contact account,
@@ -304,7 +307,7 @@ Do not let Codex create GitHub issues directly during the initial scan.
 
 ## Security
 
-Viewer links and `/v1` session tokens are bearer credentials and should be treated as secrets. Public deployment still needs TLS, rate limiting, log review, proxy hardening, operational testing, and deployment-specific retention, backup, and deletion enforcement. Do not expose `/v1` publicly as-is.
+Viewer links, `/v1` bearer session tokens, and browser session cookies are credentials and should be treated as secrets. Browser cookie mode should use HttpOnly Secure cookies, explicit allowed origins, `credentials: "include"`, and CSRF headers for unsafe requests; browser token persistence should not use localStorage in production. Public deployment still needs TLS, rate limiting, log review, proxy hardening, operational testing, and deployment-specific retention, backup, and deletion enforcement. Do not expose `/v1` publicly as-is.
 
 Please see [SECURITY.md](SECURITY.md) for supported versions and vulnerability reporting guidance. Do not report security vulnerabilities through public GitHub issues.
 

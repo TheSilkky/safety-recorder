@@ -15,7 +15,7 @@ func (a *API) mainRoutes() http.Handler {
 	a.registerPublicIncidentViewerRoutes(mux)
 	mux.HandleFunc("/", a.notFound)
 
-	return a.loggingMiddleware(a.recoveryMiddleware(a.mainSecurityMiddleware(a.publicRateLimitMiddleware(a.mainAPIRouteRateLimitMiddleware(mux)))))
+	return a.loggingMiddleware(a.recoveryMiddleware(a.mainSecurityMiddleware(a.webCORSMiddleware(a.publicRateLimitMiddleware(a.mainAPIRouteRateLimitMiddleware(mux))))))
 }
 
 func (a *API) registerMainContactRoutes(mux *http.ServeMux) {
@@ -37,6 +37,9 @@ func (a *API) adminRoutes() http.Handler {
 func (a *API) registerMainAuthRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /v1/auth/login", a.login)
 	mux.HandleFunc("POST /v1/auth/logout", a.withPrivateAuth(a.logout))
+	mux.HandleFunc("POST /v1/auth/web/login", a.webLogin)
+	mux.HandleFunc("POST /v1/auth/web/logout", a.webLogout)
+	mux.HandleFunc("GET /v1/auth/web/csrf", a.withPrivateAuth(a.webCSRF))
 	mux.HandleFunc("GET /v1/account", a.withPrivateAuth(a.getCurrentAccount))
 	mux.HandleFunc("POST /v1/account/password", a.withPrivateAuth(a.changeOwnPassword))
 }
