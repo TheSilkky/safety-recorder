@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -71,6 +72,7 @@ func run(logger *slog.Logger) error {
 		DefaultIncidentTokenTTL:    &cfg.DefaultIncidentTokenTTL,
 		SessionTTL:                 cfg.SessionTTL,
 		BootstrapSecret:            cfg.AuthBootstrapSecret,
+		WebAuth:                    webAuthConfig(cfg.WebAuth),
 		MainRateLimit:              mainRateLimitConfig(cfg.MainAPIRateLimit),
 		MainRateLimiter:            newMainRateLimiter(cfg, coord),
 		PublicRateLimit:            publicRateLimitConfig(cfg.PublicViewerRateLimit),
@@ -131,6 +133,21 @@ func publicRateLimitConfig(cfg config.PublicViewerRateLimitConfig) httpapi.Publi
 		DataLimit:     cfg.DataLimit,
 		DownloadLimit: cfg.DownloadLimit,
 		StaticLimit:   cfg.StaticLimit,
+	}
+}
+
+func webAuthConfig(cfg config.WebAuthConfig) httpapi.WebAuthConfig {
+	sameSite := http.SameSiteLaxMode
+	if cfg.SessionCookieSameSite == "strict" {
+		sameSite = http.SameSiteStrictMode
+	}
+	return httpapi.WebAuthConfig{
+		Enabled:               cfg.Enabled,
+		AllowedOrigins:        cfg.AllowedOrigins,
+		SessionCookieName:     cfg.SessionCookieName,
+		SessionCookieSecure:   cfg.SessionCookieSecure,
+		SessionCookieSameSite: sameSite,
+		CSRFHeaderName:        cfg.CSRFHeaderName,
 	}
 }
 

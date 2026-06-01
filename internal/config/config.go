@@ -74,6 +74,7 @@ type Config struct {
 	UploadCoordinationLeaseTTL time.Duration
 	MainAPIRateLimit           MainAPIRateLimitConfig
 	PublicViewerRateLimit      PublicViewerRateLimitConfig
+	WebAuth                    WebAuthConfig
 	MainTimeouts               HTTPTimeouts
 	AdminTimeouts              HTTPTimeouts
 }
@@ -144,6 +145,18 @@ type PublicViewerRateLimitConfig struct {
 	DataLimit     int
 	DownloadLimit int
 	StaticLimit   int
+}
+
+// WebAuthConfig contains optional browser cookie-session settings for the main
+// API. It is disabled by default so existing bearer clients keep their current
+// behavior unless a deployment explicitly opts in.
+type WebAuthConfig struct {
+	Enabled               bool
+	AllowedOrigins        []string
+	SessionCookieName     string
+	SessionCookieSecure   bool
+	SessionCookieSameSite string
+	CSRFHeaderName        string
 }
 
 // HTTPTimeouts groups net/http server timeout settings.
@@ -235,6 +248,10 @@ func Load() (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
+	webAuth, err := webAuthConfigFromEnv()
+	if err != nil {
+		return Config{}, err
+	}
 
 	mainTimeouts, err := mainTimeoutsFromEnv()
 	if err != nil {
@@ -267,6 +284,7 @@ func Load() (Config, error) {
 		UploadCoordinationLeaseTTL: uploadCoordinationLeaseTTL,
 		MainAPIRateLimit:           mainAPIRateLimit,
 		PublicViewerRateLimit:      publicViewerRateLimit,
+		WebAuth:                    webAuth,
 		MainTimeouts:               mainTimeouts,
 		AdminTimeouts:              adminTimeouts,
 	}, nil

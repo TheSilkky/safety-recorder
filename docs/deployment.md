@@ -8,7 +8,8 @@ Proofline is experimental and not production-ready public infrastructure. Treat 
 
 The `/v1` access-control direction is documented in
 [v1-access-control.md](v1-access-control.md). Current local account sessions
-do not by themselves make `/v1` production-ready public infrastructure.
+and optional browser cookie sessions do not by themselves make `/v1`
+production-ready public infrastructure.
 Existing `/v1/admin/...` JSON routes are authenticated admin-only routes on the
 main handler, but they are not public-ready routes and must be blocked by any
 public reverse proxy. The private-admin listener is the `/admin` dashboard
@@ -50,6 +51,25 @@ After bootstrap, remove `SAFE_AUTH_BOOTSTRAP_SECRET` and restart. The
 bootstrap form is disabled after an admin account exists. Treat the bootstrap
 secret, account passwords, raw session tokens, raw idempotency keys, and
 Authorization headers as secrets.
+
+Browser cookie sessions for the future web client are disabled by default. For
+local plain-HTTP web-client development, enable them explicitly with a local
+allowed origin and a non-`__Host-` non-`Secure` cookie name:
+
+```bash
+SAFE_WEB_AUTH_ENABLED=true \
+SAFE_WEB_ALLOWED_ORIGINS=http://127.0.0.1:5173 \
+SAFE_WEB_SESSION_COOKIE_NAME=proofline_session \
+SAFE_WEB_SESSION_COOKIE_SECURE=false \
+go run ./cmd/api
+```
+
+Production browser-cookie deployments must use HTTPS, `Secure` cookies,
+explicit allowed origins, `credentials: "include"` from the web client, and the
+CSRF header from `GET /v1/auth/web/csrf` on unsafe requests. This does not make
+`/v1/admin/...` public-ready; public reverse proxies must still block those
+admin JSON routes unless a future audited public-admin API is explicitly
+designed.
 
 The current listener split does not mount `/v1/health/live` or
 `/v1/health/ready` on either listener. Private/local smoke checks can use the

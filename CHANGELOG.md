@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Added optional main `/v1` browser cookie-session login/logout support for the
+  future web client, including HttpOnly session cookies, session-bound CSRF
+  protection for cookie-authenticated unsafe requests, explicit credentialed
+  CORS for configured origins, and bearer-token compatibility for existing
+  CLI/simulator/API clients.
+
 ## v0.10.0 - 2026-06-01
 
 - Ran the review/update stack and applied small behavior-preserving Go

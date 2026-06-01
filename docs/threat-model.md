@@ -139,8 +139,14 @@ metadata, grant-bound wrapped-key metadata, and encrypted evidence bundles.
 - Media streams must be open before new chunks can be attached. The repository rechecks incident and stream state when chunk metadata is inserted.
 - Stream completion verifies contiguous chunks plus readable stored files, and the repository revalidates chunk rows before committing the stream to `complete`.
 - Local account passwords are stored as bcrypt hashes. Private `/v1` requests
-  use opaque server-side sessions whose raw tokens are returned only by login
-  and stored only as SHA-256 hashes.
+  use opaque server-side sessions whose raw bearer tokens are returned only by
+  bearer login and stored only as SHA-256 hashes. Optional browser login uses
+  the same session store but sends the raw session token only in an HttpOnly
+  browser cookie.
+- Cookie-authenticated unsafe `/v1` requests require a session-bound HMAC CSRF
+  token in the configured header. Bearer-authenticated requests keep their
+  existing behavior. Credentialed CORS is emitted only for exact configured web
+  origins and is not treated as authentication.
 - Private incident access is authorized by account owner and role. Regular
   users can access their own incidents. Admins can access incidents across
   accounts and use `/v1/admin/...` account routes. Legacy unowned incidents are
@@ -205,11 +211,12 @@ The current backend does not implement incident-mode-specific controls yet, so f
 
 - No implemented public product API exposure model for `/v1`; local accounts
   and sessions are authenticated main-API controls, not a complete public
-  security model. The `/v1` credential is an Authorization bearer session for
-  authenticated main API callers. The private `/admin` web authenticated
-  state-changing forms use an
-  HttpOnly SameSite cookie with a session-bound CSRF token. Broader browser
-  admin flows still need explicit browser credential and CSRF review.
+  security model. The `/v1` credential can be an Authorization bearer session
+  or, when explicitly enabled for the future web client, an HttpOnly browser
+  session cookie with CSRF protection for unsafe requests. The private `/admin`
+  web authenticated state-changing forms continue to use a separate
+  HttpOnly SameSite cookie with a session-bound CSRF token. Browser cookie auth
+  does not make `/v1/admin/...` public-ready.
 - Separate main and private-admin ports reduce accidental route exposure, but
   they are not a complete security model.
 - `/v1` must not be publicly exposed as-is.

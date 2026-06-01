@@ -30,7 +30,7 @@ contact key-sharing boundaries in
 - `.dockerignore`: excludes local runtime, review, and build artifacts from the root Docker build context used by `Dockerfile`.
 - `cmd/api`: starts one main API/viewer HTTP server per main bind address and one private-admin dashboard HTTP server per admin bind address, loads config, enforces the local account bootstrap gate, checks the selected coordination backend, opens the selected metadata backend, creates storage, wires shared handlers including main API, admin JSON API, public viewer rate limiting, upload coordination, and the private `/admin` dashboard, starts the deletion worker, and handles graceful shutdown.
 - `cmd/simclient`: simulates future client flows by logging in, creating an incident, creating a media stream, encrypting and uploading complete chunks, completing or failing streams, sending periodic checkins, and optionally testing hash-failure retry, bundle download, local decrypt verification, durable desktop-recorder staging, local file input, ffmpeg segment capture, restart/resume behavior, and poor-network retry controls. Token-bearing viewer URLs are omitted from simulator output.
-- `internal/config`: reads environment variables such as backend selectors, backend-specific settings, main and private-admin bind address lists, legacy singular bind addresses, data directory, database path, max upload size, upload coordination lease TTL, main API and public viewer rate limits, HTTP server timeouts, local account bootstrap secret, session TTL, deletion worker interval, closed-incident retention window, token metadata retention window, and tombstone retention window.
+- `internal/config`: reads environment variables such as backend selectors, backend-specific settings, main and private-admin bind address lists, legacy singular bind addresses, data directory, database path, max upload size, upload coordination lease TTL, main API and public viewer rate limits, optional web-auth cookie/CORS/CSRF settings, HTTP server timeouts, local account bootstrap secret, session TTL, deletion worker interval, closed-incident retention window, token metadata retention window, and tombstone retention window.
 - `internal/coordination`: defines the small optional coordination boundary, the default no-coordination backend, and the Valkey/Redis-compatible startup check, main API/public viewer rate-limit counter backend, and short-lived complete-upload lease backend.
 - `internal/db`: opens SQLite, enables foreign keys and WAL mode, applies embedded SQLite migrations, records `schema_migrations`, and runs named compatibility migrations.
 - `internal/envelope`: implements the simulator/test AES-256-GCM client-side chunk envelope, associated data builder, and local simulator key file helpers.
@@ -57,7 +57,13 @@ idempotency, durable blob commits, and metadata.
 ## Main Request Flow
 
 Main `/v1` routes require `Authorization: Bearer <session_token>` except for
-login. Existing `/v1/admin/...` JSON routes are mounted on the main handler and
+login, or a browser session cookie when `SAFE_WEB_AUTH_ENABLED=true` and no
+bearer token is present. Browser login uses `POST /v1/auth/web/login`, returns
+safe session metadata without a raw token, and sets an HttpOnly session cookie.
+`GET /v1/auth/web/csrf` returns a session-bound CSRF token for unsafe
+cookie-authenticated requests, and `POST /v1/auth/web/logout` revokes the
+session and clears the cookie. Requests that send both bearer and browser
+cookie credentials are rejected. Existing `/v1/admin/...` JSON routes are mounted on the main handler and
 require an admin account. First-admin bootstrap uses the private
 `/admin/bootstrap` form when no admin exists and `SAFE_AUTH_BOOTSTRAP_SECRET`
 is configured.

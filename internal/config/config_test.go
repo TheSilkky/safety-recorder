@@ -48,6 +48,117 @@ func TestLoadDefaultSessionTTL(t *testing.T) {
 	}
 }
 
+func TestLoadDefaultWebAuthConfig(t *testing.T) {
+	cfg := loadConfigForTest(t, nil)
+
+	if cfg.WebAuth.Enabled {
+		t.Fatal("web auth should default to disabled")
+	}
+	if cfg.WebAuth.SessionCookieName != "__Host-proofline_session" {
+		t.Fatalf("web session cookie name = %q", cfg.WebAuth.SessionCookieName)
+	}
+	if !cfg.WebAuth.SessionCookieSecure {
+		t.Fatal("web session cookie should default to Secure")
+	}
+	if cfg.WebAuth.SessionCookieSameSite != "lax" {
+		t.Fatalf("web session SameSite = %q, want lax", cfg.WebAuth.SessionCookieSameSite)
+	}
+	if cfg.WebAuth.CSRFHeaderName != "X-CSRF-Token" {
+		t.Fatalf("web CSRF header = %q", cfg.WebAuth.CSRFHeaderName)
+	}
+	if len(cfg.WebAuth.AllowedOrigins) != 0 {
+		t.Fatalf("web allowed origins = %v, want empty", cfg.WebAuth.AllowedOrigins)
+	}
+}
+
+func TestLoadWebAuthConfigFromEnv(t *testing.T) {
+	cfg := loadConfigForTest(t, map[string]string{
+		"SAFE_WEB_AUTH_ENABLED":            "true",
+		"SAFE_WEB_ALLOWED_ORIGINS":         "https://app.example.invalid, http://127.0.0.1:5173/",
+		"SAFE_WEB_SESSION_COOKIE_SAMESITE": "strict",
+		"SAFE_WEB_CSRF_HEADER_NAME":        "X-Proofline-CSRF",
+	})
+
+	if !cfg.WebAuth.Enabled {
+		t.Fatal("web auth was not enabled")
+	}
+	wantOrigins := []string{"https://app.example.invalid", "http://127.0.0.1:5173"}
+	if !reflect.DeepEqual(cfg.WebAuth.AllowedOrigins, wantOrigins) {
+		t.Fatalf("allowed origins = %v, want %v", cfg.WebAuth.AllowedOrigins, wantOrigins)
+	}
+	if cfg.WebAuth.SessionCookieName != "__Host-proofline_session" {
+		t.Fatalf("web session cookie name = %q", cfg.WebAuth.SessionCookieName)
+	}
+	if !cfg.WebAuth.SessionCookieSecure {
+		t.Fatal("web session cookie secure was disabled")
+	}
+	if cfg.WebAuth.SessionCookieSameSite != "strict" {
+		t.Fatalf("web session SameSite = %q, want strict", cfg.WebAuth.SessionCookieSameSite)
+	}
+	if cfg.WebAuth.CSRFHeaderName != "X-Proofline-CSRF" {
+		t.Fatalf("web CSRF header = %q", cfg.WebAuth.CSRFHeaderName)
+	}
+}
+
+func TestLoadWebAuthAllowsExplicitLocalDevelopmentCookie(t *testing.T) {
+	cfg := loadConfigForTest(t, map[string]string{
+		"SAFE_WEB_AUTH_ENABLED":            "true",
+		"SAFE_WEB_ALLOWED_ORIGINS":         "http://localhost:5173,http://127.0.0.1:5174",
+		"SAFE_WEB_SESSION_COOKIE_NAME":     "proofline_session",
+		"SAFE_WEB_SESSION_COOKIE_SECURE":   "false",
+		"SAFE_WEB_SESSION_COOKIE_SAMESITE": "lax",
+	})
+
+	if cfg.WebAuth.SessionCookieName != "proofline_session" {
+		t.Fatalf("web session cookie name = %q", cfg.WebAuth.SessionCookieName)
+	}
+	if cfg.WebAuth.SessionCookieSecure {
+		t.Fatal("local development cookie should allow Secure=false")
+	}
+	wantOrigins := []string{"http://localhost:5173", "http://127.0.0.1:5174"}
+	if !reflect.DeepEqual(cfg.WebAuth.AllowedOrigins, wantOrigins) {
+		t.Fatalf("allowed origins = %v, want %v", cfg.WebAuth.AllowedOrigins, wantOrigins)
+	}
+}
+
+func TestLoadWebAuthRejectsUnsafeConfig(t *testing.T) {
+	tests := map[string]map[string]string{
+		"wildcard origin": {
+			"SAFE_WEB_ALLOWED_ORIGINS": "*",
+		},
+		"origin with path": {
+			"SAFE_WEB_ALLOWED_ORIGINS": "https://app.example.invalid/path",
+		},
+		"invalid same site": {
+			"SAFE_WEB_SESSION_COOKIE_SAMESITE": "none",
+		},
+		"invalid csrf header": {
+			"SAFE_WEB_CSRF_HEADER_NAME": "bad header",
+		},
+		"host prefix without secure": {
+			"SAFE_WEB_SESSION_COOKIE_NAME":   "__Host-proofline_session",
+			"SAFE_WEB_SESSION_COOKIE_SECURE": "false",
+		},
+		"insecure cookie without local origin": {
+			"SAFE_WEB_SESSION_COOKIE_NAME":   "proofline_session",
+			"SAFE_WEB_SESSION_COOKIE_SECURE": "false",
+		},
+		"insecure public origin": {
+			"SAFE_WEB_ALLOWED_ORIGINS":       "https://app.example.invalid",
+			"SAFE_WEB_SESSION_COOKIE_NAME":   "proofline_session",
+			"SAFE_WEB_SESSION_COOKIE_SECURE": "false",
+		},
+	}
+
+	for name, env := range tests {
+		t.Run(name, func(t *testing.T) {
+			if _, err := loadConfigForTestErr(t, env); err == nil {
+				t.Fatal("expected web auth config error")
+			}
+		})
+	}
+}
+
 func TestLoadDefaultDeletionRetentionConfig(t *testing.T) {
 	cfg := loadConfigForTest(t, nil)
 
@@ -1103,6 +1214,12 @@ func loadConfigForTestErr(t *testing.T, env map[string]string) (Config, error) {
 		"SAFE_PUBLIC_VIEWER_RATE_LIMIT_DATA",
 		"SAFE_PUBLIC_VIEWER_RATE_LIMIT_DOWNLOAD",
 		"SAFE_PUBLIC_VIEWER_RATE_LIMIT_STATIC",
+		"SAFE_WEB_AUTH_ENABLED",
+		"SAFE_WEB_ALLOWED_ORIGINS",
+		"SAFE_WEB_SESSION_COOKIE_NAME",
+		"SAFE_WEB_SESSION_COOKIE_SECURE",
+		"SAFE_WEB_SESSION_COOKIE_SAMESITE",
+		"SAFE_WEB_CSRF_HEADER_NAME",
 		"SAFE_MAIN_READ_HEADER_TIMEOUT",
 		"SAFE_MAIN_READ_TIMEOUT",
 		"SAFE_MAIN_WRITE_TIMEOUT",
