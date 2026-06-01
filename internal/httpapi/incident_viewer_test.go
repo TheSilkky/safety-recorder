@@ -212,35 +212,16 @@ func TestIncidentRawTokenIsNotStored(t *testing.T) {
 	}
 }
 
-func TestPublicServerDoesNotMountPrivateRoutes(t *testing.T) {
+func TestMainServerDoesNotMountAdminDashboardOrOperatorRoutes(t *testing.T) {
 	app := newTestApp(t)
 
 	tests := []struct {
 		method string
 		target string
 	}{
-		{http.MethodPost, "/v1/incidents"},
-		{http.MethodGet, "/v1/incidents/inc_missing"},
-		{http.MethodPost, "/v1/incidents/inc_missing/chunks"},
-		{http.MethodPost, "/v1/incidents/inc_missing/chunks/reconcile"},
-		{http.MethodGet, "/v1/incidents/inc_missing/chunks"},
-		{http.MethodGet, "/v1/incidents/inc_missing/chunks/audio/0"},
-		{http.MethodGet, "/v1/incidents/inc_missing/download"},
-		{http.MethodPost, "/v1/incidents/inc_missing/streams"},
-		{http.MethodGet, "/v1/incidents/inc_missing/streams"},
-		{http.MethodGet, "/v1/incidents/inc_missing/streams/str_missing"},
-		{http.MethodPost, "/v1/incidents/inc_missing/streams/str_missing/complete"},
-		{http.MethodPost, "/v1/incidents/inc_missing/streams/str_missing/fail"},
-		{http.MethodGet, "/v1/incidents/inc_missing/streams/str_missing/download"},
-		{http.MethodPost, "/v1/incidents/inc_missing/checkins"},
-		{http.MethodPost, "/v1/incidents/inc_missing/close"},
-		{http.MethodPost, "/v1/incidents/inc_missing/incident-tokens"},
-		{http.MethodPost, "/v1/incident-tokens/itk_missing/revoke"},
 		{http.MethodPost, "/v1/bootstrap/admin"},
-		{http.MethodPost, "/v1/auth/login"},
-		{http.MethodPost, "/v1/auth/logout"},
-		{http.MethodGet, "/v1/account"},
-		{http.MethodPost, "/v1/account/password"},
+		{http.MethodGet, "/v1/health/live"},
+		{http.MethodGet, "/v1/health/ready"},
 		{http.MethodGet, "/admin"},
 		{http.MethodPost, "/admin/login"},
 		{http.MethodPost, "/admin/bootstrap"},
@@ -248,17 +229,13 @@ func TestPublicServerDoesNotMountPrivateRoutes(t *testing.T) {
 		{http.MethodPost, "/admin/password"},
 		{http.MethodPost, "/admin/accounts/acct_missing/password"},
 		{http.MethodGet, "/admin/static/styles.css"},
-		{http.MethodGet, "/v1/admin/accounts"},
-		{http.MethodPost, "/v1/admin/accounts"},
-		{http.MethodPost, "/v1/admin/accounts/acct_missing/password"},
-		{http.MethodPost, "/v1/admin/accounts/acct_missing/sessions/revoke"},
 	}
 
 	for _, tt := range tests {
-		response, body := request(t, app.publicHandler, tt.method, tt.target, "application/json", bytes.NewBufferString(`{}`))
+		response, body := request(t, app.mainHandler, tt.method, tt.target, "application/json", bytes.NewBufferString(`{}`))
 		response.Body.Close()
 		if response.StatusCode != http.StatusNotFound {
-			t.Fatalf("%s %s: expected public server status 404, got %d: %s", tt.method, tt.target, response.StatusCode, body)
+			t.Fatalf("%s %s: expected main server status 404, got %d: %s", tt.method, tt.target, response.StatusCode, body)
 		}
 	}
 }
@@ -290,25 +267,60 @@ func TestPublicViewerUnsupportedMethodUsesNoStore(t *testing.T) {
 	assertErrorCode(t, body, "not_found")
 }
 
-func TestPrivateServerDoesNotMountPublicIncidentViewerRoutes(t *testing.T) {
+func TestAdminServerDoesNotMountMainOrIncidentViewerRoutes(t *testing.T) {
 	app := newTestApp(t)
 	incidentID := createIncident(t, app, `{}`)
 	token := createIncidentToken(t, app, incidentID, "trusted contact", nil)
 
-	for _, target := range []string{
-		"/i/" + token.Token,
-		"/i/" + token.Token + "/data",
-		"/i/" + token.Token + "/streams/str_missing/download",
-		"/i/" + token.Token + "/incident/download",
-		"/e/" + token.Token,
-		"/e/" + token.Token + "/data",
-		"/e/" + token.Token + "/streams/str_missing/download",
-		"/e/" + token.Token + "/incident/download",
-	} {
-		response, body := get(t, app, target)
+	tests := []struct {
+		method string
+		target string
+	}{
+		{http.MethodPost, "/v1/incidents"},
+		{http.MethodGet, "/v1/incidents/" + incidentID},
+		{http.MethodPost, "/v1/incidents/" + incidentID + "/chunks"},
+		{http.MethodPost, "/v1/incidents/" + incidentID + "/chunks/reconcile"},
+		{http.MethodGet, "/v1/incidents/" + incidentID + "/chunks"},
+		{http.MethodGet, "/v1/incidents/" + incidentID + "/chunks/audio/0"},
+		{http.MethodGet, "/v1/incidents/" + incidentID + "/download"},
+		{http.MethodPost, "/v1/incidents/" + incidentID + "/streams"},
+		{http.MethodGet, "/v1/incidents/" + incidentID + "/streams"},
+		{http.MethodGet, "/v1/incidents/" + incidentID + "/streams/str_missing"},
+		{http.MethodPost, "/v1/incidents/" + incidentID + "/streams/str_missing/complete"},
+		{http.MethodPost, "/v1/incidents/" + incidentID + "/streams/str_missing/fail"},
+		{http.MethodGet, "/v1/incidents/" + incidentID + "/streams/str_missing/download"},
+		{http.MethodPost, "/v1/incidents/" + incidentID + "/checkins"},
+		{http.MethodPost, "/v1/incidents/" + incidentID + "/close"},
+		{http.MethodPost, "/v1/incidents/" + incidentID + "/incident-tokens"},
+		{http.MethodPost, "/v1/incident-tokens/itk_missing/revoke"},
+		{http.MethodPost, "/v1/auth/login"},
+		{http.MethodPost, "/v1/auth/logout"},
+		{http.MethodGet, "/v1/account"},
+		{http.MethodPost, "/v1/account/password"},
+		{http.MethodPost, "/v1/bootstrap/admin"},
+		{http.MethodGet, "/v1/health/live"},
+		{http.MethodGet, "/v1/health/ready"},
+		{http.MethodGet, "/v1/admin/accounts"},
+		{http.MethodPost, "/v1/admin/accounts"},
+		{http.MethodPost, "/v1/admin/accounts/acct_missing/password"},
+		{http.MethodPost, "/v1/admin/accounts/acct_missing/sessions/revoke"},
+		{http.MethodGet, "/v1/admin/incidents/inc_missing/deletion"},
+		{http.MethodPost, "/v1/admin/incidents/inc_missing/deletion"},
+		{http.MethodGet, "/i/" + token.Token},
+		{http.MethodGet, "/i/" + token.Token + "/data"},
+		{http.MethodGet, "/i/" + token.Token + "/streams/str_missing/download"},
+		{http.MethodGet, "/i/" + token.Token + "/incident/download"},
+		{http.MethodGet, "/e/" + token.Token},
+		{http.MethodGet, "/e/" + token.Token + "/data"},
+		{http.MethodGet, "/e/" + token.Token + "/streams/str_missing/download"},
+		{http.MethodGet, "/e/" + token.Token + "/incident/download"},
+		{http.MethodGet, "/static/styles.css"},
+	}
+	for _, tt := range tests {
+		response, body := request(t, app.adminHandler, tt.method, tt.target, "application/json", bytes.NewBufferString(`{}`))
 		response.Body.Close()
 		if response.StatusCode != http.StatusNotFound {
-			t.Fatalf("GET %s: expected private server status 404, got %d: %s", target, response.StatusCode, body)
+			t.Fatalf("%s %s: expected admin server status 404, got %d: %s", tt.method, tt.target, response.StatusCode, body)
 		}
 	}
 }

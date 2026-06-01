@@ -16,31 +16,31 @@ type namedServer struct {
 	server *http.Server
 }
 
-func newHTTPServers(cfg config.Config, privateHandler, publicHandler http.Handler) []namedServer {
-	servers := make([]namedServer, 0, len(cfg.PrivateBindAddrs)+len(cfg.PublicBindAddrs))
-	for _, addr := range cfg.PrivateBindAddrs {
+func newHTTPServers(cfg config.Config, mainHandler, adminHandler http.Handler) []namedServer {
+	servers := make([]namedServer, 0, len(cfg.MainBindAddrs)+len(cfg.AdminBindAddrs))
+	for _, addr := range cfg.MainBindAddrs {
 		servers = append(servers, namedServer{
-			name: "private api",
+			name: "main api and viewer",
 			server: &http.Server{
 				Addr:              addr,
-				Handler:           privateHandler,
-				ReadHeaderTimeout: cfg.PrivateTimeouts.ReadHeaderTimeout,
-				ReadTimeout:       cfg.PrivateTimeouts.ReadTimeout,
-				WriteTimeout:      cfg.PrivateTimeouts.WriteTimeout,
-				IdleTimeout:       cfg.PrivateTimeouts.IdleTimeout,
+				Handler:           mainHandler,
+				ReadHeaderTimeout: cfg.MainTimeouts.ReadHeaderTimeout,
+				ReadTimeout:       cfg.MainTimeouts.ReadTimeout,
+				WriteTimeout:      cfg.MainTimeouts.WriteTimeout,
+				IdleTimeout:       cfg.MainTimeouts.IdleTimeout,
 			},
 		})
 	}
-	for _, addr := range cfg.PublicBindAddrs {
+	for _, addr := range cfg.AdminBindAddrs {
 		servers = append(servers, namedServer{
-			name: "public incident viewer",
+			name: "private admin",
 			server: &http.Server{
 				Addr:              addr,
-				Handler:           publicHandler,
-				ReadHeaderTimeout: cfg.PublicTimeouts.ReadHeaderTimeout,
-				ReadTimeout:       cfg.PublicTimeouts.ReadTimeout,
-				WriteTimeout:      cfg.PublicTimeouts.WriteTimeout,
-				IdleTimeout:       cfg.PublicTimeouts.IdleTimeout,
+				Handler:           adminHandler,
+				ReadHeaderTimeout: cfg.AdminTimeouts.ReadHeaderTimeout,
+				ReadTimeout:       cfg.AdminTimeouts.ReadTimeout,
+				WriteTimeout:      cfg.AdminTimeouts.WriteTimeout,
+				IdleTimeout:       cfg.AdminTimeouts.IdleTimeout,
 			},
 		})
 	}

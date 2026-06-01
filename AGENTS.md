@@ -10,8 +10,8 @@
 - Treat uploaded chunks as immutable.
 - Never overwrite stored chunks or evidence bundle contents.
 - Never log raw viewer tokens, incident tokens, request bodies, uploaded file bytes, Authorization headers, plaintext, raw keys, or future token-like values.
-- Keep private `/v1` write/admin routes and public incident viewer routes on separate listener groups and separate muxes.
-- Do not mount private write/admin routes on public incident viewer servers.
+- Keep the main API/viewer route tree and the private `/admin` dashboard route tree on separate listener groups and separate muxes.
+- Do not route private write/admin routes from public incident viewer edges.
 - Public incident viewer routes must remain read-only.
 - ZIP bundle download routes must not expose filesystem paths or accept client-provided stored paths.
 - Generated ZIP entry names must be controlled by the server.
@@ -23,7 +23,7 @@
 - Future production key custody should assume the user's phone may be unavailable; keys must not exist solely on the client device.
 - Server storage of wrapped/encrypted keys may be acceptable if explicitly designed.
 - Raw server-side key access or server-side decryption may be acceptable only as a deliberate break-glass/dead-man-switch/emergency-access mode with clear access controls, audit expectations, and deployment warnings.
-- Preserve the current deployment model: private API behind localhost/LAN/WireGuard/firewall; public incident viewer behind HTTPS/reverse proxy when exposed.
+- Preserve the current deployment model: main `/v1` behind the reviewed localhost/LAN/WireGuard/firewall boundary, private `/admin` behind its own private listener, and only read-only incident viewer paths behind HTTPS/reverse proxy when exposed.
 - Separate bind addresses are a deployment boundary, not a complete security model.
 - Treat Codex prompts as scoped change requests, not open-ended permission to expand the project.
 - Do not implement newly discovered future work during an unrelated task; document it as an issue/backlog item instead.
@@ -47,19 +47,20 @@
 - Optional S3-compatible encrypted blob storage for committed chunks.
 - No coordination backend by default.
 - Optional Valkey/Redis-compatible coordination when explicitly configured.
-- Private API listener group for `/v1` routes.
-- Public incident viewer listener group for canonical `/i/{token}` routes and legacy `/e/{token}` compatibility aliases.
+- Main API/viewer listener group for authenticated `/v1` routes, canonical `/i/{token}` viewer routes, legacy `/e/{token}` compatibility aliases, and token-neutral `/static/...` viewer assets.
+- Private admin-dashboard listener group for `/admin` routes and token-neutral `/admin/static/...` assets.
 - Uploaded chunks may be grouped into media streams.
 - Media streams can be marked `open`, `complete`, or `failed`.
 - Completed streams and incidents can be downloaded as encrypted ZIP evidence bundles.
 - Simulator CLI exists for incident upload/check-in/encryption test flows.
 - The current simulator encryption envelope is development/test oriented.
 - Future product scope includes emergency incidents, non-emergency interaction records, timed safety checks, and evidence notes.
-- The current backend implements local username/password accounts, private `/v1` account/session authentication, admin account management routes, and owner/admin incident authorization.
+- The current backend implements local username/password accounts, main `/v1` account/session authentication, admin account management routes, and owner/admin incident authorization.
 - The current backend implements optional incident mode, capture profile, escalation policy, and sharing state metadata fields on private incident create/read routes, but these fields do not grant access, send notifications, change retention, change key custody, expose trusted-contact workflows, or change public viewer and bundle behavior.
 - The current backend implements private owner-scoped and admin-global incident deletion routes, deletion tombstones, retryable blob deletion, and optional closed-incident retention through a background worker.
 - The current backend does not yet implement mode-driven access, trusted-contact accounts, dead-man switch notifications, public account workflows, or public `/v1` product authentication.
 - Planned production-cluster scope may add cluster-safe idempotent upload semantics and operation-level use of coordination. These additions must not remove SQLite, optional PostgreSQL metadata, local filesystem support, the optional S3-compatible blob backend, or the optional Valkey/Redis-compatible coordination backend.
+- Regional stream-ingress relay work is planning-only unless explicitly scoped for implementation; any future relay must stay upload-only, temporary, ciphertext-only, and subordinate to the core API for authorization, idempotency, durable blob commits, and metadata.
 - Future encryption direction should be a hybrid key custody model.
 - Docker and GitHub Actions/GHCR publishing exist, but deployment expansion should not be added unless explicitly requested.
 

@@ -2,13 +2,19 @@
 
 This document scopes a simulator/development prototype for contact-wrapped key
 metadata. It does not add backend decryption, server-held raw media keys, key
-escrow, browser decryption, new API routes, database schema changes, public
-account workflows, production trusted-contact access, or client implementations.
+escrow, browser decryption, public account workflows, production
+trusted-contact access, or client implementations. The backend now has
+production-shaped private metadata routes for contact public keys, sharing
+grants, and grant-bound wrapped-key records, but the simulator artifact remains
+a local development companion and is not placed in bundle manifests.
 
 The goal is to let Proofline test the shape of contact-wrapped media-key
 metadata before production key custody is implemented. The current backend
 continues to receive opaque encrypted chunks, validate SHA-256 over ciphertext,
 store encrypted blobs, and generate encrypted ZIP evidence bundles.
+The production contact public-key lifecycle, grant model, and server-stored
+wrapped-key metadata boundary are designed separately in
+[contact-key-sharing-grants.md](contact-key-sharing-grants.md).
 
 ## Goals
 
@@ -46,11 +52,11 @@ store media keys, and does not decrypt chunk bytes.
 
 The first contact-wrapped prototype should preserve that boundary:
 
-- encrypted chunks upload through the existing private `/v1` flow
+- encrypted chunks upload through the existing main `/v1` flow
 - bundle downloads remain encrypted ZIP bundles
 - backend bundle manifests continue to omit keys
-- any wrapped-key experiment remains simulator-local unless a later issue
-  explicitly adds server metadata
+- simulator wrapped-key artifacts remain local unless the caller explicitly uses
+  the authenticated server metadata routes added for wrapped-key records
 
 ## Prototype Model
 
@@ -149,12 +155,13 @@ metadata. It must not include:
 Current stream and incident bundle manifests include a non-secret encryption
 hint with `server_decrypts: false`. They do not include keys or wrapped keys.
 
-The simulator prototype should treat wrapped-key metadata as a companion
-artifact at first. If a later issue explicitly adds server metadata, bundle
-manifests could include server-generated wrapped-key records that refer to the
-same `incident_id`, `stream_id`, and `media_key_id` used by encrypted chunks.
-That later design would need API, schema, tests, retention, backup, threat-model
-updates, and operational guidance before implementation.
+The simulator prototype treats wrapped-key metadata as a companion artifact.
+Server-side wrapped-key records now use authenticated private `/v1` API
+responses and refer to the same `incident_id`, optional `stream_id`, and
+`media_key_id` used by encrypted chunks. Bundle manifests remain key-free. Any
+future bundle-manifest exposure would still need an explicit grant-scoped
+design, tests, retention and backup guidance, threat-model updates, and
+operational guidance before implementation.
 
 Wrapped-key records must remain distinct from access grants. A viewer token or
 future account grant may authorize download of encrypted evidence and wrapped
@@ -194,10 +201,11 @@ For future browser or mobile compatibility, the prototype should record:
   future native trusted-contact client
 - how unsupported algorithms fail closed
 
-## Future Server Metadata
+## Server Metadata
 
-Server storage of wrapped or encrypted media keys may be acceptable only after
-explicit design. A future server-side metadata record could store:
+Server storage of wrapped or encrypted media-key metadata is now limited to
+grant-bound records created through authenticated private routes. A
+server-side metadata record stores:
 
 - incident ID and stream ID
 - media key ID
@@ -209,9 +217,9 @@ explicit design. A future server-side metadata record could store:
 - creation time and rotation or revocation status
 
 It must not store raw media keys, contact private keys, plaintext, unwrapped
-shared secrets, or browser fragment secrets. It must not log wrapped-key
-ciphertext because that metadata is access-enabling even when it is not a raw
-key.
+shared secrets, browser fragment secrets, raw tokens, or server escrow
+material. It must not log wrapped-key ciphertext because that metadata is
+access-enabling even when it is not a raw key.
 
 ## Validation
 

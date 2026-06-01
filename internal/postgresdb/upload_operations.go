@@ -166,10 +166,18 @@ func uploadOperationMatchesParams(operation incidents.UploadOperation, params in
 		operation.StreamID == params.StreamID &&
 		operation.ChunkIndex == params.ChunkIndex &&
 		operation.MediaType == params.MediaType &&
-		operation.StartedAt.Equal(params.StartedAt.UTC()) &&
-		operation.EndedAt.Equal(params.EndedAt.UTC()) &&
+		postgresTimeEqual(operation.StartedAt, params.StartedAt) &&
+		postgresTimeEqual(operation.EndedAt, params.EndedAt) &&
 		operation.OriginalFilename == params.OriginalFilename &&
 		operation.ByteSize == params.ByteSize &&
 		operation.SHA256Hex == params.SHA256Hex &&
 		operation.FingerprintHash == params.FingerprintHash
+}
+
+func postgresTimeEqual(stored, input time.Time) bool {
+	delta := stored.UTC().Sub(input.UTC())
+	if delta < 0 {
+		delta = -delta
+	}
+	return delta < time.Microsecond
 }

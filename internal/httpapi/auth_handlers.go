@@ -11,8 +11,6 @@ import (
 	"github.com/open-proofline/server/internal/auth"
 )
 
-const bootstrapSecretHeader = "X-Proofline-Bootstrap-Secret"
-
 type accountResponse struct {
 	ID                string    `json:"id"`
 	Username          string    `json:"username"`
@@ -28,41 +26,6 @@ type authSessionResponse struct {
 	Token     string          `json:"token"`
 	CreatedAt time.Time       `json:"created_at"`
 	ExpiresAt time.Time       `json:"expires_at"`
-}
-
-func (a *API) bootstrapAdmin(w http.ResponseWriter, r *http.Request) {
-	if a.bootstrapSecret == "" {
-		writeError(w, http.StatusForbidden, "bootstrap_unavailable", "bootstrap is not enabled")
-		return
-	}
-	hasAdmin, err := a.repo.HasAdminAccount(r.Context())
-	if err != nil {
-		a.internalError(w, "check admin account", err)
-		return
-	}
-	if hasAdmin {
-		writeError(w, http.StatusConflict, "bootstrap_unavailable", "bootstrap is already complete")
-		return
-	}
-	if !sameSecret(a.bootstrapSecret, r.Header.Get(bootstrapSecretHeader)) {
-		writeError(w, http.StatusUnauthorized, "bootstrap_secret_invalid", "bootstrap secret is invalid")
-		return
-	}
-
-	var request struct {
-		Username string `json:"username"`
-		Password string `json:"password"`
-	}
-	if !decodeJSON(w, r, &request) {
-		return
-	}
-	account, ok := a.createAccountFromRequest(w, r, request.Username, request.Password, auth.RoleAdmin)
-	if !ok {
-		return
-	}
-	writeJSON(w, http.StatusCreated, map[string]accountResponse{
-		"account": makeAccountResponse(account),
-	})
 }
 
 func (a *API) login(w http.ResponseWriter, r *http.Request) {

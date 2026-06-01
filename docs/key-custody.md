@@ -1,6 +1,12 @@
 # Key Custody And Emergency Access
 
-This document defines the intended production key custody direction for Proofline. It is a design document only. It does not change the current backend, API, database schema, simulator envelope, or encryption code.
+This document defines the intended production key custody direction for
+Proofline. The current backend now includes account-owner contact public-key
+metadata, sharing-grant metadata, and grant-bound wrapped-key record storage and
+delivery, but this document remains the security boundary for production
+custody. The current implementation does not add browser decryption, backend
+decryption, server escrow, trusted-contact accounts, simulator envelope
+changes, or production key custody behavior.
 
 ## Summary
 
@@ -23,6 +29,9 @@ Future key custody also depends on the role and grant boundaries in
 [v1-access-control.md](v1-access-control.md). Account-owner,
 trusted-contact, public-link, admin/operator, and optional escrow access must
 be designed separately from the encryption envelope itself.
+The contact public-key lifecycle, trusted-contact grants, and wrapped-key
+metadata boundary are designed in
+[contact-key-sharing-grants.md](contact-key-sharing-grants.md).
 
 ## Goals
 
@@ -39,12 +48,9 @@ be designed separately from the encryption envelope itself.
 
 ## Non-Goals For This Milestone
 
-- No implementation.
 - No iOS, Android, or web-client code.
 - No browser decryption implementation.
 - No server-side decryption implementation.
-- No new API routes.
-- No database schema changes.
 - No key-custody, wrapped-key, decryption, or emergency-access behavior tied to
   incident-mode, capture-profile, escalation-policy, or sharing-state metadata.
 - No playable media export.
@@ -242,6 +248,13 @@ Optional future mode:
 
 This document decides the long-term direction: contact-wrapped keys plus client-side decryption should be the default production path, with server escrow or server-side decryption reserved for explicit break-glass modes.
 
+The first production contact-wrapped implementation should follow
+[contact-key-sharing-grants.md](contact-key-sharing-grants.md): access grants
+must remain separate from decryption capability, wrapped-key records must remain
+separate from viewer tokens, and the server must not store raw media keys,
+contact private keys, plaintext, or unwrapped shared secrets in the default
+path.
+
 ## Key Hierarchy
 
 Future implementations should keep the hierarchy simple and auditable.
@@ -352,28 +365,32 @@ See [break-glass-key-access.md](break-glass-key-access.md). Do not implement
 server escrow until the policy, audit, deployment, and threat-model changes are
 approved together.
 
-## Future API And Storage Changes
+## API And Storage Changes
 
-The current API has no trusted-contact account model, no key-registration API,
-and no route for storing wrapped media keys. Before iOS or production
-trusted-contact work starts, future design should define:
+The current API has owner-scoped contact public-key registration,
+sharing-grant metadata routes, and grant-bound wrapped-key record storage and
+delivery behind the authenticated main `/v1` boundary. It still has no
+trusted-contact account model, browser decryption, backend decryption, or
+server escrow path. Before iOS or production trusted-contact work starts,
+future design should define:
 
 - contact public-key registration, verification, replacement, and revocation
 - device identity and recovery-key enrollment
-- where wrapped media-key metadata is accepted, stored, listed, and removed
-- how wrapped keys attach to incident IDs, stream IDs, media key IDs, contact
-  key IDs, and future sharing grants
-- whether wrapped-key metadata appears in bundle manifests, authenticated API
-  responses, or both
+- how clients choose, validate, and encode wrapping formats for server-stored
+  records
+- whether wrapped-key metadata ever appears in grant-scoped bundle manifests;
+  current bundle manifests remain key-free and current delivery uses
+  authenticated API responses
 - how access-control grants interact with decryption capabilities
 - retention, backup, restore, and deletion behavior for wrapped keys
 - audit fields that are useful without exposing tokens, raw keys, plaintext, or
   sensitive safety data
 
-These API and schema changes must be separate implementation work. They should
-update this document, [security-model.md](security-model.md),
-[threat-model.md](threat-model.md), [encryption.md](encryption.md), and
-deployment guidance before or alongside code changes.
+Future custody, decryption, client, or bundle-manifest changes remain separate
+implementation work. They should update this document,
+[security-model.md](security-model.md), [threat-model.md](threat-model.md),
+[encryption.md](encryption.md), and deployment guidance before or alongside
+code changes.
 
 ## Metadata And Live Dashboard Implications
 

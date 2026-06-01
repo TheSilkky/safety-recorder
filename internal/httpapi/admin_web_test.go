@@ -19,7 +19,7 @@ const adminWebSessionCookieName = "proofline_admin_session"
 func TestAdminWebShowsLoginBeforeCookieSession(t *testing.T) {
 	app := newTestApp(t)
 
-	response, body := request(t, app.privateHandler, http.MethodGet, "/admin", "", nil)
+	response, body := request(t, app.adminHandler, http.MethodGet, "/admin", "", nil)
 	defer response.Body.Close()
 
 	if response.StatusCode != http.StatusOK {
@@ -57,7 +57,7 @@ func TestAdminWebLoginSetsHttpOnlyCookieAndOpensDashboard(t *testing.T) {
 		}
 	}
 
-	response, body = requestWithCookie(t, app.privateHandler, http.MethodGet, "/admin", "", nil, cookie)
+	response, body = requestWithCookie(t, app.adminHandler, http.MethodGet, "/admin", "", nil, cookie)
 	defer response.Body.Close()
 	if response.StatusCode != http.StatusOK {
 		t.Fatalf("expected admin dashboard status 200, got %d: %s", response.StatusCode, body)
@@ -81,7 +81,7 @@ func TestAdminWebDashboardListsAccounts(t *testing.T) {
 	userAccount := mustGetAccountByUsername(t, app, "managed-user")
 	cookie := loginAdminWeb(t, app)
 
-	response, body := requestWithCookie(t, app.privateHandler, http.MethodGet, "/admin", "", nil, cookie)
+	response, body := requestWithCookie(t, app.adminHandler, http.MethodGet, "/admin", "", nil, cookie)
 	defer response.Body.Close()
 
 	if response.StatusCode != http.StatusOK {
@@ -126,7 +126,7 @@ func TestAdminWebAdminCanChangeOwnPassword(t *testing.T) {
 		t.Fatalf("expected own password change redirect notice, got %q", location)
 	}
 
-	response, body = requestWithCookie(t, app.privateHandler, http.MethodGet, "/admin", "", nil, cookie)
+	response, body = requestWithCookie(t, app.adminHandler, http.MethodGet, "/admin", "", nil, cookie)
 	response.Body.Close()
 	if response.StatusCode != http.StatusOK {
 		t.Fatalf("expected current admin web session to remain valid, got %d: %s", response.StatusCode, body)
@@ -160,7 +160,7 @@ func TestAdminWebAdminCanResetUserPassword(t *testing.T) {
 		t.Fatalf("expected account password reset redirect notice, got %q", location)
 	}
 
-	response, body = requestWithAuth(t, app.privateHandler, http.MethodGet, "/v1/account", "", nil, userToken)
+	response, body = requestWithAuth(t, app.mainHandler, http.MethodGet, "/v1/account", "", nil, userToken)
 	response.Body.Close()
 	if response.StatusCode != http.StatusUnauthorized {
 		t.Fatalf("expected reset user session to be revoked, got %d: %s", response.StatusCode, body)
@@ -201,7 +201,7 @@ func TestAdminWebLogoutRequiresCSRFToken(t *testing.T) {
 		t.Fatalf("logout without CSRF should not clear cookie, got %q", response.Header.Get("Set-Cookie"))
 	}
 
-	response, body = requestWithCookie(t, app.privateHandler, http.MethodGet, "/admin", "", nil, cookie)
+	response, body = requestWithCookie(t, app.adminHandler, http.MethodGet, "/admin", "", nil, cookie)
 	response.Body.Close()
 	if response.StatusCode != http.StatusOK || !bytes.Contains(body, []byte("User Accounts")) {
 		t.Fatalf("expected admin session to remain valid after bad logout, got %d: %s", response.StatusCode, body)
@@ -217,7 +217,7 @@ func TestAdminWebLogoutRequiresCSRFToken(t *testing.T) {
 		t.Fatalf("expected logout to clear cookie, got %q", response.Header.Get("Set-Cookie"))
 	}
 
-	response, body = requestWithCookie(t, app.privateHandler, http.MethodGet, "/admin", "", nil, cookie)
+	response, body = requestWithCookie(t, app.adminHandler, http.MethodGet, "/admin", "", nil, cookie)
 	defer response.Body.Close()
 	if response.StatusCode != http.StatusOK || !bytes.Contains(body, []byte("Admin Login")) {
 		t.Fatalf("expected revoked admin session to return login page, got %d: %s", response.StatusCode, body)
@@ -229,7 +229,7 @@ func TestAdminWebRejectsNonAdminCookieSession(t *testing.T) {
 	userToken := createAccountAndLogin(t, app, "admin-web-user", "regular-password", auth.RoleUser)
 	cookie := &http.Cookie{Name: adminWebSessionCookieName, Value: userToken}
 
-	response, body := requestWithCookie(t, app.privateHandler, http.MethodGet, "/admin", "", nil, cookie)
+	response, body := requestWithCookie(t, app.adminHandler, http.MethodGet, "/admin", "", nil, cookie)
 	defer response.Body.Close()
 
 	if response.StatusCode != http.StatusForbidden {
@@ -251,7 +251,7 @@ func TestAdminWebBootstrapScreenCreatesFirstAdminSession(t *testing.T) {
 		Logger:          slog.New(slog.NewTextHandler(io.Discard, nil)),
 	})
 
-	response, body := request(t, app.privateHandler, http.MethodGet, "/admin", "", nil)
+	response, body := request(t, app.adminHandler, http.MethodGet, "/admin", "", nil)
 	response.Body.Close()
 	if response.StatusCode != http.StatusOK {
 		t.Fatalf("expected bootstrap page status 200, got %d: %s", response.StatusCode, body)
@@ -288,7 +288,7 @@ func TestAdminWebBootstrapScreenCreatesFirstAdminSession(t *testing.T) {
 	}
 	cookie := adminWebCookieFromResponse(t, response)
 
-	response, body = requestWithCookie(t, app.privateHandler, http.MethodGet, "/admin", "", nil, cookie)
+	response, body = requestWithCookie(t, app.adminHandler, http.MethodGet, "/admin", "", nil, cookie)
 	defer response.Body.Close()
 	if response.StatusCode != http.StatusOK {
 		t.Fatalf("expected bootstrapped dashboard status 200, got %d: %s", response.StatusCode, body)
@@ -301,7 +301,7 @@ func TestAdminWebBootstrapScreenCreatesFirstAdminSession(t *testing.T) {
 func TestAdminWebStaticAssetsAreUnauthenticated(t *testing.T) {
 	app := newTestApp(t)
 
-	response, body := request(t, app.privateHandler, http.MethodGet, "/admin/static/styles.css", "", nil)
+	response, body := request(t, app.adminHandler, http.MethodGet, "/admin/static/styles.css", "", nil)
 	defer response.Body.Close()
 
 	if response.StatusCode != http.StatusOK {
@@ -323,20 +323,20 @@ func TestV1AdminWebRouteIsNotMounted(t *testing.T) {
 	if response.StatusCode != http.StatusNotFound {
 		t.Fatalf("expected authenticated /v1/admin status 404, got %d: %s", response.StatusCode, body)
 	}
-	assertPrivateJSONSecurityHeaders(t, response)
+	assertMainJSONSecurityHeaders(t, response)
 	assertErrorCode(t, body, "not_found")
 }
 
 func postAdminWebForm(t *testing.T, app *testApp, target string, form url.Values) (*http.Response, []byte) {
 	t.Helper()
 
-	return request(t, app.privateHandler, http.MethodPost, target, "application/x-www-form-urlencoded", strings.NewReader(form.Encode()))
+	return request(t, app.adminHandler, http.MethodPost, target, "application/x-www-form-urlencoded", strings.NewReader(form.Encode()))
 }
 
 func postAdminWebFormWithCookie(t *testing.T, app *testApp, target string, form url.Values, cookie *http.Cookie) (*http.Response, []byte) {
 	t.Helper()
 
-	return requestWithCookie(t, app.privateHandler, http.MethodPost, target, "application/x-www-form-urlencoded", strings.NewReader(form.Encode()), cookie)
+	return requestWithCookie(t, app.adminHandler, http.MethodPost, target, "application/x-www-form-urlencoded", strings.NewReader(form.Encode()), cookie)
 }
 
 func loginAdminWeb(t *testing.T, app *testApp) *http.Cookie {
@@ -357,7 +357,7 @@ func loginAdminWeb(t *testing.T, app *testApp) *http.Cookie {
 func adminWebDashboardCSRFToken(t *testing.T, app *testApp, cookie *http.Cookie) string {
 	t.Helper()
 
-	response, body := requestWithCookie(t, app.privateHandler, http.MethodGet, "/admin", "", nil, cookie)
+	response, body := requestWithCookie(t, app.adminHandler, http.MethodGet, "/admin", "", nil, cookie)
 	defer response.Body.Close()
 	if response.StatusCode != http.StatusOK {
 		t.Fatalf("expected admin dashboard status 200, got %d: %s", response.StatusCode, body)

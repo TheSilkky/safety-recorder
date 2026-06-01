@@ -23,7 +23,7 @@ const (
 	publicRateLimitStatic   publicRateLimitClass = "static"
 )
 
-type memoryPublicRateLimiter struct {
+type memoryRateLimiter struct {
 	mu      sync.Mutex
 	entries map[string]memoryRateLimitEntry
 	now     func() time.Time
@@ -34,16 +34,21 @@ type memoryRateLimitEntry struct {
 	expiresAt time.Time
 }
 
-// NewMemoryPublicRateLimiter returns a process-local fixed-window limiter for
-// public viewer route classes.
-func NewMemoryPublicRateLimiter() PublicRateLimiter {
-	return &memoryPublicRateLimiter{
+// NewMemoryRateLimiter returns a process-local fixed-window limiter.
+func NewMemoryRateLimiter() RateLimiter {
+	return &memoryRateLimiter{
 		entries: make(map[string]memoryRateLimitEntry),
 		now:     time.Now,
 	}
 }
 
-func (l *memoryPublicRateLimiter) Allow(_ context.Context, key string, limit int, window time.Duration) (bool, error) {
+// NewMemoryPublicRateLimiter returns a process-local fixed-window limiter for
+// public viewer route classes.
+func NewMemoryPublicRateLimiter() PublicRateLimiter {
+	return NewMemoryRateLimiter()
+}
+
+func (l *memoryRateLimiter) Allow(_ context.Context, key string, limit int, window time.Duration) (bool, error) {
 	if limit <= 0 || window <= 0 {
 		return true, nil
 	}
@@ -68,7 +73,7 @@ func (l *memoryPublicRateLimiter) Allow(_ context.Context, key string, limit int
 	return entry.count <= limit, nil
 }
 
-func (l *memoryPublicRateLimiter) pruneExpired(now time.Time) {
+func (l *memoryRateLimiter) pruneExpired(now time.Time) {
 	for key, entry := range l.entries {
 		if !now.Before(entry.expiresAt) {
 			delete(l.entries, key)

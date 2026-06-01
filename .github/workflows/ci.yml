@@ -119,8 +119,8 @@ jobs:
 
       - name: Smoke-test binary startup
         env:
-          SAFE_PRIVATE_BIND_ADDRS: 127.0.0.1:18080
-          SAFE_PUBLIC_BIND_ADDRS: 127.0.0.1:18081
+          SAFE_MAIN_BIND_ADDRS: 127.0.0.1:18080
+          SAFE_ADMIN_BIND_ADDRS: 127.0.0.1:18081
           SAFE_AUTH_BOOTSTRAP_SECRET: ci-smoke-bootstrap-secret
         run: |
           set -euo pipefail
@@ -142,7 +142,8 @@ jobs:
           trap cleanup EXIT
 
           for _ in {1..30}; do
-            if curl --fail --silent --show-error --output /dev/null "http://127.0.0.1:18081/static/styles.css"; then
+            if curl --fail --silent --show-error --output /dev/null "http://127.0.0.1:18080/static/styles.css" &&
+              curl --fail --silent --show-error --output /dev/null "http://127.0.0.1:18081/admin/static/styles.css"; then
               exit 0
             fi
             if ! kill -0 "$server_pid" 2>/dev/null; then
@@ -289,7 +290,8 @@ jobs:
             proofline-server:ci-smoke)"
 
           for _ in {1..30}; do
-            if curl --fail --silent --show-error --output /dev/null "http://127.0.0.1:18083/static/styles.css"; then
+            if curl --fail --silent --show-error --output /dev/null "http://127.0.0.1:18082/static/styles.css" &&
+              curl --fail --silent --show-error --output /dev/null "http://127.0.0.1:18083/admin/static/styles.css"; then
               exit 0
             fi
             if ! docker container inspect "$container_id" --format '{{.State.Running}}' 2>/dev/null | grep -q true; then

@@ -4,8 +4,8 @@ services:
       context: ..
       dockerfile: Dockerfile
     environment:
-      SAFE_PRIVATE_BIND_ADDRS: 0.0.0.0:8080
-      SAFE_PUBLIC_BIND_ADDRS: 0.0.0.0:8081
+      SAFE_MAIN_BIND_ADDRS: 0.0.0.0:8080
+      SAFE_ADMIN_BIND_ADDRS: 0.0.0.0:8081
       SAFE_AUTH_BOOTSTRAP_SECRET: ${PROOFLINE_SMOKE_BOOTSTRAP_SECRET:-replace-with-local-compose-bootstrap-secret}
       SAFE_DATA_DIR: /data
       SAFE_DB_PATH: /data/safety.db
@@ -20,8 +20,8 @@ services:
       SAFE_S3_FORCE_PATH_STYLE: "true"
       SAFE_COORDINATION_BACKEND: none
     ports:
-      - "127.0.0.1:${PROOFLINE_PRIVATE_PORT:-18080}:8080"
-      - "127.0.0.1:${PROOFLINE_PUBLIC_PORT:-18081}:8081"
+      - "127.0.0.1:${PROOFLINE_MAIN_PORT:-18080}:8080"
+      - "127.0.0.1:${PROOFLINE_ADMIN_PORT:-18081}:8081"
     volumes:
       - server-data:/data
     depends_on:

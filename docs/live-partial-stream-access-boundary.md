@@ -34,7 +34,7 @@ Current behavior is documented in [api.md](api.md),
 [security-model.md](security-model.md), and
 [browser-decryption.md](browser-decryption.md):
 
-- private `/v1` routes create incidents, create streams, upload chunks,
+- authenticated main `/v1` routes create incidents, create streams, upload chunks,
   complete or fail streams, close incidents, and create or revoke incident
   viewer tokens
 - public `/i/{token}` and legacy `/e/{token}` routes are read-only
@@ -112,9 +112,9 @@ separate from the current token-only viewer. The public incident viewer may
 keep polling `GET /i/{token}/data` for read-only metadata, but it should not
 become a live chunk transport by default.
 
-Private `/v1` routes currently use local account sessions and remain
-private-boundary only. Do not make new live or partial routes publicly reachable
-under `/v1` until the future public product API and private admin API split is
+Main `/v1` routes currently use local account sessions and remain behind the
+deployment's reviewed boundary. Do not make new live or partial routes publicly
+reachable under `/v1` until the future public product API controls are
 implemented.
 
 ## Partial Manifest Shape

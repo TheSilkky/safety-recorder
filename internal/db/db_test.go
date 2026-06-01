@@ -113,6 +113,43 @@ func TestMigrateAddsIncidentDeletionRetentionSchema(t *testing.T) {
 	}
 }
 
+func TestMigrateAddsContactKeyAndSharingGrantSchema(t *testing.T) {
+	ctx := context.Background()
+	conn := openMemoryDB(t)
+	defer conn.Close()
+
+	if err := Migrate(ctx, conn); err != nil {
+		t.Fatalf("Migrate: %v", err)
+	}
+	for _, tableName := range []string{"contact_public_keys", "sharing_grants", "wrapped_key_records"} {
+		if !hasTable(t, ctx, conn, tableName) {
+			t.Fatalf("expected %s table", tableName)
+		}
+	}
+	for _, columnName := range []string{"owner_account_id", "contact_id", "version", "public_key", "public_key_fingerprint", "key_state"} {
+		if !hasColumn(t, ctx, conn, "contact_public_keys", columnName) {
+			t.Fatalf("expected contact_public_keys.%s column", columnName)
+		}
+	}
+	for _, columnName := range []string{"owner_account_id", "incident_id", "stream_id", "contact_id", "contact_public_key_id", "grant_state"} {
+		if !hasColumn(t, ctx, conn, "sharing_grants", columnName) {
+			t.Fatalf("expected sharing_grants.%s column", columnName)
+		}
+	}
+	for _, columnName := range []string{"owner_account_id", "incident_id", "stream_id", "grant_id", "media_key_id", "contact_public_key_id", "wrapped_key_ciphertext", "public_wrapping_metadata", "wrapped_key_state"} {
+		if !hasColumn(t, ctx, conn, "wrapped_key_records", columnName) {
+			t.Fatalf("expected wrapped_key_records.%s column", columnName)
+		}
+	}
+	for _, tableName := range []string{"contact_public_keys", "sharing_grants", "wrapped_key_records"} {
+		for _, forbidden := range []string{"private_key", "raw_media_key", "plaintext", "browser_fragment_secret", "server_escrow_key"} {
+			if hasColumn(t, ctx, conn, tableName, forbidden) {
+				t.Fatalf("%s must not include %s", tableName, forbidden)
+			}
+		}
+	}
+}
+
 func TestMigrateRejectsRecordedChecksumMismatch(t *testing.T) {
 	ctx := context.Background()
 	conn := openMemoryDB(t)

@@ -22,6 +22,8 @@ type MetadataRepository interface {
 	RequestIncidentDeletion(ctx context.Context, params incidents.IncidentDeletionRequest) (incidents.IncidentDeletionStatus, error)
 	GetIncidentDeletionStatus(ctx context.Context, incidentID string) (incidents.IncidentDeletionStatus, error)
 	QueueRetentionIncidentDeletions(ctx context.Context, cutoff time.Time, limit int) (int, error)
+	PruneIncidentTokenMetadata(ctx context.Context, cutoff time.Time, limit int) (int, error)
+	PruneIncidentDeletionTombstones(ctx context.Context, cutoff time.Time, limit int) (int, error)
 	ListRunnableIncidentDeletions(ctx context.Context, limit int, staleDeletingBefore time.Time) ([]incidents.IncidentDeletionStatus, error)
 	MarkIncidentDeletionDeleting(ctx context.Context, decisionID string, staleDeletingBefore time.Time) (incidents.IncidentDeletionStatus, error)
 	ListIncidentDeletionItems(ctx context.Context, decisionID string) ([]incidents.IncidentDeletionItem, error)
@@ -64,6 +66,20 @@ type MetadataRepository interface {
 	LookupSession(ctx context.Context, rawToken string) (auth.Session, error)
 	RevokeSession(ctx context.Context, sessionID string) error
 	RevokeAccountSessions(ctx context.Context, accountID, exceptSessionID string) (int64, error)
+
+	CreateContactPublicKey(ctx context.Context, params incidents.CreateContactPublicKeyParams) (incidents.ContactPublicKey, error)
+	ListContactPublicKeys(ctx context.Context, ownerAccountID string) ([]incidents.ContactPublicKey, error)
+	GetContactPublicKey(ctx context.Context, ownerAccountID, publicKeyID string) (incidents.ContactPublicKey, error)
+	UpdateContactPublicKey(ctx context.Context, params incidents.UpdateContactPublicKeyParams) (incidents.ContactPublicKey, error)
+	RevokeContactPublicKey(ctx context.Context, ownerAccountID, publicKeyID string) (incidents.ContactPublicKey, error)
+	CreateSharingGrant(ctx context.Context, params incidents.CreateSharingGrantParams) (incidents.SharingGrant, error)
+	ListSharingGrants(ctx context.Context, ownerAccountID, incidentID string) ([]incidents.SharingGrant, error)
+	GetSharingGrant(ctx context.Context, ownerAccountID, grantID string) (incidents.SharingGrant, error)
+	RevokeSharingGrant(ctx context.Context, ownerAccountID, grantID, revokedByAccountID string) (incidents.SharingGrant, error)
+	CreateWrappedKeyRecord(ctx context.Context, params incidents.CreateWrappedKeyRecordParams) (incidents.WrappedKeyRecord, error)
+	ListWrappedKeyRecords(ctx context.Context, ownerAccountID, incidentID string) ([]incidents.WrappedKeyRecord, error)
+	GetWrappedKeyRecord(ctx context.Context, ownerAccountID, wrappedKeyID string) (incidents.WrappedKeyRecord, error)
+	RevokeWrappedKeyRecord(ctx context.Context, ownerAccountID, wrappedKeyID, revokedByAccountID string) (incidents.WrappedKeyRecord, error)
 }
 
 var _ MetadataRepository = (*incidents.Repository)(nil)

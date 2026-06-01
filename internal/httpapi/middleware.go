@@ -63,6 +63,16 @@ func (a *API) publicSecurityMiddleware(next http.Handler) http.Handler {
 	})
 }
 
+func (a *API) mainSecurityMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		setPublicBrowserSecurityHeaders(w)
+		if isViewerTokenPath(r.URL.Path) {
+			setNoStore(w)
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
 func (a *API) privateSecurityMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		setNoSniff(w)

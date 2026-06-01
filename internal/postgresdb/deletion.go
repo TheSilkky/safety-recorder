@@ -227,6 +227,70 @@ func (r *Repository) QueueRetentionIncidentDeletions(ctx context.Context, cutoff
 	return queued, nil
 }
 
+// ListRetentionDeletionCandidates previews closed incidents that retention
+// policy would queue without creating deletion decisions.
+func (r *Repository) ListRetentionDeletionCandidates(ctx context.Context, cutoff time.Time, limit int) ([]incidents.RetentionDeletionCandidate, error) {
+	if limit <= 0 {
+		limit = 25
+	}
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT id, updated_at
+		FROM incidents
+		WHERE status = $1 AND deletion_state = $2 AND updated_at <= $3
+		ORDER BY updated_at ASC, id ASC
+		LIMIT $4`,
+		incidents.StatusClosed,
+		incidents.IncidentDeletionStateActive,
+		cutoff.UTC(),
+		limit,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("select postgres retention deletion preview candidates: %w", err)
+	}
+	defer rows.Close()
+
+	candidates := []incidents.RetentionDeletionCandidate{}
+	for rows.Next() {
+		var candidate incidents.RetentionDeletionCandidate
+		if err := rows.Scan(&candidate.IncidentID, &candidate.UpdatedAt); err != nil {
+			return nil, fmt.Errorf("scan postgres retention deletion preview candidate: %w", err)
+		}
+		candidate.UpdatedAt = candidate.UpdatedAt.UTC()
+		candidates = append(candidates, candidate)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate postgres retention deletion preview candidates: %w", err)
+	}
+	return candidates, nil
+}
+
+// GetIncidentDeletionJobStatus returns local-operator deletion job status using
+// only safe aggregates and deletion decision fields.
+func (r *Repository) GetIncidentDeletionJobStatus(ctx context.Context, limit int, staleDeletingBefore time.Time) (incidents.IncidentDeletionJobStatus, error) {
+	status := incidents.IncidentDeletionJobStatus{}
+	decisionCounts, err := r.listDeletionDecisionStateCounts(ctx)
+	if err != nil {
+		return status, err
+	}
+	status.DecisionStateCounts = decisionCounts
+	decisionErrors, err := r.listDeletionDecisionErrorCounts(ctx)
+	if err != nil {
+		return status, err
+	}
+	status.DecisionErrorCounts = decisionErrors
+	itemCounts, err := r.listDeletionItemStateCounts(ctx)
+	if err != nil {
+		return status, err
+	}
+	status.ItemStateCounts = itemCounts
+	runnable, err := r.ListRunnableIncidentDeletions(ctx, limit, staleDeletingBefore)
+	if err != nil {
+		return status, err
+	}
+	status.RunnableJobs = runnable
+	return status, nil
+}
+
 // ListRunnableIncidentDeletions returns retryable deletion decisions for the
 // background worker.
 func (r *Repository) ListRunnableIncidentDeletions(ctx context.Context, limit int, staleDeletingBefore time.Time) ([]incidents.IncidentDeletionStatus, error) {
@@ -417,6 +481,8 @@ func (r *Repository) CompleteIncidentDeletion(ctx context.Context, decisionID st
 	}
 
 	for _, query := range []string{
+		"DELETE FROM wrapped_key_records WHERE incident_id = $1",
+		"DELETE FROM sharing_grants WHERE incident_id = $1",
 		"DELETE FROM upload_operations WHERE incident_id = $1",
 		"DELETE FROM incident_tokens WHERE incident_id = $1",
 		"DELETE FROM checkins WHERE incident_id = $1",
@@ -590,6 +656,82 @@ func requireIncidentOwnerTx(ctx context.Context, tx *sql.Tx, incidentID, account
 		return incidents.ErrNotFound
 	}
 	return nil
+}
+
+func (r *Repository) listDeletionDecisionStateCounts(ctx context.Context) ([]incidents.IncidentDeletionStateCount, error) {
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT state, count(*)
+		FROM incident_deletion_decisions
+		GROUP BY state
+		ORDER BY state ASC`)
+	if err != nil {
+		return nil, fmt.Errorf("count postgres incident deletion decisions by state: %w", err)
+	}
+	defer rows.Close()
+
+	counts := []incidents.IncidentDeletionStateCount{}
+	for rows.Next() {
+		var count incidents.IncidentDeletionStateCount
+		if err := rows.Scan(&count.State, &count.Count); err != nil {
+			return nil, fmt.Errorf("scan postgres incident deletion decision state count: %w", err)
+		}
+		counts = append(counts, count)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate postgres incident deletion decision state counts: %w", err)
+	}
+	return counts, nil
+}
+
+func (r *Repository) listDeletionDecisionErrorCounts(ctx context.Context) ([]incidents.IncidentDeletionErrorCount, error) {
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT state, error_code, count(*)
+		FROM incident_deletion_decisions
+		WHERE error_code IS NOT NULL AND error_code != ''
+		GROUP BY state, error_code
+		ORDER BY state ASC, error_code ASC`)
+	if err != nil {
+		return nil, fmt.Errorf("count postgres incident deletion decisions by error: %w", err)
+	}
+	defer rows.Close()
+
+	counts := []incidents.IncidentDeletionErrorCount{}
+	for rows.Next() {
+		var count incidents.IncidentDeletionErrorCount
+		if err := rows.Scan(&count.State, &count.ErrorCode, &count.Count); err != nil {
+			return nil, fmt.Errorf("scan postgres incident deletion decision error count: %w", err)
+		}
+		counts = append(counts, count)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate postgres incident deletion decision error counts: %w", err)
+	}
+	return counts, nil
+}
+
+func (r *Repository) listDeletionItemStateCounts(ctx context.Context) ([]incidents.IncidentDeletionItemStateCount, error) {
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT state, COALESCE(error_code, ''), count(*)
+		FROM incident_deletion_items
+		GROUP BY state, error_code
+		ORDER BY state ASC, error_code ASC`)
+	if err != nil {
+		return nil, fmt.Errorf("count postgres incident deletion items by state: %w", err)
+	}
+	defer rows.Close()
+
+	counts := []incidents.IncidentDeletionItemStateCount{}
+	for rows.Next() {
+		var count incidents.IncidentDeletionItemStateCount
+		if err := rows.Scan(&count.State, &count.ErrorCode, &count.Count); err != nil {
+			return nil, fmt.Errorf("scan postgres incident deletion item state count: %w", err)
+		}
+		counts = append(counts, count)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate postgres incident deletion item state counts: %w", err)
+	}
+	return counts, nil
 }
 
 func scanDeletionStatuses(rows *sql.Rows) ([]incidents.IncidentDeletionStatus, error) {

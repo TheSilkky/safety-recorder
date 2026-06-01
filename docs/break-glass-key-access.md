@@ -175,7 +175,7 @@ Audit logs must not include:
 Break-glass and server escrow modes require stronger deployment controls than the current ciphertext-only backend:
 
 - TLS at the edge
-- private `/v1` access boundaries
+- reviewed main `/v1` access boundaries
 - app-level authorization before public control-plane exposure
 - rate limiting and abuse controls
 - restricted operator access

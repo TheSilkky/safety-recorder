@@ -119,8 +119,8 @@ func (request *createIncidentTokenRequest) UnmarshalJSON(data []byte) error {
 
 const incidentWarning = "If you are concerned about immediate safety, call emergency services now."
 
-// createIncidentToken is a private route that mints a read-only incident viewer
-// capability for one incident.
+// createIncidentToken is an authenticated main API route that mints a read-only
+// incident viewer capability for one incident.
 func (a *API) createIncidentToken(w http.ResponseWriter, r *http.Request) {
 	incidentID := r.PathValue("incident_id")
 	if _, ok := a.authorizeIncident(w, r, incidentID, actionCreatePublicLink, dataClassPublicLinkGrant); !ok {
@@ -164,8 +164,8 @@ func (a *API) incidentTokenExpiresAt(requestExpiresAt *time.Time, requestExpires
 	return &expiresAt
 }
 
-// revokeIncidentToken is a private route that disables an incident token
-// without deleting its audit metadata.
+// revokeIncidentToken is an authenticated main API route that disables an
+// incident token without deleting its audit metadata.
 func (a *API) revokeIncidentToken(w http.ResponseWriter, r *http.Request) {
 	tokenID := r.PathValue("token_id")
 	token, err := a.repo.GetIncidentToken(r.Context(), tokenID)

@@ -5,15 +5,12 @@ import (
 	"context"
 	"encoding/json"
 	"io"
-	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 	"time"
 
 	"github.com/open-proofline/server/internal/auth"
-	"github.com/open-proofline/server/internal/httpapi"
-	"golang.org/x/crypto/bcrypt"
 )
 
 func TestUnauthenticatedPrivateRoutesAreRejected(t *testing.T) {
@@ -24,60 +21,27 @@ func TestUnauthenticatedPrivateRoutesAreRejected(t *testing.T) {
 	if response.StatusCode != http.StatusUnauthorized {
 		t.Fatalf("expected unauthenticated status 401, got %d: %s", response.StatusCode, body)
 	}
-	assertPrivateJSONSecurityHeaders(t, response)
+	assertMainJSONSecurityHeaders(t, response)
 	assertErrorCode(t, body, "authentication_required")
 }
 
-func TestBootstrapAdminCreatesFirstAdminWithSecret(t *testing.T) {
-	app := newTestAppWithoutTestAccount(t, httpapi.Options{
-		BootstrapSecret: "bootstrap-secret",
-		PasswordCost:    bcrypt.MinCost,
-		Logger:          slog.New(slog.NewTextHandler(bytes.NewBuffer(nil), nil)),
-	})
+func TestJSONBootstrapIsNotMountedOnMainOrAdminHandlers(t *testing.T) {
+	app := newTestApp(t)
 
-	requestBody := bytes.NewBufferString(`{"username":"Admin.One","password":"test-password"}`)
-	request := newPrivateRequest(t, http.MethodPost, "/v1/bootstrap/admin", "application/json", requestBody)
-	request.Header.Set("X-Proofline-Bootstrap-Secret", "bootstrap-secret")
-	response, body := serve(t, app.privateHandler, request)
-	defer response.Body.Close()
-	if response.StatusCode != http.StatusCreated {
-		t.Fatalf("expected bootstrap status 201, got %d: %s", response.StatusCode, body)
+	for _, handler := range []struct {
+		name    string
+		handler http.Handler
+	}{
+		{name: "main", handler: app.mainHandler},
+		{name: "admin", handler: app.adminHandler},
+	} {
+		response, body := request(t, handler.handler, http.MethodPost, "/v1/bootstrap/admin", "application/json", bytes.NewBufferString(`{"username":"Admin.One","password":"test-password"}`))
+		response.Body.Close()
+		if response.StatusCode != http.StatusNotFound {
+			t.Fatalf("%s handler: expected JSON bootstrap status 404, got %d: %s", handler.name, response.StatusCode, body)
+		}
+		assertErrorCode(t, body, "not_found")
 	}
-	assertPrivateJSONSecurityHeaders(t, response)
-
-	var result struct {
-		Account struct {
-			Username string `json:"username"`
-			Role     string `json:"role"`
-		} `json:"account"`
-	}
-	if err := json.Unmarshal(body, &result); err != nil {
-		t.Fatalf("decode bootstrap response: %v", err)
-	}
-	if result.Account.Username != "admin.one" || result.Account.Role != auth.RoleAdmin {
-		t.Fatalf("unexpected bootstrap account: %+v", result.Account)
-	}
-	if bytes.Contains(body, []byte("password_hash")) || bytes.Contains(body, []byte("test-password")) {
-		t.Fatalf("bootstrap response exposed password material: %s", body)
-	}
-
-	request = newPrivateRequest(t, http.MethodPost, "/v1/bootstrap/admin", "application/json", bytes.NewBufferString(`{"username":"Admin.One","password":"test-password"}`))
-	request.Header.Set("X-Proofline-Bootstrap-Secret", "bootstrap-secret")
-	response, body = serve(t, app.privateHandler, request)
-	defer response.Body.Close()
-	if response.StatusCode != http.StatusConflict {
-		t.Fatalf("expected second bootstrap status 409, got %d: %s", response.StatusCode, body)
-	}
-	assertErrorCode(t, body, "bootstrap_unavailable")
-
-	request = newPrivateRequest(t, http.MethodPost, "/v1/bootstrap/admin", "application/json", bytes.NewBufferString(`{"username":"Other.Admin","password":"test-password"}`))
-	request.Header.Set("X-Proofline-Bootstrap-Secret", "wrong-secret")
-	response, body = serve(t, app.privateHandler, request)
-	defer response.Body.Close()
-	if response.StatusCode != http.StatusConflict {
-		t.Fatalf("expected completed bootstrap status 409, got %d: %s", response.StatusCode, body)
-	}
-	assertErrorCode(t, body, "bootstrap_unavailable")
 }
 
 func TestLoginLogoutAndSessionRevocation(t *testing.T) {
@@ -139,7 +103,7 @@ func TestRegularUserCannotUseAdminRoutes(t *testing.T) {
 	app := newTestApp(t)
 	userToken := createAccountAndLogin(t, app, "regular-user", "regular-password", auth.RoleUser)
 
-	response, body := requestWithAuth(t, app.privateHandler, http.MethodGet, "/v1/admin/accounts", "", nil, userToken)
+	response, body := requestWithAuth(t, app.mainHandler, http.MethodGet, "/v1/admin/accounts", "", nil, userToken)
 	defer response.Body.Close()
 	if response.StatusCode != http.StatusForbidden {
 		t.Fatalf("expected regular user admin route status 403, got %d: %s", response.StatusCode, body)
@@ -177,7 +141,7 @@ func TestAdminCanRevokeAccountSessions(t *testing.T) {
 	userToken := createAccountAndLogin(t, app, "session-user", "session-password", auth.RoleUser)
 	account := mustGetAccountByUsername(t, app, "session-user")
 
-	response, body := post(t, app, "/v1/admin/accounts/"+account.ID+"/sessions/revoke", "application/json", bytes.NewBufferString(`{}`))
+	response, body := requestWithAuth(t, app.mainHandler, http.MethodPost, "/v1/admin/accounts/"+account.ID+"/sessions/revoke", "application/json", bytes.NewBufferString(`{}`), app.authToken)
 	response.Body.Close()
 	if response.StatusCode != http.StatusOK {
 		t.Fatalf("expected revoke sessions status 200, got %d: %s", response.StatusCode, body)
@@ -198,7 +162,7 @@ func loginForTest(t *testing.T, app *testApp, username, password string) string 
 	if response.StatusCode != http.StatusCreated {
 		t.Fatalf("expected login status 201, got %d: %s", response.StatusCode, body)
 	}
-	assertPrivateJSONSecurityHeaders(t, response)
+	assertMainJSONSecurityHeaders(t, response)
 	var result struct {
 		Token     string    `json:"token"`
 		ExpiresAt time.Time `json:"expires_at"`
@@ -215,7 +179,7 @@ func loginForTest(t *testing.T, app *testApp, username, password string) string 
 func createAccountAndLogin(t *testing.T, app *testApp, username, password, role string) string {
 	t.Helper()
 	requestBody := bytes.NewBufferString(`{"username":"` + username + `","password":"` + password + `","role":"` + role + `"}`)
-	response, body := post(t, app, "/v1/admin/accounts", "application/json", requestBody)
+	response, body := requestWithAuth(t, app.mainHandler, http.MethodPost, "/v1/admin/accounts", "application/json", requestBody, app.authToken)
 	response.Body.Close()
 	if response.StatusCode != http.StatusCreated {
 		t.Fatalf("expected create account status 201, got %d: %s", response.StatusCode, body)

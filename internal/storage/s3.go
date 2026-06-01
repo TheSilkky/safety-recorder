@@ -61,16 +61,16 @@ func NewS3(opts S3Options) (*S3Store, error) {
 	opts.AccessKeyID = strings.TrimSpace(opts.AccessKeyID)
 	opts.SecretAccessKey = strings.TrimSpace(opts.SecretAccessKey)
 	opts.SessionToken = strings.TrimSpace(opts.SessionToken)
-	if strings.TrimSpace(opts.Endpoint) == "" {
+	if opts.Endpoint == "" {
 		return nil, fmt.Errorf("missing s3 endpoint")
 	}
-	if strings.TrimSpace(opts.Region) == "" {
+	if opts.Region == "" {
 		return nil, fmt.Errorf("missing s3 region")
 	}
-	if strings.TrimSpace(opts.AccessKeyID) == "" && strings.TrimSpace(opts.SecretAccessKey) != "" {
+	if opts.AccessKeyID == "" && opts.SecretAccessKey != "" {
 		return nil, fmt.Errorf("s3 access key id is required when secret access key is set")
 	}
-	if strings.TrimSpace(opts.AccessKeyID) != "" && strings.TrimSpace(opts.SecretAccessKey) == "" {
+	if opts.AccessKeyID != "" && opts.SecretAccessKey == "" {
 		return nil, fmt.Errorf("s3 secret access key is required when access key id is set")
 	}
 	if opts.AccessKeyID == "" {

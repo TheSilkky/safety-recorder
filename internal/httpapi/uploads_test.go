@@ -2,14 +2,19 @@ package httpapi_test
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/open-proofline/server/internal/coordination"
+	"github.com/open-proofline/server/internal/httpapi"
 	"github.com/open-proofline/server/internal/incidents"
 )
 
@@ -216,6 +221,113 @@ func TestDuplicateChunkWithoutIdempotencyKeyKeepsExistingBehavior(t *testing.T) 
 	}
 	if operations != 0 {
 		t.Fatalf("unexpected upload operation rows for no-key upload: %d", operations)
+	}
+}
+
+func TestUploadCoordinationUsesSafeLeaseKey(t *testing.T) {
+	coord := &recordingUploadCoordinator{
+		lease: coordination.UploadLease{Acquired: true, Token: "server-generated-lease-token"},
+	}
+	app := newTestAppWithOptions(t, httpapi.Options{
+		UploadCoordinator:          coord,
+		UploadCoordinationLeaseTTL: 45 * time.Second,
+	})
+	incidentID := createIncident(t, app, `{}`)
+	stream := createMediaStream(t, app, incidentID, incidents.MediaTypeAudio, "audio recording")
+	payload := []byte("encrypted stream audio data")
+
+	response, body := uploadChunkWithStream(t, app, incidentID, stream.ID, 1, incidents.MediaTypeAudio, payload, sha256Hex(payload))
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusCreated {
+		t.Fatalf("expected coordinated upload status 201, got %d: %s", response.StatusCode, body)
+	}
+	if len(coord.acquireCalls) != 1 {
+		t.Fatalf("lease acquire calls = %d, want 1", len(coord.acquireCalls))
+	}
+	call := coord.acquireCalls[0]
+	if !strings.HasPrefix(call.key, "proofline:upload-operation:v1:") {
+		t.Fatalf("unexpected coordination key %q", call.key)
+	}
+	if call.ttl != 45*time.Second {
+		t.Fatalf("coordination ttl = %s, want 45s", call.ttl)
+	}
+	for _, disallowed := range []string{incidentID, stream.ID, incidents.MediaTypeAudio, "chunk.enc", string(payload)} {
+		if strings.Contains(call.key, disallowed) {
+			t.Fatalf("coordination key exposed %q: %s", disallowed, call.key)
+		}
+	}
+	if len(coord.releaseCalls) != 1 {
+		t.Fatalf("lease release calls = %d, want 1", len(coord.releaseCalls))
+	}
+	if coord.releaseCalls[0].Key != call.key || coord.releaseCalls[0].Token == "" {
+		t.Fatalf("release did not use acquired lease: %+v", coord.releaseCalls[0])
+	}
+}
+
+func TestUploadCoordinationBusyReturnsRetryableHint(t *testing.T) {
+	coord := &recordingUploadCoordinator{
+		lease: coordination.UploadLease{Acquired: false, RetryAfter: 15 * time.Second},
+	}
+	app := newTestAppWithOptions(t, httpapi.Options{
+		UploadCoordinator:          coord,
+		UploadCoordinationLeaseTTL: time.Minute,
+	})
+	incidentID := createIncident(t, app, `{}`)
+	stream := createMediaStream(t, app, incidentID, incidents.MediaTypeAudio, "audio recording")
+	payload := []byte("encrypted stream audio data")
+
+	response, body := uploadChunkWithStream(t, app, incidentID, stream.ID, 1, incidents.MediaTypeAudio, payload, sha256Hex(payload))
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusConflict {
+		t.Fatalf("expected in-progress status 409, got %d: %s", response.StatusCode, body)
+	}
+	assertMainJSONSecurityHeaders(t, response)
+	assertErrorCode(t, body, "upload_in_progress")
+	if response.Header.Get("Retry-After") != "15" {
+		t.Fatalf("Retry-After = %q, want 15", response.Header.Get("Retry-After"))
+	}
+	for _, disallowed := range []string{incidentID, stream.ID, string(payload)} {
+		if bytes.Contains(body, []byte(disallowed)) {
+			t.Fatalf("upload coordination response exposed %q: %s", disallowed, body)
+		}
+	}
+	if len(coord.releaseCalls) != 0 {
+		t.Fatalf("unexpected release calls for busy lease: %d", len(coord.releaseCalls))
+	}
+	assertNoStoredFile(t, app, incidentID, "streams/"+stream.ID+"/audio_000001.enc")
+}
+
+func TestUploadCoordinationUnavailableReturnsSafeRetryableError(t *testing.T) {
+	var logs bytes.Buffer
+	coord := &recordingUploadCoordinator{
+		err: errors.New("dial 10.0.0.5:6379 with password secret failed"),
+	}
+	app := newTestAppWithOptions(t, httpapi.Options{
+		UploadCoordinator:          coord,
+		UploadCoordinationLeaseTTL: time.Minute,
+		Logger:                     slog.New(slog.NewTextHandler(&logs, nil)),
+	})
+	incidentID := createIncident(t, app, `{}`)
+	stream := createMediaStream(t, app, incidentID, incidents.MediaTypeAudio, "audio recording")
+	payload := []byte("encrypted stream audio data")
+
+	response, body := uploadChunkWithStream(t, app, incidentID, stream.ID, 1, incidents.MediaTypeAudio, payload, sha256Hex(payload))
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusServiceUnavailable {
+		t.Fatalf("expected coordination failure status 503, got %d: %s", response.StatusCode, body)
+	}
+	assertMainJSONSecurityHeaders(t, response)
+	assertErrorCode(t, body, "upload_coordination_unavailable")
+	if response.Header.Get("Retry-After") != "60" {
+		t.Fatalf("Retry-After = %q, want 60", response.Header.Get("Retry-After"))
+	}
+	for _, disallowed := range []string{"10.0.0.5", "secret", incidentID, stream.ID, string(payload)} {
+		if bytes.Contains(body, []byte(disallowed)) {
+			t.Fatalf("upload coordination response exposed %q: %s", disallowed, body)
+		}
+		if bytes.Contains(logs.Bytes(), []byte(disallowed)) {
+			t.Fatalf("upload coordination logs exposed %q: %s", disallowed, logs.String())
+		}
 	}
 }
 
@@ -525,4 +637,45 @@ func stringSlicesEqual(got, want []string) bool {
 		}
 	}
 	return true
+}
+
+type recordingUploadCoordinator struct {
+	lease        coordination.UploadLease
+	err          error
+	releaseErr   error
+	acquireCalls []uploadCoordinationCall
+	releaseCalls []coordination.UploadLease
+}
+
+type uploadCoordinationCall struct {
+	key string
+	ttl time.Duration
+}
+
+func (c *recordingUploadCoordinator) Check(context.Context) error {
+	return nil
+}
+
+func (c *recordingUploadCoordinator) AcquireUploadLease(_ context.Context, key string, ttl time.Duration) (coordination.UploadLease, error) {
+	c.acquireCalls = append(c.acquireCalls, uploadCoordinationCall{key: key, ttl: ttl})
+	if c.err != nil {
+		return coordination.UploadLease{}, c.err
+	}
+	lease := c.lease
+	if lease.Key == "" {
+		lease.Key = key
+	}
+	if lease.Acquired && lease.Token == "" {
+		lease.Token = "server-generated-lease-token"
+	}
+	return lease, nil
+}
+
+func (c *recordingUploadCoordinator) ReleaseUploadLease(_ context.Context, lease coordination.UploadLease) error {
+	c.releaseCalls = append(c.releaseCalls, lease)
+	return c.releaseErr
+}
+
+func (c *recordingUploadCoordinator) Close() error {
+	return nil
 }

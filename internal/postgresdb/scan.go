@@ -251,6 +251,118 @@ func scanIncidentToken(s scanner) (incidents.IncidentToken, error) {
 	return token, nil
 }
 
+func scanContactPublicKey(s scanner) (incidents.ContactPublicKey, error) {
+	var contactKey incidents.ContactPublicKey
+	var displayLabel sql.NullString
+	var revokedAt sql.NullTime
+	if err := s.Scan(
+		&contactKey.ID,
+		&contactKey.OwnerAccountID,
+		&contactKey.ContactID,
+		&contactKey.Version,
+		&displayLabel,
+		&contactKey.WrappingAlgorithm,
+		&contactKey.PublicKey,
+		&contactKey.PublicKeyFingerprint,
+		&contactKey.KeyState,
+		&contactKey.CreatedAt,
+		&contactKey.UpdatedAt,
+		&revokedAt,
+	); err != nil {
+		return incidents.ContactPublicKey{}, err
+	}
+	contactKey.CreatedAt = contactKey.CreatedAt.UTC()
+	contactKey.UpdatedAt = contactKey.UpdatedAt.UTC()
+	if displayLabel.Valid {
+		contactKey.DisplayLabel = displayLabel.String
+	}
+	contactKey.RevokedAt = nullableDBTime(revokedAt)
+	return contactKey, nil
+}
+
+func scanSharingGrant(s scanner) (incidents.SharingGrant, error) {
+	var grant incidents.SharingGrant
+	var streamID sql.NullString
+	var expiresAt sql.NullTime
+	var revokedAt sql.NullTime
+	var revokedByAccountID sql.NullString
+	if err := s.Scan(
+		&grant.ID,
+		&grant.OwnerAccountID,
+		&grant.IncidentID,
+		&streamID,
+		&grant.RecipientType,
+		&grant.ContactID,
+		&grant.ContactPublicKeyID,
+		&grant.ContactPublicKeyVersion,
+		&grant.DataClass,
+		&grant.GrantState,
+		&grant.CreatedAt,
+		&grant.UpdatedAt,
+		&expiresAt,
+		&revokedAt,
+		&revokedByAccountID,
+	); err != nil {
+		return incidents.SharingGrant{}, err
+	}
+	grant.CreatedAt = grant.CreatedAt.UTC()
+	grant.UpdatedAt = grant.UpdatedAt.UTC()
+	if streamID.Valid {
+		grant.StreamID = streamID.String
+	}
+	grant.ExpiresAt = nullableDBTime(expiresAt)
+	grant.RevokedAt = nullableDBTime(revokedAt)
+	if revokedByAccountID.Valid {
+		grant.RevokedByAccountID = revokedByAccountID.String
+	}
+	return grant, nil
+}
+
+func scanWrappedKeyRecord(s scanner) (incidents.WrappedKeyRecord, error) {
+	var record incidents.WrappedKeyRecord
+	var streamID sql.NullString
+	var publicWrappingMetadata string
+	var revokedAt sql.NullTime
+	var revokedByAccountID sql.NullString
+	var rotatedAt sql.NullTime
+	if err := s.Scan(
+		&record.ID,
+		&record.OwnerAccountID,
+		&record.IncidentID,
+		&streamID,
+		&record.GrantID,
+		&record.RecipientType,
+		&record.ContactID,
+		&record.ContactPublicKeyID,
+		&record.ContactPublicKeyVersion,
+		&record.MediaKeyID,
+		&record.WrappingAlgorithm,
+		&record.WrappingAlgorithmVersion,
+		&record.WrappedKeyCiphertext,
+		&publicWrappingMetadata,
+		&record.WrappedKeyState,
+		&record.CreatedAt,
+		&record.UpdatedAt,
+		&revokedAt,
+		&revokedByAccountID,
+		&rotatedAt,
+	); err != nil {
+		return incidents.WrappedKeyRecord{}, err
+	}
+	record.CreatedAt = record.CreatedAt.UTC()
+	record.UpdatedAt = record.UpdatedAt.UTC()
+	if streamID.Valid {
+		record.StreamID = streamID.String
+	}
+	record.PublicWrappingMetadata = []byte(publicWrappingMetadata)
+	record.RevokedAt = nullableDBTime(revokedAt)
+	if revokedByAccountID.Valid {
+		record.RevokedByAccountID = revokedByAccountID.String
+	}
+	record.RotatedAt = nullableDBTime(rotatedAt)
+	return record, nil
+}
+
 func nullableDBTime(value sql.NullTime) *time.Time {
 	if !value.Valid {
 		return nil

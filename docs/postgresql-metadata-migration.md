@@ -439,37 +439,202 @@ The configuration docs state:
 - unsupported backend names still fail startup without echoing rejected values
 - setting `SAFE_METADATA_BACKEND=postgresql` requires `SAFE_POSTGRES_DSN`
 
-## SQLite-To-PostgreSQL Data Migration
+## SQLite-To-PostgreSQL Data Migration Runbook
 
-Initial PostgreSQL support can be new-deployment only. Migrating an existing
-SQLite deployment should be a separate explicit operation or tool, not an
-automatic startup side effect.
+PostgreSQL support is implemented for new deployments. Migrating an existing
+SQLite deployment is a separate explicit maintenance operation. It must not run
+automatically during normal API startup, and it should remain a reviewed runbook
+until repeated operator drills show that a small local-only tool would reduce
+risk without hiding the safety gates.
 
-A future migration runbook or tool should:
+This runbook is for private operator planning. Keep real commands, database
+paths, DSNs, hostnames, object-store details, credentials, raw tokens, plaintext,
+raw keys, and user safety data in private deployment notes, not in public issues
+or PR descriptions.
 
-1. stop writes or put the deployment in a quiesced private-maintenance mode
-2. back up SQLite metadata and encrypted blobs together
-3. apply all current SQLite migrations
-4. create an empty PostgreSQL database and apply PostgreSQL migrations
-5. copy `accounts`
-6. copy `incidents`, preserving `owner_account_id`
-7. copy `media_streams`
-8. copy `chunks`, preserving `stored_path` values exactly
-9. copy `checkins`
-10. copy `auth_sessions`, preserving token hashes and expiry/revocation
-    metadata if session migration is deliberately supported
-11. copy `incident_tokens`, preserving hashes and expiry/revocation metadata
-12. verify row counts and critical uniqueness constraints
-13. verify completed stream and incident bundle generation in an isolated
-    private restore environment
-14. switch configuration only after verification
+### Current Support Boundary
 
-The migration must not decrypt chunks, rewrite encrypted blobs, expose
-filesystem paths to clients, or attempt to recover raw incident tokens.
+Supported today:
 
-Rollback is only straightforward before writes resume against PostgreSQL. After
-PostgreSQL accepts new metadata, switching back to SQLite would require a
-separate reverse migration design.
+- SQLite remains the default metadata backend and continues to be appropriate
+  for local-first and small self-hosted deployments.
+- PostgreSQL is an optional metadata backend when explicitly configured with
+  `SAFE_METADATA_BACKEND=postgresql`.
+- Local filesystem and optional S3-compatible blob storage keep storing opaque
+  encrypted chunk bytes only.
+- PostgreSQL migrations create the PostgreSQL schema; SQLite migrations and
+  compatibility migrations still own the SQLite schema.
+
+Not supported by this runbook:
+
+- automatic startup migration from SQLite to PostgreSQL
+- removing SQLite support
+- moving or rewriting encrypted blob bytes
+- decrypting chunks, browser decryption, backend decryption, key escrow, or raw
+  server-held media keys
+- public `/v1` exposure, public account workflows, cloud-provider automation, or
+  production-readiness claims
+
+### When To Stay On SQLite
+
+Keep SQLite when the deployment is local-first, single-node, easy to quiesce,
+and backed by a storage layer that can snapshot SQLite sidecar files and local
+encrypted blobs together. SQLite remains the simplest supported shape for
+development, simulator flows, and private small deployments that do not need a
+separate managed metadata service.
+
+Do not migrate merely because optional PostgreSQL exists. A migration adds
+operational risk, another secret-bearing service, and a rollback boundary. It is
+only justified when the deployment has a reviewed reason such as managed
+database backups, future multi-node preparation, or operational requirements
+that SQLite cannot satisfy.
+
+### Preconditions
+
+Before copying any data:
+
+1. Confirm the target branch and release contain all SQLite and PostgreSQL
+   migrations expected by the deployment.
+2. Confirm the deployment can be quiesced. Stop the API process or block all
+   authenticated main write routes before taking the migration snapshot.
+3. Back up SQLite metadata and encrypted blobs as one evidence set. Include
+   `SAFE_DB_PATH`, any live SQLite `-wal` and `-shm` sidecar files when using a
+   direct live copy, local blob directories, or the configured S3-compatible
+   committed object set.
+4. Record a restore checkpoint in private operator notes. The checkpoint should
+   describe how to restore the pre-migration SQLite database and matching
+   encrypted blobs without exposing private paths or credentials publicly.
+5. Apply all current SQLite migrations before export. The old
+   `emergency_tokens` table is not part of the target PostgreSQL schema; current
+   SQLite data should already be represented in `incident_tokens`.
+6. Create an empty PostgreSQL database and apply the embedded PostgreSQL
+   migrations through the application migration runner.
+7. Keep both listeners private during the drill. Restore or migration
+   validation must not expose `/v1`, `/admin`, admin JSON API routes, raw
+   viewer tokens, or private deployment details publicly.
+
+If these preconditions cannot be met, stop and keep the deployment on SQLite
+until the operator can perform a private restore drill.
+
+### Copy Order
+
+Copy durable metadata in dependency order and preserve IDs exactly. Convert
+SQLite timestamp strings to PostgreSQL `TIMESTAMPTZ` values normalized to UTC,
+and preserve nullable fields as nulls rather than empty-string placeholders
+unless the current SQLite schema already stores a meaningful empty string.
+
+1. `accounts`
+   - Preserve account IDs, normalized usernames, roles, bcrypt password hashes,
+     creation/update times, and password-change times.
+   - Never export or recreate raw passwords.
+2. `incidents`
+   - Preserve incident IDs, timestamps, status, `client_label`, `notes`,
+     `owner_account_id`, optional mode fields, and `deletion_state`.
+   - Preserve `owner_account_id` before private owner-scoped access is tested.
+   - Legacy rows with no owner must remain unowned and admin-only until a
+     separate reassignment workflow is explicitly implemented; see
+     [legacy unowned incident reassignment](legacy-unowned-incident-reassignment.md).
+3. `media_streams`
+   - Preserve stream IDs, owning incident IDs, media type, label, status,
+     expected chunk count, completion/failure timestamps, and failure reason.
+4. `chunks`
+   - Preserve chunk IDs, incident IDs, stream IDs, chunk indexes, media type,
+     timestamps, sanitized `original_filename`, ciphertext byte size,
+     lowercase SHA-256 hex, and `stored_path` exactly.
+   - Do not rewrite `stored_path`, object keys, filesystem layout, or encrypted
+     chunk bytes as part of metadata migration.
+   - Preserve legacy unstreamed chunks with `stream_id IS NULL`.
+5. `checkins`
+   - Preserve checkin IDs, incident IDs, timestamps, battery, network, and
+     location fields.
+6. `auth_sessions`
+   - Preserve session IDs, account IDs, SHA-256 token hashes, creation times,
+     expiry, and revocation metadata only if the operator deliberately chooses
+     to keep active sessions through migration.
+   - A safer default is to omit or revoke sessions and require fresh login after
+     the configuration switch. Never attempt to recover raw session tokens.
+7. `incident_tokens`
+   - Preserve token IDs, incident IDs, SHA-256 token hashes, labels, creation
+     times, expiry, and revocation metadata.
+   - Never attempt to recover raw viewer tokens from hashes.
+8. `upload_operations`
+   - Preserve complete-upload operation IDs, operation type,
+     idempotency-key hashes, normalized chunk identity, immutable request
+     fingerprint fields, state, final chunk references, stored paths, and
+     timestamps where the current SQLite deployment has this table.
+   - Do not include raw idempotency keys in export files or logs.
+9. `incident_deletion_decisions` and `incident_deletion_items`
+   - Preserve deletion decision IDs, source, reason code, actor account ID,
+     `allow_open`, state, item count, safe error code, timestamps, item IDs,
+     stored paths, attempts, and item state.
+   - Preserve deletion state rather than restarting or clearing in-flight
+     deletion work without a separate private operator decision.
+
+Do not copy SQLite `schema_migrations` rows into PostgreSQL. PostgreSQL has its
+own migration history and checksum tracking.
+
+### Validation Before Switching
+
+Validate the copied PostgreSQL database in an isolated private environment that
+uses the same encrypted blob backend or a private restored copy of it.
+
+Minimum checks:
+
+- Compare row counts for every copied table.
+- Compare per-incident child counts for streams, chunks, checkins,
+  incident-token rows, upload operations, and deletion rows.
+- Verify the critical uniqueness constraints by checking for duplicate streamed
+  chunk identities, duplicate legacy chunk identities, duplicate session-token
+  hashes, duplicate viewer-token hashes, duplicate idempotency-key hashes, and
+  duplicate deletion decisions per incident.
+- Confirm every streamed chunk references a stream on the same incident and
+  media type.
+- Confirm every chunk `stored_path` can be opened through the configured blob
+  backend without exposing paths or object keys in public output.
+- Generate completed stream and incident encrypted ZIP bundles in the private
+  environment and confirm manifests match the expected stream and chunk
+  metadata.
+- Confirm missing blob or mismatched metadata drills fail closed rather than
+  producing partial bundles.
+- Test private owner-scoped incident access after preserving
+  `owner_account_id`, and confirm legacy unowned incidents remain admin-only.
+- Test expired and revoked incident tokens and sessions preserve their existing
+  failure behavior.
+- Confirm startup, private `/admin` dashboard access, and private account
+  operations do not print DSNs, credentials, private hostnames, object keys,
+  stored paths, tokens, plaintext, or raw keys.
+
+Only switch `SAFE_METADATA_BACKEND=postgresql` after these checks pass and the
+operator has a documented rollback point.
+
+### Rollback And Restore Limits
+
+Before PostgreSQL accepts writes, rollback is straightforward: restore the
+pre-migration SQLite metadata and matching encrypted blobs, keep
+`SAFE_METADATA_BACKEND=sqlite`, and restart the private deployment from that
+checkpoint.
+
+After PostgreSQL accepts new writes, rollback is no longer a simple
+configuration flip. New incidents, chunks, sessions, token revocations,
+idempotency records, and deletion state may exist only in PostgreSQL. Returning
+to SQLite would require a separate reverse migration design with its own
+quiesce, copy, validation, and restore gates.
+
+If validation fails before the switch, discard the PostgreSQL target and keep
+using the SQLite checkpoint. Do not partially repair copied metadata by editing
+stored paths, object keys, token hashes, chunk hashes, or deletion rows unless a
+separate private recovery plan explains the evidence-preserving outcome.
+
+### Tooling Direction
+
+A future migration tool may be useful only if it is explicit, local-only,
+dry-run friendly, and separate from normal API startup. A safe tool would still
+need to print only safe counts, preserve all migration gates from this runbook,
+refuse to run against a live writing deployment, avoid raw token or secret
+output, and require operator confirmation before writing the PostgreSQL target.
+
+Until that exists, treat this runbook and private restore drills as the source
+of truth for SQLite-to-PostgreSQL migration planning.
 
 ## Testing Expectations
 
@@ -571,14 +736,15 @@ Before any production-cluster recommendation, documentation should cover:
 - PostgreSQL backup method, such as `pg_dump`, physical backup, or managed
   database snapshot
 - backup consistency with local or future object-storage blobs
-- restore into an isolated environment with private bind addresses only
+- restore into an isolated environment with local or otherwise private-boundary
+  bind addresses only
 - migration and restore ordering
 - row-count and checksum-style validation after restore
 - completed stream and incident bundle verification after restore
 - rollback expectations before and after PostgreSQL accepts writes
 
 Restores must not be used as a reason to expose `/v1` publicly. The same
-private/public listener split and token redaction expectations apply.
+main/private-admin listener split and token redaction expectations apply.
 
 ## PostgreSQL-Specific Implementation Sequence
 
@@ -600,5 +766,5 @@ PostgreSQL implementation status and remaining work:
 8. Separately design any SQLite-to-PostgreSQL migration tool or runbook.
 
 Each step should be small and reviewable. Do not bundle PostgreSQL support with
-S3-compatible blob storage, operation-level Valkey/Redis-compatible
-coordination behavior, public account workflows, or key custody work.
+S3-compatible blob storage, unrelated Valkey/Redis-compatible coordination
+behavior, public account workflows, or key custody work.

@@ -131,8 +131,8 @@ Core constraints:
 
 - Keep the backend small, boring, and testable.
 - Prefer Go standard library where practical.
-- Do not expose private `/v1` write/admin APIs publicly.
-- Keep private `/v1` routes and public incident viewer routes on separate listener groups and muxes.
+- Keep main `/v1` routes behind the reviewed deployment boundary and do not route `/v1/admin/...` from public viewer edges.
+- Keep the main API/viewer route tree and the private `/admin` dashboard route tree on separate listener groups and muxes.
 - Treat uploaded chunks as immutable.
 - Evidence bundles are encrypted chunk bundles, not decrypted/playable media exports.
 - Do not log raw viewer tokens, incident tokens, request bodies, uploaded bytes, Authorization headers, plaintext, raw keys, or future token-like values.

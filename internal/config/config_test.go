@@ -11,20 +11,20 @@ import (
 func TestLoadDefaultBindAddrs(t *testing.T) {
 	cfg := loadConfigForTest(t, nil)
 
-	assertStringsEqual(t, cfg.PrivateBindAddrs, []string{"127.0.0.1:8080"})
-	assertStringsEqual(t, cfg.PublicBindAddrs, []string{"127.0.0.1:8081"})
+	assertStringsEqual(t, cfg.MainBindAddrs, []string{"127.0.0.1:8080"})
+	assertStringsEqual(t, cfg.AdminBindAddrs, []string{"127.0.0.1:8081"})
 }
 
 func TestLoadDefaultHTTPTimeouts(t *testing.T) {
 	cfg := loadConfigForTest(t, nil)
 
-	assertTimeoutsEqual(t, cfg.PrivateTimeouts, HTTPTimeouts{
+	assertTimeoutsEqual(t, cfg.MainTimeouts, HTTPTimeouts{
 		ReadHeaderTimeout: 10 * time.Second,
 		ReadTimeout:       0,
 		WriteTimeout:      0,
 		IdleTimeout:       120 * time.Second,
 	})
-	assertTimeoutsEqual(t, cfg.PublicTimeouts, HTTPTimeouts{
+	assertTimeoutsEqual(t, cfg.AdminTimeouts, HTTPTimeouts{
 		ReadHeaderTimeout: 10 * time.Second,
 		ReadTimeout:       30 * time.Second,
 		WriteTimeout:      300 * time.Second,
@@ -57,6 +57,62 @@ func TestLoadDefaultDeletionRetentionConfig(t *testing.T) {
 	if cfg.ClosedIncidentRetention != 0 {
 		t.Fatalf("closed incident retention = %s, want disabled", cfg.ClosedIncidentRetention)
 	}
+	if cfg.TokenMetadataRetention != 0 {
+		t.Fatalf("token metadata retention = %s, want disabled", cfg.TokenMetadataRetention)
+	}
+	if cfg.TombstoneRetention != 0 {
+		t.Fatalf("tombstone retention = %s, want disabled", cfg.TombstoneRetention)
+	}
+	if cfg.TempUploadCleanupAge != 0 {
+		t.Fatalf("temp upload cleanup age = %s, want disabled", cfg.TempUploadCleanupAge)
+	}
+	if cfg.TempUploadCleanupDryRun {
+		t.Fatal("temp upload cleanup dry run should default to false")
+	}
+}
+
+func TestLoadTempUploadCleanupConfig(t *testing.T) {
+	cfg := loadConfigForTest(t, map[string]string{
+		"SAFE_TEMP_UPLOAD_CLEANUP_AGE":     "24h",
+		"SAFE_TEMP_UPLOAD_CLEANUP_DRY_RUN": "true",
+	})
+
+	if cfg.TempUploadCleanupAge != 24*time.Hour {
+		t.Fatalf("temp upload cleanup age = %s, want 24h", cfg.TempUploadCleanupAge)
+	}
+	if !cfg.TempUploadCleanupDryRun {
+		t.Fatal("temp upload cleanup dry run was not enabled")
+	}
+}
+
+func TestLoadUploadCoordinationLeaseTTL(t *testing.T) {
+	cfg := loadConfigForTest(t, nil)
+	if cfg.UploadCoordinationLeaseTTL != 2*time.Minute {
+		t.Fatalf("upload coordination lease ttl = %s, want 2m", cfg.UploadCoordinationLeaseTTL)
+	}
+
+	cfg = loadConfigForTest(t, map[string]string{
+		"SAFE_UPLOAD_COORDINATION_LEASE_TTL": "45s",
+	})
+	if cfg.UploadCoordinationLeaseTTL != 45*time.Second {
+		t.Fatalf("upload coordination lease ttl = %s, want 45s", cfg.UploadCoordinationLeaseTTL)
+	}
+}
+
+func TestLoadUploadCoordinationLeaseTTLRejectsNonPositive(t *testing.T) {
+	for _, value := range []string{"0", "-1s"} {
+		t.Run(value, func(t *testing.T) {
+			_, err := loadConfigForTestErr(t, map[string]string{
+				"SAFE_UPLOAD_COORDINATION_LEASE_TTL": value,
+			})
+			if err == nil {
+				t.Fatal("expected upload coordination ttl error")
+			}
+			if !strings.Contains(err.Error(), "SAFE_UPLOAD_COORDINATION_LEASE_TTL") {
+				t.Fatalf("expected SAFE_UPLOAD_COORDINATION_LEASE_TTL error, got %v", err)
+			}
+		})
+	}
 }
 
 func TestLoadDefaultPublicViewerRateLimitConfig(t *testing.T) {
@@ -72,6 +128,29 @@ func TestLoadDefaultPublicViewerRateLimitConfig(t *testing.T) {
 	}
 	if cfg.PublicViewerRateLimit != want {
 		t.Fatalf("public viewer rate limit = %+v, want %+v", cfg.PublicViewerRateLimit, want)
+	}
+}
+
+func TestLoadDefaultMainAPIRateLimitConfig(t *testing.T) {
+	cfg := loadConfigForTest(t, nil)
+
+	want := MainAPIRateLimitConfig{
+		Enabled:            true,
+		Window:             time.Minute,
+		AuthLimit:          30,
+		BootstrapLimit:     5,
+		AccountLimit:       120,
+		IncidentReadLimit:  300,
+		IncidentWriteLimit: 120,
+		UploadLimit:        120,
+		ReconcileLimit:     120,
+		StreamLimit:        120,
+		TokenLimit:         60,
+		DownloadLimit:      30,
+		AdminLimit:         60,
+	}
+	if cfg.MainAPIRateLimit != want {
+		t.Fatalf("main api rate limit = %+v, want %+v", cfg.MainAPIRateLimit, want)
 	}
 }
 
@@ -472,8 +551,10 @@ func TestLoadSessionTTLFromEnv(t *testing.T) {
 
 func TestLoadDeletionRetentionConfigFromEnv(t *testing.T) {
 	cfg := loadConfigForTest(t, map[string]string{
-		"SAFE_DELETION_WORKER_INTERVAL":  "30s",
-		"SAFE_CLOSED_INCIDENT_RETENTION": "720h",
+		"SAFE_DELETION_WORKER_INTERVAL":     "30s",
+		"SAFE_CLOSED_INCIDENT_RETENTION":    "720h",
+		"SAFE_TOKEN_METADATA_RETENTION":     "168h",
+		"SAFE_DELETION_TOMBSTONE_RETENTION": "2160h",
 	})
 
 	if cfg.DeletionWorkerInterval != 30*time.Second {
@@ -482,12 +563,20 @@ func TestLoadDeletionRetentionConfigFromEnv(t *testing.T) {
 	if cfg.ClosedIncidentRetention != 720*time.Hour {
 		t.Fatalf("closed incident retention = %s, want 720h", cfg.ClosedIncidentRetention)
 	}
+	if cfg.TokenMetadataRetention != 168*time.Hour {
+		t.Fatalf("token metadata retention = %s, want 168h", cfg.TokenMetadataRetention)
+	}
+	if cfg.TombstoneRetention != 2160*time.Hour {
+		t.Fatalf("tombstone retention = %s, want 2160h", cfg.TombstoneRetention)
+	}
 }
 
 func TestLoadCanDisableDeletionWorkerAndRetention(t *testing.T) {
 	cfg := loadConfigForTest(t, map[string]string{
-		"SAFE_DELETION_WORKER_INTERVAL":  "0",
-		"SAFE_CLOSED_INCIDENT_RETENTION": "0",
+		"SAFE_DELETION_WORKER_INTERVAL":     "0",
+		"SAFE_CLOSED_INCIDENT_RETENTION":    "0",
+		"SAFE_TOKEN_METADATA_RETENTION":     "0",
+		"SAFE_DELETION_TOMBSTONE_RETENTION": "0",
 	})
 
 	if cfg.DeletionWorkerInterval != 0 {
@@ -495,6 +584,12 @@ func TestLoadCanDisableDeletionWorkerAndRetention(t *testing.T) {
 	}
 	if cfg.ClosedIncidentRetention != 0 {
 		t.Fatalf("closed incident retention = %s, want disabled", cfg.ClosedIncidentRetention)
+	}
+	if cfg.TokenMetadataRetention != 0 {
+		t.Fatalf("token metadata retention = %s, want disabled", cfg.TokenMetadataRetention)
+	}
+	if cfg.TombstoneRetention != 0 {
+		t.Fatalf("tombstone retention = %s, want disabled", cfg.TombstoneRetention)
 	}
 }
 
@@ -518,6 +613,43 @@ func TestLoadPublicViewerRateLimitConfigFromEnv(t *testing.T) {
 	}
 	if cfg.PublicViewerRateLimit != want {
 		t.Fatalf("public viewer rate limit = %+v, want %+v", cfg.PublicViewerRateLimit, want)
+	}
+}
+
+func TestLoadMainAPIRateLimitConfigFromEnv(t *testing.T) {
+	cfg := loadConfigForTest(t, map[string]string{
+		"SAFE_MAIN_API_RATE_LIMIT_ENABLED":        "false",
+		"SAFE_MAIN_API_RATE_LIMIT_WINDOW":         "30s",
+		"SAFE_MAIN_API_RATE_LIMIT_AUTH":           "11",
+		"SAFE_MAIN_API_RATE_LIMIT_BOOTSTRAP":      "12",
+		"SAFE_MAIN_API_RATE_LIMIT_ACCOUNT":        "13",
+		"SAFE_MAIN_API_RATE_LIMIT_INCIDENT_READ":  "14",
+		"SAFE_MAIN_API_RATE_LIMIT_INCIDENT_WRITE": "15",
+		"SAFE_MAIN_API_RATE_LIMIT_UPLOAD":         "16",
+		"SAFE_MAIN_API_RATE_LIMIT_RECONCILE":      "17",
+		"SAFE_MAIN_API_RATE_LIMIT_STREAM":         "18",
+		"SAFE_MAIN_API_RATE_LIMIT_TOKEN":          "19",
+		"SAFE_MAIN_API_RATE_LIMIT_DOWNLOAD":       "20",
+		"SAFE_MAIN_API_RATE_LIMIT_ADMIN":          "21",
+	})
+
+	want := MainAPIRateLimitConfig{
+		Enabled:            false,
+		Window:             30 * time.Second,
+		AuthLimit:          11,
+		BootstrapLimit:     12,
+		AccountLimit:       13,
+		IncidentReadLimit:  14,
+		IncidentWriteLimit: 15,
+		UploadLimit:        16,
+		ReconcileLimit:     17,
+		StreamLimit:        18,
+		TokenLimit:         19,
+		DownloadLimit:      20,
+		AdminLimit:         21,
+	}
+	if cfg.MainAPIRateLimit != want {
+		t.Fatalf("main api rate limit = %+v, want %+v", cfg.MainAPIRateLimit, want)
 	}
 }
 
@@ -554,6 +686,65 @@ func TestLoadRejectsInvalidPublicViewerRateLimitConfig(t *testing.T) {
 			}
 			if !strings.Contains(err.Error(), "SAFE_PUBLIC_VIEWER_RATE_LIMIT_") {
 				t.Fatalf("expected SAFE_PUBLIC_VIEWER_RATE_LIMIT error, got %v", err)
+			}
+		})
+	}
+}
+
+func TestLoadRejectsInvalidMainAPIRateLimitConfig(t *testing.T) {
+	tests := map[string]map[string]string{
+		"invalid enabled": {
+			"SAFE_MAIN_API_RATE_LIMIT_ENABLED": "sometimes",
+		},
+		"empty window": {
+			"SAFE_MAIN_API_RATE_LIMIT_WINDOW": "",
+		},
+		"zero enabled window": {
+			"SAFE_MAIN_API_RATE_LIMIT_WINDOW": "0",
+		},
+		"invalid auth": {
+			"SAFE_MAIN_API_RATE_LIMIT_AUTH": "many",
+		},
+		"negative bootstrap": {
+			"SAFE_MAIN_API_RATE_LIMIT_BOOTSTRAP": "-1",
+		},
+		"empty account": {
+			"SAFE_MAIN_API_RATE_LIMIT_ACCOUNT": "",
+		},
+		"invalid incident read": {
+			"SAFE_MAIN_API_RATE_LIMIT_INCIDENT_READ": "lots",
+		},
+		"invalid incident write": {
+			"SAFE_MAIN_API_RATE_LIMIT_INCIDENT_WRITE": "lots",
+		},
+		"invalid upload": {
+			"SAFE_MAIN_API_RATE_LIMIT_UPLOAD": "lots",
+		},
+		"invalid reconcile": {
+			"SAFE_MAIN_API_RATE_LIMIT_RECONCILE": "lots",
+		},
+		"invalid stream": {
+			"SAFE_MAIN_API_RATE_LIMIT_STREAM": "lots",
+		},
+		"invalid token": {
+			"SAFE_MAIN_API_RATE_LIMIT_TOKEN": "lots",
+		},
+		"invalid download": {
+			"SAFE_MAIN_API_RATE_LIMIT_DOWNLOAD": "lots",
+		},
+		"invalid admin": {
+			"SAFE_MAIN_API_RATE_LIMIT_ADMIN": "lots",
+		},
+	}
+
+	for name, env := range tests {
+		t.Run(name, func(t *testing.T) {
+			_, err := loadConfigForTestErr(t, env)
+			if err == nil {
+				t.Fatal("expected main api rate limit config error")
+			}
+			if !strings.Contains(err.Error(), "SAFE_MAIN_API_RATE_LIMIT_") {
+				t.Fatalf("expected SAFE_MAIN_API_RATE_LIMIT error, got %v", err)
 			}
 		})
 	}
@@ -614,6 +805,12 @@ func TestLoadRejectsInvalidDeletionRetentionConfig(t *testing.T) {
 		"empty retention": {
 			"SAFE_CLOSED_INCIDENT_RETENTION": "",
 		},
+		"invalid token metadata retention": {
+			"SAFE_TOKEN_METADATA_RETENTION": "later",
+		},
+		"negative tombstone retention": {
+			"SAFE_DELETION_TOMBSTONE_RETENTION": "-1h",
+		},
 	}
 
 	for name, env := range tests {
@@ -623,7 +820,9 @@ func TestLoadRejectsInvalidDeletionRetentionConfig(t *testing.T) {
 				t.Fatal("expected deletion retention config error")
 			}
 			if !strings.Contains(err.Error(), "SAFE_DELETION_WORKER_INTERVAL") &&
-				!strings.Contains(err.Error(), "SAFE_CLOSED_INCIDENT_RETENTION") {
+				!strings.Contains(err.Error(), "SAFE_CLOSED_INCIDENT_RETENTION") &&
+				!strings.Contains(err.Error(), "SAFE_TOKEN_METADATA_RETENTION") &&
+				!strings.Contains(err.Error(), "SAFE_DELETION_TOMBSTONE_RETENTION") {
 				t.Fatalf("expected deletion env var parse context, got %v", err)
 			}
 		})
@@ -632,23 +831,23 @@ func TestLoadRejectsInvalidDeletionRetentionConfig(t *testing.T) {
 
 func TestLoadHTTPTimeoutsFromEnv(t *testing.T) {
 	cfg := loadConfigForTest(t, map[string]string{
-		"SAFE_PRIVATE_READ_HEADER_TIMEOUT": "11s",
-		"SAFE_PRIVATE_READ_TIMEOUT":        "0",
-		"SAFE_PRIVATE_WRITE_TIMEOUT":       "0s",
-		"SAFE_PRIVATE_IDLE_TIMEOUT":        "2m",
-		"SAFE_PUBLIC_READ_HEADER_TIMEOUT":  "12s",
-		"SAFE_PUBLIC_READ_TIMEOUT":         "31s",
-		"SAFE_PUBLIC_WRITE_TIMEOUT":        "5m",
-		"SAFE_PUBLIC_IDLE_TIMEOUT":         "3m",
+		"SAFE_MAIN_READ_HEADER_TIMEOUT":  "11s",
+		"SAFE_MAIN_READ_TIMEOUT":         "0",
+		"SAFE_MAIN_WRITE_TIMEOUT":        "0s",
+		"SAFE_MAIN_IDLE_TIMEOUT":         "2m",
+		"SAFE_ADMIN_READ_HEADER_TIMEOUT": "12s",
+		"SAFE_ADMIN_READ_TIMEOUT":        "31s",
+		"SAFE_ADMIN_WRITE_TIMEOUT":       "5m",
+		"SAFE_ADMIN_IDLE_TIMEOUT":        "3m",
 	})
 
-	assertTimeoutsEqual(t, cfg.PrivateTimeouts, HTTPTimeouts{
+	assertTimeoutsEqual(t, cfg.MainTimeouts, HTTPTimeouts{
 		ReadHeaderTimeout: 11 * time.Second,
 		ReadTimeout:       0,
 		WriteTimeout:      0,
 		IdleTimeout:       2 * time.Minute,
 	})
-	assertTimeoutsEqual(t, cfg.PublicTimeouts, HTTPTimeouts{
+	assertTimeoutsEqual(t, cfg.AdminTimeouts, HTTPTimeouts{
 		ReadHeaderTimeout: 12 * time.Second,
 		ReadTimeout:       31 * time.Second,
 		WriteTimeout:      5 * time.Minute,
@@ -659,13 +858,13 @@ func TestLoadHTTPTimeoutsFromEnv(t *testing.T) {
 func TestLoadRejectsInvalidHTTPTimeouts(t *testing.T) {
 	tests := map[string]map[string]string{
 		"negative": {
-			"SAFE_PRIVATE_READ_TIMEOUT": "-1s",
+			"SAFE_MAIN_READ_TIMEOUT": "-1s",
 		},
 		"invalid": {
-			"SAFE_PUBLIC_WRITE_TIMEOUT": "soon",
+			"SAFE_ADMIN_WRITE_TIMEOUT": "soon",
 		},
 		"empty": {
-			"SAFE_PUBLIC_IDLE_TIMEOUT": "",
+			"SAFE_ADMIN_IDLE_TIMEOUT": "",
 		},
 	}
 
@@ -684,59 +883,89 @@ func TestLoadRejectsInvalidHTTPTimeouts(t *testing.T) {
 
 func TestLoadSingularBindAddrs(t *testing.T) {
 	cfg := loadConfigForTest(t, map[string]string{
-		"SAFE_PRIVATE_BIND_ADDR": "10.66.0.1:8080",
-		"SAFE_PUBLIC_BIND_ADDR":  "192.168.1.20:8081",
+		"SAFE_MAIN_BIND_ADDR":  "10.66.0.1:8080",
+		"SAFE_ADMIN_BIND_ADDR": "192.168.1.20:8081",
 	})
 
-	assertStringsEqual(t, cfg.PrivateBindAddrs, []string{"10.66.0.1:8080"})
-	assertStringsEqual(t, cfg.PublicBindAddrs, []string{"192.168.1.20:8081"})
+	assertStringsEqual(t, cfg.MainBindAddrs, []string{"10.66.0.1:8080"})
+	assertStringsEqual(t, cfg.AdminBindAddrs, []string{"192.168.1.20:8081"})
 }
 
 func TestLoadPluralBindAddrs(t *testing.T) {
 	cfg := loadConfigForTest(t, map[string]string{
-		"SAFE_PRIVATE_BIND_ADDRS": "127.0.0.1:8080,10.66.0.1:8080",
-		"SAFE_PUBLIC_BIND_ADDRS":  "127.0.0.1:8081,192.168.1.20:8081",
+		"SAFE_MAIN_BIND_ADDRS":  "127.0.0.1:8080,10.66.0.1:8080",
+		"SAFE_ADMIN_BIND_ADDRS": "127.0.0.1:8081,192.168.1.20:8081",
 	})
 
-	assertStringsEqual(t, cfg.PrivateBindAddrs, []string{"127.0.0.1:8080", "10.66.0.1:8080"})
-	assertStringsEqual(t, cfg.PublicBindAddrs, []string{"127.0.0.1:8081", "192.168.1.20:8081"})
+	assertStringsEqual(t, cfg.MainBindAddrs, []string{"127.0.0.1:8080", "10.66.0.1:8080"})
+	assertStringsEqual(t, cfg.AdminBindAddrs, []string{"127.0.0.1:8081", "192.168.1.20:8081"})
 }
 
 func TestLoadPluralBindAddrsTakePrecedenceOverSingular(t *testing.T) {
 	cfg := loadConfigForTest(t, map[string]string{
-		"SAFE_PRIVATE_BIND_ADDR":  "10.0.0.1:8080",
-		"SAFE_PRIVATE_BIND_ADDRS": "127.0.0.1:8080,10.66.0.1:8080",
-		"SAFE_PUBLIC_BIND_ADDR":   "10.0.0.2:8081",
-		"SAFE_PUBLIC_BIND_ADDRS":  "127.0.0.1:8081",
+		"SAFE_MAIN_BIND_ADDR":   "10.0.0.1:8080",
+		"SAFE_MAIN_BIND_ADDRS":  "127.0.0.1:8080,10.66.0.1:8080",
+		"SAFE_ADMIN_BIND_ADDR":  "10.0.0.2:8081",
+		"SAFE_ADMIN_BIND_ADDRS": "127.0.0.1:8081",
 	})
 
-	assertStringsEqual(t, cfg.PrivateBindAddrs, []string{"127.0.0.1:8080", "10.66.0.1:8080"})
-	assertStringsEqual(t, cfg.PublicBindAddrs, []string{"127.0.0.1:8081"})
+	assertStringsEqual(t, cfg.MainBindAddrs, []string{"127.0.0.1:8080", "10.66.0.1:8080"})
+	assertStringsEqual(t, cfg.AdminBindAddrs, []string{"127.0.0.1:8081"})
 }
 
 func TestLoadBindAddrsTrimWhitespace(t *testing.T) {
 	cfg := loadConfigForTest(t, map[string]string{
-		"SAFE_PRIVATE_BIND_ADDRS": " 127.0.0.1:8080 , 10.66.0.1:8080 ",
-		"SAFE_PUBLIC_BIND_ADDRS":  " 127.0.0.1:8081 ",
+		"SAFE_MAIN_BIND_ADDRS":  " 127.0.0.1:8080 , 10.66.0.1:8080 ",
+		"SAFE_ADMIN_BIND_ADDRS": " 127.0.0.1:8081 ",
 	})
 
-	assertStringsEqual(t, cfg.PrivateBindAddrs, []string{"127.0.0.1:8080", "10.66.0.1:8080"})
-	assertStringsEqual(t, cfg.PublicBindAddrs, []string{"127.0.0.1:8081"})
+	assertStringsEqual(t, cfg.MainBindAddrs, []string{"127.0.0.1:8080", "10.66.0.1:8080"})
+	assertStringsEqual(t, cfg.AdminBindAddrs, []string{"127.0.0.1:8081"})
+}
+
+func TestLoadLegacyPrivateBindAddrsConfigureMainListener(t *testing.T) {
+	cfg := loadConfigForTest(t, map[string]string{
+		"SAFE_PRIVATE_BIND_ADDRS": "127.0.0.1:8080,10.66.0.1:8080",
+	})
+
+	assertStringsEqual(t, cfg.MainBindAddrs, []string{"127.0.0.1:8080", "10.66.0.1:8080"})
+	assertStringsEqual(t, cfg.AdminBindAddrs, []string{"127.0.0.1:8081"})
+}
+
+func TestLoadRejectsLegacyPublicBindAddrs(t *testing.T) {
+	tests := map[string]map[string]string{
+		"plural":   {"SAFE_PUBLIC_BIND_ADDRS": "0.0.0.0:8081"},
+		"singular": {"SAFE_PUBLIC_BIND_ADDR": "0.0.0.0:8081"},
+	}
+
+	for name, env := range tests {
+		t.Run(name, func(t *testing.T) {
+			_, err := loadConfigForTestErr(t, env)
+			if err == nil {
+				t.Fatal("expected legacy public bind config error")
+			}
+			if !strings.Contains(err.Error(), "SAFE_PUBLIC_BIND_ADDR") ||
+				!strings.Contains(err.Error(), "SAFE_MAIN_BIND_ADDRS") ||
+				!strings.Contains(err.Error(), "SAFE_ADMIN_BIND_ADDRS") {
+				t.Fatalf("expected migration guidance, got %v", err)
+			}
+		})
+	}
 }
 
 func TestLoadBindAddrsRejectEmptyEntries(t *testing.T) {
 	tests := map[string]map[string]string{
 		"fully empty private list": {
-			"SAFE_PRIVATE_BIND_ADDRS": "",
+			"SAFE_MAIN_BIND_ADDRS": "",
 		},
-		"comma-only public list": {
-			"SAFE_PUBLIC_BIND_ADDRS": ",",
+		"comma-only admin list": {
+			"SAFE_ADMIN_BIND_ADDRS": ",",
 		},
 		"middle empty entry": {
-			"SAFE_PRIVATE_BIND_ADDRS": "127.0.0.1:8080,,10.66.0.1:8080",
+			"SAFE_MAIN_BIND_ADDRS": "127.0.0.1:8080,,10.66.0.1:8080",
 		},
 		"singular empty entry": {
-			"SAFE_PRIVATE_BIND_ADDR": "",
+			"SAFE_MAIN_BIND_ADDR": "",
 		},
 	}
 
@@ -831,6 +1060,10 @@ func loadConfigForTest(t *testing.T, env map[string]string) Config {
 func loadConfigForTestErr(t *testing.T, env map[string]string) (Config, error) {
 	t.Helper()
 	names := []string{
+		"SAFE_MAIN_BIND_ADDRS",
+		"SAFE_ADMIN_BIND_ADDRS",
+		"SAFE_MAIN_BIND_ADDR",
+		"SAFE_ADMIN_BIND_ADDR",
 		"SAFE_PRIVATE_BIND_ADDRS",
 		"SAFE_PUBLIC_BIND_ADDRS",
 		"SAFE_PRIVATE_BIND_ADDR",
@@ -846,12 +1079,38 @@ func loadConfigForTestErr(t *testing.T, env map[string]string) (Config, error) {
 		"SAFE_AUTH_BOOTSTRAP_SECRET",
 		"SAFE_DELETION_WORKER_INTERVAL",
 		"SAFE_CLOSED_INCIDENT_RETENTION",
+		"SAFE_TOKEN_METADATA_RETENTION",
+		"SAFE_DELETION_TOMBSTONE_RETENTION",
+		"SAFE_TEMP_UPLOAD_CLEANUP_AGE",
+		"SAFE_TEMP_UPLOAD_CLEANUP_DRY_RUN",
+		"SAFE_UPLOAD_COORDINATION_LEASE_TTL",
+		"SAFE_MAIN_API_RATE_LIMIT_ENABLED",
+		"SAFE_MAIN_API_RATE_LIMIT_WINDOW",
+		"SAFE_MAIN_API_RATE_LIMIT_AUTH",
+		"SAFE_MAIN_API_RATE_LIMIT_BOOTSTRAP",
+		"SAFE_MAIN_API_RATE_LIMIT_ACCOUNT",
+		"SAFE_MAIN_API_RATE_LIMIT_INCIDENT_READ",
+		"SAFE_MAIN_API_RATE_LIMIT_INCIDENT_WRITE",
+		"SAFE_MAIN_API_RATE_LIMIT_UPLOAD",
+		"SAFE_MAIN_API_RATE_LIMIT_RECONCILE",
+		"SAFE_MAIN_API_RATE_LIMIT_STREAM",
+		"SAFE_MAIN_API_RATE_LIMIT_TOKEN",
+		"SAFE_MAIN_API_RATE_LIMIT_DOWNLOAD",
+		"SAFE_MAIN_API_RATE_LIMIT_ADMIN",
 		"SAFE_PUBLIC_VIEWER_RATE_LIMIT_ENABLED",
 		"SAFE_PUBLIC_VIEWER_RATE_LIMIT_WINDOW",
 		"SAFE_PUBLIC_VIEWER_RATE_LIMIT_PAGE",
 		"SAFE_PUBLIC_VIEWER_RATE_LIMIT_DATA",
 		"SAFE_PUBLIC_VIEWER_RATE_LIMIT_DOWNLOAD",
 		"SAFE_PUBLIC_VIEWER_RATE_LIMIT_STATIC",
+		"SAFE_MAIN_READ_HEADER_TIMEOUT",
+		"SAFE_MAIN_READ_TIMEOUT",
+		"SAFE_MAIN_WRITE_TIMEOUT",
+		"SAFE_MAIN_IDLE_TIMEOUT",
+		"SAFE_ADMIN_READ_HEADER_TIMEOUT",
+		"SAFE_ADMIN_READ_TIMEOUT",
+		"SAFE_ADMIN_WRITE_TIMEOUT",
+		"SAFE_ADMIN_IDLE_TIMEOUT",
 		"SAFE_PRIVATE_READ_HEADER_TIMEOUT",
 		"SAFE_PRIVATE_READ_TIMEOUT",
 		"SAFE_PRIVATE_WRITE_TIMEOUT",

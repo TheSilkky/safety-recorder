@@ -19,7 +19,9 @@ Planned incident modes include emergency incidents, interaction records, safety 
 
 ## Current Viewer Behaviour
 
-The current incident viewer is token-scoped and read-only. Public routes are mounted only on the public incident viewer listener, not on the private `/v1` listener.
+The current incident viewer is token-scoped and read-only. Viewer routes are
+mounted on the main listener alongside authenticated `/v1` routes. The
+private-admin dashboard is mounted on the separate private-admin listener.
 
 Current behavior:
 

@@ -57,7 +57,7 @@ Check for:
 - ZIP manifest correctness
 - server-controlled ZIP entry names
 - download routes exposing filesystem paths
-- private `/v1` routes mounted on public incident viewer server
+- private write/admin routes routed from public incident viewer edges
 - public incident viewer routes mutating data
 - raw token logging
 - request body logging

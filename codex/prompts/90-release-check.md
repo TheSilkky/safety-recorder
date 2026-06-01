@@ -117,8 +117,8 @@ Check:
 - GitHub Actions workflow names and badges are correct
 - environment variable docs match implementation
 - bind address variables are documented
-- public/private listener separation is documented
-- private `/v1` API exposure warnings are clear
+- main/private-admin listener separation is documented
+- main `/v1` API exposure warnings are clear
 - incident viewer token behaviour is documented
 - completed evidence bundle limitations are documented
 - simulator commands still work
@@ -136,7 +136,7 @@ Check:
 
 Confirm:
 
-- private write/admin routes are not mounted on public viewer server
+- private write/admin routes are blocked from public viewer edges
 - public incident viewer routes are read-only
 - raw incident tokens are not logged
 - request bodies are not logged
@@ -177,10 +177,11 @@ In another terminal, create the first local admin if the test database does not
 already have one:
 
 ```bash
-curl -sS -X POST http://127.0.0.1:8080/v1/bootstrap/admin \
-  -H 'Content-Type: application/json' \
-  -H 'X-Proofline-Bootstrap-Secret: replace-with-local-bootstrap-secret' \
-  -d '{"username":"admin","password":"replace-with-a-long-local-password"}'
+curl -sS -X POST http://127.0.0.1:8081/admin/bootstrap \
+  -H 'Content-Type: application/x-www-form-urlencoded' \
+  --data-urlencode 'bootstrap_secret=replace-with-local-bootstrap-secret' \
+  --data-urlencode 'username=admin' \
+  --data-urlencode 'password=replace-with-a-long-local-password'
 ```
 
 Then run the simulator with account credentials:

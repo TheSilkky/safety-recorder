@@ -207,7 +207,7 @@ type CreateChunkParams struct {
 	SHA256Hex        string
 }
 
-// UploadOperation records durable idempotency state for one private write
+// UploadOperation records durable idempotency state for one authenticated write
 // operation. IdempotencyKeyHash stores a SHA-256 hash, never the raw key.
 type UploadOperation struct {
 	ID                 string
@@ -275,6 +275,45 @@ type IncidentDeletionStatus struct {
 	UpdatedAt      time.Time  `json:"updated_at"`
 	StartedAt      *time.Time `json:"started_at,omitempty"`
 	CompletedAt    *time.Time `json:"completed_at,omitempty"`
+}
+
+// RetentionDeletionCandidate is a safe local-operator preview item for a
+// closed incident that would be selected by closed-incident retention.
+type RetentionDeletionCandidate struct {
+	IncidentID string    `json:"incident_id"`
+	UpdatedAt  time.Time `json:"updated_at"`
+}
+
+// IncidentDeletionStateCount is a safe aggregate count for deletion decisions.
+type IncidentDeletionStateCount struct {
+	State string `json:"state"`
+	Count int    `json:"count"`
+}
+
+// IncidentDeletionErrorCount is a safe aggregate retry category for deletion
+// decisions. ErrorCode is a controlled internal category, not a backend detail.
+type IncidentDeletionErrorCount struct {
+	State     string `json:"state"`
+	ErrorCode string `json:"error_code"`
+	Count     int    `json:"count"`
+}
+
+// IncidentDeletionItemStateCount is a safe aggregate count for internal
+// deletion items. It deliberately excludes stored paths.
+type IncidentDeletionItemStateCount struct {
+	State     string `json:"state"`
+	ErrorCode string `json:"error_code,omitempty"`
+	Count     int    `json:"count"`
+}
+
+// IncidentDeletionJobStatus is local-operator status output for deletion jobs.
+// It excludes stored paths, token hashes, request bodies, uploaded bytes, and
+// evidence metadata.
+type IncidentDeletionJobStatus struct {
+	DecisionStateCounts []IncidentDeletionStateCount     `json:"decision_state_counts"`
+	DecisionErrorCounts []IncidentDeletionErrorCount     `json:"decision_error_counts"`
+	ItemStateCounts     []IncidentDeletionItemStateCount `json:"item_state_counts"`
+	RunnableJobs        []IncidentDeletionStatus         `json:"runnable_jobs"`
 }
 
 // IncidentDeletionItem is internal retry state for one server-controlled stored

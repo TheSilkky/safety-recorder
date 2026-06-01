@@ -19,6 +19,8 @@ const (
 // Repository is the metadata boundary required by the deletion worker.
 type Repository interface {
 	QueueRetentionIncidentDeletions(ctx context.Context, cutoff time.Time, limit int) (int, error)
+	PruneIncidentTokenMetadata(ctx context.Context, cutoff time.Time, limit int) (int, error)
+	PruneIncidentDeletionTombstones(ctx context.Context, cutoff time.Time, limit int) (int, error)
 	ListRunnableIncidentDeletions(ctx context.Context, limit int, staleDeletingBefore time.Time) ([]incidents.IncidentDeletionStatus, error)
 	MarkIncidentDeletionDeleting(ctx context.Context, decisionID string, staleDeletingBefore time.Time) (incidents.IncidentDeletionStatus, error)
 	ListIncidentDeletionItems(ctx context.Context, decisionID string) ([]incidents.IncidentDeletionItem, error)
@@ -32,6 +34,8 @@ type Repository interface {
 type Options struct {
 	Interval                time.Duration
 	ClosedIncidentRetention time.Duration
+	TokenMetadataRetention  time.Duration
+	TombstoneRetention      time.Duration
 	DeletingRetryAfter      time.Duration
 	BatchSize               int
 	Logger                  *slog.Logger
@@ -39,10 +43,12 @@ type Options struct {
 
 // Summary reports non-sensitive worker counts for tests and logs.
 type Summary struct {
-	RetentionQueued int
-	Processed       int
-	Completed       int
-	Failed          int
+	RetentionQueued     int
+	TokenMetadataPruned int
+	TombstonesPruned    int
+	Processed           int
+	Completed           int
+	Failed              int
 }
 
 // Worker processes durable incident deletion decisions and optional closed
@@ -103,9 +109,15 @@ func (w *Worker) runAndLog(ctx context.Context) {
 		w.logger.Warn("incident deletion maintenance failed", "error_category", deletionMaintenanceErrorCategory(err))
 		return
 	}
-	if summary.RetentionQueued > 0 || summary.Completed > 0 || summary.Failed > 0 {
+	if summary.RetentionQueued > 0 ||
+		summary.TokenMetadataPruned > 0 ||
+		summary.TombstonesPruned > 0 ||
+		summary.Completed > 0 ||
+		summary.Failed > 0 {
 		w.logger.Info("incident deletion maintenance completed",
 			"retention_queued", summary.RetentionQueued,
+			"token_metadata_pruned", summary.TokenMetadataPruned,
+			"tombstones_pruned", summary.TombstonesPruned,
 			"processed", summary.Processed,
 			"completed", summary.Completed,
 			"failed", summary.Failed,
@@ -125,6 +137,22 @@ func (w *Worker) RunOnce(ctx context.Context) (Summary, error) {
 			return summary, err
 		}
 		summary.RetentionQueued = queued
+	}
+	if w.opts.TokenMetadataRetention > 0 {
+		cutoff := time.Now().UTC().Add(-w.opts.TokenMetadataRetention)
+		pruned, err := w.repo.PruneIncidentTokenMetadata(ctx, cutoff, w.opts.BatchSize)
+		if err != nil {
+			return summary, err
+		}
+		summary.TokenMetadataPruned = pruned
+	}
+	if w.opts.TombstoneRetention > 0 {
+		cutoff := time.Now().UTC().Add(-w.opts.TombstoneRetention)
+		pruned, err := w.repo.PruneIncidentDeletionTombstones(ctx, cutoff, w.opts.BatchSize)
+		if err != nil {
+			return summary, err
+		}
+		summary.TombstonesPruned = pruned
 	}
 
 	staleDeletingBefore := time.Now().UTC().Add(-w.opts.DeletingRetryAfter)

@@ -1,18 +1,35 @@
 package config
 
 import (
+	"fmt"
 	"time"
 )
 
 const (
-	defaultPrivateBindAddr                    = "127.0.0.1:8080"
-	defaultPublicBindAddr                     = "127.0.0.1:8081"
+	defaultMainBindAddr                       = "127.0.0.1:8080"
+	defaultAdminBindAddr                      = "127.0.0.1:8081"
 	defaultDataDir                            = "./data"
 	defaultDBPath                             = "./data/safety.db"
 	defaultMaxUploadBytes                     = int64(250 * 1024 * 1024)
 	defaultIncidentTokenTTL                   = 24 * time.Hour
 	defaultSessionTTL                         = 12 * time.Hour
 	defaultDeletionInterval                   = time.Minute
+	defaultTempUploadCleanupAge               = 0
+	defaultTempUploadCleanupDryRun            = false
+	defaultUploadCoordinationLeaseTTL         = 2 * time.Minute
+	defaultMainAPIRateLimitEnabled            = true
+	defaultMainAPIRateLimitWindow             = time.Minute
+	defaultMainAPIRateLimitAuthLimit          = 30
+	defaultMainAPIRateLimitBootstrapLimit     = 5
+	defaultMainAPIRateLimitAccountLimit       = 120
+	defaultMainAPIRateLimitIncidentReadLimit  = 300
+	defaultMainAPIRateLimitIncidentWriteLimit = 120
+	defaultMainAPIRateLimitUploadLimit        = 120
+	defaultMainAPIRateLimitReconcileLimit     = 120
+	defaultMainAPIRateLimitStreamLimit        = 120
+	defaultMainAPIRateLimitTokenLimit         = 60
+	defaultMainAPIRateLimitDownloadLimit      = 30
+	defaultMainAPIRateLimitAdminLimit         = 60
 	defaultPublicViewerRateLimitEnabled       = true
 	defaultPublicViewerRateLimitWindow        = time.Minute
 	defaultPublicViewerRateLimitPageLimit     = 60
@@ -23,36 +40,42 @@ const (
 	// so configured upload limits cannot overflow request-size arithmetic.
 	maxConfiguredUploadBytes = int64(1<<63 - 1 - 1024*1024)
 
-	defaultPrivateReadHeaderTimeout = 10 * time.Second
-	defaultPrivateReadTimeout       = 0
-	defaultPrivateWriteTimeout      = 0
-	defaultPrivateIdleTimeout       = 120 * time.Second
+	defaultMainReadHeaderTimeout = 10 * time.Second
+	defaultMainReadTimeout       = 0
+	defaultMainWriteTimeout      = 0
+	defaultMainIdleTimeout       = 120 * time.Second
 
-	defaultPublicReadHeaderTimeout = 10 * time.Second
-	defaultPublicReadTimeout       = 30 * time.Second
-	defaultPublicWriteTimeout      = 300 * time.Second
-	defaultPublicIdleTimeout       = 120 * time.Second
+	defaultAdminReadHeaderTimeout = 10 * time.Second
+	defaultAdminReadTimeout       = 30 * time.Second
+	defaultAdminWriteTimeout      = 300 * time.Second
+	defaultAdminIdleTimeout       = 120 * time.Second
 )
 
 // Config contains the runtime settings needed by the API server.
 type Config struct {
-	PrivateBindAddrs        []string
-	PublicBindAddrs         []string
-	Backends                BackendSelection
-	Postgres                PostgresConfig
-	S3Blob                  S3BlobConfig
-	Valkey                  ValkeyConfig
-	DataDir                 string
-	DBPath                  string
-	MaxUploadBytes          int64
-	DefaultIncidentTokenTTL time.Duration
-	SessionTTL              time.Duration
-	AuthBootstrapSecret     string
-	DeletionWorkerInterval  time.Duration
-	ClosedIncidentRetention time.Duration
-	PublicViewerRateLimit   PublicViewerRateLimitConfig
-	PrivateTimeouts         HTTPTimeouts
-	PublicTimeouts          HTTPTimeouts
+	MainBindAddrs              []string
+	AdminBindAddrs             []string
+	Backends                   BackendSelection
+	Postgres                   PostgresConfig
+	S3Blob                     S3BlobConfig
+	Valkey                     ValkeyConfig
+	DataDir                    string
+	DBPath                     string
+	MaxUploadBytes             int64
+	DefaultIncidentTokenTTL    time.Duration
+	SessionTTL                 time.Duration
+	AuthBootstrapSecret        string
+	DeletionWorkerInterval     time.Duration
+	ClosedIncidentRetention    time.Duration
+	TokenMetadataRetention     time.Duration
+	TombstoneRetention         time.Duration
+	TempUploadCleanupAge       time.Duration
+	TempUploadCleanupDryRun    bool
+	UploadCoordinationLeaseTTL time.Duration
+	MainAPIRateLimit           MainAPIRateLimitConfig
+	PublicViewerRateLimit      PublicViewerRateLimitConfig
+	MainTimeouts               HTTPTimeouts
+	AdminTimeouts              HTTPTimeouts
 }
 
 // BackendSelection records the configured storage and coordination backends.
@@ -94,6 +117,24 @@ type PostgresConfig struct {
 	ConnMaxLifetime time.Duration
 }
 
+// MainAPIRateLimitConfig contains app-level rate limits for main API route
+// classes that must be controlled before public exposure.
+type MainAPIRateLimitConfig struct {
+	Enabled            bool
+	Window             time.Duration
+	AuthLimit          int
+	BootstrapLimit     int
+	AccountLimit       int
+	IncidentReadLimit  int
+	IncidentWriteLimit int
+	UploadLimit        int
+	ReconcileLimit     int
+	StreamLimit        int
+	TokenLimit         int
+	DownloadLimit      int
+	AdminLimit         int
+}
+
 // PublicViewerRateLimitConfig contains app-level rate limits for public viewer
 // route classes.
 type PublicViewerRateLimitConfig struct {
@@ -116,11 +157,11 @@ type HTTPTimeouts struct {
 // Load reads configuration from environment variables and applies defaults for
 // unset values.
 func Load() (Config, error) {
-	privateBindAddrs, err := bindAddrsFromEnv("SAFE_PRIVATE_BIND_ADDRS", "SAFE_PRIVATE_BIND_ADDR", defaultPrivateBindAddr)
+	mainBindAddrs, err := mainBindAddrsFromEnv()
 	if err != nil {
 		return Config{}, err
 	}
-	publicBindAddrs, err := bindAddrsFromEnv("SAFE_PUBLIC_BIND_ADDRS", "SAFE_PUBLIC_BIND_ADDR", defaultPublicBindAddr)
+	adminBindAddrs, err := adminBindAddrsFromEnv()
 	if err != nil {
 		return Config{}, err
 	}
@@ -162,38 +203,71 @@ func Load() (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
+	tokenMetadataRetention, err := durationFromEnv("SAFE_TOKEN_METADATA_RETENTION", 0)
+	if err != nil {
+		return Config{}, err
+	}
+	tombstoneRetention, err := durationFromEnv("SAFE_DELETION_TOMBSTONE_RETENTION", 0)
+	if err != nil {
+		return Config{}, err
+	}
+	tempUploadCleanupAge, err := durationFromEnv("SAFE_TEMP_UPLOAD_CLEANUP_AGE", defaultTempUploadCleanupAge)
+	if err != nil {
+		return Config{}, err
+	}
+	tempUploadCleanupDryRun, err := boolFromEnv("SAFE_TEMP_UPLOAD_CLEANUP_DRY_RUN", defaultTempUploadCleanupDryRun)
+	if err != nil {
+		return Config{}, err
+	}
+	uploadCoordinationLeaseTTL, err := durationFromEnv("SAFE_UPLOAD_COORDINATION_LEASE_TTL", defaultUploadCoordinationLeaseTTL)
+	if err != nil {
+		return Config{}, err
+	}
+	if uploadCoordinationLeaseTTL <= 0 {
+		return Config{}, fmt.Errorf("parse SAFE_UPLOAD_COORDINATION_LEASE_TTL: duration must be positive")
+	}
 
+	mainAPIRateLimit, err := mainAPIRateLimitConfigFromEnv()
+	if err != nil {
+		return Config{}, err
+	}
 	publicViewerRateLimit, err := publicViewerRateLimitConfigFromEnv()
 	if err != nil {
 		return Config{}, err
 	}
 
-	privateTimeouts, err := privateTimeoutsFromEnv()
+	mainTimeouts, err := mainTimeoutsFromEnv()
 	if err != nil {
 		return Config{}, err
 	}
-	publicTimeouts, err := publicTimeoutsFromEnv()
+	adminTimeouts, err := adminTimeoutsFromEnv()
 	if err != nil {
 		return Config{}, err
 	}
 
 	return Config{
-		PrivateBindAddrs:        privateBindAddrs,
-		PublicBindAddrs:         publicBindAddrs,
-		Backends:                backends,
-		Postgres:                postgres,
-		S3Blob:                  s3Blob,
-		Valkey:                  valkey,
-		DataDir:                 envOrDefault("SAFE_DATA_DIR", defaultDataDir),
-		DBPath:                  envOrDefault("SAFE_DB_PATH", defaultDBPath),
-		MaxUploadBytes:          maxUploadBytes,
-		DefaultIncidentTokenTTL: incidentTokenTTL,
-		SessionTTL:              sessionTTL,
-		AuthBootstrapSecret:     secretFromEnv("SAFE_AUTH_BOOTSTRAP_SECRET"),
-		DeletionWorkerInterval:  deletionWorkerInterval,
-		ClosedIncidentRetention: closedIncidentRetention,
-		PublicViewerRateLimit:   publicViewerRateLimit,
-		PrivateTimeouts:         privateTimeouts,
-		PublicTimeouts:          publicTimeouts,
+		MainBindAddrs:              mainBindAddrs,
+		AdminBindAddrs:             adminBindAddrs,
+		Backends:                   backends,
+		Postgres:                   postgres,
+		S3Blob:                     s3Blob,
+		Valkey:                     valkey,
+		DataDir:                    envOrDefault("SAFE_DATA_DIR", defaultDataDir),
+		DBPath:                     envOrDefault("SAFE_DB_PATH", defaultDBPath),
+		MaxUploadBytes:             maxUploadBytes,
+		DefaultIncidentTokenTTL:    incidentTokenTTL,
+		SessionTTL:                 sessionTTL,
+		AuthBootstrapSecret:        secretFromEnv("SAFE_AUTH_BOOTSTRAP_SECRET"),
+		DeletionWorkerInterval:     deletionWorkerInterval,
+		ClosedIncidentRetention:    closedIncidentRetention,
+		TokenMetadataRetention:     tokenMetadataRetention,
+		TombstoneRetention:         tombstoneRetention,
+		TempUploadCleanupAge:       tempUploadCleanupAge,
+		TempUploadCleanupDryRun:    tempUploadCleanupDryRun,
+		UploadCoordinationLeaseTTL: uploadCoordinationLeaseTTL,
+		MainAPIRateLimit:           mainAPIRateLimit,
+		PublicViewerRateLimit:      publicViewerRateLimit,
+		MainTimeouts:               mainTimeouts,
+		AdminTimeouts:              adminTimeouts,
 	}, nil
 }

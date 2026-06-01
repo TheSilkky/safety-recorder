@@ -1,26 +1,33 @@
 # API
 
-This is the current backend-only HTTP surface for Proofline. The API binary starts private API listeners and public incident viewer listeners on one or more configured bind addresses. The `/v1` routes are private and require local account authentication except for the bootstrap, login, and private health/readiness routes described below. The incident viewer routes are token-gated and read-only. Planned web, iOS, and Android clients are not part of this repository yet.
+This is the current backend-only HTTP surface for Proofline. The API binary starts a main API/viewer listener and a private-admin listener on one or more configured bind addresses. Main `/v1` routes require local account authentication except for login. Existing `/v1/admin/...` JSON routes require an admin account and are mounted on the main handler; they are not public-ready routes. The private-admin listener serves only the `/admin` dashboard route tree. Incident viewer routes are token-gated, read-only, and mounted on the main listener. Planned web, iOS, and Android clients are not part of this repository yet.
 
 Media bundle downloads are encrypted chunk bundles. The backend does not decrypt, merge, or produce playable media. The simulator's current encrypted uploads use the envelope documented in [encryption.md](encryption.md), but the API treats uploaded bytes as opaque ciphertext.
 
 The current API stores incidents owned by local accounts. Incidents are generic
 by default and may include optional `incident_mode`, `capture_profile`,
-`escalation_policy`, and `sharing_state` metadata on the private create/read
+`escalation_policy`, and `sharing_state` metadata on the main create/read
 routes. Those fields are metadata only: they do not grant access, send
 notifications, change key custody, expose trusted-contact workflows, or change
 public viewer and bundle behavior. Mode-specific retention behavior is not
 implemented; deletion and closed-incident retention enforcement are documented
 in [retention-backup-deletion.md](retention-backup-deletion.md). Planned
 mode-driven behavior is documented in [incident-modes.md](incident-modes.md).
-Trusted-contact and public product APIs do not exist yet.
+Authenticated account-owner routes can store trusted-contact public-key
+metadata, owner-scoped sharing-grant records, and wrapped media-key metadata
+for active grants. Trusted-contact accounts, browser or backend decryption,
+public product authentication, notifications, raw key storage, and key escrow
+do not exist yet.
 
 Default bind addresses:
 
-- private API server: `127.0.0.1:8080`
-- public incident viewer server: `127.0.0.1:8081`
+- main API and incident viewer listener: `127.0.0.1:8080`
+- private admin dashboard listener: `127.0.0.1:8081`
 
-Use `SAFE_PRIVATE_BIND_ADDRS` and `SAFE_PUBLIC_BIND_ADDRS` for comma-separated bind-address lists. The older singular variables remain supported when the matching plural variable is unset.
+Use `SAFE_MAIN_BIND_ADDRS` and `SAFE_ADMIN_BIND_ADDRS` for comma-separated
+bind-address lists. Legacy `SAFE_PRIVATE_BIND_ADDRS` still maps to the main
+listener, but legacy `SAFE_PUBLIC_BIND_ADDRS` now fails startup so an old
+public viewer bind cannot become the private-admin listener by accident.
 
 ## Common Responses
 
@@ -37,65 +44,24 @@ Errors use:
 
 Non-upload JSON bodies are limited to 64 KiB. Upload file bytes are limited by `SAFE_MAX_UPLOAD_BYTES`; multipart metadata has a small fixed overhead allowance. `SAFE_MAX_UPLOAD_BYTES` accepts a positive byte count or binary unit suffixes `B`, `K`/`KB`, `M`/`MB`, and `G`/`GB`. Fractional unit values are allowed when they resolve to at least one byte. Non-positive, sub-byte, invalid, and oversized values are rejected during startup.
 
-## Private Health And Readiness
+Main API route classes are rate limited by default before authentication using
+safe server-controlled keys based on route class and a hash of the socket peer
+identity. Rate-limit keys do not include raw session tokens, Authorization
+headers, raw idempotency keys, request bodies, uploaded bytes, incident IDs,
+stored paths, object keys, plaintext, raw keys, or private deployment details.
+Exhausted limits return `429 rate_limited` with `Retry-After`. A configured
+coordination limiter failure returns `503 rate_limit_unavailable` with a
+generic response. See [configuration](configuration.md) for
+`SAFE_MAIN_API_RATE_LIMIT_*` settings.
 
-The private API listener exposes unauthenticated operator checks under `/v1`
-so Docker, local scripts, and private reverse proxies can test process and
-backend readiness without storing a session token. These routes must stay on
-the private listener and must not be forwarded from the public incident viewer
-origin.
+## Health And Readiness
 
-### `GET /v1/health/live`
-
-Reports that the HTTP process is serving requests. It does not check backend
-dependencies.
-
-Response `200`:
-
-```json
-{
-  "status": "ok"
-}
-```
-
-### `GET /v1/health/ready`
-
-Checks the selected metadata, blob, and coordination backends at a coarse
-operator level. SQLite and PostgreSQL metadata are checked through the metadata
-database handle, local blob storage checks local staging/storage writability,
-S3-compatible blob storage checks local staging plus bucket reachability, and
-`none`, Valkey, or Redis-compatible coordination uses the configured
-coordination check.
-
-Response `200` when all selected checks pass:
-
-```json
-{
-  "status": "ok",
-  "checks": [
-    {"name": "metadata", "backend": "sqlite", "status": "ok"},
-    {"name": "blob", "backend": "local", "status": "ok"},
-    {"name": "coordination", "backend": "none", "status": "ok"}
-  ]
-}
-```
-
-Response `503` when one or more checks fail:
-
-```json
-{
-  "status": "unavailable",
-  "checks": [
-    {"name": "metadata", "backend": "postgresql", "status": "unavailable"},
-    {"name": "blob", "backend": "s3", "status": "ok"},
-    {"name": "coordination", "backend": "valkey", "status": "ok"}
-  ]
-}
-```
-
-The response deliberately omits DSNs, credentials, bucket names, object keys,
-stored paths, local filesystem paths, private hostnames, request bodies,
-uploaded bytes, tokens, plaintext, raw keys, and underlying error strings.
+The current listener split does not mount `/v1/health/live` or
+`/v1/health/ready` on either listener. The private-admin listener is a
+dashboard-only `/admin` surface, and the main listener must not publish
+operator readiness details on the same origin as future public product API
+routes. Local and CI smoke checks use token-neutral static assets plus the
+admin bootstrap/login flow to prove both listener trees are serving.
 
 ## Authentication And Accounts
 
@@ -107,39 +73,12 @@ Authorization: Bearer <session_token>
 
 Session tokens are opaque server-side credentials. The raw token is returned only by login, while the metadata backend stores only its SHA-256 hash. Sessions expire after `SAFE_SESSION_TTL`, defaulting to `12h`, and can be revoked by logout, password reset, or the admin session-revocation route.
 
-On startup, the server fails closed unless an admin account already exists or `SAFE_AUTH_BOOTSTRAP_SECRET` is set. With that secret set, create the first admin through the one-time bootstrap route, then remove the environment variable and restart or redeploy without it. The bootstrap route is disabled after an admin account exists.
-
-### `POST /v1/bootstrap/admin`
-
-Creates the first local admin account when no admin exists. This route does not require a session, but it requires the bootstrap secret header:
-
-```http
-X-Proofline-Bootstrap-Secret: ...
-```
-
-Request:
-
-```json
-{
-  "username": "admin",
-  "password": "long local password"
-}
-```
-
-Response `201`:
-
-```json
-{
-  "account": {
-    "id": "acct_...",
-    "username": "admin",
-    "role": "admin",
-    "created_at": "2026-05-31T10:00:00Z",
-    "updated_at": "2026-05-31T10:00:00Z",
-    "password_changed_at": "2026-05-31T10:00:00Z"
-  }
-}
-```
+On startup, the server fails closed unless an admin account already exists or
+`SAFE_AUTH_BOOTSTRAP_SECRET` is set. With that secret set, create the first
+admin through the private `/admin` bootstrap screen or by posting form fields
+to `POST /admin/bootstrap`, then remove the environment variable and restart or
+redeploy without it. JSON `POST /v1/bootstrap/admin` is not mounted on either
+listener.
 
 ### `POST /v1/auth/login`
 
@@ -187,7 +126,7 @@ Changes the authenticated account password after verifying `current_password`; o
 
 ### Private Admin Web Routes
 
-The private API listener also serves a small admin web surface outside the
+The private-admin listener serves a small admin web surface outside the
 `/v1` API namespace:
 
 - `GET /admin`
@@ -227,7 +166,7 @@ and local account-management data. It does not expose incident evidence, viewer
 tokens, session tokens, password hashes, request bodies, uploaded bytes,
 Authorization headers, plaintext, raw keys, stored paths, object keys, private
 deployment details, or sensitive evidence metadata. It is not a public admin
-dashboard and must stay on the private listener.
+dashboard and must stay on the private-admin listener.
 
 ### Admin API Routes
 
@@ -242,11 +181,292 @@ The following routes require an admin account session:
 
 `POST /v1/admin/accounts` accepts `username`, `password`, and `role`, where `role` is `user` or `admin`. Admin password reset and explicit session revocation revoke all sessions for the selected account.
 
-Local account authentication does not make `/v1` a public product API. Keep private listeners behind localhost, LAN, WireGuard, firewall rules, or a strict private reverse proxy until public exposure, abuse controls, rate limiting, CSRF/browser credential rules, and production operations are explicitly designed and reviewed.
+These routes are mounted on the main `/v1` handler so the private-admin
+listener can remain a dashboard-only `/admin` tree. Local account
+authentication, admin-role checks, and app-level rate limiting do not by
+themselves make `/v1` production-ready public infrastructure. Expose the main
+API only after deployment-specific TLS, path routing, abuse controls, browser
+credential rules, CSRF decisions, logging review, and production operations are
+explicitly designed and reviewed. Public reverse proxies must not route
+`/v1/admin/...` from a public edge. Keep private-admin dashboard listeners
+behind localhost, LAN, WireGuard, firewall rules, or a strict private reverse
+proxy.
+
+## Contact Public Keys
+
+Contact public-key routes are mounted on the main API listener and require a
+valid local account session. They are scoped to the authenticated account only;
+admins do not use these routes to manage another account's contact keys. The
+server stores public-key metadata, wrapping algorithm names, fingerprints,
+state, and optional display labels. It does not store contact private keys, raw
+media keys, wrapped media keys, browser fragment secrets, plaintext, request
+bodies, uploaded bytes, stored paths, staging paths, object keys, or private
+deployment details.
+
+Contact key states are:
+
+| State | Meaning |
+|---|---|
+| `pending_verification` | Registered but not eligible for new sharing grants. |
+| `active` | Eligible for new sharing grants. |
+| `replaced` | Superseded by another key version. |
+| `revoked` | Revoked and not eligible for future grants. |
+| `lost` | Marked lost and not eligible for future grants. |
+
+New sharing grants require an `active` contact public key. The API can register
+a new contact by omitting `contact_id`, or rotate an existing contact by
+providing an account-owned `contact_id`; rotated keys receive the next version.
+
+### `POST /v1/contact-public-keys`
+
+Registers trusted-contact public-key metadata for the authenticated account.
+The optional `key_state` defaults to `pending_verification`.
+
+Request:
+
+```json
+{
+  "display_label": "Trusted contact",
+  "wrapping_algorithm": "age-v1-x25519",
+  "public_key": "age1...",
+  "public_key_fingerprint": "fingerprint-...",
+  "key_state": "pending_verification"
+}
+```
+
+Response `201`:
+
+```json
+{
+  "contact_public_key": {
+    "public_key_id": "cpk_...",
+    "owner_account_id": "acct_...",
+    "contact_id": "ctc_...",
+    "version": 1,
+    "display_label": "Trusted contact",
+    "wrapping_algorithm": "age-v1-x25519",
+    "public_key": "age1...",
+    "public_key_fingerprint": "fingerprint-...",
+    "key_state": "pending_verification",
+    "created_at": "2026-06-01T10:00:00Z",
+    "updated_at": "2026-06-01T10:00:00Z"
+  }
+}
+```
+
+### `GET /v1/contact-public-keys`
+
+Lists contact public-key metadata owned by the authenticated account.
+
+### `GET /v1/contact-public-keys/{public_key_id}`
+
+Returns one account-owned contact public-key record. Records owned by another
+account return `404 contact_public_key_not_found`.
+
+### `PATCH /v1/contact-public-keys/{public_key_id}`
+
+Updates mutable contact-key metadata. The request may change `display_label`
+and `key_state`. Revoked keys cannot be reactivated.
+
+Request:
+
+```json
+{
+  "display_label": "Verified contact",
+  "key_state": "active"
+}
+```
+
+### `POST /v1/contact-public-keys/{public_key_id}/revoke`
+
+Marks one account-owned contact public key revoked. Revocation prevents the key
+from receiving new sharing grants or future wrapped-key records. It does not
+delete already accepted ciphertext, bundle contents, or any material a future
+authorized actor may already have downloaded.
+
+## Sharing Grants
+
+Sharing-grant routes are mounted on the main API listener and require a valid
+local account session. Grant creation and incident-scoped listing are
+account-owner actions: admins are not allowed to manage another account's
+sharing grants through these product routes unless the admin account owns the
+incident. Public viewer routes remain read-only and do not use these grant
+records.
+
+Sharing grants authorize metadata, ciphertext, and wrapped-key delivery
+decisions. They do not decrypt media, create trusted-contact sessions, send
+notifications, alter incident-mode behavior, or change public viewer and bundle
+responses.
+
+Grant data classes are:
+
+| Data class | Meaning |
+|---|---|
+| `metadata` | Metadata access authorization. |
+| `ciphertext` | Encrypted evidence access authorization. |
+| `metadata_ciphertext` | Metadata and encrypted evidence access authorization. |
+
+### `POST /v1/incidents/{incident_id}/sharing-grants`
+
+Creates an active sharing-grant record for an incident owned by the
+authenticated account. `stream_id` is optional; omit it for incident scope.
+The referenced contact must have an active contact public key owned by the same
+account. If `contact_public_key_id` is omitted, the latest active key version
+for the contact is used. `recipient_type` defaults to `trusted_contact`,
+`data_class` defaults to `metadata_ciphertext`, and `expires_at`, when present,
+must be in the future.
+
+Request:
+
+```json
+{
+  "stream_id": "str_...",
+  "contact_id": "ctc_...",
+  "data_class": "metadata_ciphertext",
+  "expires_at": "2026-06-08T10:00:00Z"
+}
+```
+
+Response `201`:
+
+```json
+{
+  "sharing_grant": {
+    "grant_id": "sgr_...",
+    "owner_account_id": "acct_...",
+    "incident_id": "inc_...",
+    "stream_id": "str_...",
+    "recipient_type": "trusted_contact",
+    "contact_id": "ctc_...",
+    "contact_public_key_id": "cpk_...",
+    "contact_public_key_version": 1,
+    "data_class": "metadata_ciphertext",
+    "grant_state": "active",
+    "created_at": "2026-06-01T10:00:00Z",
+    "updated_at": "2026-06-01T10:00:00Z",
+    "expires_at": "2026-06-08T10:00:00Z"
+  }
+}
+```
+
+Missing incidents, streams, or active contact public keys return
+`404 sharing_grant_dependency_not_found` without revealing which dependency was
+missing outside the owner boundary.
+
+### `GET /v1/incidents/{incident_id}/sharing-grants`
+
+Lists sharing grants for an incident owned by the authenticated account.
+
+### `GET /v1/sharing-grants/{grant_id}`
+
+Returns one sharing grant owned by the authenticated account.
+
+### `POST /v1/sharing-grants/{grant_id}/revoke`
+
+Marks one account-owned sharing grant revoked and records the revoking account.
+Revocation stops future grant-based authorization or delivery. It does not
+delete encrypted chunks, incident metadata, bundle contents, or anything an
+authorized actor may already have downloaded.
+
+## Wrapped Keys
+
+Wrapped-key routes are mounted on the main API listener and require a valid
+local account session. They are account-owner routes: admins are not allowed to
+store, list, read, or revoke another account's wrapped-key records through
+these product routes unless the admin account owns the incident or record.
+
+The backend stores encrypted media-key material only when it is bound to an
+active sharing grant that authorizes ciphertext access. The record includes the
+incident, optional stream, media key ID, grant ID, trusted-contact public key
+ID and version, wrapping algorithm/version, wrapped-key ciphertext, and public
+wrapping metadata. It must not include raw media keys, contact private keys,
+plaintext, unwrapped shared secrets, browser fragment secrets, raw tokens, or
+server escrow material.
+
+Bundle manifests remain key-free. The current public incident viewer does not
+deliver wrapped keys, and public viewer bundle downloads keep their existing
+ciphertext-only behavior.
+
+### `POST /v1/incidents/{incident_id}/wrapped-keys`
+
+Stores one wrapped media-key record for an incident owned by the authenticated
+account. `grant_id` must name an active owner-scoped sharing grant for the same
+incident. The grant must authorize `ciphertext` or `metadata_ciphertext`, must
+not be expired, and must point at an active contact public key. If the grant is
+stream-scoped, `stream_id` must match the grant's stream.
+
+Request:
+
+```json
+{
+  "stream_id": "str_...",
+  "grant_id": "sgr_...",
+  "media_key_id": "media-key-2026-06-01-audio",
+  "wrapping_algorithm": "age-v1-x25519",
+  "wrapping_algorithm_version": "1",
+  "wrapped_key_ciphertext": "base64url-or-profile-encoded-ciphertext",
+  "public_wrapping_metadata": {
+    "profile": "age-v1-x25519"
+  }
+}
+```
+
+Response `201`:
+
+```json
+{
+  "wrapped_key": {
+    "wrapped_key_id": "wkey_...",
+    "owner_account_id": "acct_...",
+    "incident_id": "inc_...",
+    "stream_id": "str_...",
+    "grant_id": "sgr_...",
+    "recipient_type": "trusted_contact",
+    "contact_id": "ctc_...",
+    "contact_public_key_id": "cpk_...",
+    "contact_public_key_version": 1,
+    "media_key_id": "media-key-2026-06-01-audio",
+    "wrapping_algorithm": "age-v1-x25519",
+    "wrapping_algorithm_version": "1",
+    "wrapped_key_ciphertext": "base64url-or-profile-encoded-ciphertext",
+    "public_wrapping_metadata": {
+      "profile": "age-v1-x25519"
+    },
+    "wrapped_key_state": "active",
+    "created_at": "2026-06-01T10:00:00Z",
+    "updated_at": "2026-06-01T10:00:00Z"
+  }
+}
+```
+
+Missing incidents, streams, active grants, or active contact public keys return
+`404 wrapped_key_dependency_not_found`. Metadata-only grants return
+`409 wrapped_key_grant_not_authorized`. Reusing the same owner, incident,
+stream scope, grant, media key ID, and contact public key returns
+`409 wrapped_key_duplicate`.
+
+### `GET /v1/incidents/{incident_id}/wrapped-keys`
+
+Lists active wrapped-key records for an incident owned by the authenticated
+account. The list is delivery-filtered: records are omitted when their grant is
+revoked or expired, their contact public key is no longer active, or the
+wrapped-key record itself is revoked or rotated.
+
+### `GET /v1/wrapped-keys/{wrapped_key_id}`
+
+Returns one active wrapped-key record owned by the authenticated account,
+subject to the same delivery filter as the incident list route.
+
+### `POST /v1/wrapped-keys/{wrapped_key_id}/revoke`
+
+Marks one account-owned wrapped-key record revoked and records the revoking
+account. Revocation stops future delivery of that wrapped-key record. It does
+not delete encrypted chunks, incident metadata, bundle contents, or material an
+authorized actor may already have downloaded.
 
 ## Incidents
 
-Incident routes are mounted only on the private API server and require a valid session. Incidents are owned by the account that creates them. Regular users can access only their own incidents; admins can access incidents across accounts. Legacy unowned incidents are admin-only until a future migration or reassignment workflow is implemented.
+Incident routes are mounted on the main API listener and require a valid session. Incidents are owned by the account that creates them. Regular users can access only their own incidents; admins can access incidents across accounts through the main product route set. Legacy unowned incidents are admin-only until a future private reassignment or quarantine workflow is implemented; see [legacy unowned incident reassignment](legacy-unowned-incident-reassignment.md).
 
 ### `POST /v1/incidents`
 
@@ -321,7 +541,7 @@ Response `200`:
 
 Marks an incident closed. Later chunk uploads return `409 incident_closed`.
 
-Response `200` is the updated private incident object. If the incident has
+Response `200` is the updated incident object. If the incident has
 optional mode metadata, the same fields shown in the `GET` incident object can
 be present. Closing an incident does not change sharing, retention, viewer,
 notification, or key-custody behavior.
@@ -332,7 +552,7 @@ Requests deletion for an incident owned by the authenticated account. Admins
 can use this route only for incidents they own; use the admin route below for
 global deletion. The route creates durable deletion state and snapshots
 server-controlled stored paths from metadata before any blob is deleted. It is
-mounted only on the private API listener.
+mounted only on the main API listener.
 
 Request:
 
@@ -401,7 +621,7 @@ invalid, expired, or revoked tokens and do not reveal deletion state.
 
 ## Chunks
 
-Chunk routes are mounted only on the private API server.
+Chunk routes are mounted on the main API listener.
 
 ### `POST /v1/incidents/{incident_id}/chunks`
 
@@ -472,6 +692,30 @@ bytes, stored paths, object keys, raw keys, tokens, raw idempotency keys, or
 private deployment details. Replays still upload the complete encrypted chunk;
 this is not a resumable upload or partial-commit protocol.
 
+When `SAFE_COORDINATION_BACKEND=valkey` or `redis` is configured, complete
+chunk uploads also acquire a short-lived server-controlled coordination lease
+for the normalized chunk identity after the server has read and validated the
+multipart upload. If another API node is already processing that chunk
+identity, the route returns a retryable response:
+
+```json
+{
+  "error": {
+    "code": "upload_in_progress",
+    "message": "upload for this chunk identity is already in progress"
+  }
+}
+```
+
+The response status is `409 Conflict` and includes `Retry-After` based on the
+configured `SAFE_UPLOAD_COORDINATION_LEASE_TTL`. If configured coordination is
+unavailable during upload, the route returns `503 upload_coordination_unavailable`
+with a safe `Retry-After` hint. Valkey lease keys are hashes of server-normalized
+chunk identity; they do not contain raw tokens, raw idempotency keys, request
+bodies, uploaded bytes, stored paths, object keys, plaintext, or raw keys.
+These leases are in-progress hints only. Metadata uniqueness constraints,
+upload-operation rows, and blob no-overwrite behavior remain final truth.
+
 The repository rechecks incident and stream state when chunk metadata is inserted. If an upload races with incident close or stream completion, the final metadata insert is rejected and the committed blob path is removed.
 
 For clients using the v1 encryption envelope, `sha256_hex` is the SHA-256 of the complete uploaded envelope bytes, not the plaintext.
@@ -492,18 +736,25 @@ contain personal or contextual information even after path stripping. Do not use
 `original_filename` for identity, authorization, storage lookup, decryption,
 legal-record guarantees, or download path construction.
 
-The current API does not implement resumable uploads, upload leases, or
-client-side queue summary endpoints. Clients should retry complete encrypted
-chunks, use `Idempotency-Key` for ambiguous complete-upload outcomes, and use
-the duplicate chunk reconciliation route when they need to compare a duplicate
-accepted chunk with a local expected fingerprint. The resumable-upload planning
-decision is documented in
+The current API does not implement resumable uploads, partial-upload lease
+sessions, or client-side queue summary endpoints. Clients should retry
+complete encrypted chunks, use `Idempotency-Key` for ambiguous complete-upload
+outcomes, and use the duplicate chunk reconciliation route when they need to
+compare a duplicate accepted chunk with a local expected fingerprint. The
+resumable-upload planning decision is documented in
 [resumable-upload-lease-protocol.md](resumable-upload-lease-protocol.md).
+
+The current API does not implement a regional stream-ingress relay or
+service-authenticated relay preflight/commit endpoints. The future relay design
+is documented in [regional-stream-ingress-relay.md](regional-stream-ingress-relay.md).
+Any implementation must keep the core API authoritative for authorization,
+idempotency, final blob commits, and metadata, and must not expose the full
+`/v1` control plane or admin routes through the relay.
 
 ### `POST /v1/incidents/{incident_id}/chunks/reconcile`
 
 Reconciles a duplicate chunk identity against already accepted metadata without
-re-uploading ciphertext. The route is mounted only on the private API server.
+re-uploading ciphertext. The route is mounted on the main API listener.
 
 This is a separate private query workflow, not a public route and not an
 enriched `409 duplicate_chunk` upload response. A separate route lets clients
@@ -625,7 +876,7 @@ Returns encrypted bytes for a legacy unstreamed chunk as `application/octet-stre
 
 ## Media Streams
 
-Media stream routes are mounted only on the private API server.
+Media stream routes are mounted on the main API listener.
 
 ### `POST /v1/incidents/{incident_id}/streams`
 
@@ -783,7 +1034,7 @@ If any completed stream cannot be reconstructed, the incident bundle request fai
 
 ## Checkins
 
-Checkin routes are mounted only on the private API server.
+Checkin routes are mounted on the main API listener.
 
 ### `POST /v1/incidents/{incident_id}/checkins`
 
@@ -805,7 +1056,7 @@ Response `201` is the created checkin.
 
 ## Viewer Tokens
 
-Incident-token creation and revocation routes are mounted only on the private API server.
+Incident-token creation and revocation routes are mounted on the main API listener.
 
 ### `POST /v1/incidents/{incident_id}/incident-tokens`
 
@@ -852,7 +1103,7 @@ Response `200`:
 
 ## Incident Viewer
 
-Incident viewer routes are mounted only on the public incident viewer server.
+Incident viewer routes are mounted on the main API/viewer listener.
 `/i/{token}` is the canonical path for new links. The pre-rename `/e/{token}`
 paths remain as compatibility aliases for already shared viewer URLs, including
 the `/data`, stream download, and incident download variants.

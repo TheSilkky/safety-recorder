@@ -21,7 +21,8 @@ The current backend remains local-first and experimental:
 - No coordination backend remains the default; Valkey/Redis-compatible
   coordination is available only when explicitly configured.
 - The simulator and local development flow remain supported.
-- The private `/v1` API remains private and requires local account sessions.
+- The main `/v1` API remains intended for a reviewed private deployment boundary
+  and requires local account sessions.
 - The public incident viewer remains token-gated and read-only.
 - The backend stores ciphertext only and does not decrypt chunks.
 
@@ -119,15 +120,13 @@ S3-compatible encrypted blobs is documented in the
 
 Valkey or another Redis-compatible service is implemented as optional
 production coordination, not durable storage. The current backend opens and
-checks the configured service at startup; future upload-operation work may use
-it for short-lived leases, in-progress hints, and retry coordination.
-When configured, the current public viewer app-level rate limiter also uses
-Valkey for short-lived route-class counters.
+checks the configured service at startup, uses it for short-lived route-class
+rate-limit counters, and can use it for short-lived complete-upload leases,
+in-progress hints, and retry coordination.
 
 It may be used for:
 
-- upload leases
-- idempotency result caching
+- complete-upload in-progress leases
 - short-lived in-progress state
 - retry coordination
 - public viewer route-class rate-limit counters
@@ -142,20 +141,19 @@ It must not be used as the final source of truth for:
 - retention or deletion decisions
 
 If configured Valkey is unavailable at startup, the system fails closed.
-Future operation-level coordination failures should fail closed or return
-retryable errors for affected operations. PostgreSQL constraints and
-object-storage no-overwrite behavior must still protect committed state from
-duplicates.
+Upload coordination failures fail closed for the affected operation with a
+retryable private API error. PostgreSQL constraints and object-storage
+no-overwrite behavior must still protect committed state from duplicates.
 
 ## Upload Operation Semantics
 
 Future cluster upload handling should move toward explicit upload operations.
 The detailed planning design is
 [Cluster-safe upload operation semantics](cluster-safe-upload-semantics.md).
-Resumable upload and upload lease behavior is planned separately in
+Resumable upload and partial-upload lease behavior is planned separately in
 [Resumable upload and upload lease protocol](resumable-upload-lease-protocol.md);
 that design keeps the local desktop recorder simulator on complete encrypted
-chunk retries while deferring resumable uploads and leases.
+chunk retries while deferring resumable uploads and partial-upload sessions.
 
 A safe cluster upload flow should be designed around these steps:
 
@@ -170,11 +168,31 @@ A safe cluster upload flow should be designed around these steps:
 
 A successful chunk upload should mean encrypted bytes are durably committed outside the staging backend and metadata has been written or confirmed. Loss of pre-commit staging state must be recoverable by client retry.
 
+## Regional Stream Ingress Relay Scope
+
+The future regional stream-ingress relay is planned as an optional upload-only
+edge that can run close to users while the core API remains authoritative. It
+is documented in
+[regional-stream-ingress-relay.md](regional-stream-ingress-relay.md).
+
+The relay may use local in-memory counters for single-node/dev deployments or
+optional Valkey/Redis-compatible counters for multi-node relay deployments,
+but that state must remain short-lived coordination. It must not become the
+source of truth for incident metadata, chunk metadata, upload-operation state,
+committed encrypted chunks, viewer-token metadata, deletion decisions, or
+retention decisions.
+
+Relay temporary staging is not durable evidence storage. A successful upload
+through the relay still requires the core API to commit encrypted bytes to the
+configured blob backend and write or confirm metadata in the configured
+metadata backend.
+
 ## Boundaries And Non-Goals
 
 This scope expansion does not by itself add:
 
-- public exposure of the current private `/v1` API
+- public exposure of the current main `/v1` API
+- public exposure of the full current `/v1` API through a regional relay
 - public account workflows
 - OAuth, JWT, public account portal, trusted-contact accounts, or external
   identity integration
@@ -186,7 +204,9 @@ This scope expansion does not by itself add:
 - push, SMS, Messenger, or emergency-services integrations
 - Docker Compose, Kubernetes, Nomad jobs, Terraform, or provider-specific deployment code
 
-Any future deployment automation must preserve private/public listener separation and must not claim production readiness until the access-control, retention, backup, restore, observability, and abuse-control work exists.
+Any future deployment automation must preserve main/private-admin route
+separation and must not claim production readiness until the access-control,
+retention, backup, restore, observability, and abuse-control work exists.
 
 ## Implementation Order
 
@@ -199,7 +219,8 @@ Preferred implementation sequence:
 5. Add explicit idempotency and upload-operation semantics for complete chunk
    upload retries. Implemented for SQLite and optional PostgreSQL metadata.
 6. Add optional Valkey/Redis-compatible coordination. Implemented for explicit
-   configuration and startup checks; upload-operation use remains future work.
+   configuration, startup checks, route-class counters, and short-lived
+   complete-upload coordination.
 7. Update deployment, backup, restore, security, and threat-model docs before
    recommending any production cluster deployment. Initial cluster backup,
    restore, and failure guidance is documented in

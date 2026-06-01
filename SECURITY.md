@@ -1,6 +1,6 @@
 # Security Policy
 
-Proofline is a private encrypted incident-capture backend. It is not production-ready public infrastructure. The private `/v1` API uses local account sessions, and the private `/admin` web surface uses admin cookie sessions, but neither is a public product API and both must stay behind localhost, WireGuard, a firewall, or an equivalent private boundary.
+Proofline is a private encrypted incident-capture backend. It is not production-ready public infrastructure. The main `/v1` API uses local account sessions, and the private `/admin` web surface uses admin cookie sessions, but neither is a public product API. Keep main `/v1` behind the reviewed deployment boundary, and keep `/admin` behind localhost, WireGuard, a firewall, or an equivalent private boundary.
 
 The current implementation supports generic incident capture, optional
 incident-mode metadata fields, and token-scoped read-only incident review.
@@ -13,9 +13,9 @@ process.
 
 | Version | Supported |
 |---|---|
+| 0.10.x | Yes |
 | 0.9.x | Yes |
-| 0.8.x | Yes |
-| < 0.8 | No |
+| < 0.9 | No |
 
 ## Reporting a Vulnerability
 
@@ -41,8 +41,8 @@ Because this project is not yet public-production-ready, response timelines are 
 
 Reports are in scope when they affect the current backend, documentation, or deployment guidance, including:
 
-- private `/v1` and `/admin` route exposure
-- local account and session authentication for private `/v1` routes and the
+- main `/v1` and private `/admin` route exposure
+- local account and session authentication for main `/v1` routes and the
   private `/admin` web surface
 - public incident viewer read-only access
 - viewer/incident token leakage
@@ -71,7 +71,7 @@ The following are generally out of scope unless they demonstrate a concrete vuln
 
 - missing features already documented as absent, such as public account workflows, OAuth, JWT, SMS, push notifications, trusted-contact accounts, Android/iOS clients, a web client, mode-driven escalation behavior, or a public admin dashboard
 - lack of production hardening already documented as a known limitation, without a new exploit path
-- reports requiring public exposure of the private `/v1` API contrary to documented deployment guidance
+- reports requiring public exposure of the main `/v1` API contrary to documented deployment guidance
 - denial-of-service reports based only on unrealistic local access or unbounded physical access
 - findings in future clients, recording implementations, account systems, notification systems, or key-sharing systems that are not in this repository
 - legal admissibility, recording-law, or emergency-response claims that are not implemented behavior in this repository

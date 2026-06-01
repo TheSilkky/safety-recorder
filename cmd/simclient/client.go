@@ -182,11 +182,11 @@ func (c client) downloadStreamBundle(ctx context.Context, token, streamID string
 	path := "/i/" + url.PathEscape(token) + "/streams/" + url.PathEscape(streamID) + "/download"
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, joinURL(c.viewerBase, path), nil)
 	if err != nil {
-		return nil, fmt.Errorf("build bundle download request")
+		return nil, fmt.Errorf("build bundle download request: %w", err)
 	}
 	response, err := c.httpClient.Do(request)
 	if err != nil {
-		return nil, fmt.Errorf("download bundle request failed")
+		return nil, fmt.Errorf("download bundle request failed: %w", err)
 	}
 	defer response.Body.Close()
 	if response.StatusCode != http.StatusOK {
@@ -207,14 +207,17 @@ func (c client) downloadStreamBundle(ctx context.Context, token, streamID string
 }
 
 func (c client) uploadChunk(ctx context.Context, upload chunkUpload) error {
-	status, _, body, err := c.postChunk(ctx, upload)
+	status, headers, body, err := c.postChunk(ctx, upload)
 	if err != nil {
 		return err
 	}
-	if status != http.StatusCreated {
-		return fmt.Errorf("upload chunk: %w", statusError(http.StatusCreated, status, body))
+	if status == http.StatusCreated {
+		return nil
 	}
-	return nil
+	if status == http.StatusOK && headers.Get("Idempotency-Replayed") == "true" {
+		return nil
+	}
+	return fmt.Errorf("upload chunk: %w", uploadStatusError(status, body))
 }
 
 func (c client) expectIdempotentReplay(ctx context.Context, upload chunkUpload) error {
@@ -355,6 +358,15 @@ func statusError(wantStatus, gotStatus int, body []byte) error {
 		return fmt.Errorf("expected status %d, got %d", wantStatus, gotStatus)
 	}
 	return fmt.Errorf("expected status %d, got %d: %s", wantStatus, gotStatus, summary)
+}
+
+func uploadStatusError(gotStatus int, body []byte) error {
+	if gotStatus == http.StatusConflict {
+		if code := errorCode(body); code != "" {
+			return fmt.Errorf("expected status %d, got %d: %s", http.StatusCreated, gotStatus, code)
+		}
+	}
+	return statusError(http.StatusCreated, gotStatus, body)
 }
 
 func responseErrorSummary(body []byte) string {

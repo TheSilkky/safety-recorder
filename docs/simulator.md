@@ -1,6 +1,6 @@
 # Simulator
 
-The simulator CLI lives at `cmd/simclient`. It exercises the current Proofline ingest flow that a future recording client is expected to use. It logs in to the private `/v1` API with a local account session, then encrypts generated test bytes, local pre-recorded files, or optional ffmpeg test segments with the v1 client-side envelope before upload. Each intended chunk upload includes a stable `Idempotency-Key`, and the simulator verifies one equivalent replay without printing the raw key.
+The simulator CLI lives at `cmd/simclient`. It exercises the current Proofline ingest flow that a future recording client is expected to use. It logs in to the main `/v1` API with a local account session, then encrypts generated test bytes, local pre-recorded files, or optional ffmpeg test segments with the v1 client-side envelope before upload. Each intended chunk upload includes a stable `Idempotency-Key`, and the simulator verifies one equivalent replay without printing the raw key.
 
 The simulator covers generic incidents only. It does not set optional
 incident-mode metadata for emergency incidents, interaction records, safety
@@ -13,7 +13,7 @@ reference testing. It is not a production desktop app, desktop app package, or a
 replacement for planned mobile clients.
 
 It uses the current complete encrypted chunk upload contract: create an
-incident and media stream through the private `/v1` API, capture or read short
+incident and media stream through the main `/v1` API, capture or read short
 local test intervals, encrypt each completed interval, write encrypted chunks
 and immutable upload metadata to local staging, retry failed uploads by
 resending complete chunks, and complete the stream only after the local staged
@@ -31,8 +31,8 @@ The desktop simulator continues using account-aware local sessions without
 turning this repository into a production desktop app. Simulator credentials
 are local development credentials only. The simulator does not add OAuth, JWT,
 public `/v1` exposure, browser decryption, mobile client behavior, a public
-account portal, resumable uploads, upload leases, or server-visible queue
-summary routes.
+account portal, resumable uploads, partial-upload lease sessions, or
+server-visible queue summary routes.
 
 Supported desktop recorder sources:
 
@@ -52,9 +52,9 @@ and must keep raw media keys, contact private keys, plaintext, and decryption
 capabilities out of server storage, logs, and bundle manifests unless a later
 explicit production key-custody task changes the boundary.
 
-Do not add resumable uploads, upload leases, or server-visible queue summary
-routes just to support that simulator. The resumable-upload decision is planned
-separately in
+Do not add resumable uploads, partial-upload lease sessions, or server-visible
+queue summary routes just to support that simulator. The resumable-upload
+decision is planned separately in
 [resumable-upload-lease-protocol.md](resumable-upload-lease-protocol.md).
 
 ## Basic Flow
@@ -66,9 +66,10 @@ SAFE_AUTH_BOOTSTRAP_SECRET='replace-with-local-bootstrap-secret' \
 go run ./cmd/api
 ```
 
-For a new local database, create an admin account through
-`POST /v1/bootstrap/admin`, then remove `SAFE_AUTH_BOOTSTRAP_SECRET` and
-restart the server. See [deployment](deployment.md) for the bootstrap flow.
+For a new local database, create an admin account through the private
+`/admin` bootstrap screen or `POST /admin/bootstrap`, then remove
+`SAFE_AUTH_BOOTSTRAP_SECRET` and restart the server. See
+[deployment](deployment.md) for the bootstrap flow.
 
 Then run:
 
@@ -271,8 +272,10 @@ The wrapping profile is `age-v1-x25519` through the maintained
 the media key through the local development contact key before bundle decrypt
 verification. This remains simulator-only: it does not add production key
 custody, backend decryption, browser decryption, key escrow, trusted-contact
-accounts, server-side wrapped-key storage, API routes, database schema, or
-bundle manifest key records.
+accounts, public product authentication, or bundle manifest key records. The
+server now has private authenticated metadata routes for contact public keys,
+sharing grants, and grant-bound wrapped-key records, but this simulator option
+does not call them or add raw key custody behavior.
 
 ## Encryption
 
@@ -324,6 +327,13 @@ server has not accepted the immutable fingerprint. The first successfully
 uploaded chunk is then resent with the same `Idempotency-Key` to verify
 equivalent retry success.
 
+For desktop-recorder retry flows, an upload that was accepted by the server but
+lost its response can be retried as the same complete encrypted staged chunk
+with the same `Idempotency-Key`. If the server returns `200 OK` with
+`Idempotency-Replayed: true`, the simulator treats the staged chunk as uploaded
+without printing the raw idempotency key, uploaded bytes, local staging path, or
+session token.
+
 The simulator does not yet call the duplicate chunk reconciliation route. Future
 ambiguous-network and process-restart drills can use
 `POST /v1/incidents/{incident_id}/chunks/reconcile` to compare a local expected
@@ -363,8 +373,8 @@ attempts and durable metadata for accepted chunks.
 
 | Flag | Purpose |
 |---|---|
-| `--api` | Private API base URL. |
-| `--viewer` | Incident viewer base URL. |
+| `--api` | Main API base URL. Defaults to `http://localhost:8080`. |
+| `--viewer` | Incident viewer base URL. Defaults to `http://localhost:8080` because the viewer is mounted on the main listener. |
 | `--username` | Proofline account username. Defaults to `PROOFLINE_SIM_USERNAME`. |
 | `--password` | Proofline account password. Defaults to `PROOFLINE_SIM_PASSWORD`. |
 | `--chunks` | Number of chunks to upload. |

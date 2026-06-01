@@ -20,8 +20,12 @@ import (
 )
 
 func main() {
-	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
-	if err := run(logger); err != nil {
+	logOutput := os.Stdout
+	if len(os.Args) > 1 && os.Args[1] == "operator" {
+		logOutput = os.Stderr
+	}
+	logger := slog.New(slog.NewJSONHandler(logOutput, nil))
+	if err := runCommand(os.Args[1:], os.Stdout, logger); err != nil {
 		logStartupError(logger, err)
 		os.Exit(1)
 	}
@@ -58,26 +62,34 @@ func run(logger *slog.Logger) error {
 	if err != nil {
 		return err
 	}
+	if err := runTempUploadCleanup(ctx, logger, blobStore, cfg); err != nil {
+		return err
+	}
 
 	apiOptions := httpapi.Options{
-		MaxUploadBytes:          cfg.MaxUploadBytes,
-		DefaultIncidentTokenTTL: &cfg.DefaultIncidentTokenTTL,
-		SessionTTL:              cfg.SessionTTL,
-		BootstrapSecret:         cfg.AuthBootstrapSecret,
-		ReadinessChecks:         backendReadinessChecks(cfg, repo, blobStore, coord),
-		PublicRateLimit:         publicRateLimitConfig(cfg.PublicViewerRateLimit),
-		PublicRateLimiter:       newPublicRateLimiter(cfg, coord),
-		Logger:                  logger,
+		MaxUploadBytes:             cfg.MaxUploadBytes,
+		DefaultIncidentTokenTTL:    &cfg.DefaultIncidentTokenTTL,
+		SessionTTL:                 cfg.SessionTTL,
+		BootstrapSecret:            cfg.AuthBootstrapSecret,
+		MainRateLimit:              mainRateLimitConfig(cfg.MainAPIRateLimit),
+		MainRateLimiter:            newMainRateLimiter(cfg, coord),
+		PublicRateLimit:            publicRateLimitConfig(cfg.PublicViewerRateLimit),
+		PublicRateLimiter:          newPublicRateLimiter(cfg, coord),
+		UploadCoordinator:          coord,
+		UploadCoordinationLeaseTTL: cfg.UploadCoordinationLeaseTTL,
+		Logger:                     logger,
 	}
-	privateHandler := httpapi.NewPrivate(repo, blobStore, apiOptions)
-	publicHandler := httpapi.NewPublic(repo, blobStore, apiOptions)
+	mainHandler := httpapi.NewMain(repo, blobStore, apiOptions)
+	adminHandler := httpapi.NewAdmin(repo, blobStore, apiOptions)
 	deletionWorker := retention.NewWorker(repo, blobStore, retention.Options{
 		Interval:                cfg.DeletionWorkerInterval,
 		ClosedIncidentRetention: cfg.ClosedIncidentRetention,
+		TokenMetadataRetention:  cfg.TokenMetadataRetention,
+		TombstoneRetention:      cfg.TombstoneRetention,
 		Logger:                  logger,
 	})
 	deletionWorker.Start(ctx)
-	servers := newHTTPServers(cfg, privateHandler, publicHandler)
+	servers := newHTTPServers(cfg, mainHandler, adminHandler)
 
 	errCh := make(chan error, len(servers))
 	for _, server := range servers {
@@ -93,6 +105,24 @@ func run(logger *slog.Logger) error {
 	}
 }
 
+func mainRateLimitConfig(cfg config.MainAPIRateLimitConfig) httpapi.MainRateLimitConfig {
+	return httpapi.MainRateLimitConfig{
+		Enabled:            cfg.Enabled,
+		Window:             cfg.Window,
+		AuthLimit:          cfg.AuthLimit,
+		BootstrapLimit:     cfg.BootstrapLimit,
+		AccountLimit:       cfg.AccountLimit,
+		IncidentReadLimit:  cfg.IncidentReadLimit,
+		IncidentWriteLimit: cfg.IncidentWriteLimit,
+		UploadLimit:        cfg.UploadLimit,
+		ReconcileLimit:     cfg.ReconcileLimit,
+		StreamLimit:        cfg.StreamLimit,
+		TokenLimit:         cfg.TokenLimit,
+		DownloadLimit:      cfg.DownloadLimit,
+		AdminLimit:         cfg.AdminLimit,
+	}
+}
+
 func publicRateLimitConfig(cfg config.PublicViewerRateLimitConfig) httpapi.PublicRateLimitConfig {
 	return httpapi.PublicRateLimitConfig{
 		Enabled:       cfg.Enabled,
@@ -102,6 +132,19 @@ func publicRateLimitConfig(cfg config.PublicViewerRateLimitConfig) httpapi.Publi
 		DownloadLimit: cfg.DownloadLimit,
 		StaticLimit:   cfg.StaticLimit,
 	}
+}
+
+func newMainRateLimiter(cfg config.Config, coord coordination.Coordinator) httpapi.RateLimiter {
+	if !cfg.MainAPIRateLimit.Enabled {
+		return nil
+	}
+	switch cfg.Backends.Coordination {
+	case config.CoordinationBackendValkey, config.CoordinationBackendRedis:
+		if limiter, ok := coord.(httpapi.RateLimiter); ok {
+			return limiter
+		}
+	}
+	return httpapi.NewMemoryRateLimiter()
 }
 
 func newPublicRateLimiter(cfg config.Config, coord coordination.Coordinator) httpapi.PublicRateLimiter {
@@ -114,27 +157,7 @@ func newPublicRateLimiter(cfg config.Config, coord coordination.Coordinator) htt
 			return limiter
 		}
 	}
-	return httpapi.NewMemoryPublicRateLimiter()
-}
-
-func backendReadinessChecks(cfg config.Config, repo httpapi.MetadataRepository, store storage.BlobStore, coord coordination.Coordinator) []httpapi.ReadinessCheck {
-	return []httpapi.ReadinessCheck{
-		{
-			Name:    "metadata",
-			Backend: cfg.Backends.Metadata,
-			Check:   repo.Check,
-		},
-		{
-			Name:    "blob",
-			Backend: cfg.Backends.Blob,
-			Check:   store.Check,
-		},
-		{
-			Name:    "coordination",
-			Backend: cfg.Backends.Coordination,
-			Check:   coord.Check,
-		},
-	}
+	return httpapi.NewMemoryRateLimiter()
 }
 
 func newCoordinator(cfg config.Config) (coordination.Coordinator, error) {
@@ -195,4 +218,31 @@ func newBlobStore(cfg config.Config) (storage.BlobStore, error) {
 	default:
 		return nil, fmt.Errorf("unsupported blob backend %q", cfg.Backends.Blob)
 	}
+}
+
+func runTempUploadCleanup(ctx context.Context, logger *slog.Logger, store storage.BlobStore, cfg config.Config) error {
+	if cfg.TempUploadCleanupAge <= 0 {
+		return nil
+	}
+	cleaner, ok := store.(storage.TempCleaner)
+	if !ok {
+		return nil
+	}
+	summary, err := cleaner.CleanupTemp(ctx, storage.TempCleanupOptions{
+		MinAge: cfg.TempUploadCleanupAge,
+		DryRun: cfg.TempUploadCleanupDryRun,
+	})
+	if err != nil {
+		return fmt.Errorf("temp upload cleanup: %w", err)
+	}
+	logger.Info("temp upload cleanup completed",
+		"dry_run", cfg.TempUploadCleanupDryRun,
+		"scanned", summary.Scanned,
+		"eligible", summary.Eligible,
+		"removed", summary.Removed,
+		"skipped_active", summary.SkippedActive,
+		"skipped_other", summary.SkippedOther,
+		"errors", summary.Errors,
+	)
+	return nil
 }

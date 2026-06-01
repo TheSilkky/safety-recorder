@@ -3,18 +3,18 @@
 This document plans whether Proofline Server needs explicit resumable uploads
 or upload leases for partially sent encrypted chunks.
 
-It is a planning document only. It does not implement resumable uploads, upload
-leases, PostgreSQL, S3-compatible object storage, operation-level use of
-Valkey/Redis-compatible coordination, changes to the current local
-account/session model, public `/v1` exposure, public account workflows, browser
-decryption, backend decryption, key custody, or playable media export.
-Complete-upload idempotency keys are implemented separately and documented in
+It is a planning document only. It does not implement resumable uploads,
+partial-upload lease sessions, changes to the current local account/session
+model, public `/v1` exposure, public account workflows, browser decryption,
+backend decryption, key custody, or playable media export. Complete-upload
+idempotency keys and short-lived Valkey complete-upload leases are implemented
+separately and documented in
 [cluster-safe-upload-semantics.md](cluster-safe-upload-semantics.md).
 
 ## Decision
 
-Do not add a resumable-upload or upload-lease protocol yet. The local desktop
-recorder simulator in `cmd/simclient` keeps the current complete-chunk upload
+Do not add a resumable-upload or partial-upload lease protocol yet. The local
+desktop recorder simulator in `cmd/simclient` keeps the current complete-chunk upload
 contract: record or read short media intervals, encrypt each completed interval
 locally, stage the encrypted envelope durably on the client, and retry the
 whole encrypted chunk when an upload is interrupted or ambiguous.
@@ -43,6 +43,12 @@ The handler:
 5. Validates incident and stream state.
 6. Commits the verified temp file to a server-controlled immutable blob path.
 7. Inserts chunk metadata in the configured metadata backend.
+
+When Valkey/Redis-compatible coordination is explicitly configured, the server
+may also hold a short-lived complete-upload lease after request validation.
+That lease is an in-progress retry hint for the complete chunk identity. It is
+not a resumable upload session and does not make partially uploaded bytes
+visible as evidence.
 
 An accepted chunk is an immutable ciphertext blob. Streamed chunk identity is
 `(incident_id, stream_id, chunk_index)`. Legacy unstreamed chunk identity is
@@ -96,8 +102,8 @@ shape without changing the current backend contract.
 
 ## When To Reconsider
 
-Explicit resumable uploads or upload leases become worth reconsidering when
-one or more of these are true:
+Explicit resumable uploads or partial-upload lease sessions become worth
+reconsidering when one or more of these are true:
 
 - desktop recorder simulator measurements show complete encrypted chunk
   retries are too expensive for normal local recording interruptions
@@ -124,8 +130,9 @@ staging locally.
 
 ## Possible Future Protocol
 
-If future measurements justify resumability, prefer a narrow private `/v1`
-protocol that stages encrypted bytes under a server-generated upload session.
+If future measurements justify resumability, prefer a narrow authenticated
+main `/v1` protocol that stages encrypted bytes under a server-generated upload
+session.
 
 A future resumable protocol should keep these properties:
 
@@ -146,7 +153,7 @@ A future resumable protocol should keep these properties:
 - cleanup never deletes committed chunk rows or final blobs referenced by
   metadata
 
-Possible private route shape, subject to later design:
+Possible authenticated route shape, subject to later design:
 
 ```text
 POST /v1/incidents/{incident_id}/uploads
@@ -219,13 +226,12 @@ Current local cleanup:
 - hash mismatches do not commit final files
 - duplicate uploads do not overwrite existing committed chunks
 - normal handler cleanup removes uncommitted temp files
-- a process crash can still leave an unreferenced local temp file under the
-  server temp directory
+- explicit startup cleanup can remove old unreferenced local `upload-*` temp
+  files under the server temp directory when `SAFE_TEMP_UPLOAD_CLEANUP_AGE` is
+  positive
 
 Future cleanup for resumable uploads or leases should allow:
 
-- removing expired local temp files that are not referenced by committed chunk
-  metadata
 - removing expired operation-specific object-storage staging keys
 - expiring upload session or lease rows that have no committed chunk row
 - keeping conservative lifecycle cleanup for staging objects when ownership is
@@ -276,16 +282,16 @@ success once the server has enough bytes and metadata to decide whether the
 final encrypted chunk can be committed or confirmed. They do not require a
 byte-range resumable upload protocol.
 
-Resumable upload and upload leases are about in-progress transfer recovery
-before the complete ciphertext exists on the server. They should build on the
-same immutable commit rules, but they can be deferred until whole-chunk retry
-is proven insufficient.
+Resumable uploads and partial-upload lease sessions are about in-progress
+transfer recovery before the complete ciphertext exists on the server. They
+should build on the same immutable commit rules, but they can be deferred until
+whole-chunk retry is proven insufficient.
 
 ## Required Future Work
 
 If resumable uploads or leases are later implemented, update documentation:
 
-- `docs/api.md` with private route contracts, error codes, headers, and
+- `docs/api.md` with authenticated route contracts, error codes, headers, and
   response examples
 - `docs/simulator.md` with local desktop recorder simulator queue and retry
   mapping
@@ -326,11 +332,11 @@ Until then, the simulator keeps using complete encrypted chunk uploads.
 ## Out Of Scope
 
 - Implementing resumable upload routes.
-- Implementing upload leases.
+- Implementing resumable upload leases or partial-upload sessions.
 - Adding public `/v1` product authentication or exposing `/v1` publicly.
 - Adding web, iOS, Android, or protocol repository code.
-- Adding PostgreSQL, S3-compatible object storage, operation-level Valkey
-  coordination behavior, or background workers.
+- Adding new PostgreSQL, S3-compatible object storage, or background-worker
+  behavior.
 - Adding backend decryption, raw server-held keys, key escrow, key sharing, or
   playable media export.
 - Allowing partial files to appear as committed evidence.

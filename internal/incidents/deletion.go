@@ -228,6 +228,75 @@ func (r *Repository) QueueRetentionIncidentDeletions(ctx context.Context, cutoff
 	return queued, nil
 }
 
+// ListRetentionDeletionCandidates previews closed incidents that retention
+// policy would queue without creating deletion decisions.
+func (r *Repository) ListRetentionDeletionCandidates(ctx context.Context, cutoff time.Time, limit int) ([]RetentionDeletionCandidate, error) {
+	if limit <= 0 {
+		limit = 25
+	}
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT id, updated_at
+		FROM incidents
+		WHERE status = ? AND deletion_state = ? AND updated_at <= ?
+		ORDER BY updated_at ASC, id ASC
+		LIMIT ?`,
+		StatusClosed,
+		IncidentDeletionStateActive,
+		formatDBTime(cutoff.UTC()),
+		limit,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("select retention deletion preview candidates: %w", err)
+	}
+	defer rows.Close()
+
+	candidates := []RetentionDeletionCandidate{}
+	for rows.Next() {
+		var candidate RetentionDeletionCandidate
+		var updatedAt string
+		if err := rows.Scan(&candidate.IncidentID, &updatedAt); err != nil {
+			return nil, fmt.Errorf("scan retention deletion preview candidate: %w", err)
+		}
+		parsedUpdatedAt, err := parseDBTime(updatedAt)
+		if err != nil {
+			return nil, err
+		}
+		candidate.UpdatedAt = parsedUpdatedAt
+		candidates = append(candidates, candidate)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate retention deletion preview candidates: %w", err)
+	}
+	return candidates, nil
+}
+
+// GetIncidentDeletionJobStatus returns local-operator deletion job status using
+// only safe aggregates and deletion decision fields.
+func (r *Repository) GetIncidentDeletionJobStatus(ctx context.Context, limit int, staleDeletingBefore time.Time) (IncidentDeletionJobStatus, error) {
+	status := IncidentDeletionJobStatus{}
+	decisionCounts, err := r.listDeletionDecisionStateCounts(ctx)
+	if err != nil {
+		return status, err
+	}
+	status.DecisionStateCounts = decisionCounts
+	decisionErrors, err := r.listDeletionDecisionErrorCounts(ctx)
+	if err != nil {
+		return status, err
+	}
+	status.DecisionErrorCounts = decisionErrors
+	itemCounts, err := r.listDeletionItemStateCounts(ctx)
+	if err != nil {
+		return status, err
+	}
+	status.ItemStateCounts = itemCounts
+	runnable, err := r.ListRunnableIncidentDeletions(ctx, limit, staleDeletingBefore)
+	if err != nil {
+		return status, err
+	}
+	status.RunnableJobs = runnable
+	return status, nil
+}
+
 // ListRunnableIncidentDeletions returns retryable deletion decisions for the
 // background worker.
 func (r *Repository) ListRunnableIncidentDeletions(ctx context.Context, limit int, staleDeletingBefore time.Time) ([]IncidentDeletionStatus, error) {
@@ -418,6 +487,8 @@ func (r *Repository) CompleteIncidentDeletion(ctx context.Context, decisionID st
 	}
 
 	for _, query := range []string{
+		"DELETE FROM wrapped_key_records WHERE incident_id = ?",
+		"DELETE FROM sharing_grants WHERE incident_id = ?",
 		"DELETE FROM upload_operations WHERE incident_id = ?",
 		"DELETE FROM incident_tokens WHERE incident_id = ?",
 		"DELETE FROM checkins WHERE incident_id = ?",
@@ -590,6 +661,82 @@ func requireIncidentOwnerTx(ctx context.Context, tx *sql.Tx, incidentID, account
 		return ErrNotFound
 	}
 	return nil
+}
+
+func (r *Repository) listDeletionDecisionStateCounts(ctx context.Context) ([]IncidentDeletionStateCount, error) {
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT state, count(*)
+		FROM incident_deletion_decisions
+		GROUP BY state
+		ORDER BY state ASC`)
+	if err != nil {
+		return nil, fmt.Errorf("count incident deletion decisions by state: %w", err)
+	}
+	defer rows.Close()
+
+	counts := []IncidentDeletionStateCount{}
+	for rows.Next() {
+		var count IncidentDeletionStateCount
+		if err := rows.Scan(&count.State, &count.Count); err != nil {
+			return nil, fmt.Errorf("scan incident deletion decision state count: %w", err)
+		}
+		counts = append(counts, count)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate incident deletion decision state counts: %w", err)
+	}
+	return counts, nil
+}
+
+func (r *Repository) listDeletionDecisionErrorCounts(ctx context.Context) ([]IncidentDeletionErrorCount, error) {
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT state, error_code, count(*)
+		FROM incident_deletion_decisions
+		WHERE error_code IS NOT NULL AND error_code != ''
+		GROUP BY state, error_code
+		ORDER BY state ASC, error_code ASC`)
+	if err != nil {
+		return nil, fmt.Errorf("count incident deletion decisions by error: %w", err)
+	}
+	defer rows.Close()
+
+	counts := []IncidentDeletionErrorCount{}
+	for rows.Next() {
+		var count IncidentDeletionErrorCount
+		if err := rows.Scan(&count.State, &count.ErrorCode, &count.Count); err != nil {
+			return nil, fmt.Errorf("scan incident deletion decision error count: %w", err)
+		}
+		counts = append(counts, count)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate incident deletion decision error counts: %w", err)
+	}
+	return counts, nil
+}
+
+func (r *Repository) listDeletionItemStateCounts(ctx context.Context) ([]IncidentDeletionItemStateCount, error) {
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT state, COALESCE(error_code, ''), count(*)
+		FROM incident_deletion_items
+		GROUP BY state, error_code
+		ORDER BY state ASC, error_code ASC`)
+	if err != nil {
+		return nil, fmt.Errorf("count incident deletion items by state: %w", err)
+	}
+	defer rows.Close()
+
+	counts := []IncidentDeletionItemStateCount{}
+	for rows.Next() {
+		var count IncidentDeletionItemStateCount
+		if err := rows.Scan(&count.State, &count.ErrorCode, &count.Count); err != nil {
+			return nil, fmt.Errorf("scan incident deletion item state count: %w", err)
+		}
+		counts = append(counts, count)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate incident deletion item state counts: %w", err)
+	}
+	return counts, nil
 }
 
 func scanDeletionStatuses(rows *sql.Rows) ([]IncidentDeletionStatus, error) {

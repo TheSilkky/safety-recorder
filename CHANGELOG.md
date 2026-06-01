@@ -2,6 +2,65 @@
 
 ## Unreleased
 
+## v0.10.0 - 2026-06-01
+
+- Ran the review/update stack and applied small behavior-preserving Go
+  readability cleanups across simulator, HTTP wrapped-key metadata, and
+  storage helper code.
+- Added a planning design for a future optional regional stream-ingress relay
+  for complete encrypted chunk uploads while keeping the core API authoritative
+  for authorization, idempotency, durable blob commits, metadata, and
+  ciphertext-only behavior.
+- Added private owner-scoped wrapped media-key metadata storage and delivery
+  routes bound to active sharing grants, while keeping public viewer and bundle
+  manifests key-free and preserving backend ciphertext-only behavior.
+- Added owner-scoped contact public-key registration and incident/stream
+  sharing-grant metadata routes with SQLite/PostgreSQL parity, while leaving
+  trusted-contact accounts, backend decryption, and key custody behavior out of
+  scope.
+- Added a planning design for future contact key sharing, trusted-contact
+  grants, and wrapped-key metadata while preserving ciphertext-only backend
+  behavior.
+- Added optional Valkey/Redis-compatible short-lived complete-upload
+  coordination leases with safe retry hints, while keeping metadata-backed
+  upload operations and blob no-overwrite behavior authoritative.
+- Kept the private-admin listener dashboard-only under `/admin`, moved existing
+  admin JSON APIs onto the main handler with admin-only access, and switched
+  bootstrap/smoke flows to the private `/admin/bootstrap` form.
+- Moved the read-only incident viewer onto the main listener with authenticated
+  `/v1` routes, split private-admin routes onto their own listener,
+  and added main/admin listener configuration with legacy private-bind aliases.
+- Added configurable main API route-class rate limiting for authentication,
+  bootstrap, account, incident, upload, reconciliation, stream, token, download,
+  and admin API routes.
+- Added a planning document for the future main API/public viewer listener split
+  and private admin-dashboard listener boundary.
+- Added a mode-aware retention policy design covering future retention inputs
+  for incident modes, safety-check states, sharing/export state, grants, wrapped
+  keys, tombstones, backups, dry runs, and public viewer fail-closed behavior.
+- Added a planning document for future private reassignment or quarantine of
+  legacy unowned incidents while preserving the current admin-only default.
+- Expanded the SQLite-to-PostgreSQL metadata migration guidance into an
+  explicit private operator runbook with copy order, validation, rollback
+  limits, and tooling boundaries.
+- Added disabled-by-default retention pruning for expired/revoked viewer-token
+  metadata and completed deletion tombstones, with SQLite/PostgreSQL parity and
+  count-only maintenance summaries.
+- Added local read-only operator commands to preview closed-incident retention
+  candidates and inspect deletion job status with safe counts and retry
+  categories.
+- Added explicit-age orphan temp upload cleanup for local `upload-*` staging
+  files, with dry-run support and safe count-only startup logs.
+- Added opt-in S3-compatible object-store deletion smoke coverage for incident
+  deletion, including public viewer fail-closed checks after blob removal.
+- Added simulator ambiguous upload retry coverage so desktop-recorder retries
+  treat `Idempotency-Replayed: true` responses as successful uploads after
+  response loss and keep conflict output token/path safe.
+- Added shared SQLite/PostgreSQL upload-operation race and metadata parity tests
+  for duplicate uploads, upload-versus-close/completion interleavings,
+  idempotency replay/conflict behavior, token revocation, and completed stream
+  bundle metadata reconstruction.
+
 ## v0.9.0 - 2026-06-01
 
 - Added configurable app-level rate limiting for public incident viewer page,

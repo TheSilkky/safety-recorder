@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/open-proofline/server/internal/coordination"
 	"github.com/open-proofline/server/internal/storage"
 	"golang.org/x/crypto/bcrypt"
 )
@@ -22,15 +23,35 @@ const (
 
 // Options configures API construction.
 type Options struct {
-	MaxUploadBytes          int64
-	DefaultIncidentTokenTTL *time.Duration
-	SessionTTL              time.Duration
-	BootstrapSecret         string
-	ReadinessChecks         []ReadinessCheck
-	PublicRateLimit         PublicRateLimitConfig
-	PublicRateLimiter       PublicRateLimiter
-	PasswordCost            int
-	Logger                  *slog.Logger
+	MaxUploadBytes             int64
+	DefaultIncidentTokenTTL    *time.Duration
+	SessionTTL                 time.Duration
+	BootstrapSecret            string
+	MainRateLimit              MainRateLimitConfig
+	MainRateLimiter            RateLimiter
+	PublicRateLimit            PublicRateLimitConfig
+	PublicRateLimiter          RateLimiter
+	UploadCoordinator          coordination.Coordinator
+	UploadCoordinationLeaseTTL time.Duration
+	PasswordCost               int
+	Logger                     *slog.Logger
+}
+
+// MainRateLimitConfig configures app-level limits for main API route classes.
+type MainRateLimitConfig struct {
+	Enabled            bool
+	Window             time.Duration
+	AuthLimit          int
+	BootstrapLimit     int
+	AccountLimit       int
+	IncidentReadLimit  int
+	IncidentWriteLimit int
+	UploadLimit        int
+	ReconcileLimit     int
+	StreamLimit        int
+	TokenLimit         int
+	DownloadLimit      int
+	AdminLimit         int
 }
 
 // PublicRateLimitConfig configures app-level limits for public incident viewer
@@ -44,47 +65,59 @@ type PublicRateLimitConfig struct {
 	StaticLimit   int
 }
 
-// PublicRateLimiter records one request against a safe limiter key.
-type PublicRateLimiter interface {
+// RateLimiter records one request against a safe limiter key.
+type RateLimiter interface {
 	Allow(ctx context.Context, key string, limit int, window time.Duration) (bool, error)
 }
 
-// ReadinessCheck describes one coarse backend readiness check exposed by the
-// private health endpoint.
-type ReadinessCheck struct {
-	Name    string
-	Backend string
-	Check   func(context.Context) error
-}
+// PublicRateLimiter is kept as a compatibility name for the public viewer
+// limiter interface.
+type PublicRateLimiter = RateLimiter
 
 // API holds the dependencies and limits used by the HTTP handlers.
 type API struct {
-	repo                    MetadataRepository
-	store                   storage.BlobStore
-	maxUploadBytes          int64
-	defaultIncidentTokenTTL time.Duration
-	sessionTTL              time.Duration
-	bootstrapSecret         string
-	readinessChecks         []ReadinessCheck
-	publicRateLimit         PublicRateLimitConfig
-	publicRateLimiter       PublicRateLimiter
-	passwordCost            int
-	logger                  *slog.Logger
+	repo                       MetadataRepository
+	store                      storage.BlobStore
+	maxUploadBytes             int64
+	defaultIncidentTokenTTL    time.Duration
+	sessionTTL                 time.Duration
+	bootstrapSecret            string
+	mainRateLimit              MainRateLimitConfig
+	mainRateLimiter            RateLimiter
+	publicRateLimit            PublicRateLimitConfig
+	publicRateLimiter          RateLimiter
+	uploadCoordinator          coordination.Coordinator
+	uploadCoordinationLeaseTTL time.Duration
+	passwordCost               int
+	logger                     *slog.Logger
 }
 
-// New builds the private HTTP handler. Prefer NewPrivate or NewPublic at call
-// sites that need to make the routing boundary explicit.
+// New builds the main API and incident viewer HTTP handler. Prefer NewMain or
+// NewAdmin at call sites that need to make the routing boundary explicit.
 func New(repo MetadataRepository, store storage.BlobStore, opts Options) http.Handler {
-	return NewPrivate(repo, store, opts)
+	return NewMain(repo, store, opts)
 }
 
-// NewPrivate builds the HTTP handler tree for the private write/admin API.
+// NewMain builds the HTTP handler tree for the main API and read-only incident
+// viewer listener.
+func NewMain(repo MetadataRepository, store storage.BlobStore, opts Options) http.Handler {
+	return newAPI(repo, store, opts).mainRoutes()
+}
+
+// NewAdmin builds the HTTP handler tree for the private admin dashboard
+// listener.
+func NewAdmin(repo MetadataRepository, store storage.BlobStore, opts Options) http.Handler {
+	return newAPI(repo, store, opts).adminRoutes()
+}
+
+// NewPrivate builds the private admin dashboard listener handler tree. It is
+// kept as a compatibility name for older internal callers.
 func NewPrivate(repo MetadataRepository, store storage.BlobStore, opts Options) http.Handler {
-	return newAPI(repo, store, opts).privateRoutes()
+	return NewAdmin(repo, store, opts)
 }
 
-// NewPublic builds the HTTP handler tree for the public read-only incident
-// viewer.
+// NewPublic builds the read-only incident viewer handler tree. The current
+// server process mounts these routes on the main listener through NewMain.
 func NewPublic(repo MetadataRepository, store storage.BlobStore, opts Options) http.Handler {
 	return newAPI(repo, store, opts).publicRoutes()
 }
@@ -116,23 +149,29 @@ func newAPI(repo MetadataRepository, store storage.BlobStore, opts Options) *API
 	if logger == nil {
 		logger = slog.Default()
 	}
-	readinessChecks := append([]ReadinessCheck(nil), opts.ReadinessChecks...)
+	mainRateLimiter := opts.MainRateLimiter
+	if opts.MainRateLimit.Enabled && mainRateLimiter == nil {
+		mainRateLimiter = NewMemoryRateLimiter()
+	}
 	publicRateLimiter := opts.PublicRateLimiter
 	if opts.PublicRateLimit.Enabled && publicRateLimiter == nil {
-		publicRateLimiter = NewMemoryPublicRateLimiter()
+		publicRateLimiter = NewMemoryRateLimiter()
 	}
 
 	return &API{
-		repo:                    repo,
-		store:                   store,
-		maxUploadBytes:          maxUploadBytes,
-		defaultIncidentTokenTTL: incidentTokenTTL,
-		sessionTTL:              sessionTTL,
-		bootstrapSecret:         opts.BootstrapSecret,
-		readinessChecks:         readinessChecks,
-		publicRateLimit:         opts.PublicRateLimit,
-		publicRateLimiter:       publicRateLimiter,
-		passwordCost:            passwordCost,
-		logger:                  logger,
+		repo:                       repo,
+		store:                      store,
+		maxUploadBytes:             maxUploadBytes,
+		defaultIncidentTokenTTL:    incidentTokenTTL,
+		sessionTTL:                 sessionTTL,
+		bootstrapSecret:            opts.BootstrapSecret,
+		mainRateLimit:              opts.MainRateLimit,
+		mainRateLimiter:            mainRateLimiter,
+		publicRateLimit:            opts.PublicRateLimit,
+		publicRateLimiter:          publicRateLimiter,
+		uploadCoordinator:          opts.UploadCoordinator,
+		uploadCoordinationLeaseTTL: opts.UploadCoordinationLeaseTTL,
+		passwordCost:               passwordCost,
+		logger:                     logger,
 	}
 }

@@ -1,11 +1,13 @@
 # Architecture
 
-Proofline Server is currently a single Go backend binary with separate private
-and public HTTP listener groups. It stores incident metadata in SQLite by
-default or optional PostgreSQL, encrypted uploaded chunks on local disk by
-default with optional S3-compatible object storage for committed encrypted
-chunks, private coarse liveness/readiness checks, and optional
+Proofline Server is currently a single Go backend binary with separate main
+API/viewer and private-admin HTTP listener groups. It stores incident metadata
+in SQLite by default or optional PostgreSQL, encrypted uploaded chunks on local
+disk by default with optional S3-compatible object storage for committed
+encrypted chunks, a private `/admin` dashboard listener, and optional
 Valkey/Redis-compatible short-lived coordination when explicitly configured.
+The future regional stream-ingress relay is planning-only and documented in
+[regional-stream-ingress-relay.md](regional-stream-ingress-relay.md).
 
 This repository is the server/backend component only. In the planned multi-repo layout it corresponds to `open-proofline/server`. Web, iOS, Android, and shared protocol work are expected to live in separate future repositories.
 
@@ -13,10 +15,10 @@ The long-term product direction is broader than emergency-only recording. Future
 clients may support emergency incidents, non-emergency interaction records,
 timed safety checks, and evidence notes. The current backend stores generic
 incidents by default, can store optional incident-mode, capture-profile,
-escalation-policy, and sharing-state metadata on private incident create/read
+escalation-policy, and sharing-state metadata on main incident create/read
 routes, and has local username/password accounts with opaque server-side
-sessions for the private `/v1` API, private-only unauthenticated
-health/readiness checks, plus a private admin web surface under `/admin`.
+sessions for the main `/v1` API, existing admin-only JSON routes under
+`/v1/admin/...`, plus a private admin web surface under `/admin`.
 Mode-driven access, escalation, retention, sharing, key custody,
 trusted-contact accounts, notification delivery, and mobile/web clients are not
 implemented yet. Planned mode behavior, escalation, migration, and
@@ -41,17 +43,17 @@ is documented in [key-custody.md](key-custody.md),
 
 ```mermaid
 flowchart LR
-    FutureClients["Future clients<br/>separate repos"] -->|"future encrypted chunks"| PrivateAPI["Private /v1 API<br/>local session auth"]
-    Operator["Admin browser<br/>private network"] -->|"bootstrap/login/account passwords"| AdminWeb["Private /admin web<br/>admin cookie session"]
-    Simulator["Simulator CLI<br/>implemented here"] -->|"login + upload"| PrivateAPI
-    PrivateAPI --> Repo["Incident repository"]
+    FutureClients["Future clients<br/>separate repos"] -->|"future encrypted chunks"| MainAPI["Main /v1 API<br/>local session auth"]
+    Operator["Admin browser<br/>private network"] -->|"bootstrap/login/account passwords"| AdminListener["Private-admin listener"]
+    AdminListener --> AdminWeb["/admin web<br/>admin cookie session"]
+    Simulator["Simulator CLI<br/>implemented here"] -->|"login + upload"| MainAPI
+    MainAPI --> Repo["Incident repository"]
     Repo --> DB[(SQLite or PostgreSQL metadata)]
     AdminWeb -->|"local accounts"| DB
-    PrivateAPI --> Store["Blob storage"]
+    MainAPI --> Store["Blob storage"]
     Store --> Files[(Encrypted chunk files)]
-    OperatorCheck["Private operator check"] -->|"GET /v1/health/ready"| PrivateAPI
-    PrivateAPI --> Coord["Optional coordination<br/>startup-checked Valkey/Redis"]
-    PrivateAPI --> Token["Viewer token creation"]
+    MainAPI --> Coord["Optional coordination<br/>Valkey/Redis counters + upload leases"]
+    MainAPI --> Token["Viewer token creation"]
     Contact["Trusted contact"] --> Viewer["Public incident viewer<br/>/i/{token}"]
     Viewer --> Repo
     Viewer --> Store
@@ -76,7 +78,7 @@ Responsibilities:
 
 | Repository | Responsibility |
 |---|---|
-| `server` | Go backend, private API, private admin web surface, public incident viewer, SQLite migrations, encrypted blob storage, deployment docs, and server release workflow. |
+| `server` | Go backend, authenticated main API, private admin web surface, public incident viewer, SQLite migrations, encrypted blob storage, deployment docs, and server release workflow. |
 | `web-client` | Account portal, authorised incident review, trusted-contact access, and eventual replacement for the current token-only viewer. |
 | `ios-client` | iOS incident capture, encrypted staging, upload, local account flows, and platform-specific recording behavior. |
 | `android-client` | Android incident capture, encrypted staging, upload, local account flows, and platform-specific recording behavior. |
@@ -102,24 +104,27 @@ Do not add future web-client, iOS-client, Android-client, or protocol implementa
 
 ```mermaid
 flowchart TB
-    subgraph PrivateNetwork["Private boundary"]
+    subgraph MainBoundary["Main API/viewer boundary"]
         FuturePhone["Future mobile client<br/>separate repo"] --> WireGuard["WireGuard / LAN / firewall"]
-        Simulator["Simulator CLI"] --> PrivateListener["Private API listener<br/>SAFE_PRIVATE_BIND_ADDRS"]
-        WireGuard --> PrivateListener
-        PrivateListener --> V1["/v1 API"]
-        PrivateListener --> Health["/v1/health/live<br/>/v1/health/ready"]
-        PrivateListener --> AdminWeb["/admin web"]
+        Simulator["Simulator CLI"] --> MainListener["Main API/viewer listener<br/>SAFE_MAIN_BIND_ADDRS"]
+        WireGuard --> MainListener
+        MainListener --> V1["/v1 API<br/>product + admin JSON routes"]
         V1 --> Auth["Local account sessions"]
-        AdminWeb --> Auth
         Auth --> Storage["SQLite or PostgreSQL + local or S3 encrypted blobs"]
-        PrivateListener --> Coordination["Optional Valkey/Redis coordination"]
+        MainListener --> Coordination["Optional Valkey/Redis coordination<br/>rate counters + upload hints"]
     end
 
-    subgraph PublicEdge["Public incident viewer exposure"]
+    subgraph PublicEdge["Viewer-only public edge"]
         TrustedContact["Trusted contact"] --> HTTPS["HTTPS reverse proxy<br/>future deployment edge"]
-        HTTPS --> PublicListener["Public viewer listener<br/>SAFE_PUBLIC_BIND_ADDRS"]
-        PublicListener --> ReadOnly["Token-scoped read-only access"]
+        HTTPS --> MainListener
+        MainListener --> ReadOnly["Token-scoped read-only access"]
         ReadOnly --> Storage
+    end
+
+    subgraph AdminBoundary["Private-admin boundary"]
+        AdminClient["Operator"] --> AdminListener["Private-admin listener<br/>SAFE_ADMIN_BIND_ADDRS"]
+        AdminListener --> AdminWeb["/admin web"]
+        AdminWeb --> Auth
     end
 ```
 
@@ -128,7 +133,7 @@ flowchart TB
 ```mermaid
 sequenceDiagram
     participant Client as Simulator or future client
-    participant Private as Private /v1 API
+    participant Private as Main /v1 API
     participant DB as SQLite
     participant Blob as Blob storage
     participant Public as Public incident viewer
@@ -158,25 +163,25 @@ API metadata fields. Those fields are not behavior flags and do not change
 access, notification, retention, sharing, key custody, viewer, or bundle
 behavior.
 
-## Private/Public Server Boundary
+## Main/Admin Server Boundary
 
 ```mermaid
 flowchart LR
-    subgraph PrivateMux["Private mux"]
-        V1["/v1 routes<br/>create incidents, upload chunks,<br/>create/revoke tokens, complete streams"]
-        AdminWeb["/admin routes<br/>bootstrap, login, account list,<br/>password workflows"]
-    end
-
-    subgraph PublicMux["Public mux"]
+    subgraph MainMux["Main mux"]
+        V1["/v1 routes<br/>auth, incidents, uploads,<br/>tokens, admin JSON APIs"]
         Viewer["/i/{token} routes<br/>read-only page, JSON,<br/>completed bundle downloads"]
         LegacyViewer["/e/{token} aliases<br/>pre-rename compatibility"]
         Static["/static assets<br/>token-neutral"]
     end
 
-    PrivateMux --> PrivateBind["SAFE_PRIVATE_BIND_ADDRS"]
-    PublicMux --> PublicBind["SAFE_PUBLIC_BIND_ADDRS"]
+    subgraph AdminMux["Private-admin mux"]
+        AdminWeb["/admin routes<br/>bootstrap, login, account list,<br/>password workflows"]
+    end
 
-    Warning["Do not mount /v1 or /admin on public viewer listeners"]
+    MainMux --> MainBind["SAFE_MAIN_BIND_ADDRS"]
+    AdminMux --> AdminBind["SAFE_ADMIN_BIND_ADDRS"]
+
+    Warning["Do not mount /admin on main; do not mount /v1, /i, /e, or /static on private admin"]
 ```
 
 ## Evidence Bundles
@@ -184,6 +189,21 @@ flowchart LR
 Completed stream and incident downloads are ZIP files generated on demand. ZIP entry names are controlled by the server and manifests are generated from trusted database metadata. Bundles contain encrypted chunks and JSON manifests only.
 
 They are not decrypted, playable, or merged media exports.
+
+## Regional Ingress Relay Boundary
+
+The planned regional stream-ingress relay is a separate optional upload edge,
+not a durable evidence store and not a broad API gateway. It should expose only
+a narrow complete-chunk upload route family plus coarse health/readiness
+routes, stage ciphertext temporarily, and forward complete encrypted chunks to
+the core API. The core API remains responsible for account/session or future
+upload authorization, incident and stream state, idempotency decisions,
+duplicate reconciliation, final blob commits, and metadata.
+
+The relay must not expose `/admin`, `/v1/admin/...`, public incident viewer
+routes, bundle downloads, deletion, retention, backup, restore, escrow,
+break-glass, decryption, raw-key, or operator routes. Loss of relay temporary
+staging must be recoverable by client retry.
 
 ## Emergency Services Boundary
 

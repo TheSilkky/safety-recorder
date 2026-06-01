@@ -15,6 +15,7 @@ const (
 	idempotencyKeyHeader    = "Idempotency-Key"
 	idempotencyReplayHeader = "Idempotency-Replayed"
 	maxIdempotencyKeyBytes  = 255
+	metadataTimeTolerance   = time.Microsecond
 )
 
 func readIdempotencyKeyHash(w http.ResponseWriter, r *http.Request) (string, bool, bool) {
@@ -91,11 +92,19 @@ func uploadMatchesChunk(incidentID string, upload chunkUpload, chunk incidents.C
 		chunk.StreamID == upload.streamID &&
 		chunk.ChunkIndex == upload.chunkIndex &&
 		chunk.MediaType == upload.mediaType &&
-		chunk.StartedAt.Equal(upload.startedAt.UTC()) &&
-		chunk.EndedAt.Equal(upload.endedAt.UTC()) &&
+		metadataTimesEqual(chunk.StartedAt, upload.startedAt) &&
+		metadataTimesEqual(chunk.EndedAt, upload.endedAt) &&
 		chunk.OriginalFilename == upload.originalFilename &&
 		chunk.ByteSize == upload.temp.ByteSize &&
 		chunk.SHA256Hex == upload.sha256Hex
+}
+
+func metadataTimesEqual(stored, input time.Time) bool {
+	delta := stored.UTC().Sub(input.UTC())
+	if delta < 0 {
+		delta = -delta
+	}
+	return delta < metadataTimeTolerance
 }
 
 func idempotencyConflictError(w http.ResponseWriter) {

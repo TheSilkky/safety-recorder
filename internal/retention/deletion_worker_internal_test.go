@@ -42,6 +42,14 @@ func (r errorRepository) QueueRetentionIncidentDeletions(context.Context, time.T
 	return 0, nil
 }
 
+func (r errorRepository) PruneIncidentTokenMetadata(context.Context, time.Time, int) (int, error) {
+	return 0, nil
+}
+
+func (r errorRepository) PruneIncidentDeletionTombstones(context.Context, time.Time, int) (int, error) {
+	return 0, nil
+}
+
 func (r errorRepository) ListRunnableIncidentDeletions(context.Context, int, time.Time) ([]incidents.IncidentDeletionStatus, error) {
 	return nil, r.err
 }

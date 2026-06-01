@@ -113,7 +113,7 @@ func TestCreateIncidentRejectsInvalidModeFields(t *testing.T) {
 	}
 }
 
-func TestPrivateAPIJSONSecurityHeaders(t *testing.T) {
+func TestMainAPIJSONSecurityHeaders(t *testing.T) {
 	app := newTestApp(t)
 
 	response, body := post(t, app, "/v1/incidents", "application/json", bytes.NewBufferString(`{}`))
@@ -122,10 +122,10 @@ func TestPrivateAPIJSONSecurityHeaders(t *testing.T) {
 	if response.StatusCode != http.StatusCreated {
 		t.Fatalf("expected create incident status 201, got %d: %s", response.StatusCode, body)
 	}
-	assertPrivateJSONSecurityHeaders(t, response)
+	assertMainJSONSecurityHeaders(t, response)
 }
 
-func TestPrivateAPIErrorSecurityHeaders(t *testing.T) {
+func TestMainAPIErrorSecurityHeaders(t *testing.T) {
 	app := newTestApp(t)
 
 	response, body := get(t, app, "/v1/incidents/inc_missing")
@@ -134,11 +134,11 @@ func TestPrivateAPIErrorSecurityHeaders(t *testing.T) {
 	if response.StatusCode != http.StatusNotFound {
 		t.Fatalf("expected missing incident status 404, got %d: %s", response.StatusCode, body)
 	}
-	assertPrivateJSONSecurityHeaders(t, response)
+	assertMainJSONSecurityHeaders(t, response)
 	assertErrorCode(t, body, "incident_not_found")
 }
 
-func TestPrivateAPIUnsupportedMethodUsesSecurityHeaders(t *testing.T) {
+func TestMainAPIUnsupportedMethodUsesSecurityHeaders(t *testing.T) {
 	app := newTestApp(t)
 
 	response, body := get(t, app, "/v1/incidents")
@@ -147,7 +147,7 @@ func TestPrivateAPIUnsupportedMethodUsesSecurityHeaders(t *testing.T) {
 	if response.StatusCode != http.StatusNotFound {
 		t.Fatalf("expected unsupported method status 404, got %d: %s", response.StatusCode, body)
 	}
-	assertPrivateJSONSecurityHeaders(t, response)
+	assertMainJSONSecurityHeaders(t, response)
 	assertErrorCode(t, body, "not_found")
 }
 

@@ -2,10 +2,12 @@
 
 This document defines the operational retention, backup, restore, and deletion
 policy for the current Proofline backend shape. The backend implements
-private incident deletion requests, a durable deletion queue, and an automatic
-background worker for deletion and optional closed-incident retention. It does
-not add cloud backups, key escrow, backend decryption, mode-specific retention,
-token metadata pruning, tombstone expiry, orphan temp-file cleanup, or
+authenticated incident deletion requests, a durable deletion queue, and an automatic
+background worker for deletion and optional closed-incident retention, plus
+read-only local operator status and retention preview commands. The worker can
+also prune expired/revoked viewer-token metadata and completed minimal
+tombstones when explicit retention windows are configured. It does not add cloud
+backups, key escrow, backend decryption, mode-specific retention, or
 object-bucket lifecycle policy enforcement.
 
 Incident deletion and retention enforcement details are documented in
@@ -33,7 +35,8 @@ Incident mode metadata such as emergency incidents, interaction records, safety
 checks, and evidence notes may eventually need different retention defaults. The
 current fields are metadata only and do not change retention. Any future
 mode-specific retention behavior must update this policy before or alongside
-implementation.
+implementation. The future policy boundary is documented in
+[mode-aware retention policy](mode-aware-retention-policy.md).
 
 ## Retention Principles
 
@@ -129,13 +132,15 @@ A restore test should:
 
 1. Restore SQLite, including any needed WAL live state, and blobs into an
    isolated staging path or isolated S3 bucket/prefix.
-2. Start the API with private/local bind addresses only.
-3. Load known incident metadata through private routes.
+2. Start the API with local or otherwise reviewed private-boundary bind
+   addresses only.
+3. Load known incident metadata through authenticated main `/v1` routes.
 4. Verify completed stream or incident bundle downloads can be generated.
 5. Confirm generated manifests match expected stream and chunk metadata.
 6. Confirm missing blobs or database/blob mismatches fail closed rather than producing partial evidence.
 
-The restore target must preserve the private/public listener split. Do not use a restore drill as a reason to expose `/v1` publicly.
+The restore target must preserve the main/private-admin listener split. Do not
+use a restore drill as a reason to expose `/v1` publicly.
 
 For S3-compatible storage, restore drills must verify the configured bucket,
 prefix, credentials, and endpoint can reconstruct completed stream and incident
@@ -158,6 +163,10 @@ Deletion behavior:
 - account-scoped deletion is available at `POST /v1/incidents/{incident_id}/deletion` for the incident owner
 - admin-global deletion is available at `POST /v1/admin/incidents/{incident_id}/deletion`
 - deletion status is available through the matching private `GET` routes
+- local read-only operator status is available through
+  `proofline-server operator deletion-status`
+- local read-only closed-incident retention preview is available through
+  `proofline-server operator retention-preview --closed-incident-retention <duration>`
 - encrypted blob files or objects are removed by server-controlled stored paths only
 - client-provided filesystem paths, object keys, and object-store URLs are never accepted for deletion
 - repeated deletion requests return the existing deletion status instead of creating competing work
@@ -170,11 +179,13 @@ Current deletion policy still distinguishes:
 - deleting one incident
 - expiring closed incidents after an operator-defined retention window through
   `SAFE_CLOSED_INCIDENT_RETENTION`
+- pruning expired or revoked viewer-token metadata after an operator-defined
+  audit window through `SAFE_TOKEN_METADATA_RETENTION`
+- pruning completed minimal deletion tombstones after an operator-defined
+  window through `SAFE_DELETION_TOMBSTONE_RETENTION`
 - applying different retention to emergency incidents, interaction records,
   safety checks, and evidence notes after incident-mode, capture-profile,
   escalation-policy, and sharing-state fields exist
-- pruning expired or revoked token metadata after an audit window
-- cleaning orphaned temporary upload files under `SAFE_DATA_DIR/tmp` after crashes
 - identifying orphaned blobs or rows after interrupted manual operations
 - deleting downloaded bundles or plaintext exports if such derived files are ever implemented
 
@@ -211,7 +222,10 @@ Recommended deployment posture:
 - test boot and restore procedures so encryption does not make urgent evidence unavailable
 - document who can unlock production storage during an emergency or restore operation
 
-Disk encryption does not protect data while the host is running and unlocked, and it does not replace private `/v1` boundaries, TLS at the edge, token handling, rate limiting, backup access control, or future application-level authorization.
+Disk encryption does not protect data while the host is running and unlocked,
+and it does not replace reviewed main `/v1` deployment boundaries, TLS at the
+edge, token handling, rate limiting, backup access control, or future
+application-level authorization.
 
 ## Remaining Future Work
 
@@ -222,9 +236,6 @@ Likely future work includes:
 
 - retention policy fields or settings for mode-driven incident, capture-profile,
   escalation-policy, and sharing-state behavior
-- a local operator CLI and dry-run previews for deletion or retention candidates
-- orphan temp-file cleanup with a conservative age threshold
-- optional pruning for expired or revoked token metadata
-- tombstone retention and pruning policy
+- a local operator CLI to request deletion decisions
 - backup and restore runbooks with deployment-specific commands
 - documentation updates for any future derived plaintext or persisted bundle outputs

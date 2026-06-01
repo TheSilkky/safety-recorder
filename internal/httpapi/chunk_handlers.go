@@ -97,6 +97,11 @@ func (a *API) uploadChunk(w http.ResponseWriter, r *http.Request) {
 	if !a.validateChunkStream(w, r, incidentID, upload) {
 		return
 	}
+	uploadLease, ok := a.acquireUploadCoordinationLease(w, r, incidentID, upload)
+	if !ok {
+		return
+	}
+	defer a.releaseUploadCoordinationLease(uploadLease)
 
 	var idempotencyParams incidents.UploadOperationParams
 	if hasIdempotencyKey {
@@ -351,10 +356,10 @@ func chunkReconciliationMismatchedFields(input chunkReconciliationInput, chunk i
 	if chunk.MediaType != input.mediaType {
 		mismatchedFields = append(mismatchedFields, "media_type")
 	}
-	if !chunk.StartedAt.Equal(input.startedAt.UTC()) {
+	if !metadataTimesEqual(chunk.StartedAt, input.startedAt) {
 		mismatchedFields = append(mismatchedFields, "started_at")
 	}
-	if !chunk.EndedAt.Equal(input.endedAt.UTC()) {
+	if !metadataTimesEqual(chunk.EndedAt, input.endedAt) {
 		mismatchedFields = append(mismatchedFields, "ended_at")
 	}
 	if chunk.OriginalFilename != input.originalFilename {

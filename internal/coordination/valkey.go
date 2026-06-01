@@ -51,6 +51,13 @@ end
 return current
 `)
 
+var deleteIfValueScript = redis.NewScript(`
+if redis.call("GET", KEYS[1]) == ARGV[1] then
+	return redis.call("DEL", KEYS[1])
+end
+return 0
+`)
+
 type redisPinger struct {
 	client *redis.Client
 }
@@ -65,6 +72,15 @@ func (r redisPinger) IncrementWithExpiry(ctx context.Context, key string, ttl ti
 		milliseconds = 1
 	}
 	return incrementWithExpiryScript.Run(ctx, r.client, []string{key}, strconv.FormatInt(milliseconds, 10)).Int64()
+}
+
+func (r redisPinger) SetNXWithExpiry(ctx context.Context, key, value string, ttl time.Duration) (bool, error) {
+	return r.client.SetNX(ctx, key, value, ttl).Result()
+}
+
+func (r redisPinger) DeleteIfValue(ctx context.Context, key, value string) (bool, error) {
+	deleted, err := deleteIfValueScript.Run(ctx, r.client, []string{key}, value).Int64()
+	return deleted > 0, err
 }
 
 func (r redisPinger) Close() error {

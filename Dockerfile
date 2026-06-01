@@ -20,8 +20,8 @@ RUN apk add --no-cache ca-certificates tzdata \
 	&& mkdir -p /data \
 	&& chown -R safety:safety /data
 
-ENV SAFE_PRIVATE_BIND_ADDRS=0.0.0.0:8080 \
-	SAFE_PUBLIC_BIND_ADDRS=0.0.0.0:8081 \
+ENV SAFE_MAIN_BIND_ADDRS=0.0.0.0:8080 \
+	SAFE_ADMIN_BIND_ADDRS=0.0.0.0:8081 \
 	SAFE_DATA_DIR=/data \
 	SAFE_DB_PATH=/data/safety.db
 

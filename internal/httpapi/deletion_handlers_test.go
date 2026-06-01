@@ -20,7 +20,7 @@ func TestAccountIncidentDeletionRequiresOwnerAndHidesPublicViewer(t *testing.T) 
 
 	response, body := requestWithAuth(
 		t,
-		app.privateHandler,
+		app.mainHandler,
 		http.MethodPost,
 		"/v1/incidents/"+incidentID+"/deletion",
 		"application/json",
@@ -34,7 +34,7 @@ func TestAccountIncidentDeletionRequiresOwnerAndHidesPublicViewer(t *testing.T) 
 
 	response, body = requestWithAuth(
 		t,
-		app.privateHandler,
+		app.mainHandler,
 		http.MethodPost,
 		"/v1/incidents/"+incidentID+"/deletion",
 		"application/json",
@@ -74,7 +74,7 @@ func TestAdminIncidentDeletionCanTargetAnyIncident(t *testing.T) {
 
 	response, body = requestWithAuth(
 		t,
-		app.privateHandler,
+		app.mainHandler,
 		http.MethodPost,
 		"/v1/admin/incidents/"+incidentID+"/deletion",
 		"application/json",
@@ -87,7 +87,7 @@ func TestAdminIncidentDeletionCanTargetAnyIncident(t *testing.T) {
 	}
 
 	admin := mustGetAccountByUsername(t, app, "test-admin")
-	response, body = post(t, app, "/v1/admin/incidents/"+incidentID+"/deletion", "application/json", bytes.NewBufferString(`{"reason_code":"admin_delete","allow_open":true}`))
+	response, body = requestWithAuth(t, app.mainHandler, http.MethodPost, "/v1/admin/incidents/"+incidentID+"/deletion", "application/json", bytes.NewBufferString(`{"reason_code":"admin_delete","allow_open":true}`), app.authToken)
 	defer response.Body.Close()
 	if response.StatusCode != http.StatusAccepted {
 		t.Fatalf("expected admin deletion status 202, got %d: %s", response.StatusCode, body)

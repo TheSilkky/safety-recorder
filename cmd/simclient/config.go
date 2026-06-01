@@ -64,7 +64,7 @@ func parseConfig(args []string) (config, error) {
 	var networkBandwidthRaw string
 	var desktopInputFiles stringListFlag
 	cfg := config{}
-	fs.StringVar(&cfg.apiBase, "api", defaultAPIBase, "Private API base URL")
+	fs.StringVar(&cfg.apiBase, "api", defaultAPIBase, "Main API base URL")
 	fs.StringVar(&cfg.viewerBase, "viewer", defaultViewerBase, "Incident viewer base URL")
 	fs.StringVar(&cfg.username, "username", os.Getenv("PROOFLINE_SIM_USERNAME"), "Proofline account username")
 	fs.StringVar(&cfg.password, "password", os.Getenv("PROOFLINE_SIM_PASSWORD"), "Proofline account password")

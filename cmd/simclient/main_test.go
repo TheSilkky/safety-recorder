@@ -58,7 +58,7 @@ func TestBuildViewerURL(t *testing.T) {
 	}
 }
 
-func TestClientWriteRoutesUsePrivateAPIBase(t *testing.T) {
+func TestClientWriteRoutesUseMainAPIBase(t *testing.T) {
 	expectedPaths := []string{
 		"POST /v1/auth/login",
 		"POST /v1/incidents",
@@ -156,7 +156,7 @@ func TestClientWriteRoutesUsePrivateAPIBase(t *testing.T) {
 	}
 }
 
-func TestClientUploadChunkUsesPrivateAPIBaseAndStreamID(t *testing.T) {
+func TestClientUploadChunkUsesMainAPIBaseAndStreamID(t *testing.T) {
 	body := []byte("encrypted bytes")
 	upload := buildChunkUpload("inc_1", "str_1", 2, "audio", time.Date(2026, 5, 22, 10, 0, 0, 0, time.UTC), body)
 
@@ -208,6 +208,181 @@ func TestClientUploadChunkUsesPrivateAPIBaseAndStreamID(t *testing.T) {
 	}
 	if err := sim.uploadChunk(context.Background(), upload); err != nil {
 		t.Fatalf("uploadChunk returned error: %v", err)
+	}
+}
+
+func TestUploadDesktopStageRetriesAcceptedUploadAfterResponseLoss(t *testing.T) {
+	stage, err := openDesktopStage(t.TempDir())
+	if err != nil {
+		t.Fatalf("openDesktopStage returned error: %v", err)
+	}
+	key, err := envelope.GenerateKey()
+	if err != nil {
+		t.Fatalf("GenerateKey returned error: %v", err)
+	}
+	manifest := newDesktopManifest("inc_ambiguous", "str_ambiguous", "audio", desktopSourceGenerated)
+	startedAt := time.Date(2026, 5, 22, 10, 0, 0, 0, time.UTC)
+	if err := stage.stageChunk(&manifest, key, []byte("ambiguous response body"), startedAt, startedAt.Add(chunkDuration)); err != nil {
+		t.Fatalf("stageChunk returned error: %v", err)
+	}
+
+	requests := 0
+	var firstIDKey string
+	var firstBody []byte
+	httpClient := &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		requests++
+		if r.Method != http.MethodPost || r.URL.Path != "/v1/incidents/inc_ambiguous/chunks" {
+			t.Fatalf("unexpected upload route %s %s", r.Method, r.URL.Path)
+		}
+		idempotencyKey := r.Header.Get("Idempotency-Key")
+		if idempotencyKey == "" {
+			t.Fatalf("upload omitted idempotency key")
+		}
+		if r.Header.Get("Authorization") != "Bearer session-token" {
+			t.Fatalf("upload omitted session Authorization header")
+		}
+		if err := r.ParseMultipartForm(1024 * 1024); err != nil {
+			t.Fatalf("ParseMultipartForm returned error: %v", err)
+		}
+		file, _, err := r.FormFile("file")
+		if err != nil {
+			t.Fatalf("FormFile returned error: %v", err)
+		}
+		defer file.Close()
+		body, err := io.ReadAll(file)
+		if err != nil {
+			t.Fatalf("read multipart file: %v", err)
+		}
+
+		if requests == 1 {
+			firstIDKey = idempotencyKey
+			firstBody = body
+			return nil, errSimulatedNetwork
+		}
+		if idempotencyKey != firstIDKey {
+			t.Fatalf("retry idempotency key = %q, want original key", idempotencyKey)
+		}
+		if !bytes.Equal(body, firstBody) {
+			t.Fatalf("retry body changed")
+		}
+		response := testResponse(http.StatusOK, "application/json", `{"id":"chunk_1"}`)
+		response.Header.Set("Idempotency-Replayed", "true")
+		return response, nil
+	})}
+	sim := client{
+		httpClient:   httpClient,
+		apiBase:      "http://api.example",
+		viewerBase:   "http://viewer.example",
+		sessionToken: "session-token",
+	}
+	cfg := config{desktopMaxAttempts: 2, desktopRetryDelay: 0}
+	var output bytes.Buffer
+
+	if err := uploadDesktopStage(context.Background(), &output, sim, cfg, stage, &manifest); err != nil {
+		t.Fatalf("uploadDesktopStage returned error: %v", err)
+	}
+	if requests != 2 {
+		t.Fatalf("requests = %d, want 2", requests)
+	}
+	if !manifest.Chunks[0].Uploaded {
+		t.Fatal("chunk was not marked uploaded after replay")
+	}
+	if manifest.Chunks[0].UploadAttempts != 2 {
+		t.Fatalf("UploadAttempts = %d, want 2", manifest.Chunks[0].UploadAttempts)
+	}
+	for _, disallowed := range [][]byte{
+		[]byte(firstIDKey),
+		[]byte("session-token"),
+		firstBody,
+		[]byte(stage.dir),
+	} {
+		if len(disallowed) > 0 && bytes.Contains(output.Bytes(), disallowed) {
+			t.Fatalf("ambiguous retry output exposed %q: %s", disallowed, output.String())
+		}
+	}
+}
+
+func TestClientUploadChunkConflictErrorIsTokenAndPathSafe(t *testing.T) {
+	originalBody := []byte("original encrypted bytes")
+	conflictingBody := []byte("different encrypted bytes")
+	originalUpload := buildChunkUpload("inc_1", "str_1", 1, "audio", time.Date(2026, 5, 22, 10, 0, 0, 0, time.UTC), originalBody)
+	originalUpload.idempotencyKey = "raw-idempotency-key-secret"
+	conflictingUpload := buildChunkUpload("inc_1", "str_1", 1, "audio", time.Date(2026, 5, 22, 10, 0, 0, 0, time.UTC), conflictingBody)
+	conflictingUpload.idempotencyKey = originalUpload.idempotencyKey
+
+	requests := 0
+	httpClient := &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		requests++
+		if r.Header.Get("Idempotency-Key") != originalUpload.idempotencyKey {
+			t.Fatalf("Idempotency-Key = %q, want simulator chunk key", r.Header.Get("Idempotency-Key"))
+		}
+		if err := r.ParseMultipartForm(1024 * 1024); err != nil {
+			t.Fatalf("ParseMultipartForm returned error: %v", err)
+		}
+		if got := r.FormValue("stream_id"); got != "str_1" {
+			t.Fatalf("stream_id = %q", got)
+		}
+		file, _, err := r.FormFile("file")
+		if err != nil {
+			t.Fatalf("FormFile returned error: %v", err)
+		}
+		defer file.Close()
+		body, err := io.ReadAll(file)
+		if err != nil {
+			t.Fatalf("read multipart file: %v", err)
+		}
+		switch requests {
+		case 1:
+			if got := r.FormValue("sha256_hex"); got != sha256Hex(originalBody) {
+				t.Fatalf("original sha256_hex = %q", got)
+			}
+			if !bytes.Equal(body, originalBody) {
+				t.Fatalf("original body changed")
+			}
+			return testResponse(http.StatusCreated, "application/json", `{"id":"chunk_1"}`), nil
+		case 2:
+			if got := r.FormValue("sha256_hex"); got != sha256Hex(conflictingBody) {
+				t.Fatalf("conflicting sha256_hex = %q", got)
+			}
+			if !bytes.Equal(body, conflictingBody) {
+				t.Fatalf("conflicting body changed")
+			}
+			return testResponse(http.StatusConflict, "application/json", `{"error":{"code":"idempotency_conflict","message":"raw-idempotency-key-secret different encrypted bytes http://api.example/private-path"}}`), nil
+		default:
+			t.Fatalf("unexpected request %d", requests)
+			return nil, errSimulatedNetwork
+		}
+	})}
+	sim := client{
+		httpClient:   httpClient,
+		apiBase:      "http://api.example/private-path",
+		viewerBase:   "http://viewer.example",
+		sessionToken: "session-token",
+	}
+
+	if err := sim.uploadChunk(context.Background(), originalUpload); err != nil {
+		t.Fatalf("original upload returned error: %v", err)
+	}
+	err := sim.uploadChunk(context.Background(), conflictingUpload)
+	if err == nil {
+		t.Fatal("expected idempotency conflict error")
+	}
+	message := err.Error()
+	if !strings.Contains(message, "idempotency_conflict") {
+		t.Fatalf("conflict error = %q, want idempotency_conflict", message)
+	}
+	for _, disallowed := range []string{
+		originalUpload.idempotencyKey,
+		string(originalBody),
+		string(conflictingBody),
+		"session-token",
+		"api.example",
+		"private-path",
+		"/v1/incidents",
+	} {
+		if strings.Contains(message, disallowed) {
+			t.Fatalf("conflict error exposed %q: %s", disallowed, message)
+		}
 	}
 }
 

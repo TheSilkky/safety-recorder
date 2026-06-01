@@ -69,10 +69,11 @@ Codex can draft changes, but the maintainer remains responsible for reviewing, t
 	   not already have one:
 
 	   ```bash
-	   curl -sS -X POST http://127.0.0.1:8080/v1/bootstrap/admin \
-	     -H 'Content-Type: application/json' \
-	     -H 'X-Proofline-Bootstrap-Secret: replace-with-local-bootstrap-secret' \
-	     -d '{"username":"admin","password":"replace-with-a-long-local-password"}'
+	   curl -sS -X POST http://127.0.0.1:8081/admin/bootstrap \
+	     -H 'Content-Type: application/x-www-form-urlencoded' \
+	     --data-urlencode 'bootstrap_secret=replace-with-local-bootstrap-secret' \
+	     --data-urlencode 'username=admin' \
+	     --data-urlencode 'password=replace-with-a-long-local-password'
 	   ```
 
 	   Then run the simulator with account credentials:

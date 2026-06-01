@@ -50,11 +50,12 @@ details in private operator documentation.
      `SAFE_BLOB_BACKEND=s3`, and `SAFE_COORDINATION_BACKEND=valkey` or `redis`.
    - Confirm SQLite and local filesystem fallbacks are not being confused with
      the active cluster-style backend selectors.
-   - Confirm the private `/v1` listener is still behind localhost, LAN,
-     WireGuard, firewall rules, or a strict private reverse proxy.
+   - Confirm the main `/v1` listener is still behind the deployment's reviewed
+     boundary, such as localhost, LAN, WireGuard, firewall rules, or a strict
+     private reverse proxy.
 
 2. Choose a consistency window.
-   - Prefer a quiesced window where private write routes are stopped or blocked
+   - Prefer a quiesced window where authenticated main write routes are stopped or blocked
      before the metadata and blob backups are taken.
    - If a fully quiesced window is not possible, use database and object-store
      backup mechanisms that can be tied to the same recovery point and document
@@ -107,13 +108,13 @@ details in private operator documentation.
 ## Restore Runbook
 
 Run restore drills before relying on the system for real incidents. Restore
-drills must preserve the private/public listener split and must not expose
-private `/v1` routes publicly.
+drills must preserve the main/private-admin listener split and must not expose
+main `/v1` routes publicly without a reviewed deployment boundary.
 
 1. Restore into an isolated environment.
    - Use private or loopback bind addresses only, such as
-     `SAFE_PRIVATE_BIND_ADDRS=127.0.0.1:8080` and
-     `SAFE_PUBLIC_BIND_ADDRS=127.0.0.1:8081`.
+     `SAFE_MAIN_BIND_ADDRS=127.0.0.1:8080` and
+     `SAFE_ADMIN_BIND_ADDRS=127.0.0.1:8081`.
    - Do not route a restore drill through a public reverse-proxy entry point.
    - Do not use real viewer links or raw tokens in shared notes while testing.
 
@@ -133,13 +134,13 @@ private `/v1` routes publicly.
 
 4. Restore deployment configuration.
    - Use the same backend selectors as the backup set.
-   - Keep `/v1` on private or loopback addresses.
+   - Keep `/v1` on local or otherwise reviewed private-boundary addresses.
    - Use private secret injection for credentials instead of writing secret
      values into the runbook or shell history.
 
 5. Validate metadata and blob consistency.
    - Start the API in the isolated environment.
-   - Load known incident metadata through private routes only.
+   - Load known incident metadata through authenticated main `/v1` routes only.
    - Generate completed stream or incident encrypted ZIP bundles.
    - Confirm generated manifests match expected stream and chunk metadata.
    - Confirm completed bundle generation fails closed when a required blob is

@@ -15,6 +15,7 @@ import (
 
 	"github.com/open-proofline/server/internal/auth"
 	"github.com/open-proofline/server/internal/incidents"
+	"github.com/open-proofline/server/internal/incidents/contracttest"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -36,6 +37,9 @@ func TestPostgresMigrateCreatesSchemaAndRejectsChecksumMismatch(t *testing.T) {
 	assertPostgresTable(t, ctx, conn, "upload_operations")
 	assertPostgresTable(t, ctx, conn, "incident_deletion_decisions")
 	assertPostgresTable(t, ctx, conn, "incident_deletion_items")
+	assertPostgresTable(t, ctx, conn, "contact_public_keys")
+	assertPostgresTable(t, ctx, conn, "sharing_grants")
+	assertPostgresTable(t, ctx, conn, "wrapped_key_records")
 
 	if err := Migrate(ctx, conn); err != nil {
 		t.Fatalf("second Migrate: %v", err)
@@ -353,6 +357,240 @@ func TestPostgresRepositoryPreservesCoreSemantics(t *testing.T) {
 	if _, _, err := repo.CreateIncidentToken(ctx, incident.ID, "trusted contact", nil); !errors.Is(err, incidents.ErrNotFound) {
 		t.Fatalf("create token during deletion error = %v, want ErrNotFound", err)
 	}
+}
+
+func TestPostgresDeletionOperatorStatusAndPreview(t *testing.T) {
+	ctx := context.Background()
+	conn := openPostgresTestDB(t, ctx)
+	if err := Migrate(ctx, conn); err != nil {
+		t.Fatalf("Migrate: %v", err)
+	}
+	repo := NewRepository(conn)
+
+	closedIncident, err := repo.CreateIncident(ctx, "closed", "")
+	if err != nil {
+		t.Fatalf("create closed incident: %v", err)
+	}
+	failedIncident, err := repo.CreateIncident(ctx, "failed", "")
+	if err != nil {
+		t.Fatalf("create failed incident: %v", err)
+	}
+	if _, err := repo.CloseIncident(ctx, closedIncident.ID); err != nil {
+		t.Fatalf("close candidate incident: %v", err)
+	}
+	if _, err := repo.CreateChunk(ctx, testChunkParams(failedIncident.ID, "", incidents.MediaTypeAudio, 1)); err != nil {
+		t.Fatalf("create chunk: %v", err)
+	}
+	status, err := repo.RequestIncidentDeletion(ctx, incidents.IncidentDeletionRequest{
+		IncidentID: failedIncident.ID,
+		Source:     incidents.IncidentDeletionSourceAdminRequest,
+		AllowOpen:  true,
+	})
+	if err != nil {
+		t.Fatalf("request deletion: %v", err)
+	}
+	items, err := repo.ListIncidentDeletionItems(ctx, status.DecisionID)
+	if err != nil {
+		t.Fatalf("list deletion items: %v", err)
+	}
+	if len(items) != 1 {
+		t.Fatalf("deletion items = %+v, want one", items)
+	}
+	if err := repo.MarkIncidentDeletionItemFailed(ctx, items[0].ID, "unsafe_stored_path"); err != nil {
+		t.Fatalf("mark item failed: %v", err)
+	}
+	if _, err := repo.FailIncidentDeletion(ctx, status.DecisionID, "blob_delete_failed"); err != nil {
+		t.Fatalf("fail deletion: %v", err)
+	}
+
+	candidates, err := repo.ListRetentionDeletionCandidates(ctx, time.Now().UTC().Add(time.Minute), 10)
+	if err != nil {
+		t.Fatalf("list retention candidates: %v", err)
+	}
+	if len(candidates) != 1 || candidates[0].IncidentID != closedIncident.ID {
+		t.Fatalf("retention candidates = %+v, want only %s", candidates, closedIncident.ID)
+	}
+
+	report, err := repo.GetIncidentDeletionJobStatus(ctx, 10, time.Now().UTC().Add(time.Minute))
+	if err != nil {
+		t.Fatalf("get deletion job status: %v", err)
+	}
+	assertPostgresDecisionStateCount(t, report.DecisionStateCounts, incidents.IncidentDeletionStateFailed, 1)
+	assertPostgresDecisionErrorCount(t, report.DecisionErrorCounts, incidents.IncidentDeletionStateFailed, "blob_delete_failed", 1)
+	assertPostgresItemStateCount(t, report.ItemStateCounts, incidents.IncidentDeletionItemStateFailed, "unsafe_stored_path", 1)
+	if len(report.RunnableJobs) != 1 || report.RunnableJobs[0].DecisionID != status.DecisionID {
+		t.Fatalf("unexpected runnable jobs: %+v", report.RunnableJobs)
+	}
+}
+
+func TestPostgresRetentionPruning(t *testing.T) {
+	ctx := context.Background()
+	conn := openPostgresTestDB(t, ctx)
+	if err := Migrate(ctx, conn); err != nil {
+		t.Fatalf("Migrate: %v", err)
+	}
+	repo := NewRepository(conn)
+
+	incident, err := repo.CreateIncident(ctx, "phone", "")
+	if err != nil {
+		t.Fatalf("create incident: %v", err)
+	}
+	now := time.Now().UTC()
+	expiredAt := now.Add(-2 * time.Hour)
+	futureExpiresAt := now.Add(2 * time.Hour)
+	expiredToken, _, err := repo.CreateIncidentToken(ctx, incident.ID, "expired token label", &expiredAt)
+	if err != nil {
+		t.Fatalf("create expired token: %v", err)
+	}
+	futureToken, _, err := repo.CreateIncidentToken(ctx, incident.ID, "future token label", &futureExpiresAt)
+	if err != nil {
+		t.Fatalf("create future token: %v", err)
+	}
+	revokedToken, _, err := repo.CreateIncidentToken(ctx, incident.ID, "revoked token label", nil)
+	if err != nil {
+		t.Fatalf("create revoked token: %v", err)
+	}
+	if err := repo.RevokeIncidentToken(ctx, revokedToken.ID); err != nil {
+		t.Fatalf("revoke token: %v", err)
+	}
+
+	pruned, err := repo.PruneIncidentTokenMetadata(ctx, now.Add(-time.Hour), 25)
+	if err != nil {
+		t.Fatalf("prune expired token metadata: %v", err)
+	}
+	if pruned != 1 {
+		t.Fatalf("expired token metadata pruned = %d, want 1", pruned)
+	}
+	if _, err := repo.GetIncidentToken(ctx, expiredToken.ID); !errors.Is(err, incidents.ErrNotFound) {
+		t.Fatalf("expired token lookup error = %v, want ErrNotFound", err)
+	}
+	if _, err := repo.GetIncidentToken(ctx, futureToken.ID); err != nil {
+		t.Fatalf("future token was pruned: %v", err)
+	}
+
+	deletedIncident, err := repo.CreateIncident(ctx, "deleted", "")
+	if err != nil {
+		t.Fatalf("create deleted incident: %v", err)
+	}
+	if _, err := repo.CreateChunk(ctx, testChunkParams(deletedIncident.ID, "", incidents.MediaTypeAudio, 1)); err != nil {
+		t.Fatalf("create chunk: %v", err)
+	}
+	status, err := repo.RequestIncidentDeletion(ctx, incidents.IncidentDeletionRequest{
+		IncidentID: deletedIncident.ID,
+		Source:     incidents.IncidentDeletionSourceAdminRequest,
+		AllowOpen:  true,
+	})
+	if err != nil {
+		t.Fatalf("request deletion: %v", err)
+	}
+	items, err := repo.ListIncidentDeletionItems(ctx, status.DecisionID)
+	if err != nil {
+		t.Fatalf("list deletion items: %v", err)
+	}
+	for _, item := range items {
+		if err := repo.MarkIncidentDeletionItemDeleted(ctx, item.ID); err != nil {
+			t.Fatalf("mark deletion item deleted: %v", err)
+		}
+	}
+	if _, err := repo.CompleteIncidentDeletion(ctx, status.DecisionID); err != nil {
+		t.Fatalf("complete deletion: %v", err)
+	}
+
+	pruned, err = repo.PruneIncidentDeletionTombstones(ctx, time.Now().UTC().Add(time.Minute), 25)
+	if err != nil {
+		t.Fatalf("prune tombstone: %v", err)
+	}
+	if pruned != 1 {
+		t.Fatalf("tombstones pruned = %d, want 1", pruned)
+	}
+	if _, err := repo.GetIncident(ctx, deletedIncident.ID); !errors.Is(err, incidents.ErrNotFound) {
+		t.Fatalf("deleted tombstone lookup error = %v, want ErrNotFound", err)
+	}
+	if _, err := repo.GetIncident(ctx, incident.ID); err != nil {
+		t.Fatalf("active incident was pruned: %v", err)
+	}
+}
+
+func TestPostgresContactPublicKeysAndSharingGrants(t *testing.T) {
+	ctx := context.Background()
+	conn := openPostgresTestDB(t, ctx)
+	if err := Migrate(ctx, conn); err != nil {
+		t.Fatalf("Migrate: %v", err)
+	}
+	repo := NewRepository(conn)
+	owner, err := repo.CreateAccount(ctx, auth.CreateAccountParams{
+		Username:     "grant-owner",
+		PasswordHash: "hash",
+		Role:         auth.RoleUser,
+	})
+	if err != nil {
+		t.Fatalf("create owner account: %v", err)
+	}
+	incident, err := repo.CreateIncidentForAccount(ctx, owner.ID, incidents.CreateIncidentParams{})
+	if err != nil {
+		t.Fatalf("create owner incident: %v", err)
+	}
+	contactKey, err := repo.CreateContactPublicKey(ctx, incidents.CreateContactPublicKeyParams{
+		OwnerAccountID:       owner.ID,
+		DisplayLabel:         "contact",
+		WrappingAlgorithm:    "age-v1-x25519",
+		PublicKey:            "age1first",
+		PublicKeyFingerprint: "fingerprint-1",
+		KeyState:             incidents.ContactKeyStateActive,
+	})
+	if err != nil {
+		t.Fatalf("create contact public key: %v", err)
+	}
+	grant, err := repo.CreateSharingGrant(ctx, incidents.CreateSharingGrantParams{
+		OwnerAccountID: owner.ID,
+		IncidentID:     incident.ID,
+		RecipientType:  incidents.SharingGrantRecipientTrustedContact,
+		ContactID:      contactKey.ContactID,
+		DataClass:      incidents.SharingGrantDataClassMetadataCiphertext,
+	})
+	if err != nil {
+		t.Fatalf("create sharing grant: %v", err)
+	}
+	if grant.ContactPublicKeyID != contactKey.ID || grant.ContactPublicKeyVersion != 1 {
+		t.Fatalf("unexpected grant key binding: %+v", grant)
+	}
+	record, err := repo.CreateWrappedKeyRecord(ctx, incidents.CreateWrappedKeyRecordParams{
+		OwnerAccountID:           owner.ID,
+		IncidentID:               incident.ID,
+		GrantID:                  grant.ID,
+		MediaKeyID:               "media-key-postgres",
+		WrappingAlgorithm:        "age-v1-x25519",
+		WrappingAlgorithmVersion: "1",
+		WrappedKeyCiphertext:     "wrapped-ciphertext",
+		PublicWrappingMetadata:   []byte(`{"profile":"age-v1-x25519"}`),
+	})
+	if err != nil {
+		t.Fatalf("create wrapped key record: %v", err)
+	}
+	records, err := repo.ListWrappedKeyRecords(ctx, owner.ID, incident.ID)
+	if err != nil {
+		t.Fatalf("list wrapped key records: %v", err)
+	}
+	if len(records) != 1 || records[0].ID != record.ID {
+		t.Fatalf("unexpected wrapped key records: %+v", records)
+	}
+	if _, err := repo.RevokeSharingGrant(ctx, owner.ID, grant.ID, owner.ID); err != nil {
+		t.Fatalf("revoke sharing grant: %v", err)
+	}
+	if _, err := repo.GetWrappedKeyRecord(ctx, owner.ID, record.ID); !errors.Is(err, incidents.ErrNotFound) {
+		t.Fatalf("revoked grant get wrapped key error = %v, want ErrNotFound", err)
+	}
+}
+
+func TestPostgresUploadOperationRaceAndBackendParity(t *testing.T) {
+	contracttest.RunUploadOperationRaceAndParity(t, func(t *testing.T, ctx context.Context) contracttest.Repository {
+		t.Helper()
+		conn := openPostgresTestDB(t, ctx)
+		if err := Migrate(ctx, conn); err != nil {
+			t.Fatalf("Migrate: %v", err)
+		}
+		return NewRepository(conn)
+	})
 }
 
 func TestPostgresRepositoryHashesAndRevokesIncidentTokens(t *testing.T) {
@@ -752,4 +990,43 @@ func testUploadOperationParams(incidentID, streamID string) incidents.UploadOper
 		SHA256Hex:          chunk.SHA256Hex,
 		FingerprintHash:    strings.Repeat("a", 64),
 	}
+}
+
+func assertPostgresDecisionStateCount(t *testing.T, counts []incidents.IncidentDeletionStateCount, state string, want int) {
+	t.Helper()
+	for _, count := range counts {
+		if count.State == state {
+			if count.Count != want {
+				t.Fatalf("decision state count for %q = %d, want %d", state, count.Count, want)
+			}
+			return
+		}
+	}
+	t.Fatalf("decision state count for %q missing in %+v", state, counts)
+}
+
+func assertPostgresDecisionErrorCount(t *testing.T, counts []incidents.IncidentDeletionErrorCount, state, errorCode string, want int) {
+	t.Helper()
+	for _, count := range counts {
+		if count.State == state && count.ErrorCode == errorCode {
+			if count.Count != want {
+				t.Fatalf("decision error count for %q/%q = %d, want %d", state, errorCode, count.Count, want)
+			}
+			return
+		}
+	}
+	t.Fatalf("decision error count for %q/%q missing in %+v", state, errorCode, counts)
+}
+
+func assertPostgresItemStateCount(t *testing.T, counts []incidents.IncidentDeletionItemStateCount, state, errorCode string, want int) {
+	t.Helper()
+	for _, count := range counts {
+		if count.State == state && count.ErrorCode == errorCode {
+			if count.Count != want {
+				t.Fatalf("item state count for %q/%q = %d, want %d", state, errorCode, count.Count, want)
+			}
+			return
+		}
+	}
+	t.Fatalf("item state count for %q/%q missing in %+v", state, errorCode, counts)
 }

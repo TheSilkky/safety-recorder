@@ -22,11 +22,11 @@ Default listeners:
 
 | Listener | Default address |
 |---|---|
-| Private API | `127.0.0.1:8080` |
-| Public incident viewer | `127.0.0.1:8081` |
+| Main API and incident viewer | `127.0.0.1:8080` |
+| Private admin dashboard | `127.0.0.1:8081` |
 
 The private admin web surface is available at
-`http://127.0.0.1:8080/admin`. When `SAFE_AUTH_BOOTSTRAP_SECRET` is set and no
+`http://127.0.0.1:8081/admin`. When `SAFE_AUTH_BOOTSTRAP_SECRET` is set and no
 admin exists, that page shows the first-admin bootstrap screen; after an admin
 exists, it shows the admin login screen and local account password workflows.
 
@@ -48,10 +48,11 @@ For a new local database, create the first admin account before running the
 simulator:
 
 ```bash
-curl -sS -X POST http://127.0.0.1:8080/v1/bootstrap/admin \
-  -H 'Content-Type: application/json' \
-  -H 'X-Proofline-Bootstrap-Secret: replace-with-local-bootstrap-secret' \
-  -d '{"username":"admin","password":"replace-with-a-long-local-password"}'
+curl -sS -X POST http://127.0.0.1:8081/admin/bootstrap \
+  -H 'Content-Type: application/x-www-form-urlencoded' \
+  --data-urlencode 'bootstrap_secret=replace-with-local-bootstrap-secret' \
+  --data-urlencode 'username=admin' \
+  --data-urlencode 'password=replace-with-a-long-local-password'
 ```
 
 Then restart the server without `SAFE_AUTH_BOOTSTRAP_SECRET`.

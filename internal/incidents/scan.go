@@ -318,3 +318,155 @@ func scanIncidentToken(s scanner) (IncidentToken, error) {
 	}
 	return token, nil
 }
+
+func scanContactPublicKey(s scanner) (ContactPublicKey, error) {
+	var contactKey ContactPublicKey
+	var displayLabel sql.NullString
+	var createdAt string
+	var updatedAt string
+	var revokedAt sql.NullString
+	if err := s.Scan(
+		&contactKey.ID,
+		&contactKey.OwnerAccountID,
+		&contactKey.ContactID,
+		&contactKey.Version,
+		&displayLabel,
+		&contactKey.WrappingAlgorithm,
+		&contactKey.PublicKey,
+		&contactKey.PublicKeyFingerprint,
+		&contactKey.KeyState,
+		&createdAt,
+		&updatedAt,
+		&revokedAt,
+	); err != nil {
+		return ContactPublicKey{}, err
+	}
+	parsedCreatedAt, err := parseDBTime(createdAt)
+	if err != nil {
+		return ContactPublicKey{}, err
+	}
+	parsedUpdatedAt, err := parseDBTime(updatedAt)
+	if err != nil {
+		return ContactPublicKey{}, err
+	}
+	contactKey.CreatedAt = parsedCreatedAt
+	contactKey.UpdatedAt = parsedUpdatedAt
+	if displayLabel.Valid {
+		contactKey.DisplayLabel = displayLabel.String
+	}
+	if contactKey.RevokedAt, err = nullableDBTime(revokedAt); err != nil {
+		return ContactPublicKey{}, err
+	}
+	return contactKey, nil
+}
+
+func scanSharingGrant(s scanner) (SharingGrant, error) {
+	var grant SharingGrant
+	var streamID sql.NullString
+	var expiresAt sql.NullString
+	var revokedAt sql.NullString
+	var revokedByAccountID sql.NullString
+	var createdAt string
+	var updatedAt string
+	if err := s.Scan(
+		&grant.ID,
+		&grant.OwnerAccountID,
+		&grant.IncidentID,
+		&streamID,
+		&grant.RecipientType,
+		&grant.ContactID,
+		&grant.ContactPublicKeyID,
+		&grant.ContactPublicKeyVersion,
+		&grant.DataClass,
+		&grant.GrantState,
+		&createdAt,
+		&updatedAt,
+		&expiresAt,
+		&revokedAt,
+		&revokedByAccountID,
+	); err != nil {
+		return SharingGrant{}, err
+	}
+	parsedCreatedAt, err := parseDBTime(createdAt)
+	if err != nil {
+		return SharingGrant{}, err
+	}
+	parsedUpdatedAt, err := parseDBTime(updatedAt)
+	if err != nil {
+		return SharingGrant{}, err
+	}
+	grant.CreatedAt = parsedCreatedAt
+	grant.UpdatedAt = parsedUpdatedAt
+	if streamID.Valid {
+		grant.StreamID = streamID.String
+	}
+	if grant.ExpiresAt, err = nullableDBTime(expiresAt); err != nil {
+		return SharingGrant{}, err
+	}
+	if grant.RevokedAt, err = nullableDBTime(revokedAt); err != nil {
+		return SharingGrant{}, err
+	}
+	if revokedByAccountID.Valid {
+		grant.RevokedByAccountID = revokedByAccountID.String
+	}
+	return grant, nil
+}
+
+func scanWrappedKeyRecord(s scanner) (WrappedKeyRecord, error) {
+	var record WrappedKeyRecord
+	var streamID sql.NullString
+	var publicWrappingMetadata string
+	var createdAt string
+	var updatedAt string
+	var revokedAt sql.NullString
+	var revokedByAccountID sql.NullString
+	var rotatedAt sql.NullString
+	if err := s.Scan(
+		&record.ID,
+		&record.OwnerAccountID,
+		&record.IncidentID,
+		&streamID,
+		&record.GrantID,
+		&record.RecipientType,
+		&record.ContactID,
+		&record.ContactPublicKeyID,
+		&record.ContactPublicKeyVersion,
+		&record.MediaKeyID,
+		&record.WrappingAlgorithm,
+		&record.WrappingAlgorithmVersion,
+		&record.WrappedKeyCiphertext,
+		&publicWrappingMetadata,
+		&record.WrappedKeyState,
+		&createdAt,
+		&updatedAt,
+		&revokedAt,
+		&revokedByAccountID,
+		&rotatedAt,
+	); err != nil {
+		return WrappedKeyRecord{}, err
+	}
+	parsedCreatedAt, err := parseDBTime(createdAt)
+	if err != nil {
+		return WrappedKeyRecord{}, err
+	}
+	parsedUpdatedAt, err := parseDBTime(updatedAt)
+	if err != nil {
+		return WrappedKeyRecord{}, err
+	}
+	record.CreatedAt = parsedCreatedAt
+	record.UpdatedAt = parsedUpdatedAt
+	if streamID.Valid {
+		record.StreamID = streamID.String
+	}
+	record.PublicWrappingMetadata = []byte(publicWrappingMetadata)
+	if record.RevokedAt, err = nullableDBTime(revokedAt); err != nil {
+		return WrappedKeyRecord{}, err
+	}
+	if revokedByAccountID.Valid {
+		record.RevokedByAccountID = revokedByAccountID.String
+	}
+	if record.RotatedAt, err = nullableDBTime(rotatedAt); err != nil {
+		return WrappedKeyRecord{}, err
+	}
+	return record, nil
+}

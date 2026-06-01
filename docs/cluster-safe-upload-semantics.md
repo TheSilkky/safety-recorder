@@ -4,11 +4,11 @@ This document tracks cluster-safe upload operation semantics for Proofline
 Server.
 
 The current backend implements a narrow `Idempotency-Key` path for complete
-chunk uploads. Remaining cluster semantics, including upload leases, resumable
-uploads, operation-level use of Valkey/Redis-compatible coordination, changes
-to the current local account/session model, public `/v1` exposure, browser
-decryption, backend decryption, key custody, and playable media export are
-still not implemented.
+chunk uploads and optional Valkey/Redis-compatible short-lived complete-upload
+leases. Remaining cluster semantics, including resumable uploads,
+partial-upload lease sessions, changes to the current local account/session
+model, public `/v1` exposure, browser decryption, backend decryption, key
+custody, and playable media export are still not implemented.
 
 ## Current Behavior
 
@@ -43,7 +43,8 @@ S3-compatible object storage backends.
 ## Non-Goals
 
 - No resumable upload protocol or partial committed chunks.
-- No operation-level Valkey coordination behavior.
+- Complete-upload Valkey leases are in-progress hints only; they do not store
+  idempotency results or committed evidence truth.
 - No public `/v1` exposure, public account workflows, or changes to the current
   local account/session model.
 - No client repository, protocol repository, or mobile implementation.
@@ -157,9 +158,14 @@ complete-upload idempotency path. For future cluster deployments, PostgreSQL
 remains the expected source of truth for idempotency and upload operation
 records.
 
-Valkey/Redis-compatible coordination may hold leases, in-progress hints, or
-cached results, but it must not be the durable source of truth for committed
-chunk metadata, committed chunk bytes, or completed idempotency decisions.
+Valkey/Redis-compatible coordination may hold leases and in-progress hints,
+but it must not be the durable source of truth for committed chunk metadata,
+committed chunk bytes, or completed idempotency decisions.
+The implemented Valkey path uses short-lived complete-upload leases keyed by a
+server-controlled hash of normalized chunk identity. A busy lease returns
+`409 upload_in_progress` with `Retry-After`; a coordination failure returns
+`503 upload_coordination_unavailable`. Both responses are retryable and omit
+backend details and sensitive request values.
 
 The implemented `upload_operations` table tracks:
 
@@ -184,33 +190,38 @@ idempotency row must not remove committed chunk rows or committed blobs.
 ## Commit Flow
 
 The current complete-upload idempotency path uses the metadata backend for
-reservation, replay lookup, conflict detection, and completion. A future
-cluster-safe upload with operation-specific object staging should use this
-expanded ordering.
+reservation, replay lookup, conflict detection, and completion. When optional
+Valkey coordination is configured, the server acquires a short-lived
+complete-upload lease after it has staged and verified the encrypted request
+body. That lease reduces duplicate final commit and metadata work; it is not a
+resumable-transfer or bandwidth-saving lease.
 
-1. Validate route parameters and multipart metadata enough to determine the
-   normalized chunk identity and request fingerprint inputs.
-2. Reserve or find the upload operation in the metadata backend when an
-   idempotency key is supplied.
-3. If the same idempotency key already completed with the same fingerprint,
-   return equivalent success using the committed chunk metadata.
-4. If the same idempotency key exists with a different chunk identity or
-   request fingerprint, return `409 idempotency_conflict`.
-5. Stage uploaded ciphertext under an operation-specific staging key while
-   computing SHA-256 and enforcing the upload byte limit.
-6. Compare the computed SHA-256 with `sha256_hex`. On mismatch, remove staging
+1. Validate route parameters and multipart metadata, stage uploaded ciphertext
+   in a local temp file while computing SHA-256, and enforce the upload byte
+   limit.
+2. Compare the computed SHA-256 with `sha256_hex`. On mismatch, remove staging
    bytes and return `400 hash_mismatch`.
-7. Recheck incident and stream state in the metadata backend before final blob
+3. Recheck incident and stream state in the metadata backend before final blob
    commit. Streamed uploads must still require an open stream with matching
    media type.
+4. Acquire a short-lived Valkey complete-upload lease when coordination is
+   configured. If the lease is busy, return a retryable in-progress response.
+5. Reserve or find the upload operation in the metadata backend when an
+   idempotency key is supplied.
+6. If the same idempotency key already completed with the same fingerprint,
+   return equivalent success using the committed chunk metadata.
+7. If the same idempotency key exists with a different chunk identity or
+   request fingerprint, return `409 idempotency_conflict`.
 8. Commit the staged object to the final server-controlled immutable object key
    using conditional no-overwrite behavior.
 9. Insert chunk metadata in the metadata backend, or confirm the existing chunk
    row when a race already inserted an equivalent row.
 10. Mark the upload operation `metadata_committed` with the final chunk ID.
-11. Remove operation-specific staging state.
-12. Return success only after final encrypted bytes exist outside staging and
-   chunk metadata has been inserted or confirmed.
+11. Release the Valkey lease if one was acquired; TTL expiry must still be safe
+    if release fails.
+12. Remove local temp staging state.
+13. Return success only after final encrypted bytes exist outside staging and
+    chunk metadata has been inserted or confirmed.
 
 The final object key should remain server-controlled and derived from the
 normalized chunk identity. Clients must never provide stored paths or final
@@ -321,7 +332,7 @@ uploads visible as committed evidence and does not design a resumable transfer
 protocol. That follow-up decision is documented in
 [resumable-upload-lease-protocol.md](resumable-upload-lease-protocol.md), which
 keeps the local desktop recorder simulator on complete encrypted chunk retries
-while deferring resumable uploads and upload leases.
+while deferring resumable uploads and partial-upload lease sessions.
 
 This document focuses on the commit and confirmation semantics once an upload
 attempt has enough data to compute the ciphertext hash and decide whether a

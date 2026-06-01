@@ -294,6 +294,84 @@ func TestWorkerQueuesClosedIncidentRetention(t *testing.T) {
 	}
 }
 
+func TestWorkerPrunesTokenMetadataAndTombstones(t *testing.T) {
+	ctx := context.Background()
+	repo, _ := newDeletionTestRepository(t, ctx)
+	incident, err := repo.CreateIncident(ctx, "phone", "")
+	if err != nil {
+		t.Fatalf("create incident: %v", err)
+	}
+	expiredAt := time.Now().UTC().Add(-2 * time.Hour)
+	expiredToken, _, err := repo.CreateIncidentToken(ctx, incident.ID, "expired token label", &expiredAt)
+	if err != nil {
+		t.Fatalf("create expired token: %v", err)
+	}
+	futureExpiresAt := time.Now().UTC().Add(2 * time.Hour)
+	futureToken, _, err := repo.CreateIncidentToken(ctx, incident.ID, "future token label", &futureExpiresAt)
+	if err != nil {
+		t.Fatalf("create future token: %v", err)
+	}
+
+	deletedIncident, err := repo.CreateIncident(ctx, "deleted", "")
+	if err != nil {
+		t.Fatalf("create deleted incident: %v", err)
+	}
+	chunk, err := repo.CreateChunk(ctx, deletionTestChunkParams(deletedIncident.ID, "", incidents.MediaTypeAudio, 1))
+	if err != nil {
+		t.Fatalf("create deletion chunk: %v", err)
+	}
+	status, err := repo.RequestIncidentDeletion(ctx, incidents.IncidentDeletionRequest{
+		IncidentID: deletedIncident.ID,
+		Source:     incidents.IncidentDeletionSourceAdminRequest,
+		AllowOpen:  true,
+	})
+	if err != nil {
+		t.Fatalf("request deletion: %v", err)
+	}
+	store := &fakeBlobStore{}
+	summary, err := retention.NewWorker(repo, store, retention.Options{}).RunOnce(ctx)
+	if err != nil {
+		t.Fatalf("run deletion worker: %v", err)
+	}
+	if summary.Completed != 1 {
+		t.Fatalf("deletion worker summary = %+v, want one completed", summary)
+	}
+	assertRemovedPaths(t, store.removed, chunk.StoredPath)
+	if _, err := repo.GetIncidentDeletionStatus(ctx, deletedIncident.ID); err != nil {
+		t.Fatalf("deletion status before tombstone pruning: %v", err)
+	}
+	time.Sleep(time.Millisecond)
+
+	summary, err = retention.NewWorker(repo, &fakeBlobStore{}, retention.Options{
+		TokenMetadataRetention: time.Hour,
+		TombstoneRetention:     time.Nanosecond,
+	}).RunOnce(ctx)
+	if err != nil {
+		t.Fatalf("run pruning worker: %v", err)
+	}
+	if summary.TokenMetadataPruned != 1 || summary.TombstonesPruned != 1 {
+		t.Fatalf("unexpected pruning summary: %+v", summary)
+	}
+	if _, err := repo.GetIncidentToken(ctx, expiredToken.ID); !errors.Is(err, incidents.ErrNotFound) {
+		t.Fatalf("expired token lookup error = %v, want ErrNotFound", err)
+	}
+	if _, err := repo.GetIncidentToken(ctx, futureToken.ID); err != nil {
+		t.Fatalf("future token was pruned: %v", err)
+	}
+	if _, err := repo.GetIncident(ctx, deletedIncident.ID); !errors.Is(err, incidents.ErrNotFound) {
+		t.Fatalf("deleted tombstone lookup error = %v, want ErrNotFound", err)
+	}
+	if _, err := repo.GetIncidentDeletionStatus(ctx, deletedIncident.ID); !errors.Is(err, incidents.ErrNotFound) {
+		t.Fatalf("deleted tombstone status error = %v, want ErrNotFound", err)
+	}
+	if _, err := repo.GetIncident(ctx, incident.ID); err != nil {
+		t.Fatalf("active incident was pruned: %v", err)
+	}
+	if status.State != incidents.IncidentDeletionStatePending {
+		t.Fatalf("unexpected original deletion status: %+v", status)
+	}
+}
+
 type fakeBlobStore struct {
 	removed         []string
 	removeErrByPath map[string]error

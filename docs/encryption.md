@@ -153,7 +153,12 @@ go run ./cmd/simclient --download-bundle --verify-bundle-decryption=false
 
 ## What The Backend Sees
 
-The backend sees only opaque uploaded bytes and client-provided metadata. It stores ciphertext and validates SHA-256 over the ciphertext envelope. It does not parse keys, store keys in SQLite, upload keys, decrypt chunks, or expose public decryption endpoints.
+The backend sees opaque uploaded bytes and client-provided metadata. It stores
+ciphertext and validates SHA-256 over the ciphertext envelope. Private
+owner-authenticated routes can store grant-bound wrapped-key records as
+encrypted metadata, but the backend does not parse raw media keys, store raw
+keys in SQLite, upload raw keys, decrypt chunks, or expose public decryption
+endpoints.
 
 Evidence bundles remain ZIP files containing encrypted `.enc` chunk files and JSON manifests. Bundle manifests include a non-secret hint that client-side encryption is expected and that the server does not decrypt.
 
@@ -172,5 +177,6 @@ separately in
 [contact-wrapped-key-metadata-simulator.md](contact-wrapped-key-metadata-simulator.md).
 That prototype can model contact public keys, non-secret key IDs, and wrapped
 stream media keys in local development artifacts, but it does not change the
-current v1 envelope or make the backend store raw keys, store wrapped keys, or
-decrypt media.
+current v1 envelope, make the backend store raw keys, or make the backend
+decrypt media. Server-side wrapped-key records remain encrypted metadata behind
+authenticated owner routes.

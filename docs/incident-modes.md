@@ -187,13 +187,13 @@ conservative:
 1. Keep existing incidents readable as generic legacy incidents with no incident-mode value.
 2. Do not backfill old incidents as emergencies, interaction records, safety checks, or evidence notes without an account-owner-controlled classification flow.
 3. Keep the initial server fields nullable and optional in SQLite, PostgreSQL,
-   and private API responses.
+   and main `/v1` API responses.
 4. Keep old clients working against generic incident creation until an explicit API version or compatibility plan replaces it.
 5. Keep current public viewer and bundle behavior tolerant of missing mode,
    capture-profile, escalation, and sharing fields.
 6. Do not infer key access, trusted-contact grants, public links, or retention windows from a legacy generic incident.
 
-The current private `POST /v1/incidents` route accepts the initial optional mode
+The current authenticated `POST /v1/incidents` route accepts the initial optional mode
 metadata fields documented in [API](api.md). Future fields or mode-driven
 behavior still require an explicit protocol/API compatibility decision.
 
@@ -230,6 +230,7 @@ Future design should decide:
 The current backend implements generic incident deletion and optional
 closed-incident retention, but it does not implement mode-specific retention or
 mode-specific deletion behavior. Future work should align with
+[mode-aware retention policy](mode-aware-retention-policy.md),
 [retention-backup-deletion.md](retention-backup-deletion.md) and
 [incident-deletion-retention-enforcement.md](incident-deletion-retention-enforcement.md).
 
@@ -254,7 +255,7 @@ Implemented today:
 
 - generic incidents
 - optional nullable incident-mode, capture-profile, escalation-policy, and
-  sharing-state metadata on private incident create/read routes
+  sharing-state metadata on main incident create/read routes
 - media streams
 - encrypted chunk upload and immutable storage
 - checkins
@@ -290,7 +291,7 @@ When future implementation touches incident modes, update the relevant source-of
 - [Security model](security-model.md), to preserve storage, logging, listener, access, and ciphertext-only assumptions
 - [Threat model](threat-model.md), to cover mode-specific sharing, escalation, false-positive, and access risks
 - [Key custody](key-custody.md), if sharing, wrapped-key delivery, or decryption behavior changes
-- [Retention, backup, and deletion](retention-backup-deletion.md) and [incident deletion and retention enforcement](incident-deletion-retention-enforcement.md), if mode-specific retention behavior changes
+- [Mode-aware retention policy](mode-aware-retention-policy.md), [retention, backup, and deletion](retention-backup-deletion.md), and [incident deletion and retention enforcement](incident-deletion-retention-enforcement.md), if mode-specific retention behavior changes
 - [Browser-side decryption](browser-decryption.md) and [break-glass key access](break-glass-key-access.md), if a mode affects decryption or emergency key access
 
 New ideas discovered while documenting incident modes should become backlog items unless they are required for the scoped task.

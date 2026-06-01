@@ -134,7 +134,7 @@ Readability refactors should preserve:
 - token creation, hashing, expiry, revocation, and public error-collapsing behaviour
 - encryption envelope and key-custody assumptions
 - bundle format, ZIP entry naming, and encrypted evidence-bundle semantics
-- private `/v1` and public incident-viewer listener separation
+- main `/v1`/viewer and private-admin route separation
 - logging exclusions for raw tokens, request bodies, uploaded bytes, Authorization headers, plaintext, raw keys, and future token-like values
 
 When a refactor touches security-sensitive paths, keep the old invariant visible in the new shape. For example, incident viewer code should still make it obvious that invalid, expired, and revoked tokens collapse into the same public error, and upload code should still make the temp-file, hash-verification, immutable-commit, and metadata-write order easy to follow.
@@ -419,7 +419,7 @@ or follow-up notes.
 
 Codex-generated changes should be reviewed like any other contribution: inspect
 the diff, confirm the scope matches the issue, run the relevant validation
-commands, and make sure security warnings and private/public listener boundaries
+commands, and make sure security warnings and main/private-admin boundaries
 were not weakened.
 
 ## Release Checklist

@@ -8,13 +8,15 @@ import (
 	"github.com/open-proofline/server/internal/auth"
 )
 
-func (a *API) privateAuthMiddleware(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if isPrivateAuthBypass(r) {
-			next.ServeHTTP(w, r)
-			return
-		}
+func (a *API) withPrivateAuth(next http.HandlerFunc) http.HandlerFunc {
+	authenticated := a.requirePrivateAuth(http.HandlerFunc(next))
+	return func(w http.ResponseWriter, r *http.Request) {
+		authenticated.ServeHTTP(w, r)
+	}
+}
 
+func (a *API) requirePrivateAuth(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		rawToken, ok := bearerToken(r.Header.Get("Authorization"))
 		if !ok {
 			writeError(w, http.StatusUnauthorized, "authentication_required", "authentication is required")
@@ -44,27 +46,6 @@ func (a *API) privateAuthMiddleware(next http.Handler) http.Handler {
 			Session: session,
 		})))
 	})
-}
-
-func isPrivateAuthBypass(r *http.Request) bool {
-	if r.URL.Path == "/admin" || strings.HasPrefix(r.URL.Path, "/admin/") {
-		return true
-	}
-	if r.Method == http.MethodGet {
-		switch r.URL.Path {
-		case "/v1/health/live", "/v1/health/ready":
-			return true
-		}
-	}
-	if r.Method != http.MethodPost {
-		return false
-	}
-	switch r.URL.Path {
-	case "/v1/auth/login", "/v1/bootstrap/admin":
-		return true
-	default:
-		return false
-	}
 }
 
 func bearerToken(value string) (string, bool) {
