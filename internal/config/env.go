@@ -6,7 +6,19 @@ import (
 )
 
 type configSource struct {
-	values map[string]string
+	values map[string]configSourceValue
+}
+
+type configSourceLayer int
+
+const (
+	configSourceLayerFile configSourceLayer = iota + 1
+	configSourceLayerEnv
+)
+
+type configSourceValue struct {
+	value string
+	layer configSourceLayer
 }
 
 var secretFileEnvPairs = map[string]string{
@@ -22,9 +34,9 @@ var secretFileEnvPairs = map[string]string{
 var secretDirectEnvPairs = reverseSecretPairs(secretFileEnvPairs)
 
 func newConfigSource(fileValues map[string]string) configSource {
-	values := make(map[string]string, len(fileValues)+len(os.Environ()))
+	values := make(map[string]configSourceValue, len(fileValues)+len(os.Environ()))
 	for name, value := range fileValues {
-		values[name] = value
+		values[name] = configSourceValue{value: value, layer: configSourceLayerFile}
 	}
 
 	envValues := make(map[string]string)
@@ -40,14 +52,14 @@ func newConfigSource(fileValues map[string]string) configSource {
 		if _, ok := secretFileEnvPairs[name]; ok {
 			continue
 		}
-		values[name] = value
+		values[name] = configSourceValue{value: value, layer: configSourceLayerEnv}
 		if fileName, ok := secretDirectEnvPairs[name]; ok {
 			delete(values, fileName)
 		}
 	}
 	for fileName, directName := range secretFileEnvPairs {
 		if value, ok := envValues[fileName]; ok {
-			values[fileName] = value
+			values[fileName] = configSourceValue{value: value, layer: configSourceLayerEnv}
 			delete(values, directName)
 		}
 	}
@@ -64,12 +76,28 @@ func reverseSecretPairs(pairs map[string]string) map[string]string {
 }
 
 func (s configSource) Lookup(name string) (string, bool) {
-	value, ok := s.values[name]
-	return value, ok
+	entry, ok := s.values[name]
+	return entry.value, ok
+}
+
+func (s configSource) LookupByPrecedence(names ...string) (string, string, bool) {
+	bestLayer := configSourceLayer(0)
+	bestName := ""
+	bestValue := ""
+	for _, name := range names {
+		entry, ok := s.values[name]
+		if !ok || entry.layer <= bestLayer {
+			continue
+		}
+		bestLayer = entry.layer
+		bestName = name
+		bestValue = entry.value
+	}
+	return bestName, bestValue, bestName != ""
 }
 
 func (s configSource) Get(name string) string {
-	return s.values[name]
+	return s.values[name].value
 }
 
 func envOrDefault(source configSource, name, fallback string) string {

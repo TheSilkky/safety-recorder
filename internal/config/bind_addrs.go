@@ -26,17 +26,10 @@ func adminBindAddrsFromSource(source configSource) ([]string, error) {
 }
 
 func bindAddrsFromSource(source configSource, pluralName, singularName, fallback string) ([]string, error) {
-	if raw, ok := source.Lookup(pluralName); ok {
+	if name, raw, ok := source.LookupByPrecedence(pluralName, singularName); ok {
 		addrs, err := parseBindAddrs(raw)
 		if err != nil {
-			return nil, fmt.Errorf("parse %s: %w", pluralName, err)
-		}
-		return addrs, nil
-	}
-	if raw, ok := source.Lookup(singularName); ok {
-		addrs, err := parseBindAddrs(raw)
-		if err != nil {
-			return nil, fmt.Errorf("parse %s: %w", singularName, err)
+			return nil, fmt.Errorf("parse %s: %w", name, err)
 		}
 		return addrs, nil
 	}
@@ -44,31 +37,10 @@ func bindAddrsFromSource(source configSource, pluralName, singularName, fallback
 }
 
 func bindAddrsFromSourceWithLegacy(source configSource, pluralName, singularName, legacyPluralName, legacySingularName, fallback string) ([]string, error) {
-	if raw, ok := source.Lookup(pluralName); ok {
+	if name, raw, ok := source.LookupByPrecedence(pluralName, singularName, legacyPluralName, legacySingularName); ok {
 		addrs, err := parseBindAddrs(raw)
 		if err != nil {
-			return nil, fmt.Errorf("parse %s: %w", pluralName, err)
-		}
-		return addrs, nil
-	}
-	if raw, ok := source.Lookup(singularName); ok {
-		addrs, err := parseBindAddrs(raw)
-		if err != nil {
-			return nil, fmt.Errorf("parse %s: %w", singularName, err)
-		}
-		return addrs, nil
-	}
-	if raw, ok := source.Lookup(legacyPluralName); ok {
-		addrs, err := parseBindAddrs(raw)
-		if err != nil {
-			return nil, fmt.Errorf("parse %s: %w", legacyPluralName, err)
-		}
-		return addrs, nil
-	}
-	if raw, ok := source.Lookup(legacySingularName); ok {
-		addrs, err := parseBindAddrs(raw)
-		if err != nil {
-			return nil, fmt.Errorf("parse %s: %w", legacySingularName, err)
+			return nil, fmt.Errorf("parse %s: %w", name, err)
 		}
 		return addrs, nil
 	}

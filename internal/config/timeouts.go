@@ -75,10 +75,11 @@ func timeoutsFromSourceWithLegacy(source configSource, prefix, legacyPrefix stri
 }
 
 func durationFromSourceWithLegacy(source configSource, name, legacyName string, fallback time.Duration) (time.Duration, error) {
-	if _, ok := source.Lookup(name); ok {
-		return durationFromSource(source, name, fallback)
+	selectedName, raw, ok := source.LookupByPrecedence(name, legacyName)
+	if !ok {
+		return fallback, nil
 	}
-	return durationFromSource(source, legacyName, fallback)
+	return parseDuration(selectedName, raw)
 }
 
 func durationFromSource(source configSource, name string, fallback time.Duration) (time.Duration, error) {
@@ -86,6 +87,10 @@ func durationFromSource(source configSource, name string, fallback time.Duration
 	if !ok {
 		return fallback, nil
 	}
+	return parseDuration(name, raw)
+}
+
+func parseDuration(name, raw string) (time.Duration, error) {
 	value := strings.TrimSpace(raw)
 	if value == "" {
 		return 0, fmt.Errorf("parse %s: empty duration", name)

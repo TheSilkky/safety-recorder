@@ -556,6 +556,35 @@ max_upload_bytes = "1KB"
 	}
 }
 
+func TestLoadSingularBindEnvOverridesTOMLPluralBind(t *testing.T) {
+	path := writeConfigFile(t, `
+[server]
+main_bind_addrs = ["127.0.0.1:19080"]
+admin_bind_addrs = ["127.0.0.1:19081"]
+`)
+
+	cfg := loadConfigWithOptionsForTest(t, LoadOptions{ConfigFilePath: path}, map[string]string{
+		"SAFE_MAIN_BIND_ADDR":  "127.0.0.1:29080",
+		"SAFE_ADMIN_BIND_ADDR": "127.0.0.1:29081",
+	})
+
+	assertStringsEqual(t, cfg.MainBindAddrs, []string{"127.0.0.1:29080"})
+	assertStringsEqual(t, cfg.AdminBindAddrs, []string{"127.0.0.1:29081"})
+}
+
+func TestLoadLegacyMainBindEnvOverridesTOMLPluralBind(t *testing.T) {
+	path := writeConfigFile(t, `
+[server]
+main_bind_addrs = ["127.0.0.1:19080"]
+`)
+
+	cfg := loadConfigWithOptionsForTest(t, LoadOptions{ConfigFilePath: path}, map[string]string{
+		"SAFE_PRIVATE_BIND_ADDR": "127.0.0.1:29080",
+	})
+
+	assertStringsEqual(t, cfg.MainBindAddrs, []string{"127.0.0.1:29080"})
+}
+
 func TestLoadRejectsMalformedTOMLConfig(t *testing.T) {
 	path := writeConfigFile(t, `not = [`)
 
@@ -1448,6 +1477,21 @@ func TestLoadHTTPTimeoutsFromEnv(t *testing.T) {
 		WriteTimeout:      5 * time.Minute,
 		IdleTimeout:       3 * time.Minute,
 	})
+}
+
+func TestLoadLegacyMainTimeoutEnvOverridesTOMLMainTimeout(t *testing.T) {
+	path := writeConfigFile(t, `
+[http.main]
+read_timeout = "20s"
+`)
+
+	cfg := loadConfigWithOptionsForTest(t, LoadOptions{ConfigFilePath: path}, map[string]string{
+		"SAFE_PRIVATE_READ_TIMEOUT": "40s",
+	})
+
+	if cfg.MainTimeouts.ReadTimeout != 40*time.Second {
+		t.Fatalf("main read timeout = %s, want 40s", cfg.MainTimeouts.ReadTimeout)
+	}
 }
 
 func TestLoadRejectsInvalidHTTPTimeouts(t *testing.T) {
