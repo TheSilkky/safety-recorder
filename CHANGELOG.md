@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## v0.10.0 - 2026-06-01
+
 - Ran the review/update stack and applied small behavior-preserving Go
   readability cleanups across simulator, HTTP wrapped-key metadata, and
   storage helper code.
