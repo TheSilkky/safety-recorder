@@ -65,6 +65,24 @@ func scanIncident(s scanner) (incidents.Incident, error) {
 	return incident, nil
 }
 
+func scanIncidents(rows *sql.Rows) ([]incidents.Incident, error) {
+	var list []incidents.Incident
+	for rows.Next() {
+		incident, err := scanIncident(rows)
+		if err != nil {
+			return nil, err
+		}
+		list = append(list, incident)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if list == nil {
+		list = []incidents.Incident{}
+	}
+	return list, nil
+}
+
 func scanChunk(s scanner) (incidents.Chunk, error) {
 	var chunk incidents.Chunk
 	var streamID sql.NullString

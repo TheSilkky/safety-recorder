@@ -213,14 +213,9 @@ func createCheckin(t *testing.T, app *testApp, incidentID string) {
 func getIncidentDetail(t *testing.T, app *testApp, incidentID string) incidents.IncidentDetail {
 	t.Helper()
 
-	response, body := get(t, app, "/v1/incidents/"+incidentID)
-	defer response.Body.Close()
-	if response.StatusCode != http.StatusOK {
-		t.Fatalf("expected incident status 200, got %d: %s", response.StatusCode, body)
-	}
-	var detail incidents.IncidentDetail
-	if err := json.Unmarshal(body, &detail); err != nil {
-		t.Fatalf("decode incident detail: %v", err)
+	detail, err := incidents.NewRepository(app.db).GetIncidentDetail(context.Background(), incidentID)
+	if err != nil {
+		t.Fatalf("get incident detail: %v", err)
 	}
 	return detail
 }

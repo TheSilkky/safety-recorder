@@ -15,17 +15,21 @@ behavior. The backend implements account-owner contact public-key metadata and
 owner-scoped sharing-grant records and wrapped-key records for owned incidents,
 but it does not yet implement trusted-contact accounts, dead-man switch
 notifications, mode-driven sharing, browser decryption, backend decryption, or
-public account-based product access.
+public account-based product access beyond the narrow owner incident metadata
+list/detail read surface for the future web client.
 
 The `/v1` access-control direction is documented in
 [v1-access-control.md](v1-access-control.md). The current implementation covers
 local account sessions, owner-scoped incident access, owner-scoped contact
 public-key, sharing-grant, and wrapped-key metadata routes, admin account
 routes, and route authentication. It does not make `/v1` safe to expose publicly as a
-product API. Existing `/v1/admin/...` JSON routes are authenticated admin-only
-routes on the private-admin listener and must not be routed from public entry
-points. The current topology separates the main API/viewer listener from a
-separately bound private admin listener; see
+product API. The implemented account incident list/detail routes are owner-only
+and public-safe, but uploads, chunk reads, bundle downloads, diagnostics,
+operator routes, write routes, and key-custody behavior still need separate
+review before public exposure. Existing `/v1/admin/...` JSON routes are
+authenticated admin-only routes on the private-admin listener and must not be
+routed from public entry points. The current topology separates the main
+API/viewer listener from a separately bound private admin listener; see
 [public-api-listener-split.md](public-api-listener-split.md).
 
 ## Listener Boundary
@@ -144,12 +148,14 @@ Viewer URLs contain bearer tokens and should be treated as secrets. Reverse prox
 - Chunk metadata inserts recheck incident and stream state in the repository so uploads racing with close or completion are rejected.
 - Media stream completion verifies contiguous chunks and readable stored files, then rechecks chunk rows transactionally before committing completion.
 - Local account authorization binds authenticated incident access to the
-  authenticated account, the incident owner, and the role. Current private
-  incident routes also pass route-level action and data-class labels, but all
-  current incident actions share the same owner-or-admin policy. Regular users
-  can access their own incidents. Admins can access incidents across accounts.
-  Legacy unowned incidents are admin-only until a future private reassignment
-  or quarantine workflow exists; see
+  authenticated account, the incident owner, and the role. Account incident
+  list/detail reads are owner-only and return public-safe metadata only; admins
+  do not get cross-account reads through those product routes unless the admin
+  account also owns the incident. Other current private incident routes still
+  pass route-level action and data-class labels and use the established
+  owner-or-admin policy where documented. Legacy unowned incidents are hidden
+  from account list/detail reads until a future private reassignment or
+  quarantine workflow exists; see
   [legacy unowned incident reassignment](legacy-unowned-incident-reassignment.md).
 - Contact public-key, sharing-grant, and wrapped-key routes are authenticated
   main `/v1` routes. Contact public-key records are scoped to the authenticated
@@ -310,9 +316,10 @@ Normal file or object removal is not treated as guaranteed secure erasure. Deplo
 
 ## Known Security Gaps
 
-- No implemented public product API exposure model for `/v1`; local account
-  sessions and optional browser cookie sessions are authenticated main-API
-  controls, not a complete public security model
+- No broad public product API exposure model for `/v1`; local account sessions,
+  optional browser cookie sessions, and the narrow owner incident metadata
+  list/detail reads are authenticated main-API controls, not a complete public
+  security model
 - No built-in TLS
 - No general-purpose abuse-throttling system beyond main API and public viewer
   route-class rate limiting

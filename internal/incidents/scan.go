@@ -70,6 +70,24 @@ func scanIncident(s scanner) (Incident, error) {
 	return incident, nil
 }
 
+func scanIncidents(rows *sql.Rows) ([]Incident, error) {
+	var incidents []Incident
+	for rows.Next() {
+		incident, err := scanIncident(rows)
+		if err != nil {
+			return nil, err
+		}
+		incidents = append(incidents, incident)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if incidents == nil {
+		incidents = []Incident{}
+	}
+	return incidents, nil
+}
+
 func scanChunk(s scanner) (Chunk, error) {
 	var chunk Chunk
 	var startedAt string

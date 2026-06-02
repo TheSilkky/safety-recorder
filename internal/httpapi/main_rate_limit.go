@@ -152,8 +152,13 @@ func classifyMainAPIAuthRateLimit(r *http.Request, segments []string) (mainRateL
 }
 
 func classifyMainAPIIncidentRateLimit(r *http.Request, segments []string) (mainRateLimitClass, bool) {
-	if len(segments) == 2 && r.Method == http.MethodPost {
-		return mainRateLimitIncidentWrite, true
+	if len(segments) == 2 {
+		if r.Method == http.MethodGet {
+			return mainRateLimitIncidentRead, true
+		}
+		if r.Method == http.MethodPost {
+			return mainRateLimitIncidentWrite, true
+		}
 	}
 	if len(segments) < 3 {
 		return "", false

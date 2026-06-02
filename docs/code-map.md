@@ -14,8 +14,9 @@ This repository is the server/backend component only. In the planned `open-proof
 
 The current backend stores generic incidents by default and can store optional
 incident-mode, capture-profile, escalation-policy, and sharing-state metadata on
-main incident create/read routes. Those fields do not drive access,
-notification, retention, sharing, viewer, or key-custody behavior.
+main incident create/read routes. The account incident list/detail routes return
+owner-only public-safe metadata for future web-client reads. Those mode fields
+do not drive access, notification, retention, sharing, viewer, or key-custody behavior.
 Account-owner contact public-key, sharing-grant, and wrapped-key metadata is
 implemented separately behind authenticated `/v1` routes. Mode-driven behavior
 boundaries are documented in [incident-modes.md](incident-modes.md), with role
@@ -94,10 +95,13 @@ The current listener split does not mount `/v1/health/live` or
 
 Incidents are created in `internal/httpapi.createIncident`, which calls
 `CreateIncidentForAccount` on the configured metadata repository and records the
-authenticated account as the owner. Admin accounts can operate across incidents;
-regular user accounts are limited to their own incidents. Legacy unowned
-incidents are admin-only until a future private reassignment or quarantine
-workflow is implemented; see
+authenticated account as the owner. `GET /v1/incidents` and
+`GET /v1/incidents/{incident_id}` return only public-safe metadata for incidents
+owned by the authenticated account; cross-account, deleted, and legacy unowned
+incidents use the same not-found shape. Other incident routes retain their
+documented owner or owner/admin authorization policies. Legacy unowned incidents
+are admin-only until a future private reassignment or quarantine workflow is
+implemented; see
 [legacy unowned incident reassignment](legacy-unowned-incident-reassignment.md).
 
 Chunks are uploaded through `POST /v1/incidents/{incident_id}/chunks`, handled by `internal/httpapi.uploadChunk`.

@@ -105,9 +105,11 @@ recording. Future clients should support emergency incidents, non-emergency
 interaction records, timed safety checks, and evidence notes while keeping
 capture, escalation, sharing, and legal/export actions separate. The current
 main incident create/read routes support optional incident-mode,
-capture-profile, escalation-policy, and sharing-state metadata, but those fields
-do not drive access, notification, retention, sharing, viewer, or key-custody
-behavior. Mode-driven behavior and migration boundaries are documented in
+capture-profile, escalation-policy, and sharing-state metadata, and the account
+incident list/detail routes return only owner-scoped public-safe metadata for
+future web-client reads. Those mode fields do not drive access, notification,
+retention, sharing, viewer, or key-custody behavior. Mode-driven behavior and
+migration boundaries are documented in
 [incident-modes.md](incident-modes.md). Current local account/session behavior
 and future account-owner, trusted-contact, public-link, admin/operator, and
 optional escrow access boundaries are documented in

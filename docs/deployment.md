@@ -90,6 +90,17 @@ private-admin `/v1/admin/...` routes public-ready; public reverse proxies must
 still block those admin JSON routes unless a future audited public-admin API is
 explicitly designed.
 
+The current web-client read surface is deliberately narrow. A public web edge
+may route account authentication, account self-service, and owner-only
+`GET /v1/incidents` plus `GET /v1/incidents/{incident_id}` after the deployment
+has reviewed authentication, CORS, CSRF, rate limits, TLS, and logging. Those
+incident reads return only public-safe metadata and hide cross-account or
+legacy unowned incidents. Do not treat this as approval to publish the whole
+main `/v1` tree: keep admin JSON routes on the private-admin listener and
+review uploads, chunk reads, bundle downloads, diagnostics, operator routes,
+raw error/debug endpoints, key custody, and any write routes separately before
+placing them on a public edge.
+
 Public self-registration is disabled by default. If a self-hosted deployment
 enables `SAFE_ACCOUNT_REGISTRATION_MODE=open`, configure SMTP and a reviewed
 public web origin for verification links, keep SMTP credentials and private
@@ -631,6 +642,7 @@ Suggested route groups:
 | Viewer JSON polling | `GET /i/{token}/data` | Allow normal viewer polling, but keep it lower than static assets. |
 | Viewer ZIP downloads | `GET /i/{token}/streams/{stream_id}/download`, `GET /i/{token}/incident/download` | Limit download starts without cutting off long encrypted ZIP responses; coordinate with proxy and app timeouts. |
 | Public static assets | `GET /static/...` | Static assets are token-neutral and can usually tolerate a looser limit. |
+| Owner incident metadata reads | `GET /v1/incidents`, `GET /v1/incidents/{incident_id}` | Public-safe for reviewed authenticated web-client deployments, but still requires account auth, edge review, and route-class limits. |
 | Main chunk uploads | `POST /v1/incidents/{incident_id}/chunks` | Tune for expected chunk cadence, upload retries, body size limits, and client network conditions. |
 | Main incident, stream, check-in, and token actions | Other product `/v1/...` routes | Use limits as an abuse backstop, not as the only security control. |
 | Registration and email verification | `POST /v1/auth/register`, `POST /v1/auth/email/verify` | Keep separate from login limits and never include raw emails, usernames, verification tokens, or request bodies in logs or metrics. |

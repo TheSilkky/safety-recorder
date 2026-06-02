@@ -16,8 +16,9 @@ clients may support emergency incidents, non-emergency interaction records,
 timed safety checks, and evidence notes. The current backend stores generic
 incidents by default, can store optional incident-mode, capture-profile,
 escalation-policy, and sharing-state metadata on main incident create/read
-routes, and has local username/password accounts with opaque server-side
-sessions for the main `/v1` API, private-admin JSON routes under
+routes, exposes owner-only public-safe incident list/detail metadata for future
+web-client reads, and has local username/password accounts with opaque
+server-side sessions for the main `/v1` API, private-admin JSON routes under
 `/v1/admin/...`, plus a private admin web surface under `/admin`.
 Mode-driven access, escalation, retention, sharing, key custody,
 trusted-contact accounts, notification delivery, and mobile/web clients are not
@@ -106,9 +107,11 @@ Do not add future web-client, iOS-client, Android-client, or protocol implementa
 flowchart TB
     subgraph MainBoundary["Main API/viewer boundary"]
         FuturePhone["Future mobile client<br/>separate repo"] --> WireGuard["WireGuard / LAN / firewall"]
+        FutureWeb["Future web client<br/>owner incident metadata"] --> ReviewedEdge["Reviewed public web edge"]
         Simulator["Simulator CLI"] --> MainListener["Main API/viewer listener<br/>SAFE_MAIN_BIND_ADDRS"]
         WireGuard --> MainListener
-        MainListener --> V1["/v1 API<br/>product + admin JSON routes"]
+        ReviewedEdge --> MainListener
+        MainListener --> V1["/v1 API<br/>product routes"]
         V1 --> Auth["Local account sessions"]
         Auth --> Storage["SQLite or PostgreSQL + local or S3 encrypted blobs"]
         MainListener --> Coordination["Optional Valkey/Redis coordination<br/>rate counters + upload hints"]
