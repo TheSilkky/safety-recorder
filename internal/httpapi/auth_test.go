@@ -109,12 +109,63 @@ func TestRegularUserCannotUseAdminRoutes(t *testing.T) {
 	app := newTestApp(t)
 	userToken := createAccountAndLogin(t, app, "regular-user", "regular-password", auth.RoleUser)
 
-	response, body := requestWithAuth(t, app.mainHandler, http.MethodGet, "/v1/admin/accounts", "", nil, userToken)
+	response, body := requestWithAuth(t, app.adminHandler, http.MethodGet, "/v1/admin/accounts", "", nil, userToken)
 	defer response.Body.Close()
 	if response.StatusCode != http.StatusForbidden {
 		t.Fatalf("expected regular user admin route status 403, got %d: %s", response.StatusCode, body)
 	}
 	assertErrorCode(t, body, "forbidden")
+}
+
+func TestAdminCanUseAccountRoutesOnPrivateAdminListener(t *testing.T) {
+	app := newTestApp(t)
+	userToken := createAccountAndLogin(t, app, "private-admin-user", "original-password", auth.RoleUser)
+	account := mustGetAccountByUsername(t, app, "private-admin-user")
+
+	response, body := requestWithAuth(t, app.adminHandler, http.MethodGet, "/v1/admin/accounts", "", nil, app.authToken)
+	response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("expected admin account list status 200, got %d: %s", response.StatusCode, body)
+	}
+	var listResult struct {
+		Accounts []struct {
+			Username string `json:"username"`
+			Role     string `json:"role"`
+		} `json:"accounts"`
+	}
+	if err := json.Unmarshal(body, &listResult); err != nil {
+		t.Fatalf("decode account list response: %v", err)
+	}
+	var foundUser bool
+	for _, listed := range listResult.Accounts {
+		if listed.Username == "private-admin-user" && listed.Role == auth.RoleUser {
+			foundUser = true
+		}
+	}
+	if !foundUser {
+		t.Fatalf("account list did not include private-admin-user: %+v", listResult.Accounts)
+	}
+
+	response, body = requestWithAuth(
+		t,
+		app.adminHandler,
+		http.MethodPost,
+		"/v1/admin/accounts/"+account.ID+"/password",
+		"application/json",
+		bytes.NewBufferString(`{"new_password":"replacement-password"}`),
+		app.authToken,
+	)
+	response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("expected admin password reset status 200, got %d: %s", response.StatusCode, body)
+	}
+
+	response, body = requestWithAuth(t, app.privateHandler, http.MethodGet, "/v1/account", "", nil, userToken)
+	response.Body.Close()
+	if response.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("expected old user session to be revoked after admin password reset, got %d: %s", response.StatusCode, body)
+	}
+	loginForTest(t, app, "private-admin-user", "replacement-password")
 }
 
 func TestCrossAccountIncidentAccessIsDenied(t *testing.T) {
@@ -147,7 +198,7 @@ func TestAdminCanRevokeAccountSessions(t *testing.T) {
 	userToken := createAccountAndLogin(t, app, "session-user", "session-password", auth.RoleUser)
 	account := mustGetAccountByUsername(t, app, "session-user")
 
-	response, body := requestWithAuth(t, app.mainHandler, http.MethodPost, "/v1/admin/accounts/"+account.ID+"/sessions/revoke", "application/json", bytes.NewBufferString(`{}`), app.authToken)
+	response, body := requestWithAuth(t, app.adminHandler, http.MethodPost, "/v1/admin/accounts/"+account.ID+"/sessions/revoke", "application/json", bytes.NewBufferString(`{}`), app.authToken)
 	response.Body.Close()
 	if response.StatusCode != http.StatusOK {
 		t.Fatalf("expected revoke sessions status 200, got %d: %s", response.StatusCode, body)
@@ -862,7 +913,7 @@ func headerListContains(raw, want string) bool {
 func createAccountAndLogin(t *testing.T, app *testApp, username, password, role string) string {
 	t.Helper()
 	requestBody := bytes.NewBufferString(`{"username":"` + username + `","password":"` + password + `","role":"` + role + `"}`)
-	response, body := requestWithAuth(t, app.mainHandler, http.MethodPost, "/v1/admin/accounts", "application/json", requestBody, app.authToken)
+	response, body := requestWithAuth(t, app.adminHandler, http.MethodPost, "/v1/admin/accounts", "application/json", requestBody, app.authToken)
 	response.Body.Close()
 	if response.StatusCode != http.StatusCreated {
 		t.Fatalf("expected create account status 201, got %d: %s", response.StatusCode, body)
@@ -873,7 +924,7 @@ func createAccountAndLogin(t *testing.T, app *testApp, username, password, role 
 func createAccountForStateTest(t *testing.T, app *testApp, username, password string) {
 	t.Helper()
 	requestBody := bytes.NewBufferString(`{"username":"` + username + `","password":"` + password + `","role":"user"}`)
-	response, body := requestWithAuth(t, app.mainHandler, http.MethodPost, "/v1/admin/accounts", "application/json", requestBody, app.authToken)
+	response, body := requestWithAuth(t, app.adminHandler, http.MethodPost, "/v1/admin/accounts", "application/json", requestBody, app.authToken)
 	response.Body.Close()
 	if response.StatusCode != http.StatusCreated {
 		t.Fatalf("expected create account status 201, got %d: %s", response.StatusCode, body)

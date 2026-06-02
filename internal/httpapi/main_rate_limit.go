@@ -24,7 +24,6 @@ const (
 	mainRateLimitStream          mainRateLimitClass = "stream"
 	mainRateLimitToken           mainRateLimitClass = "token"
 	mainRateLimitDownload        mainRateLimitClass = "download"
-	mainRateLimitAdmin           mainRateLimitClass = "admin"
 )
 
 func (a *API) mainRateLimitMiddleware(next http.Handler) http.Handler {
@@ -103,8 +102,6 @@ func (cfg MainRateLimitConfig) limitFor(class mainRateLimitClass) int {
 		return cfg.TokenLimit
 	case mainRateLimitDownload:
 		return cfg.DownloadLimit
-	case mainRateLimitAdmin:
-		return cfg.AdminLimit
 	default:
 		return 0
 	}
@@ -128,8 +125,6 @@ func classifyMainAPIRateLimit(r *http.Request) (mainRateLimitClass, bool) {
 			(r.Method == http.MethodPost && len(segments) == 3 && segments[2] == "password") {
 			return mainRateLimitAccount, true
 		}
-	case "admin":
-		return mainRateLimitAdmin, true
 	case "incidents":
 		return classifyMainAPIIncidentRateLimit(r, segments)
 	case "incident-tokens":

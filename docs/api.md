@@ -1,6 +1,6 @@
 # API
 
-This is the current backend-only HTTP surface for Proofline. The API binary starts a main API/viewer listener and a private-admin listener on one or more configured bind addresses. Main `/v1` routes require local account authentication except for login and the disabled-by-default registration/email-verification routes. Existing `/v1/admin/...` JSON routes require an admin account and are mounted on the main handler; they are not public-ready routes. The private-admin listener serves only the `/admin` dashboard route tree. Incident viewer routes are token-gated, read-only, and mounted on the main listener. Planned web, iOS, and Android clients are not part of this repository yet.
+This is the current backend-only HTTP surface for Proofline. The API binary starts a main API/viewer listener and a private-admin listener on one or more configured bind addresses. Main `/v1` routes require local account authentication except for login and the disabled-by-default registration/email-verification routes. Existing `/v1/admin/...` JSON routes require an admin account and are mounted only on the private-admin listener. The private-admin listener also serves the `/admin` dashboard route tree. Incident viewer routes are token-gated, read-only, and mounted on the main listener. Planned web, iOS, and Android clients are not part of this repository yet.
 
 Media bundle downloads are encrypted chunk bundles. The backend does not decrypt, merge, or produce playable media. The simulator's current encrypted uploads use the envelope documented in [encryption.md](encryption.md), but the API treats uploaded bytes as opaque ciphertext.
 
@@ -59,8 +59,8 @@ deployment details. Exhausted limits return `429 rate_limited` with
 ## Health And Readiness
 
 The current listener split does not mount `/v1/health/live` or
-`/v1/health/ready` on either listener. The private-admin listener is a
-dashboard-only `/admin` surface, and the main listener must not publish
+`/v1/health/ready` on either listener. The private-admin listener is an
+admin-only `/v1/admin/...` and `/admin` surface, and the main listener must not publish
 operator readiness details on the same origin as future public product API
 routes. Local and CI smoke checks use token-neutral static assets plus the
 admin bootstrap/login flow to prove both listener trees are serving.
@@ -312,7 +312,8 @@ dashboard and must stay on the private-admin listener.
 
 ### Admin API Routes
 
-The following routes require an admin account session:
+The following routes are mounted only on the private-admin listener and require
+an admin account session:
 
 - `GET /v1/admin/accounts`
 - `POST /v1/admin/accounts`
@@ -323,16 +324,14 @@ The following routes require an admin account session:
 
 `POST /v1/admin/accounts` accepts `username`, `password`, and `role`, where `role` is `user` or `admin`. Admin password reset and explicit session revocation revoke all sessions for the selected account.
 
-These routes are mounted on the main `/v1` handler so the private-admin
-listener can remain a dashboard-only `/admin` tree. Local account
-authentication, admin-role checks, and app-level rate limiting do not by
-themselves make `/v1` production-ready public infrastructure. Expose the main
-API only after deployment-specific TLS, path routing, abuse controls, browser
-credential rules, CSRF decisions, logging review, and production operations are
-explicitly designed and reviewed. Public reverse proxies must not route
-`/v1/admin/...` from a public edge. Keep private-admin dashboard listeners
-behind localhost, LAN, WireGuard, firewall rules, or a strict private reverse
-proxy.
+These routes share the private-admin listener boundary with the `/admin`
+dashboard but keep JSON bearer or browser-cookie session authentication and
+admin-role checks. Private placement does not replace authentication, and
+separate bind addresses are not a complete security model. Keep private-admin
+listeners behind localhost, LAN, WireGuard, firewall rules, or a strict private
+reverse proxy. Expose the main API only after deployment-specific TLS, path
+routing, abuse controls, browser credential rules, CSRF decisions, logging
+review, and production operations are explicitly designed and reviewed.
 
 ## Contact Public Keys
 

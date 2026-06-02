@@ -15,12 +15,12 @@ not implemented.
 ## Summary
 
 The current main `/v1` API requires a local account session for product routes
-other than login. Existing `/v1/admin/...` JSON routes are mounted on the main
-handler and require an admin account; they are not public-ready routes and must
-be blocked from public reverse-proxy routes. First-admin bootstrap is handled by
-the private `/admin` dashboard flow, and the private-admin listener serves only
-the `/admin` route tree. Local sessions reduce accidental unauthenticated
-access; they do not make `/v1` a public product API.
+other than login. Existing `/v1/admin/...` JSON routes are mounted only on the
+private-admin listener and require an admin account; they are not public-ready
+routes and must be blocked from public reverse-proxy routes. First-admin
+bootstrap is handled by the private `/admin` dashboard flow. Local sessions
+reduce accidental unauthenticated access; they do not make `/v1` a public
+product API.
 
 Future trusted-contact access, incident modes, notifications, production key
 custody, browser/client-side decryption, and optional break-glass access all need
@@ -75,10 +75,10 @@ Today the backend has two listener groups:
 
 | Listener group | Current routes | Exposure |
 |---|---|---|
-| Main API and viewer | `/v1/...` with local account/session auth except login, disabled-by-default registration, and email verification, including existing admin-only JSON APIs; `/i/{token}` plus legacy `/e/{token}` aliases and `/static/...` | Reviewed main API deployment boundary; viewer paths may be routed publicly when only viewer paths are forwarded. Public edges must not route `/v1/admin/...`. |
-| Private admin dashboard | `/admin`, `/admin/...`, `/admin/static/...` | Localhost, LAN, WireGuard, firewall, or strict private reverse proxy only. |
+| Main API and viewer | Non-admin `/v1/...` with local account/session auth except login, disabled-by-default registration, and email verification; `/i/{token}` plus legacy `/e/{token}` aliases and `/static/...` | Reviewed main API deployment boundary; viewer paths may be routed publicly when only viewer paths are forwarded. Public edges must not route `/v1/admin/...`. |
+| Private admin listener | `/v1/admin/...`, `/admin`, `/admin/...`, `/admin/static/...` | Localhost, LAN, WireGuard, firewall, or strict private reverse proxy only. |
 
-Current `/v1` routes are on the main handler. The implemented local auth model has admin and user roles, incident ownership, hashed password storage,
+Current non-admin `/v1` routes are on the main handler. The implemented local auth model has admin and user roles, incident ownership, hashed password storage,
 hashed session-token storage, bearer sessions, optional browser cookie sessions
 with CSRF checks for unsafe cookie-authenticated requests, session expiry,
 logout, account password change, admin account creation, configurable
@@ -158,8 +158,8 @@ describe policy shape; they are not implementation commitments.
 
 | Route class | Future exposure | Notes |
 |---|---|---|
-| Current main `/v1` routes | Main listener with local account/session authentication. | Includes login/logout, disabled-by-default registration/email verification, account/password routes, incident creation, stream creation, chunk upload, checkins, close/fail/complete actions, incident-token creation/revocation, contact public-key registration, owner-scoped sharing-grant management, authenticated chunk reads, and existing admin-only JSON APIs. Public edges must not route `/v1/admin/...`. |
-| Current private-admin dashboard routes | Private only with admin web session authentication or first-admin bootstrap secret. | Includes `/admin` bootstrap, login, logout, account-list, password-change, password-reset forms, and token-neutral `/admin/static/...` assets. |
+| Current main `/v1` routes | Main listener with local account/session authentication. | Includes login/logout, disabled-by-default registration/email verification, account/password routes, incident creation, stream creation, chunk upload, checkins, close/fail/complete actions, incident-token creation/revocation, contact public-key registration, owner-scoped sharing-grant management, and authenticated chunk reads. Public edges must not route `/v1/admin/...`. |
+| Current private-admin routes | Private only with admin authentication or first-admin bootstrap secret. | Includes `/v1/admin/...` JSON API routes, `/admin` bootstrap, login, logout, account-list, password-change, password-reset forms, and token-neutral `/admin/static/...` assets. |
 | Public product API routes | Public-authenticated only after account/device/contact authz, upload abuse controls, request-size controls, and audit are implemented. | Should cover non-admin product flows: account-owner incidents, capture uploads, trusted-contact access, account-owner public-link grant issuance/revocation, sharing, and wrapped-key delivery. |
 | Public-link viewer routes | Public read-only viewer routes can remain separate from the public product API. | Current `/i/{token}` and `/e/{token}` paths are bearer-token URLs and must not become write or admin routes. |
 | Private admin API routes | Own private listener and route tree, authenticated and authorized even when bound only to VPN, WireGuard, LAN, loopback, firewall, or a private proxy. | Should be narrow, audited, and safe for support without exposing evidence contents, raw tokens, raw keys, or plaintext by default. |
@@ -192,10 +192,11 @@ The first admin account is created through a one-time bootstrap flow:
 - bootstrap is disabled after an admin account exists
 - operators should remove the bootstrap secret after creating the first admin
 
-Browser cookie sessions are implemented for the current main route tree, but
-they do not make `/v1` a public product API and do not make `/v1/admin/...`
-public-ready. Any broader public product API still needs reviewed exposure,
-abuse controls, audit behavior, TLS, and deployment guidance.
+Browser cookie sessions are implemented for the current main route tree and can
+authenticate admin JSON routes on the private-admin listener, but they do not
+make `/v1` a public product API and do not make `/v1/admin/...` public-ready.
+Any broader public product API still needs reviewed exposure, abuse controls,
+audit behavior, TLS, and deployment guidance.
 
 Authentication must provide:
 
@@ -379,9 +380,8 @@ incremental:
 
 1. Keep current main `/v1` product routes behind the deployment's reviewed
    boundary and authenticated with local sessions unless the route is explicitly
-   login. Keep `/admin` dashboard routes on the private-admin listener and
-   block `/v1/admin/...` from public reverse-proxy routes until a future
-   private admin API route group is explicitly designed.
+   login. Keep `/admin` dashboard routes and `/v1/admin/...` JSON routes on the
+   private-admin listener and block them from public reverse-proxy routes.
 2. Keep contact public-key registration, sharing-grant management, and
    wrapped-key record delivery owner scoped while defining device,
    trusted-contact, public-link, operator, and optional escrow data model

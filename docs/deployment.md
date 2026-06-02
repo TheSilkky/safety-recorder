@@ -11,10 +11,9 @@ The `/v1` access-control direction is documented in
 and optional browser cookie sessions do not by themselves make `/v1`
 production-ready public infrastructure.
 Existing `/v1/admin/...` JSON routes are authenticated admin-only routes on the
-main handler, but they are not public-ready routes and must be blocked by any
-public reverse proxy. The private-admin listener is the `/admin` dashboard
-surface only and can be bound to loopback, LAN, WireGuard, VPN, firewall, or a
-private reverse proxy. Private placement must not replace admin
+private-admin listener, alongside the `/admin` dashboard surface. The
+private-admin listener can be bound to loopback, LAN, WireGuard, VPN, firewall,
+or a private reverse proxy. Private placement must not replace admin
 authentication. The main API/public viewer listener split is documented in
 [public-api-listener-split.md](public-api-listener-split.md).
 
@@ -87,15 +86,15 @@ go run ./cmd/api
 Production browser-cookie deployments must use HTTPS, `Secure` cookies,
 explicit allowed origins, `credentials: "include"` from the web client, and the
 CSRF header from `GET /v1/auth/web/csrf` on unsafe requests. This does not make
-`/v1/admin/...` public-ready; public reverse proxies must still block those
-admin JSON routes unless a future audited public-admin API is explicitly
-designed.
+private-admin `/v1/admin/...` routes public-ready; public reverse proxies must
+still block those admin JSON routes unless a future audited public-admin API is
+explicitly designed.
 
 Public self-registration is disabled by default. If a self-hosted deployment
 enables `SAFE_ACCOUNT_REGISTRATION_MODE=open`, configure SMTP and a reviewed
 public web origin for verification links, keep SMTP credentials and private
-mail hostnames out of logs and issue drafts, and keep `/v1/admin/...` blocked
-from any public edge. Open registration creates only pending accounts until
+mail hostnames out of logs and issue drafts, and keep private-admin listener
+routes off any public edge. Open registration creates only pending accounts until
 email verification succeeds; it does not add password recovery, payment
 processing, public admin routes, or public `/v1` readiness. The `paid`
 registration mode is a fail-closed placeholder and must not be used as a
@@ -167,9 +166,8 @@ checks. The CSS under `/admin/static/...` is unauthenticated because it is
 token-neutral static source, but the admin pages and form handlers remain
 private-admin listener routes.
 
-This is not a public admin dashboard. Do not expose `/admin` or `/admin/...`
-outside the private-admin boundary. Existing `/v1/admin/...` JSON routes are on
-the main API handler and must not be routed from public entry points.
+This is not a public admin dashboard. Do not expose `/admin`, `/admin/...`, or
+`/v1/admin/...` outside the private-admin boundary.
 
 ## Docker
 
@@ -637,7 +635,7 @@ Suggested route groups:
 | Main incident, stream, check-in, and token actions | Other product `/v1/...` routes | Use limits as an abuse backstop, not as the only security control. |
 | Registration and email verification | `POST /v1/auth/register`, `POST /v1/auth/email/verify` | Keep separate from login limits and never include raw emails, usernames, verification tokens, or request bodies in logs or metrics. |
 | Private admin dashboard actions | `/admin/...` | Keep on the private-admin listener and do not route from public entry points. |
-| Admin JSON API actions | `/v1/admin/...` | Authenticated admin-only routes on the main handler; do not route from public entry points. |
+| Admin JSON API actions | `/v1/admin/...` | Authenticated admin-only routes on the private-admin listener; do not route from public entry points. |
 
 Rate limiting does not make `/v1` production-ready public infrastructure by
 itself. Keep the main API behind the reviewed deployment boundary for the

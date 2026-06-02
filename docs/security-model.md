@@ -23,9 +23,9 @@ local account sessions, owner-scoped incident access, owner-scoped contact
 public-key, sharing-grant, and wrapped-key metadata routes, admin account
 routes, and route authentication. It does not make `/v1` safe to expose publicly as a
 product API. Existing `/v1/admin/...` JSON routes are authenticated admin-only
-routes on the main handler and must not be routed from public entry points. The
-current topology separates the main API/viewer listener from a separately bound
-private `/admin` dashboard listener; see
+routes on the private-admin listener and must not be routed from public entry
+points. The current topology separates the main API/viewer listener from a
+separately bound private admin listener; see
 [public-api-listener-split.md](public-api-listener-split.md).
 
 ## Listener Boundary
@@ -34,8 +34,8 @@ The API binary starts separate listener groups:
 
 | Listener group | Routes | Intended exposure |
 |---|---|---|
-| Main API and viewer | Authenticated `/v1/...` routes, existing admin-only JSON APIs, `/i/{token}` and related read-only routes, plus pre-rename `/e/{token}` compatibility aliases | Reviewed main API deployment boundary; viewer paths may be routed publicly when only viewer paths are forwarded. Public edges must not route `/v1/admin/...`. |
-| Private admin dashboard | `/admin`, `/admin/...`, and `/admin/static/...` | Localhost, LAN, WireGuard, firewall, or strict reverse proxy only. |
+| Main API and viewer | Authenticated non-admin `/v1/...` routes, `/i/{token}` and related read-only routes, plus pre-rename `/e/{token}` compatibility aliases | Reviewed main API deployment boundary; viewer paths may be routed publicly when only viewer paths are forwarded. Public edges must not route `/v1/admin/...`. |
+| Private admin listener | Authenticated admin-only `/v1/admin/...` JSON routes, `/admin`, `/admin/...`, and `/admin/static/...` | Localhost, LAN, WireGuard, firewall, or strict reverse proxy only. |
 
 The `/admin` dashboard must not be mounted on the main listener. Incident
 viewer routes are read-only.
@@ -84,8 +84,7 @@ plaintext, raw keys, or Authorization headers.
 
 The current listener split does not mount `/v1/health/live` or
 `/v1/health/ready` on either listener. Avoid publishing operator readiness
-details on the main API/viewer origin or on the dashboard-only private-admin
-listener.
+details on the main API/viewer origin or on the private-admin listener.
 
 The private `/admin` page, login form, bootstrap form, and account password
 workflows are mounted only on the private-admin mux, not on the main API/viewer

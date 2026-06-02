@@ -29,7 +29,6 @@ func TestMainAPIRateLimitGroupsRoutesWithSafeKeys(t *testing.T) {
 			StreamLimit:        18,
 			TokenLimit:         19,
 			DownloadLimit:      20,
-			AdminLimit:         21,
 		},
 		MainRateLimiter: limiter,
 	})
@@ -51,7 +50,6 @@ func TestMainAPIRateLimitGroupsRoutesWithSafeKeys(t *testing.T) {
 		{http.MethodPost, "/v1/incidents/inc_secret/streams/str_secret/complete", ":stream:", 18},
 		{http.MethodPost, "/v1/incidents/inc_secret/incident-tokens", ":token:", 19},
 		{http.MethodGet, "/v1/incidents/inc_secret/download", ":download:", 20},
-		{http.MethodGet, "/v1/admin/accounts", ":admin:", 21},
 	}
 
 	headers := map[string]string{"Idempotency-Key": "raw-idempotency-key-secret"}
@@ -81,6 +79,15 @@ func TestMainAPIRateLimitGroupsRoutesWithSafeKeys(t *testing.T) {
 				t.Fatalf("limiter key exposed %q: %s", disallowed, limiter.calls[i].key)
 			}
 		}
+	}
+
+	response, body := requestWithAuthAndHeaders(t, app.mainHandler, http.MethodGet, "/v1/admin/accounts", "application/json", bytes.NewBufferString(`{}`), "raw-session-token-secret", headers)
+	response.Body.Close()
+	if response.StatusCode != http.StatusNotFound {
+		t.Fatalf("expected unmounted main admin route status 404, got %d: %s", response.StatusCode, body)
+	}
+	if len(limiter.calls) != len(routes) {
+		t.Fatalf("admin route should not use main API rate limiter: calls = %d, want %d", len(limiter.calls), len(routes))
 	}
 }
 
