@@ -7,10 +7,11 @@ Local username/password accounts, opaque server-side sessions, and
 disabled-by-default email-verified self-registration are implemented for the
 main `/v1` API. Account-owner contact public-key registration, sharing-grant
 metadata routes, and grant-bound wrapped-key record routes are implemented
-behind that same reviewed boundary. OAuth, JWT, public account portals,
-trusted-contact accounts, notification delivery beyond registration email
-verification, browser decryption, key escrow, and server-side decryption are
-not implemented.
+behind that same reviewed boundary. Owner-only `GET /v1/incidents` and
+`GET /v1/incidents/{incident_id}` return public-safe metadata for future
+web-client reads. OAuth, JWT, public account portals, trusted-contact accounts,
+notification delivery beyond registration email verification, browser
+decryption, key escrow, and server-side decryption are not implemented.
 
 ## Summary
 
@@ -19,8 +20,9 @@ other than login. Existing `/v1/admin/...` JSON routes are mounted only on the
 private-admin listener and require an admin account; they are not public-ready
 routes and must be blocked from public reverse-proxy routes. First-admin
 bootstrap is handled by the private `/admin` dashboard flow. Local sessions
-reduce accidental unauthenticated access; they do not make `/v1` a public
-product API.
+reduce accidental unauthenticated access. The owner incident list/detail reads
+are intentionally public-safe for authenticated web-client use, but they do not
+make the rest of `/v1` a public product API.
 
 Future trusted-contact access, incident modes, notifications, production key
 custody, browser/client-side decryption, and optional break-glass access all need
@@ -75,7 +77,7 @@ Today the backend has two listener groups:
 
 | Listener group | Current routes | Exposure |
 |---|---|---|
-| Main API and viewer | Non-admin `/v1/...` with local account/session auth except login, disabled-by-default registration, and email verification; `/i/{token}` plus legacy `/e/{token}` aliases and `/static/...` | Reviewed main API deployment boundary; viewer paths may be routed publicly when only viewer paths are forwarded. Public edges must not route `/v1/admin/...`. |
+| Main API and viewer | Non-admin `/v1/...` with local account/session auth except login, disabled-by-default registration, and email verification; owner-only public-safe incident list/detail reads; `/i/{token}` plus legacy `/e/{token}` aliases and `/static/...` | Reviewed main API deployment boundary; viewer paths may be routed publicly when only viewer paths are forwarded. Public edges must not route `/v1/admin/...`. |
 | Private admin listener | `/v1/admin/...`, `/admin`, `/admin/...`, `/admin/static/...` | Localhost, LAN, WireGuard, firewall, or strict private reverse proxy only. |
 
 Current non-admin `/v1` routes are on the main handler. The implemented local auth model has admin and user roles, incident ownership, hashed password storage,
@@ -84,7 +86,8 @@ with CSRF checks for unsafe cookie-authenticated requests, session expiry,
 logout, account password change, admin account creation, configurable
 registration modes with email verification for open self-registration, admin
 session revocation, owner-scoped contact public-key metadata, owner-managed
-sharing grants, and owner-managed wrapped-key records. Sharing-grant and wrapped-key management are deliberately
+sharing grants, owner-managed wrapped-key records, and owner-only public-safe
+incident metadata list/detail reads. Sharing-grant and wrapped-key management are deliberately
 stricter than ordinary incident reads: they require the authenticated account
 to own the incident, and an admin account cannot manage another account's
 grants or wrapped-key records through the product route set unless it is also

@@ -16,6 +16,10 @@
   protection for cookie-authenticated unsafe requests, explicit credentialed
   CORS for configured origins, and bearer-token compatibility for existing
   CLI/simulator/API clients.
+- Added owner-scoped `GET /v1/incidents` and narrowed
+  `GET /v1/incidents/{incident_id}` to public-safe account incident metadata
+  for future web-client reads, hiding cross-account and legacy unowned
+  incidents and omitting chunk paths, checkins, notes, and owner IDs.
 - Moved existing admin-only `/v1/admin/...` JSON API routes from the main
   API/viewer handler onto the private-admin listener while preserving admin
   authentication and authorization behavior.

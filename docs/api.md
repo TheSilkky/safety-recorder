@@ -16,8 +16,9 @@ mode-driven behavior is documented in [incident-modes.md](incident-modes.md).
 Authenticated account-owner routes can store trusted-contact public-key
 metadata, owner-scoped sharing-grant records, and wrapped media-key metadata
 for active grants. Trusted-contact accounts, browser or backend decryption,
-public product authentication, notifications, raw key storage, and key escrow
-do not exist yet.
+notifications, raw key storage, and key escrow do not exist yet. The main API
+does include a narrow public-safe owner incident list/detail read surface for
+the future web client, but this does not make the whole `/v1` tree public-ready.
 
 Default bind addresses:
 
@@ -607,7 +608,16 @@ authorized actor may already have downloaded.
 
 ## Incidents
 
-Incident routes are mounted on the main API listener and require a valid session. Incidents are owned by the account that creates them. Regular users can access only their own incidents; admins can access incidents across accounts through the main product route set. Legacy unowned incidents are admin-only until a future private reassignment or quarantine workflow is implemented; see [legacy unowned incident reassignment](legacy-unowned-incident-reassignment.md).
+Incident routes are mounted on the main API listener and require a valid
+session. Incidents are owned by the account that creates them. The account
+incident list and detail routes below return only public-safe metadata for
+incidents owned by the authenticated account. They do not include notes,
+chunks, checkins, stored paths, object keys, owner account IDs, wrapped keys,
+ciphertext, raw keys, plaintext, or user safety narrative. Admin accounts do
+not get cross-account reads through these account routes unless the admin
+account also owns the incident. Legacy unowned incidents are hidden from account
+list/detail reads until a future private reassignment or quarantine workflow is
+implemented; see [legacy unowned incident reassignment](legacy-unowned-incident-reassignment.md).
 
 ### `POST /v1/incidents`
 
@@ -652,9 +662,38 @@ Response `201`:
 }
 ```
 
+### `GET /v1/incidents`
+
+Lists public-safe metadata for non-deleted incidents owned by the authenticated
+account. The response is ordered newest-updated first. Incidents owned by other
+accounts and legacy unowned incidents are omitted.
+
+Response `200`:
+
+```json
+{
+  "incidents": [
+    {
+      "id": "inc_...",
+      "created_at": "2026-05-21T10:00:00Z",
+      "updated_at": "2026-05-21T10:00:00Z",
+      "status": "open",
+      "client_label": "iphone",
+      "incident_mode": "interaction_record",
+      "capture_profile": "audio_location",
+      "escalation_policy": "none",
+      "sharing_state": "private",
+      "deletion_state": "active"
+    }
+  ]
+}
+```
+
 ### `GET /v1/incidents/{incident_id}`
 
-Returns incident metadata, chunk metadata, and checkins. Chunk file bytes are not included.
+Returns public-safe metadata for one incident owned by the authenticated
+account. Missing incidents, incidents owned by another account, legacy unowned
+incidents, and deleted incidents all return `404 incident_not_found`.
 
 Response `200`:
 
@@ -671,10 +710,7 @@ Response `200`:
     "escalation_policy": "none",
     "sharing_state": "private",
     "deletion_state": "active"
-  },
-  "streams": [],
-  "chunks": [],
-  "checkins": []
+  }
 }
 ```
 
@@ -1009,7 +1045,8 @@ HTTP coverage in `internal/httpapi/uploads_test.go` includes:
 
 ### `GET /v1/incidents/{incident_id}/chunks`
 
-Lists chunk metadata for one incident.
+Lists chunk metadata for one incident. This is not part of the public-safe
+account incident list/detail surface.
 
 ### `GET /v1/incidents/{incident_id}/chunks/{media_type}/{chunk_index}`
 

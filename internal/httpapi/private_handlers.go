@@ -4,6 +4,7 @@ import (
 	"errors"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/open-proofline/server/internal/incidents"
 )
@@ -24,6 +25,19 @@ type createIncidentResponse struct {
 	CaptureProfile   string `json:"capture_profile,omitempty"`
 	EscalationPolicy string `json:"escalation_policy,omitempty"`
 	SharingState     string `json:"sharing_state,omitempty"`
+}
+
+type accountIncidentResponse struct {
+	ID               string    `json:"id"`
+	CreatedAt        time.Time `json:"created_at"`
+	UpdatedAt        time.Time `json:"updated_at"`
+	Status           string    `json:"status"`
+	ClientLabel      string    `json:"client_label,omitempty"`
+	IncidentMode     string    `json:"incident_mode,omitempty"`
+	CaptureProfile   string    `json:"capture_profile,omitempty"`
+	EscalationPolicy string    `json:"escalation_policy,omitempty"`
+	SharingState     string    `json:"sharing_state,omitempty"`
+	DeletionState    string    `json:"deletion_state"`
 }
 
 func (a *API) createIncident(w http.ResponseWriter, r *http.Request) {
@@ -58,6 +72,26 @@ func (a *API) createIncident(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+func (a *API) listAccountIncidents(w http.ResponseWriter, r *http.Request) {
+	principal, ok := principalFromContext(r.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "authentication_required", "authentication is required")
+		return
+	}
+
+	ownedIncidents, err := a.repo.ListIncidentsForAccount(r.Context(), principal.Account.ID)
+	if err != nil {
+		a.internalError(w, "list account incidents", err)
+		return
+	}
+
+	response := make([]accountIncidentResponse, 0, len(ownedIncidents))
+	for _, incident := range ownedIncidents {
+		response = append(response, makeAccountIncidentResponse(incident))
+	}
+	writeJSON(w, http.StatusOK, map[string][]accountIncidentResponse{"incidents": response})
+}
+
 func createIncidentParams(w http.ResponseWriter, request createIncidentRequest) (incidents.CreateIncidentParams, bool) {
 	params := incidents.CreateIncidentParams{
 		ClientLabel:      request.ClientLabel,
@@ -87,20 +121,29 @@ func createIncidentParams(w http.ResponseWriter, request createIncidentRequest) 
 }
 
 func (a *API) getIncident(w http.ResponseWriter, r *http.Request) {
-	if _, ok := a.authorizeIncident(w, r, r.PathValue("incident_id"), actionReadIncident, dataClassIncidentMetadata); !ok {
-		return
-	}
-	detail, err := a.repo.GetIncidentDetail(r.Context(), r.PathValue("incident_id"))
-	if errors.Is(err, incidents.ErrNotFound) {
-		writeError(w, http.StatusNotFound, "incident_not_found", "incident was not found")
-		return
-	}
-	if err != nil {
-		a.internalError(w, "get incident", err)
+	incident, ok := a.authorizeOwnedIncidentRead(w, r, r.PathValue("incident_id"))
+	if !ok {
 		return
 	}
 
-	writeJSON(w, http.StatusOK, detail)
+	writeJSON(w, http.StatusOK, map[string]accountIncidentResponse{
+		"incident": makeAccountIncidentResponse(incident),
+	})
+}
+
+func makeAccountIncidentResponse(incident incidents.Incident) accountIncidentResponse {
+	return accountIncidentResponse{
+		ID:               incident.ID,
+		CreatedAt:        incident.CreatedAt,
+		UpdatedAt:        incident.UpdatedAt,
+		Status:           incident.Status,
+		ClientLabel:      incident.ClientLabel,
+		IncidentMode:     incident.IncidentMode,
+		CaptureProfile:   incident.CaptureProfile,
+		EscalationPolicy: incident.EscalationPolicy,
+		SharingState:     incident.SharingState,
+		DeletionState:    incident.DeletionState,
+	}
 }
 
 func (a *API) createCheckin(w http.ResponseWriter, r *http.Request) {

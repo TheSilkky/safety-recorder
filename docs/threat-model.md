@@ -90,10 +90,10 @@ metadata, grant-bound wrapped-key metadata, and encrypted evidence bundles.
 - Main `/v1` routes are authenticated product routes except for
   `/v1/auth/login`, disabled-by-default `/v1/auth/register`, and
   `/v1/auth/email/verify`. Authenticated product routes can create incidents,
-  create streams, upload chunks, complete/fail streams, close incidents, create
-  viewer tokens, revoke tokens, manage account-owned contact public keys,
-  manage owner-scoped sharing grants, manage grant-bound wrapped-key records,
-  and read encrypted bytes.
+  list/read public-safe owner incident metadata, create streams, upload chunks,
+  complete/fail streams, close incidents, create viewer tokens, revoke tokens,
+  manage account-owned contact public keys, manage owner-scoped sharing grants,
+  manage grant-bound wrapped-key records, and read encrypted bytes.
 - Existing `/v1/admin/...` JSON routes require an admin account, are mounted on
   the private-admin server, and must not be routed from public entry points.
 - `/v1/bootstrap/admin`, `/v1/health/live`, and `/v1/health/ready` are not

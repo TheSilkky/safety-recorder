@@ -187,10 +187,10 @@ func TestCrossAccountIncidentAccessIsDenied(t *testing.T) {
 
 	response, body = requestWithAuth(t, app.privateHandler, http.MethodGet, "/v1/incidents/"+created.IncidentID, "", nil, otherToken)
 	defer response.Body.Close()
-	if response.StatusCode != http.StatusForbidden {
-		t.Fatalf("expected cross-account status 403, got %d: %s", response.StatusCode, body)
+	if response.StatusCode != http.StatusNotFound {
+		t.Fatalf("expected cross-account status 404, got %d: %s", response.StatusCode, body)
 	}
-	assertErrorCode(t, body, "forbidden")
+	assertErrorCode(t, body, "incident_not_found")
 }
 
 func TestAdminCanRevokeAccountSessions(t *testing.T) {

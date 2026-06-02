@@ -139,6 +139,29 @@ func (r *Repository) GetIncident(ctx context.Context, id string) (Incident, erro
 	return incident, nil
 }
 
+// ListIncidentsForAccount returns non-deleted incidents owned by accountID.
+func (r *Repository) ListIncidentsForAccount(ctx context.Context, accountID string) ([]Incident, error) {
+	rows, err := r.db.QueryContext(ctx, `
+			SELECT id, owner_account_id, created_at, updated_at, status, client_label, notes,
+				incident_mode, capture_profile, escalation_policy, sharing_state, deletion_state
+			FROM incidents
+			WHERE owner_account_id = ? AND deletion_state <> ?
+			ORDER BY updated_at DESC, created_at DESC, id ASC`,
+		accountID,
+		IncidentDeletionStateDeleted,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("list account incidents: %w", err)
+	}
+	defer rows.Close()
+
+	incidents, err := scanIncidents(rows)
+	if err != nil {
+		return nil, fmt.Errorf("scan account incidents: %w", err)
+	}
+	return incidents, nil
+}
+
 // GetIncidentDetail returns an incident with its chunk and checkin metadata.
 func (r *Repository) GetIncidentDetail(ctx context.Context, id string) (IncidentDetail, error) {
 	incident, err := r.GetIncident(ctx, id)

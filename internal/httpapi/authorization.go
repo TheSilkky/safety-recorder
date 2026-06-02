@@ -115,6 +115,30 @@ func (a *API) authorizeOwnedIncident(w http.ResponseWriter, r *http.Request, inc
 	return incidents.Incident{}, false
 }
 
+func (a *API) authorizeOwnedIncidentRead(w http.ResponseWriter, r *http.Request, incidentID string) (incidents.Incident, bool) {
+	principal, ok := principalFromContext(r.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "authentication_required", "authentication is required")
+		return incidents.Incident{}, false
+	}
+	incident, err := a.repo.GetIncident(r.Context(), incidentID)
+	if errors.Is(err, incidents.ErrNotFound) {
+		writeError(w, http.StatusNotFound, "incident_not_found", "incident was not found")
+		return incidents.Incident{}, false
+	}
+	if err != nil {
+		a.internalError(w, "get account incident", err)
+		return incidents.Incident{}, false
+	}
+	if incident.OwnerAccountID == "" ||
+		incident.OwnerAccountID != principal.Account.ID ||
+		incident.DeletionState == incidents.IncidentDeletionStateDeleted {
+		writeError(w, http.StatusNotFound, "incident_not_found", "incident was not found")
+		return incidents.Incident{}, false
+	}
+	return incident, true
+}
+
 func writeIncidentDeleting(w http.ResponseWriter) {
 	writeError(w, http.StatusConflict, "incident_deleting", "incident deletion is in progress")
 }

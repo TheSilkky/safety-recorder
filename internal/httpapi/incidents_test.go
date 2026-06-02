@@ -2,12 +2,25 @@ package httpapi_test
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"net/http"
 	"testing"
 
+	"github.com/open-proofline/server/internal/auth"
 	"github.com/open-proofline/server/internal/incidents"
 )
+
+type accountIncidentResponseForTest struct {
+	ID               string `json:"id"`
+	Status           string `json:"status"`
+	ClientLabel      string `json:"client_label"`
+	IncidentMode     string `json:"incident_mode"`
+	CaptureProfile   string `json:"capture_profile"`
+	EscalationPolicy string `json:"escalation_policy"`
+	SharingState     string `json:"sharing_state"`
+	DeletionState    string `json:"deletion_state"`
+}
 
 func TestCreateIncident(t *testing.T) {
 	app := newTestApp(t)
@@ -58,7 +71,9 @@ func TestCreateIncidentWithModeFields(t *testing.T) {
 	if response.StatusCode != http.StatusOK {
 		t.Fatalf("expected incident status 200, got %d: %s", response.StatusCode, body)
 	}
-	var detail incidents.IncidentDetail
+	var detail struct {
+		Incident accountIncidentResponseForTest `json:"incident"`
+	}
 	if err := json.Unmarshal(body, &detail); err != nil {
 		t.Fatalf("decode incident detail: %v", err)
 	}
@@ -144,27 +159,133 @@ func TestMainAPIUnsupportedMethodUsesSecurityHeaders(t *testing.T) {
 	response, body := get(t, app, "/v1/incidents")
 	defer response.Body.Close()
 
-	if response.StatusCode != http.StatusNotFound {
-		t.Fatalf("expected unsupported method status 404, got %d: %s", response.StatusCode, body)
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("expected list incidents status 200, got %d: %s", response.StatusCode, body)
 	}
 	assertMainJSONSecurityHeaders(t, response)
-	assertErrorCode(t, body, "not_found")
+	if !bytes.Contains(body, []byte(`"incidents":[]`)) {
+		t.Fatalf("expected empty incident list, got: %s", body)
+	}
 }
 
-func TestGetIncidentReturnsEmptyArrays(t *testing.T) {
+func TestListAccountIncidentsReturnsOnlyOwnedPublicSafeMetadata(t *testing.T) {
 	app := newTestApp(t)
-	incidentID := createIncident(t, app, `{}`)
+	ownerToken := createAccountAndLogin(t, app, "list-owner", "owner-password", auth.RoleUser)
+	otherToken := createAccountAndLogin(t, app, "list-other", "other-password", auth.RoleUser)
+	ownerIncidentID := createIncidentWithAuth(t, app, ownerToken, `{
+		"client_label":"owner phone",
+		"notes":"owner private note",
+		"incident_mode":"interaction_record",
+		"capture_profile":"audio_location",
+		"escalation_policy":"none",
+		"sharing_state":"private"
+	}`)
+	_ = createIncidentWithAuth(t, app, otherToken, `{"client_label":"other phone"}`)
+	legacyIncident, err := incidents.NewRepository(app.db).CreateIncident(context.Background(), "legacy", "legacy note")
+	if err != nil {
+		t.Fatalf("create legacy incident: %v", err)
+	}
 
-	response, body := get(t, app, "/v1/incidents/"+incidentID)
+	payload := []byte("encrypted metadata")
+	response, body := uploadChunk(t, app, ownerIncidentID, 2, "metadata", payload, sha256Hex(payload))
+	response.Body.Close()
+	if response.StatusCode != http.StatusCreated {
+		t.Fatalf("expected upload status 201, got %d: %s", response.StatusCode, body)
+	}
+	createCheckin(t, app, ownerIncidentID)
+
+	response, body = requestWithAuth(t, app.privateHandler, http.MethodGet, "/v1/incidents", "", nil, ownerToken)
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("expected list incidents status 200, got %d: %s", response.StatusCode, body)
+	}
+	assertMainJSONSecurityHeaders(t, response)
+
+	var result struct {
+		Incidents []accountIncidentResponseForTest `json:"incidents"`
+	}
+	if err := json.Unmarshal(body, &result); err != nil {
+		t.Fatalf("decode incident list: %v", err)
+	}
+	if len(result.Incidents) != 1 {
+		t.Fatalf("expected one owned incident, got %+v", result.Incidents)
+	}
+	got := result.Incidents[0]
+	if got.ID != ownerIncidentID ||
+		got.ClientLabel != "owner phone" ||
+		got.IncidentMode != incidents.IncidentModeInteractionRecord ||
+		got.CaptureProfile != incidents.CaptureProfileAudioLocation ||
+		got.EscalationPolicy != incidents.EscalationPolicyNone ||
+		got.SharingState != incidents.SharingStatePrivate ||
+		got.DeletionState != incidents.IncidentDeletionStateActive {
+		t.Fatalf("unexpected list incident response: %+v", got)
+	}
+	for _, disallowed := range [][]byte{
+		[]byte(`"owner_account_id"`),
+		[]byte(`"notes"`),
+		[]byte(`"chunks"`),
+		[]byte(`"checkins"`),
+		[]byte(`"stored_path"`),
+		[]byte(`"latitude"`),
+		[]byte("owner private note"),
+		[]byte(legacyIncident.ID),
+	} {
+		if bytes.Contains(body, disallowed) {
+			t.Fatalf("incident list exposed %q: %s", disallowed, body)
+		}
+	}
+}
+
+func TestGetAccountIncidentReturnsPublicSafeMetadata(t *testing.T) {
+	app := newTestApp(t)
+	incidentID := createIncident(t, app, `{
+		"client_label":"phone",
+		"notes":"private note",
+		"incident_mode":"interaction_record",
+		"capture_profile":"audio_location",
+		"escalation_policy":"none",
+		"sharing_state":"private"
+	}`)
+	payload := []byte("encrypted metadata")
+	response, body := uploadChunk(t, app, incidentID, 2, "metadata", payload, sha256Hex(payload))
+	response.Body.Close()
+	if response.StatusCode != http.StatusCreated {
+		t.Fatalf("expected upload status 201, got %d: %s", response.StatusCode, body)
+	}
+	createCheckin(t, app, incidentID)
+
+	response, body = get(t, app, "/v1/incidents/"+incidentID)
 	defer response.Body.Close()
 	if response.StatusCode != http.StatusOK {
 		t.Fatalf("expected incident status 200, got %d: %s", response.StatusCode, body)
 	}
-	if !bytes.Contains(body, []byte(`"chunks":[]`)) {
-		t.Fatalf("expected chunks to be an empty array, got: %s", body)
+
+	var detail struct {
+		Incident accountIncidentResponseForTest `json:"incident"`
 	}
-	if !bytes.Contains(body, []byte(`"checkins":[]`)) {
-		t.Fatalf("expected checkins to be an empty array, got: %s", body)
+	if err := json.Unmarshal(body, &detail); err != nil {
+		t.Fatalf("decode incident detail: %v", err)
+	}
+	if detail.Incident.ID != incidentID ||
+		detail.Incident.ClientLabel != "phone" ||
+		detail.Incident.IncidentMode != incidents.IncidentModeInteractionRecord ||
+		detail.Incident.CaptureProfile != incidents.CaptureProfileAudioLocation ||
+		detail.Incident.EscalationPolicy != incidents.EscalationPolicyNone ||
+		detail.Incident.SharingState != incidents.SharingStatePrivate {
+		t.Fatalf("unexpected account incident detail: %+v", detail.Incident)
+	}
+	for _, disallowed := range [][]byte{
+		[]byte(`"owner_account_id"`),
+		[]byte(`"notes"`),
+		[]byte(`"chunks"`),
+		[]byte(`"checkins"`),
+		[]byte(`"stored_path"`),
+		[]byte(`"latitude"`),
+		[]byte("private note"),
+	} {
+		if bytes.Contains(body, disallowed) {
+			t.Fatalf("account incident detail exposed %q: %s", disallowed, body)
+		}
 	}
 }
 
@@ -206,41 +327,27 @@ func TestRejectUploadAfterClose(t *testing.T) {
 	assertErrorCode(t, body, "incident_closed")
 }
 
-func TestListIncidentWithChunksAndCheckins(t *testing.T) {
+func TestAccountIncidentDetailHidesCrossAccountAndLegacyIncidents(t *testing.T) {
 	app := newTestApp(t)
-	incidentID := createIncident(t, app, `{"client_label":"phone"}`)
-	payload := []byte("encrypted metadata")
-
-	response, body := uploadChunk(t, app, incidentID, 2, "metadata", payload, sha256Hex(payload))
-	response.Body.Close()
-	if response.StatusCode != http.StatusCreated {
-		t.Fatalf("expected upload status 201, got %d: %s", response.StatusCode, body)
+	ownerToken := createAccountAndLogin(t, app, "detail-owner", "owner-password", auth.RoleUser)
+	otherToken := createAccountAndLogin(t, app, "detail-other", "other-password", auth.RoleUser)
+	incidentID := createIncidentWithAuth(t, app, ownerToken, `{}`)
+	legacyIncident, err := incidents.NewRepository(app.db).CreateIncident(context.Background(), "legacy", "legacy note")
+	if err != nil {
+		t.Fatalf("create legacy incident: %v", err)
 	}
 
-	checkinBody := bytes.NewBufferString(`{"device_battery_percent":82,"device_network":"wifi","latitude":-37,"longitude":145,"accuracy_meters":20}`)
-	response, body = post(t, app, "/v1/incidents/"+incidentID+"/checkins", "application/json", checkinBody)
-	response.Body.Close()
-	if response.StatusCode != http.StatusCreated {
-		t.Fatalf("expected checkin status 201, got %d: %s", response.StatusCode, body)
-	}
-
-	response, body = get(t, app, "/v1/incidents/"+incidentID)
+	response, body := requestWithAuth(t, app.privateHandler, http.MethodGet, "/v1/incidents/"+incidentID, "", nil, otherToken)
 	defer response.Body.Close()
-	if response.StatusCode != http.StatusOK {
-		t.Fatalf("expected incident status 200, got %d: %s", response.StatusCode, body)
+	if response.StatusCode != http.StatusNotFound {
+		t.Fatalf("expected cross-account detail status 404, got %d: %s", response.StatusCode, body)
 	}
+	assertErrorCode(t, body, "incident_not_found")
 
-	var detail incidents.IncidentDetail
-	if err := json.Unmarshal(body, &detail); err != nil {
-		t.Fatalf("decode incident detail: %v", err)
+	response, body = requestWithAuth(t, app.privateHandler, http.MethodGet, "/v1/incidents/"+legacyIncident.ID, "", nil, ownerToken)
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusNotFound {
+		t.Fatalf("expected legacy detail status 404, got %d: %s", response.StatusCode, body)
 	}
-	if detail.Incident.ID != incidentID {
-		t.Fatalf("expected incident id %s, got %s", incidentID, detail.Incident.ID)
-	}
-	if len(detail.Chunks) != 1 {
-		t.Fatalf("expected 1 chunk, got %d", len(detail.Chunks))
-	}
-	if len(detail.Checkins) != 1 {
-		t.Fatalf("expected 1 checkin, got %d", len(detail.Checkins))
-	}
+	assertErrorCode(t, body, "incident_not_found")
 }

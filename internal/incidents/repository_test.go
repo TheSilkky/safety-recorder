@@ -42,6 +42,58 @@ func TestCreateIncidentStoresModeFields(t *testing.T) {
 	}
 }
 
+func TestListIncidentsForAccountReturnsOnlyOwnedIncidents(t *testing.T) {
+	ctx := context.Background()
+	repo := newRepository(t, ctx)
+	owner, err := repo.CreateAccount(ctx, auth.CreateAccountParams{
+		Username:     "incident-owner",
+		PasswordHash: "hash",
+		Role:         auth.RoleUser,
+		AccountState: auth.AccountStateActive,
+	})
+	if err != nil {
+		t.Fatalf("create owner account: %v", err)
+	}
+	other, err := repo.CreateAccount(ctx, auth.CreateAccountParams{
+		Username:     "incident-other",
+		PasswordHash: "hash",
+		Role:         auth.RoleUser,
+		AccountState: auth.AccountStateActive,
+	})
+	if err != nil {
+		t.Fatalf("create other account: %v", err)
+	}
+	owned, err := repo.CreateIncidentForAccount(ctx, owner.ID, incidents.CreateIncidentParams{
+		ClientLabel: "owned phone",
+		Notes:       "private note",
+	})
+	if err != nil {
+		t.Fatalf("create owned incident: %v", err)
+	}
+	if _, err := repo.CreateIncidentForAccount(ctx, other.ID, incidents.CreateIncidentParams{
+		ClientLabel: "other phone",
+	}); err != nil {
+		t.Fatalf("create other incident: %v", err)
+	}
+	if _, err := repo.CreateIncident(ctx, "legacy phone", "legacy note"); err != nil {
+		t.Fatalf("create legacy incident: %v", err)
+	}
+
+	list, err := repo.ListIncidentsForAccount(ctx, owner.ID)
+	if err != nil {
+		t.Fatalf("list incidents for account: %v", err)
+	}
+	if len(list) != 1 {
+		t.Fatalf("expected one owned incident, got %+v", list)
+	}
+	if list[0].ID != owned.ID ||
+		list[0].OwnerAccountID != owner.ID ||
+		list[0].ClientLabel != "owned phone" ||
+		list[0].Notes != "private note" {
+		t.Fatalf("unexpected owned incident list result: %+v", list[0])
+	}
+}
+
 func TestAccountRegistrationAndVerificationTokens(t *testing.T) {
 	ctx := context.Background()
 	repo := newRepository(t, ctx)

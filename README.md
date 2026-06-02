@@ -108,6 +108,9 @@ public viewer changes, notifications, raw key storage, or key escrow.
   an expected chunk fingerprint
 - Optional incident-mode, capture-profile, escalation-policy, and sharing-state
   metadata on main incident create/read routes
+- Owner-only public-safe incident list/detail metadata reads for future
+  web-client use, without exposing notes, chunks, checkins, stored paths, owner
+  IDs, wrapped keys, ciphertext, raw keys, plaintext, or user safety narrative
 - Owner-scoped contact public-key metadata and sharing-grant records for owned
   incidents or streams
 - Owner-scoped wrapped media-key metadata storage and private API delivery for

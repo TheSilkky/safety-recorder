@@ -67,6 +67,7 @@ func (a *API) registerPrivateAdminWebRoutes(mux *http.ServeMux) {
 
 func (a *API) registerMainIncidentRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /v1/incidents", a.withPrivateAuth(a.createIncident))
+	mux.HandleFunc("GET /v1/incidents", a.withPrivateAuth(a.listAccountIncidents))
 	mux.HandleFunc("GET /v1/incidents/{incident_id}", a.withPrivateAuth(a.getIncident))
 	mux.HandleFunc("GET /v1/incidents/{incident_id}/deletion", a.withPrivateAuth(a.getIncidentDeletion))
 	mux.HandleFunc("POST /v1/incidents/{incident_id}/deletion", a.withPrivateAuth(a.requestIncidentDeletion))
