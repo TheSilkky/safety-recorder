@@ -17,7 +17,7 @@ planned server, web-client, iOS-client, Android-client, and protocol surfaces.
 The subscription requirement for the official hosted service exists because the
 server, object storage, database, email delivery, monitoring, backups,
 maintenance time, and release work cannot sustainably be paid from the
-maintainer's personal pensioner income.
+maintainer's limited personal income.
 
 This boundary should be reflected in product wording and implementation:
 
@@ -137,8 +137,8 @@ SAFE_BILLING_GRACE_PERIOD=...
 Defaults must fail closed:
 
 - billing disabled unless explicitly configured;
-- paid registration unavailable unless Stripe is configured and verified at
-  startup;
+- paid registration unavailable unless Stripe is configured and passes local
+  startup validation;
 - missing webhook secret prevents webhook endpoint activation;
 - missing price ID prevents checkout session creation.
 
@@ -175,9 +175,10 @@ final account lifecycle. Creates a Stripe Checkout Session for the configured
 subscription price and returns only the redirect URL or session ID needed by the
 web client.
 
-The server should attach safe provider metadata such as local account ID where
-useful for webhook reconciliation, but it must not expose internal deployment
-details or user safety data to Stripe metadata.
+The server should attach safe provider metadata such as an opaque billing
+correlation ID mapped to the local account server-side where useful for webhook
+reconciliation, but it must not expose internal deployment details or user safety
+data to Stripe metadata.
 
 ### `POST /v1/billing/customer-portal-sessions`
 
