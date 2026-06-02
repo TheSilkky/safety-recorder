@@ -87,15 +87,15 @@ metadata, grant-bound wrapped-key metadata, and encrypted evidence bundles.
 - The private-admin server binds separately from the main API/viewer server. By
   default it listens on `127.0.0.1:8081`, and it can listen on multiple
   addresses through `SAFE_ADMIN_BIND_ADDRS`.
-- Main `/v1` routes are authenticated product and admin JSON routes except for
+- Main `/v1` routes are authenticated product routes except for
   `/v1/auth/login`, disabled-by-default `/v1/auth/register`, and
   `/v1/auth/email/verify`. Authenticated product routes can create incidents,
   create streams, upload chunks, complete/fail streams, close incidents, create
   viewer tokens, revoke tokens, manage account-owned contact public keys,
   manage owner-scoped sharing grants, manage grant-bound wrapped-key records,
-  and read encrypted bytes. Existing
-  `/v1/admin/...` JSON routes require an admin account and must not be routed
-  from public entry points. They are mounted on the main API/viewer server.
+  and read encrypted bytes.
+- Existing `/v1/admin/...` JSON routes require an admin account, are mounted on
+  the private-admin server, and must not be routed from public entry points.
 - `/v1/bootstrap/admin`, `/v1/health/live`, and `/v1/health/ready` are not
   mounted on either listener.
 - `/admin`, `/admin/login`, `/admin/bootstrap`, `/admin/logout`,
@@ -151,7 +151,7 @@ metadata, grant-bound wrapped-key metadata, and encrypted evidence bundles.
   deployment details.
 - The current listener split does not expose `/v1/health/live` or
   `/v1/health/ready`; operator readiness details should not be published on
-  the main API/viewer origin or on the dashboard-only private-admin listener.
+  the main API/viewer origin or on the private-admin listener.
 - Media streams must be open before new chunks can be attached. The repository rechecks incident and stream state when chunk metadata is inserted.
 - Stream completion verifies contiguous chunks plus readable stored files, and the repository revalidates chunk rows before committing the stream to `complete`.
 - Local account passwords are stored as bcrypt hashes. Private `/v1` requests
@@ -310,8 +310,8 @@ private network and restrict access with WireGuard, firewall rules, or a
 reverse proxy. If exposing only the incident viewer publicly, route only
 viewer paths (`/i/...`, `/e/...`, and `/static/...`) to the main listener and
 do not forward public wildcard traffic to `/v1`. Public edges must block
-`/v1/admin/...`. The `/admin` dashboard uses the separately bound
-private-admin listener and still requires admin authentication.
+`/v1/admin/...`. The `/v1/admin/...` JSON routes and `/admin` dashboard use the
+separately bound private-admin listener and still require admin authentication.
 Inside Docker containers, bind to container addresses such as `0.0.0.0:8080`
 and restrict host exposure with port publishing, firewall rules, WireGuard, or
 reverse proxy configuration.

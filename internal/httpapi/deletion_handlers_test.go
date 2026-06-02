@@ -74,7 +74,7 @@ func TestAdminIncidentDeletionCanTargetAnyIncident(t *testing.T) {
 
 	response, body = requestWithAuth(
 		t,
-		app.mainHandler,
+		app.adminHandler,
 		http.MethodPost,
 		"/v1/admin/incidents/"+incidentID+"/deletion",
 		"application/json",
@@ -87,7 +87,7 @@ func TestAdminIncidentDeletionCanTargetAnyIncident(t *testing.T) {
 	}
 
 	admin := mustGetAccountByUsername(t, app, "test-admin")
-	response, body = requestWithAuth(t, app.mainHandler, http.MethodPost, "/v1/admin/incidents/"+incidentID+"/deletion", "application/json", bytes.NewBufferString(`{"reason_code":"admin_delete","allow_open":true}`), app.authToken)
+	response, body = requestWithAuth(t, app.adminHandler, http.MethodPost, "/v1/admin/incidents/"+incidentID+"/deletion", "application/json", bytes.NewBufferString(`{"reason_code":"admin_delete","allow_open":true}`), app.authToken)
 	defer response.Body.Close()
 	if response.StatusCode != http.StatusAccepted {
 		t.Fatalf("expected admin deletion status 202, got %d: %s", response.StatusCode, body)
@@ -98,6 +98,19 @@ func TestAdminIncidentDeletionCanTargetAnyIncident(t *testing.T) {
 		status.State != incidents.IncidentDeletionStatePending ||
 		status.ReasonCode != "admin_delete" {
 		t.Fatalf("unexpected admin deletion status: %+v", status)
+	}
+
+	response, body = requestWithAuth(t, app.adminHandler, http.MethodGet, "/v1/admin/incidents/"+incidentID+"/deletion", "", nil, app.authToken)
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("expected admin deletion status lookup 200, got %d: %s", response.StatusCode, body)
+	}
+	status = decodeDeletionResponse(t, body)
+	if status.Source != incidents.IncidentDeletionSourceAdminRequest ||
+		status.ActorAccountID != admin.ID ||
+		status.State != incidents.IncidentDeletionStatePending ||
+		status.ReasonCode != "admin_delete" {
+		t.Fatalf("unexpected admin deletion lookup status: %+v", status)
 	}
 }
 

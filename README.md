@@ -16,7 +16,7 @@ Proofline Server is the experimental Go server backend for encrypted incident ca
 
 ## Security Warning
 
-> This project is not production-ready public infrastructure. The main `/v1` API now requires local account sessions for most routes and shares a listener with the read-only incident viewer, but public exposure still needs deployment-specific TLS, abuse controls, browser credential review, logging review, and operational hardening. Configurable public self-registration is disabled by default; enabling open registration adds only email-verified account creation and does not make `/v1` or `/v1/admin/...` public-ready. Optional browser cookie sessions add CSRF checks and configured credentialed CORS for future web-client use, but they also do not make `/v1` or `/v1/admin/...` public-ready. Existing `/v1/admin/...` JSON routes remain authenticated admin-only routes on the main handler and must not be routed from a public edge. The private-admin listener is the `/admin` dashboard surface only and must stay behind localhost, LAN, WireGuard, a firewall, or a strict reverse proxy. Separate bind addresses are a deployment boundary, not a complete security model.
+> This project is not production-ready public infrastructure. The main `/v1` API now requires local account sessions for most routes and shares a listener with the read-only incident viewer, but public exposure still needs deployment-specific TLS, abuse controls, browser credential review, logging review, and operational hardening. Configurable public self-registration is disabled by default; enabling open registration adds only email-verified account creation and does not make `/v1` public-ready. Optional browser cookie sessions add CSRF checks and configured credentialed CORS for future web-client use, but they also do not make `/v1` public-ready. Existing `/v1/admin/...` JSON routes are mounted only on the private-admin listener and remain authenticated admin-only routes. The private-admin listener also serves the `/admin` dashboard surface and must stay behind localhost, LAN, WireGuard, a firewall, or a strict reverse proxy. Separate bind addresses are a deployment boundary, not a complete security model.
 
 ## What It Is
 
@@ -83,9 +83,9 @@ public viewer changes, notifications, raw key storage, or key escrow.
 
 ## What Works Today
 
-- Main authenticated `/v1` API listener group, including admin-only JSON routes
-  that are not public-ready
-- Private-admin dashboard listener for `/admin` and `/admin/static/...`
+- Main authenticated `/v1` API listener group
+- Private-admin listener for admin-only JSON routes, `/admin`, and
+  `/admin/static/...`
 - Read-only incident viewer routes mounted on the main listener
 - Local username/password accounts for regular users and admins
 - Configurable account registration modes: disabled, admin-created accounts
@@ -151,7 +151,7 @@ public viewer changes, notifications, raw key storage, or key escrow.
 
 ## Architecture
 
-Proofline Server runs separate main and private-admin HTTP listener groups from the same Go binary. The main listener serves authenticated `/v1` routes and the token-gated, read-only incident viewer. Existing `/v1/admin/...` JSON routes stay authenticated and admin-only on that main handler, but they are not public-ready routes and must be blocked by any public reverse proxy. The private-admin listener serves only the `/admin` dashboard route tree.
+Proofline Server runs separate main and private-admin HTTP listener groups from the same Go binary. The main listener serves authenticated non-admin `/v1` routes and the token-gated, read-only incident viewer. Existing `/v1/admin/...` JSON routes stay authenticated and admin-only, but are mounted only on the private-admin listener alongside the `/admin` dashboard route tree.
 
 ```mermaid
 flowchart LR
@@ -161,7 +161,7 @@ flowchart LR
     Main --> Tokens["Viewer token creation"]
     Contact["Trusted contact"] --> Main
     Main --> Bundles["Encrypted ZIP bundles<br/>completed streams only"]
-    Admin["Private admin listener<br/>/admin dashboard"] --> DB
+    Admin["Private admin listener<br/>/v1/admin API<br/>/admin dashboard"] --> DB
 ```
 
 For more diagrams and package-level details, see [docs/architecture.md](docs/architecture.md) and [docs/code-map.md](docs/code-map.md). The planned cluster expansion is documented separately in [docs/production-cluster-scope.md](docs/production-cluster-scope.md).

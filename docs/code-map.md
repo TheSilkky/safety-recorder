@@ -30,7 +30,7 @@ contact key-sharing boundaries in
   when running from the repository root.
 - `.github/workflows/ci.yml`: runs Go tests with a coverage signal on pull requests and pushes, runs `govulncheck`, builds the `proofline-server-linux-amd64` binary artifact, gates release binary attestation and trusted GHCR publishing on the vulnerability scan, uploads the binary as a GitHub Release asset on `v*` tag pushes, builds the Docker image, and publishes attested images to GitHub Container Registry from a trusted job limited to `main`, `develop`, and `v*` tag pushes.
 - `.dockerignore`: excludes local runtime, review, and build artifacts from the root Docker build context used by `Dockerfile`.
-- `cmd/api`: starts one main API/viewer HTTP server per main bind address and one private-admin dashboard HTTP server per admin bind address, loads config, enforces the local account bootstrap gate, checks the selected coordination backend, opens the selected metadata backend, creates storage, wires shared handlers including main API, admin JSON API, public viewer rate limiting, upload coordination, and the private `/admin` dashboard, starts the deletion worker, and handles graceful shutdown.
+- `cmd/api`: starts one main API/viewer HTTP server per main bind address and one private-admin HTTP server per admin bind address, loads config, enforces the local account bootstrap gate, checks the selected coordination backend, opens the selected metadata backend, creates storage, wires shared handlers including main API, private admin JSON API, public viewer rate limiting, upload coordination, and the private `/admin` dashboard, starts the deletion worker, and handles graceful shutdown.
 - `cmd/simclient`: simulates future client flows by logging in, creating an incident, creating a media stream, encrypting and uploading complete chunks, completing or failing streams, sending periodic checkins, and optionally testing hash-failure retry, bundle download, local decrypt verification, durable desktop-recorder staging, local file input, ffmpeg segment capture, restart/resume behavior, and poor-network retry controls. Token-bearing viewer URLs are omitted from simulator output.
 - `internal/config`: reads TOML config files, `SAFE_*` environment overrides,
   and `SAFE_*_FILE` secret files for backend selectors, backend-specific
@@ -46,7 +46,7 @@ contact key-sharing boundaries in
 - `internal/email`: defines the outbound email sender boundary and the SMTP-backed verification email implementation. The backend has no stdout/file development mailer and does not send notification, recovery, billing, or trusted-contact emails.
 - `internal/envelope`: implements the simulator/test AES-256-GCM client-side chunk envelope, associated data builder, and local simulator key file helpers.
 - `internal/auth`: normalizes local account usernames and email addresses, validates passwords, hashes passwords with bcrypt, and hashes opaque session or verification tokens before storage.
-- `internal/httpapi`: owns separate main and private-admin dashboard muxes, JSON responses, request logging, recovery, local account/session authentication, request validation, upload handling, stream state handlers, contact public-key handlers, sharing-grant handlers, wrapped-key handlers, incident deletion handlers, ZIP bundle streaming, app-level main API, admin JSON API, and public viewer rate limiting, the private admin web surface, the incident viewer, and the narrow metadata repository boundary consumed by handlers.
+- `internal/httpapi`: owns separate main and private-admin muxes, JSON responses, request logging, recovery, local account/session authentication, request validation, upload handling, stream state handlers, contact public-key handlers, sharing-grant handlers, wrapped-key handlers, incident deletion handlers, ZIP bundle streaming, app-level main API and public viewer rate limiting, private admin JSON API routes, the private admin web surface, the incident viewer, and the narrow metadata repository boundary consumed by handlers.
 - `internal/incidents`: defines incident/stream/chunk/checkin/account/session/deletion/contact-key/sharing-grant/wrapped-key models and provides the SQLite metadata repository implementation, including deletion decisions, tombstones, retry item state, contact public-key records, sharing-grant records, wrapped-key records, and write guards for deleting incidents.
 - `internal/postgresdb`: opens optional PostgreSQL metadata connections, applies PostgreSQL migrations, and implements the metadata repository behavior with PostgreSQL transaction, row-locking, deletion, and constraint semantics.
 - `internal/retention`: runs the background deletion and optional closed-incident retention worker. It claims retryable deletion decisions, removes encrypted blobs through the storage boundary using stored paths snapshotted from metadata, records safe retry state, prunes sensitive child metadata after blob deletion, and logs only non-sensitive counts or error categories.
@@ -76,8 +76,9 @@ returns safe session metadata without a raw token, and sets an HttpOnly session 
 `GET /v1/auth/web/csrf` returns a session-bound CSRF token for unsafe
 cookie-authenticated requests, and `POST /v1/auth/web/logout` revokes the
 session and clears the cookie. Requests that send both bearer and browser
-cookie credentials are rejected. Existing `/v1/admin/...` JSON routes are mounted on the main handler and
-require an admin account. First-admin bootstrap uses the private
+cookie credentials are rejected. Existing `/v1/admin/...` JSON routes are
+mounted on the private-admin handler and require an admin account. First-admin
+bootstrap uses the private
 `/admin/bootstrap` form when no admin exists and `SAFE_AUTH_BOOTSTRAP_SECRET`
 is configured.
 Session tokens are opaque, returned only to the client, and stored as hashes by
@@ -178,7 +179,7 @@ viewer routes and bundle manifests remain key-free.
 
 Main owner-scoped deletion requests are handled by
 `POST /v1/incidents/{incident_id}/deletion`. Admin-global deletion requests are
-handled by `POST /v1/admin/incidents/{incident_id}/deletion` on the main
+handled by `POST /v1/admin/incidents/{incident_id}/deletion` on the private-admin
 handler with an admin account. Public incident viewer routes do not expose
 deletion controls or deletion status.
 
@@ -276,7 +277,7 @@ Before public exposure, review and add:
 - the public product API and separately bound private admin API access-control
   design in [v1-access-control.md](v1-access-control.md), or a strict
   WireGuard/firewall-only deployment for the current main `/v1` API
-- the target main API/public viewer and private admin-dashboard listener split
+- the target main API/public viewer and private admin listener split
   in [public-api-listener-split.md](public-api-listener-split.md)
 - edge rate limits, app-level public viewer limits, and broader abuse controls
 - TLS and reverse-proxy settings for the public incident viewer, if reachable over a network

@@ -229,6 +229,12 @@ func TestMainServerDoesNotMountAdminDashboardOrOperatorRoutes(t *testing.T) {
 		{http.MethodPost, "/admin/password"},
 		{http.MethodPost, "/admin/accounts/acct_missing/password"},
 		{http.MethodGet, "/admin/static/styles.css"},
+		{http.MethodGet, "/v1/admin/accounts"},
+		{http.MethodPost, "/v1/admin/accounts"},
+		{http.MethodPost, "/v1/admin/accounts/acct_missing/password"},
+		{http.MethodPost, "/v1/admin/accounts/acct_missing/sessions/revoke"},
+		{http.MethodGet, "/v1/admin/incidents/inc_missing/deletion"},
+		{http.MethodPost, "/v1/admin/incidents/inc_missing/deletion"},
 	}
 
 	for _, tt := range tests {
@@ -300,12 +306,6 @@ func TestAdminServerDoesNotMountMainOrIncidentViewerRoutes(t *testing.T) {
 		{http.MethodPost, "/v1/bootstrap/admin"},
 		{http.MethodGet, "/v1/health/live"},
 		{http.MethodGet, "/v1/health/ready"},
-		{http.MethodGet, "/v1/admin/accounts"},
-		{http.MethodPost, "/v1/admin/accounts"},
-		{http.MethodPost, "/v1/admin/accounts/acct_missing/password"},
-		{http.MethodPost, "/v1/admin/accounts/acct_missing/sessions/revoke"},
-		{http.MethodGet, "/v1/admin/incidents/inc_missing/deletion"},
-		{http.MethodPost, "/v1/admin/incidents/inc_missing/deletion"},
 		{http.MethodGet, "/i/" + token.Token},
 		{http.MethodGet, "/i/" + token.Token + "/data"},
 		{http.MethodGet, "/i/" + token.Token + "/streams/str_missing/download"},

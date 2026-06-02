@@ -5,7 +5,6 @@ import "net/http"
 func (a *API) mainRoutes() http.Handler {
 	mux := http.NewServeMux()
 	a.registerMainAuthRoutes(mux)
-	a.registerAdminAPIRoutes(mux)
 	a.registerMainContactRoutes(mux)
 	a.registerMainIncidentRoutes(mux)
 	a.registerMainStreamRoutes(mux)
@@ -28,6 +27,7 @@ func (a *API) registerMainContactRoutes(mux *http.ServeMux) {
 
 func (a *API) adminRoutes() http.Handler {
 	mux := http.NewServeMux()
+	a.registerAdminAPIRoutes(mux)
 	a.registerPrivateAdminWebRoutes(mux)
 	mux.HandleFunc("/", a.notFound)
 
