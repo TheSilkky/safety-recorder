@@ -172,6 +172,13 @@ The intended Apple-side equivalent is CryptoKit or Swift Crypto AES-GCM. This re
 
 Future work includes production client key storage, Keychain integration, trusted-contact key access, key sharing, browser/client-side decryption, account-based access, incident-mode sharing, and playable export. The intended production key custody direction is a hybrid trusted-contact model documented in [key-custody.md](key-custody.md), with future access boundaries in [v1-access-control.md](v1-access-control.md), browser decryption constraints in [browser-decryption.md](browser-decryption.md), and optional break-glass design in [break-glass-key-access.md](break-glass-key-access.md). Password-derived keys, passphrases, production public-key wrapping, key escrow, backend decryption, and browser decryption are not implemented in this milestone.
 
+A future pure post-quantum envelope profile is designed separately in
+[post-quantum-envelope.md](post-quantum-envelope.md). That design proposes
+`ML-KEM-768 + HKDF-SHA384 + AES-256-GCM` for future recipient key wrapping and
+payload encryption, but it is documentation-only until a separate implementation
+phase adds test vectors, simulator support, storage/API changes, and migration
+notes.
+
 The simulator-only contact-wrapped key metadata prototype is implemented
 separately in
 [contact-wrapped-key-metadata-simulator.md](contact-wrapped-key-metadata-simulator.md).
