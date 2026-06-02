@@ -88,6 +88,7 @@ Expected ML-KEM-768 sizes, using Go's `crypto/mlkem` names:
 | Encapsulation key | 1184 bytes |
 | KEM ciphertext | 1088 bytes |
 | Shared secret | 32 bytes |
+| Decapsulation seed form | 64 bytes |
 
 ### HKDF-SHA384
 
@@ -102,10 +103,14 @@ prk = HKDF-Extract(salt, mlkem_shared_secret)
 okm = HKDF-Expand(prk, info, length)
 ```
 
-Use a per-envelope random salt. The salt is non-secret and is stored in the
-recipient wrapping record. Use structured `info` strings that include the suite,
-scheme version, envelope ID, recipient key ID, purpose, and any future context
-needed for domain separation.
+Use a fresh random HKDF salt per recipient wrapping record. The salt is
+non-secret and is stored in that recipient wrapping record. Use structured `info`
+bytes that include the suite, scheme version, envelope ID, recipient key ID,
+purpose, SHA-384 digest identifiers, and any future context needed for domain
+separation.
+
+All non-secret digests in this envelope profile use SHA-384 unless a future suite
+explicitly specifies otherwise.
 
 ### AES-256-GCM
 
@@ -143,11 +148,57 @@ Suite: proofline-pq-mlkem768-hkdfsha384-aes256gcm-v1
 KEM: ML-KEM-768
 KDF: HKDF-SHA384
 AEAD: AES-256-GCM
+Digest: SHA-384
 ```
 
 The implementation must reject unknown mandatory schemes, unknown suite IDs,
-unknown KEM identifiers, unknown KDF identifiers, and unknown AEAD identifiers.
-It must not silently fall back to older algorithms.
+unknown KEM identifiers, unknown KDF identifiers, unknown AEAD identifiers, and
+unknown digest identifiers. It must not silently fall back to older algorithms.
+
+## Key Encoding And Key IDs
+
+The envelope needs stable key encodings before runtime use. For the initial Go
+implementation profile:
+
+- ML-KEM-768 encapsulation keys are encoded as the 1184-byte byte string returned
+  by `crypto/mlkem.EncapsulationKey768.Bytes()`.
+- ML-KEM-768 decapsulation keys are secret. When a test or local development
+  format needs an exportable form, use the 64-byte seed returned by
+  `crypto/mlkem.DecapsulationKey768.Bytes()` and imported with
+  `crypto/mlkem.NewDecapsulationKey768(seed)`. Production clients may keep
+  decapsulation keys non-exportable in platform key storage; the server format
+  must not require decapsulation-key export.
+- KEM ciphertexts are encoded as 1088-byte ML-KEM-768 ciphertexts.
+- Shared secrets are 32 bytes and must never be serialized, logged, stored, or
+  included in manifests.
+
+If JSON is used for early simulator or test fixtures, binary fields must be
+encoded with URL-safe base64 without padding, matching the current repository
+convention. Decoders must reject non-canonical encodings, wrong lengths, and
+unknown key types.
+
+Recipient key IDs are non-secret identifiers derived only from the canonical
+recipient public-key record, never from a decapsulation key or shared secret.
+The proposed initial key ID format is:
+
+```text
+recipient_key_id = "pqk1_" || base64url_no_padding(SHA384(canonical_public_key_record))
+```
+
+The canonical public-key record used for this digest must include:
+
+```text
+scheme = proofline-pq-envelope-v1
+kem = ML-KEM-768
+digest = SHA-384
+encoded_encapsulation_key = <1184-byte ML-KEM-768 public key>
+key_version = <monotonic recipient-key version or creation identifier>
+```
+
+The key ID is a lookup and audit identifier. It does not grant access and must not
+be treated as proof that a recipient controls the corresponding private key.
+Public-key verification, contact enrollment, replacement, and revocation remain
+part of the trusted-contact model, not the envelope primitive itself.
 
 ## Key Hierarchy
 
@@ -200,6 +251,7 @@ Envelope
     ├── kem: ML-KEM-768
     ├── kem_ciphertext
     ├── kdf: HKDF-SHA384
+    ├── digest: SHA-384
     ├── hkdf_salt
     ├── hkdf_info_id or canonical info fields
     ├── cek_wrap_aead: AES-256-GCM
@@ -220,26 +272,34 @@ Payload AEAD AAD must include a canonical encoding of:
 
 - scheme
 - suite ID
+- digest algorithm
 - envelope ID
 - incident ID
 - stream ID
 - media type
 - chunk index or chunk range
 - payload type
-- recipient wrapping manifest digest, if wrapping records are embedded or bound
-  to the ciphertext
+
+Payload AEAD AAD must not bind recipient wrapping records in the initial suite.
+Recipient wrapping records may need to be added, removed, withheld, or delivered
+through grant-scoped API responses after the payload has already been encrypted.
+Binding recipient records into payload AAD would make late trusted-contact
+enrollment and separate wrapped-key delivery harder. If a future immutable export
+format needs to bind an embedded recipient manifest into payload AAD, it should
+use a new suite or a separately versioned container rule.
 
 CEK-wrap AEAD AAD must include a canonical encoding of:
 
 - scheme
 - suite ID
+- digest algorithm
 - envelope ID
 - recipient key ID
 - recipient role
 - KEM algorithm
 - KDF algorithm
 - wrapping purpose, for example `proofline-cek-wrap-v1`
-- digest of the payload header or payload context
+- SHA-384 digest of the canonical payload header or payload context
 
 AAD must be derived from canonical structured fields, not from ad hoc string
 concatenation in new formats. If JSON is used, use a strict canonical JSON
@@ -249,15 +309,19 @@ is acceptable only for the compatibility envelope it already defines.
 ## Derivation Rules
 
 The ML-KEM shared secret must never be used directly as an AES key. Derive a KEK
-as follows:
+for each recipient wrapping record as follows:
 
 ```text
-salt = random(48 bytes)
+salt = random(48 bytes)  # per recipient wrapping record
+payload_header_digest = SHA384(canonical_payload_header)
+kem_ciphertext_digest = SHA384(kem_ciphertext)
+
 info = canonical(
   "proofline-cek-wrap-v1",
   suite_id,
   envelope_id,
   recipient_key_id,
+  digest = "SHA-384",
   kem_ciphertext_digest,
   payload_header_digest
 )
@@ -272,7 +336,8 @@ kek = HKDF-SHA384(
 
 The `kem_ciphertext_digest` prevents accidental context confusion if the same
 recipient has multiple wrapping records. The `payload_header_digest` binds the
-KEK to this envelope's payload context.
+KEK to this envelope's payload context while allowing recipient wrapping records
+to be delivered or rotated separately from the payload ciphertext.
 
 Future subkeys must use different `info` purposes. Do not reuse the CEK-wrap KEK
 for payload encryption, signing, token derivation, logging identifiers, or any
@@ -289,11 +354,12 @@ For each payload envelope:
 5. For each authorised recipient:
    1. Load and validate the recipient ML-KEM-768 encapsulation key.
    2. Encapsulate to obtain `mlkem_shared_secret` and `kem_ciphertext`.
-   3. Generate a fresh HKDF salt.
-   4. Derive a 256-bit KEK with HKDF-SHA384 and domain-separated info.
-   5. Generate a fresh 96-bit CEK-wrap AES-GCM nonce.
-   6. Encrypt the CEK with AES-256-GCM using the KEK and CEK-wrap AAD.
-   7. Zero or allow the runtime to release temporary shared-secret and KEK bytes
+   3. Generate a fresh 48-byte HKDF salt for this wrapping record.
+   4. Compute SHA-384 digests for the KEM ciphertext and payload header.
+   5. Derive a 256-bit KEK with HKDF-SHA384 and domain-separated info.
+   6. Generate a fresh 96-bit CEK-wrap AES-GCM nonce.
+   7. Encrypt the CEK with AES-256-GCM using the KEK and CEK-wrap AAD.
+   8. Zero or allow the runtime to release temporary shared-secret and KEK bytes
       as soon as practical.
 6. Serialize the envelope or store the payload and wrapping records according to
    the accepted storage design.
@@ -306,8 +372,8 @@ For an authorised recipient:
 2. Locate a recipient wrapping record matching the recipient key ID.
 3. Validate ML-KEM ciphertext size and recipient key type.
 4. Decapsulate the KEM ciphertext with the recipient ML-KEM decapsulation key.
-5. Recompute HKDF salt and info from the wrapping record and canonical payload
-   context.
+5. Recompute SHA-384 digests, HKDF salt, and HKDF info from the wrapping record
+   and canonical payload context.
 6. Derive the KEK with HKDF-SHA384.
 7. Decrypt the wrapped CEK with AES-256-GCM and CEK-wrap AAD.
 8. Decrypt the payload with AES-256-GCM and payload AAD.
@@ -319,16 +385,17 @@ For an authorised recipient:
 
 Implementation errors should distinguish enough detail for local development and
 conformance tests, but public API and viewer errors must not leak useful oracle
-information. External errors should collapse into categories such as:
+information. External untrusted errors should collapse into categories such as:
 
 - unsupported envelope version
 - unsupported suite
-- recipient key not found
-- decryption failed
 - malformed envelope
+- decryption failed
 
-Do not expose whether a specific ML-KEM decapsulation failed, CEK unwrap failed,
-or payload tag failed to unauthorised callers.
+`recipient key not found`, ML-KEM decapsulation failure, CEK unwrap failure, and
+payload tag failure may be useful internal test or authenticated owner-tooling
+errors, but they must not be exposed to unauthorised callers as distinct public
+viewer or API responses.
 
 ## Server Storage And API Boundary
 
@@ -338,7 +405,10 @@ The server may store:
 - recipient key IDs
 - recipient role labels
 - ML-KEM encapsulation public-key metadata
+- SHA-384 public-key record digests
 - ML-KEM KEM ciphertexts
+- SHA-384 KEM ciphertext digests
+- SHA-384 payload header digests
 - HKDF salts
 - AES-GCM nonces
 - wrapped CEK ciphertexts and tags
@@ -373,11 +443,12 @@ Before implementation, choose and document a concrete wire format. It must defin
 - strict duplicate-field rejection
 - unknown-field behavior
 - required versus optional fields
+- SHA-384 digest encoding rules
 - conformance test vectors
 
-Prefer binary fields for keys, nonces, salts, ciphertexts, and tags. If JSON is
-used for early simulator work, base64url without padding should match the current
-repository convention.
+Prefer binary fields for keys, nonces, salts, ciphertexts, tags, and digests. If
+JSON is used for early simulator work, base64url without padding should match the
+current repository convention.
 
 ## Go Implementation Notes
 
@@ -389,8 +460,7 @@ standard-library packages where available:
 - `crypto/hkdf` or the accepted Go version's HKDF API for HKDF-SHA384
 - `crypto/aes` and `crypto/cipher` for AES-256-GCM
 - `crypto/rand` for CEKs, salts, and nonces
-- `crypto/sha256` or `crypto/sha512` for non-secret header digests, depending on
-  the final digest choice
+- `crypto/sha512` with `sha512.New384` for SHA-384 digests and HKDF hash input
 
 Do not implement ML-KEM, HKDF, AES-GCM, random generation, canonical encoding, or
 secret sharing manually.
@@ -410,7 +480,7 @@ internal/envelope/pq
 ├── encode.go          # serialization and canonical AAD encoding
 ├── encrypt.go         # payload encrypt and recipient wrap flow
 ├── decrypt.go         # recipient unwrap and payload decrypt flow
-├── keys.go            # key parsing and key ID helpers
+├── keys.go            # key encoding and key ID helpers
 └── envelope_test.go   # round trips, tampering, vectors, limits
 ```
 
@@ -420,13 +490,20 @@ Minimum tests before runtime use:
 
 - ML-KEM-768 round-trip recipient wrapping.
 - AES-GCM payload round-trip with authenticated metadata.
+- ML-KEM-768 public-key encoding and decapsulation-seed import/export tests for
+  development fixtures.
+- Recipient key ID derivation from canonical public-key records.
+- SHA-384 digest fixtures for canonical public-key records, KEM ciphertexts, and
+  payload headers.
 - CEK unwrap failure when recipient key ID, KEM ciphertext, HKDF salt, HKDF info,
-  wrapping nonce, or wrapping AAD is changed.
+  wrapping nonce, wrapping AAD, or SHA-384 digest field is changed.
 - Payload decrypt failure when incident ID, stream ID, media type, chunk index,
   payload nonce, payload AAD, ciphertext, or tag is changed.
 - Multiple-recipient envelope where each recipient can decrypt the same payload.
 - Recipient isolation: one recipient cannot use another recipient's wrapping
   record.
+- Late-recipient metadata behavior: adding a wrapping record must not require
+  payload ciphertext changes in the initial suite.
 - Unknown suite rejection.
 - Unknown mandatory field rejection.
 - Header size and recipient count limits.
@@ -498,13 +575,30 @@ Algorithm agility must not become downgrade agility. New suites may be added onl
 with explicit identifiers, compatibility tests, migration notes, and rejection of
 unknown mandatory algorithms.
 
+## References And Tracking
+
+Implementation work must verify current references before code is merged:
+
+- NIST FIPS 203, Module-Lattice-Based Key-Encapsulation Mechanism Standard:
+  <https://csrc.nist.gov/pubs/fips/203/final>
+- RFC 5869, HKDF extract-and-expand construction:
+  <https://www.rfc-editor.org/rfc/rfc5869>
+- Go `crypto/mlkem` package documentation:
+  <https://pkg.go.dev/crypto/mlkem>
+- Go `crypto/hkdf` package documentation:
+  <https://pkg.go.dev/crypto/hkdf>
+
+Before implementation, check the current FIPS 203 page and Go release notes for
+errata, revisions, package API changes, size constants, and test-vector guidance.
+
 ## Open Questions
 
 - Should PQ envelopes be chunk-scoped, stream-scoped, or both?
 - Should wrapping records be embedded in bundle manifests, delivered only through
   authenticated API responses, or both depending on grant type?
-- Should payload AAD bind a digest of recipient wrapping records, or should
-  wrapping records bind only to the payload header digest?
+- Should a separate immutable export format bind an embedded wrapping-record
+  manifest into payload AAD, or should all wrapping records remain bound only to
+  the payload header digest?
 - Should high-security users be offered ML-KEM-1024 in a separate suite?
 - What exact canonical encoding should be used: deterministic CBOR, canonical
   JSON, or a custom binary frame?
