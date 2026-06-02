@@ -95,6 +95,13 @@ the incident owner. Reverse-proxy rate
 limiting, separate bind addresses, and private network placement are useful
 boundaries, but they are not a public authorization model.
 
+The private `/v1/admin/...` JSON routes include admin account management,
+admin-global deletion, and legacy unowned incident review/reassignment. The
+legacy reassignment workflow lists only count-oriented candidate metadata and
+records controlled `assign_owner` or `keep_unowned` audit decisions; it does
+not expose evidence contents, free-form notes, token values, stored paths,
+plaintext, raw keys, or public viewer reassignment state.
+
 The private `/admin` surface is outside the `/v1` API namespace and remains on
 the private-admin listener. Its login and bootstrap forms reuse the same local account
 and server-side session store, with the raw session token held in an HttpOnly
@@ -413,8 +420,8 @@ deployment docs before or alongside implementation.
 
 ## Implementation Prerequisites
 
-Before any public product API exposure or expanded private admin API
-implementation, a future implementation task must define and test:
+Before any public product API exposure or broader private admin API expansion,
+a future implementation task must define and test:
 
 - concrete authentication mechanism for the new exposure class
 - authorization policy and role/grant model beyond the current local user/admin

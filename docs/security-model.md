@@ -154,9 +154,16 @@ Viewer URLs contain bearer tokens and should be treated as secrets. Reverse prox
   account also owns the incident. Other current private incident routes still
   pass route-level action and data-class labels and use the established
   owner-or-admin policy where documented. Legacy unowned incidents are hidden
-  from account list/detail reads until a future private reassignment or
-  quarantine workflow exists; see
+  from account list/detail reads unless an admin uses the private-admin
+  reassignment API to assign one incident to an existing account; see
   [legacy unowned incident reassignment](legacy-unowned-incident-reassignment.md).
+- The private-admin legacy unowned incident review route returns only
+  count-oriented candidate metadata. The reassignment route records controlled
+  audit fields for `assign_owner` or `keep_unowned` decisions and rejects
+  free-form notes, already-owned incidents, and non-active deletion states.
+  Reassignment changes only private owner-scoped access; public viewer routes,
+  token hashes, bundles, deletion state, retention state, encrypted blobs, and
+  key custody remain unchanged.
 - Contact public-key, sharing-grant, and wrapped-key routes are authenticated
   main `/v1` routes. Contact public-key records are scoped to the authenticated
   account. Sharing-grant and wrapped-key creation, listing, lookup, and

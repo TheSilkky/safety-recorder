@@ -83,6 +83,59 @@ func scanIncidents(rows *sql.Rows) ([]incidents.Incident, error) {
 	return list, nil
 }
 
+func scanLegacyUnownedIncidentCandidates(rows *sql.Rows) ([]incidents.LegacyUnownedIncidentCandidate, error) {
+	var candidates []incidents.LegacyUnownedIncidentCandidate
+	for rows.Next() {
+		var candidate incidents.LegacyUnownedIncidentCandidate
+		var activeTokenCount int
+		var incidentMode sql.NullString
+		var captureProfile sql.NullString
+		var escalationPolicy sql.NullString
+		var sharingState sql.NullString
+		if err := rows.Scan(
+			&candidate.IncidentID,
+			&candidate.CreatedAt,
+			&candidate.UpdatedAt,
+			&candidate.Status,
+			&candidate.DeletionState,
+			&candidate.StreamCount,
+			&candidate.ChunkCount,
+			&candidate.CheckinCount,
+			&candidate.IncidentTokenCount,
+			&activeTokenCount,
+			&incidentMode,
+			&captureProfile,
+			&escalationPolicy,
+			&sharingState,
+		); err != nil {
+			return nil, err
+		}
+		candidate.CreatedAt = candidate.CreatedAt.UTC()
+		candidate.UpdatedAt = candidate.UpdatedAt.UTC()
+		candidate.HasActiveViewerTokens = activeTokenCount > 0
+		if incidentMode.Valid {
+			candidate.IncidentMode = incidentMode.String
+		}
+		if captureProfile.Valid {
+			candidate.CaptureProfile = captureProfile.String
+		}
+		if escalationPolicy.Valid {
+			candidate.EscalationPolicy = escalationPolicy.String
+		}
+		if sharingState.Valid {
+			candidate.SharingState = sharingState.String
+		}
+		candidates = append(candidates, candidate)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if candidates == nil {
+		candidates = []incidents.LegacyUnownedIncidentCandidate{}
+	}
+	return candidates, nil
+}
+
 func scanChunk(s scanner) (incidents.Chunk, error) {
 	var chunk incidents.Chunk
 	var streamID sql.NullString

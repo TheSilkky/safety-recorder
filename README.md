@@ -111,6 +111,8 @@ public viewer changes, notifications, raw key storage, or key escrow.
 - Owner-only public-safe incident list/detail metadata reads for future
   web-client use, without exposing notes, chunks, checkins, stored paths, owner
   IDs, wrapped keys, ciphertext, raw keys, plaintext, or user safety narrative
+- Private-admin legacy unowned incident review, reassignment, and keep-unowned
+  audit APIs with count-oriented candidate metadata and controlled reason codes
 - Owner-scoped contact public-key metadata and sharing-grant records for owned
   incidents or streams
 - Owner-scoped wrapped media-key metadata storage and private API delivery for

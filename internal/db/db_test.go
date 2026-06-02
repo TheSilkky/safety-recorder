@@ -150,6 +150,78 @@ func TestMigrateAddsContactKeyAndSharingGrantSchema(t *testing.T) {
 	}
 }
 
+func TestMigrateAddsLegacyIncidentReassignmentSchema(t *testing.T) {
+	ctx := context.Background()
+	conn := openMemoryDB(t)
+	defer conn.Close()
+
+	if err := Migrate(ctx, conn); err != nil {
+		t.Fatalf("Migrate: %v", err)
+	}
+	if !hasTable(t, ctx, conn, "legacy_incident_reassignment_events") {
+		t.Fatal("expected legacy_incident_reassignment_events table")
+	}
+	for _, columnName := range []string{
+		"incident_id",
+		"previous_owner_account_id",
+		"new_owner_account_id",
+		"actor_account_id",
+		"action",
+		"reason_code",
+		"source",
+		"created_at",
+		"completed_at",
+	} {
+		if !hasColumn(t, ctx, conn, "legacy_incident_reassignment_events", columnName) {
+			t.Fatalf("expected legacy_incident_reassignment_events.%s column", columnName)
+		}
+	}
+	for _, forbidden := range []string{"notes", "stored_path", "object_key", "raw_token", "raw_key", "plaintext", "request_body", "authorization_header"} {
+		if hasColumn(t, ctx, conn, "legacy_incident_reassignment_events", forbidden) {
+			t.Fatalf("legacy_incident_reassignment_events must not include %s", forbidden)
+		}
+	}
+	if _, err := conn.ExecContext(ctx, `
+		INSERT INTO incidents (id, created_at, updated_at, status)
+		VALUES ('inc_legacy_reassign', '2026-05-21T10:00:00Z', '2026-05-21T10:00:00Z', 'open')`); err != nil {
+		t.Fatalf("insert legacy incident: %v", err)
+	}
+	if _, err := conn.ExecContext(ctx, `
+		INSERT INTO legacy_incident_reassignment_events (
+			id, incident_id, actor_account_id, action, reason_code, source,
+			created_at, completed_at
+		)
+		VALUES (
+			'lra_valid',
+			'inc_legacy_reassign',
+			'acct_admin',
+			'keep_unowned',
+			'keep_admin_only',
+			'admin_api',
+			'2026-05-21T10:00:00Z',
+			'2026-05-21T10:00:00Z'
+		)`); err != nil {
+		t.Fatalf("insert valid legacy reassignment event: %v", err)
+	}
+	if _, err := conn.ExecContext(ctx, `
+		INSERT INTO legacy_incident_reassignment_events (
+			id, incident_id, actor_account_id, action, reason_code, source,
+			created_at, completed_at
+		)
+		VALUES (
+			'lra_bad_reason',
+			'inc_legacy_reassign',
+			'acct_admin',
+			'keep_unowned',
+			'free form private note',
+			'admin_api',
+			'2026-05-21T10:00:00Z',
+			'2026-05-21T10:00:00Z'
+		)`); err == nil {
+		t.Fatal("expected invalid legacy reassignment reason_code to fail")
+	}
+}
+
 func TestMigrateRejectsRecordedChecksumMismatch(t *testing.T) {
 	ctx := context.Background()
 	conn := openMemoryDB(t)

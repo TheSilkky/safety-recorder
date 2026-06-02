@@ -233,8 +233,10 @@ func TestMainServerDoesNotMountAdminDashboardOrOperatorRoutes(t *testing.T) {
 		{http.MethodPost, "/v1/admin/accounts"},
 		{http.MethodPost, "/v1/admin/accounts/acct_missing/password"},
 		{http.MethodPost, "/v1/admin/accounts/acct_missing/sessions/revoke"},
+		{http.MethodGet, "/v1/admin/incidents/unowned"},
 		{http.MethodGet, "/v1/admin/incidents/inc_missing/deletion"},
 		{http.MethodPost, "/v1/admin/incidents/inc_missing/deletion"},
+		{http.MethodPost, "/v1/admin/incidents/inc_missing/reassignment"},
 	}
 
 	for _, tt := range tests {

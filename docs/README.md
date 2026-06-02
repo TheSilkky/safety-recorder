@@ -19,7 +19,7 @@ This directory contains the detailed documentation for Proofline Server, the Go 
 | [Mode-aware retention policy](mode-aware-retention-policy.md) | Planning boundary for future retention policy based on incident mode, safety-check state, sharing/export state, grants, wrapped keys, tombstones, and backups. |
 | [/v1 access control](v1-access-control.md) | Current local account/session and optional browser-cookie boundary plus future role, grant, public product API, private admin API listener, audit, and migration boundaries for account-owner, trusted-contact, public-link, admin/operator, and optional escrow access. |
 | [Main API public exposure listener split](public-api-listener-split.md) | Boundary for keeping main API routes and the read-only incident viewer on `8080` while keeping private `/v1/admin/...` JSON routes and the `/admin` dashboard on `8081`. |
-| [Legacy unowned incident reassignment](legacy-unowned-incident-reassignment.md) | Planning boundary for future private reassignment or quarantine of incidents created before account ownership existed. |
+| [Legacy unowned incident reassignment](legacy-unowned-incident-reassignment.md) | Private admin review, reassignment, and keep-unowned audit workflow for incidents created before account ownership existed. |
 | [Encryption](encryption.md) | Client-side chunk envelope, simulator key file, and local bundle verification. |
 | [iOS local recorder prototype](ios-local-recorder-prototype.md) | Future native incident-capture scope, chunking, encrypted staging, retry, and API mapping. |
 | [Key custody and emergency access](key-custody.md) | Future production key custody, trusted-contact access, and break-glass design. |
@@ -114,8 +114,8 @@ migration boundaries are documented in
 and future account-owner, trusted-contact, public-link, admin/operator, and
 optional escrow access boundaries are documented in
 [v1-access-control.md](v1-access-control.md).
-Legacy unowned incidents remain admin-only until a future private reassignment
-or quarantine workflow is implemented; the planning boundary is documented in
+Legacy unowned incidents remain admin-only unless an admin uses the private
+reassignment workflow documented in
 [legacy-unowned-incident-reassignment.md](legacy-unowned-incident-reassignment.md).
 
 Authenticated account owners can register trusted-contact public-key metadata

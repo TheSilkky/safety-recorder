@@ -111,6 +111,19 @@ const (
 	IncidentDeletionItemStateDeleted = "deleted"
 	// IncidentDeletionItemStateFailed means deletion should be retried.
 	IncidentDeletionItemStateFailed = "failed"
+
+	// LegacyIncidentReassignmentActionAssignOwner records an operator-reviewed
+	// assignment from a legacy unowned incident to an existing account.
+	LegacyIncidentReassignmentActionAssignOwner = "assign_owner"
+	// LegacyIncidentReassignmentActionKeepUnowned records an operator-reviewed
+	// decision to keep a legacy incident admin-only.
+	LegacyIncidentReassignmentActionKeepUnowned = "keep_unowned"
+
+	// LegacyIncidentReassignmentSourceAdminAPI records the private admin JSON API.
+	LegacyIncidentReassignmentSourceAdminAPI = "admin_api"
+	// LegacyIncidentReassignmentSourceOperatorCLI is reserved for future local
+	// operator tooling that uses the same metadata boundary.
+	LegacyIncidentReassignmentSourceOperatorCLI = "operator_cli"
 )
 
 // Incident is the top-level recording session tracked by the backend.
@@ -127,6 +140,51 @@ type Incident struct {
 	EscalationPolicy string    `json:"escalation_policy,omitempty"`
 	SharingState     string    `json:"sharing_state,omitempty"`
 	DeletionState    string    `json:"deletion_state"`
+}
+
+// LegacyUnownedIncidentCandidate is safe count-oriented metadata for private
+// review of legacy incidents that have no owner account.
+type LegacyUnownedIncidentCandidate struct {
+	IncidentID            string    `json:"incident_id"`
+	Status                string    `json:"status"`
+	DeletionState         string    `json:"deletion_state"`
+	CreatedAt             time.Time `json:"created_at"`
+	UpdatedAt             time.Time `json:"updated_at"`
+	StreamCount           int       `json:"stream_count"`
+	ChunkCount            int       `json:"chunk_count"`
+	CheckinCount          int       `json:"checkin_count"`
+	IncidentTokenCount    int       `json:"incident_token_count"`
+	HasActiveViewerTokens bool      `json:"has_active_viewer_tokens"`
+	IncidentMode          string    `json:"incident_mode,omitempty"`
+	CaptureProfile        string    `json:"capture_profile,omitempty"`
+	EscalationPolicy      string    `json:"escalation_policy,omitempty"`
+	SharingState          string    `json:"sharing_state,omitempty"`
+}
+
+// LegacyIncidentReassignmentEvent records a private admin/operator decision for
+// one legacy unowned incident without free-form notes.
+type LegacyIncidentReassignmentEvent struct {
+	ID                     string    `json:"id"`
+	IncidentID             string    `json:"incident_id"`
+	PreviousOwnerAccountID string    `json:"previous_owner_account_id,omitempty"`
+	NewOwnerAccountID      string    `json:"new_owner_account_id,omitempty"`
+	ActorAccountID         string    `json:"actor_account_id"`
+	Action                 string    `json:"action"`
+	ReasonCode             string    `json:"reason_code"`
+	Source                 string    `json:"source"`
+	CreatedAt              time.Time `json:"created_at"`
+	CompletedAt            time.Time `json:"completed_at"`
+}
+
+// LegacyIncidentReassignmentParams contains the controlled fields required to
+// assign a legacy incident or keep it unowned.
+type LegacyIncidentReassignmentParams struct {
+	IncidentID        string
+	NewOwnerAccountID string
+	ActorAccountID    string
+	Action            string
+	ReasonCode        string
+	Source            string
 }
 
 // MediaStream groups encrypted chunks that belong to one recording stream.

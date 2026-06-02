@@ -88,6 +88,69 @@ func scanIncidents(rows *sql.Rows) ([]Incident, error) {
 	return incidents, nil
 }
 
+func scanLegacyUnownedIncidentCandidates(rows *sql.Rows) ([]LegacyUnownedIncidentCandidate, error) {
+	var candidates []LegacyUnownedIncidentCandidate
+	for rows.Next() {
+		var candidate LegacyUnownedIncidentCandidate
+		var createdAt string
+		var updatedAt string
+		var activeTokenCount int
+		var incidentMode sql.NullString
+		var captureProfile sql.NullString
+		var escalationPolicy sql.NullString
+		var sharingState sql.NullString
+		if err := rows.Scan(
+			&candidate.IncidentID,
+			&createdAt,
+			&updatedAt,
+			&candidate.Status,
+			&candidate.DeletionState,
+			&candidate.StreamCount,
+			&candidate.ChunkCount,
+			&candidate.CheckinCount,
+			&candidate.IncidentTokenCount,
+			&activeTokenCount,
+			&incidentMode,
+			&captureProfile,
+			&escalationPolicy,
+			&sharingState,
+		); err != nil {
+			return nil, err
+		}
+		parsedCreatedAt, err := parseDBTime(createdAt)
+		if err != nil {
+			return nil, err
+		}
+		parsedUpdatedAt, err := parseDBTime(updatedAt)
+		if err != nil {
+			return nil, err
+		}
+		candidate.CreatedAt = parsedCreatedAt
+		candidate.UpdatedAt = parsedUpdatedAt
+		candidate.HasActiveViewerTokens = activeTokenCount > 0
+		if incidentMode.Valid {
+			candidate.IncidentMode = incidentMode.String
+		}
+		if captureProfile.Valid {
+			candidate.CaptureProfile = captureProfile.String
+		}
+		if escalationPolicy.Valid {
+			candidate.EscalationPolicy = escalationPolicy.String
+		}
+		if sharingState.Valid {
+			candidate.SharingState = sharingState.String
+		}
+		candidates = append(candidates, candidate)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if candidates == nil {
+		candidates = []LegacyUnownedIncidentCandidate{}
+	}
+	return candidates, nil
+}
+
 func scanChunk(s scanner) (Chunk, error) {
 	var chunk Chunk
 	var startedAt string

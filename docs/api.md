@@ -320,8 +320,10 @@ an admin account session:
 - `POST /v1/admin/accounts`
 - `POST /v1/admin/accounts/{account_id}/password`
 - `POST /v1/admin/accounts/{account_id}/sessions/revoke`
+- `GET /v1/admin/incidents/unowned`
 - `GET /v1/admin/incidents/{incident_id}/deletion`
 - `POST /v1/admin/incidents/{incident_id}/deletion`
+- `POST /v1/admin/incidents/{incident_id}/reassignment`
 
 `POST /v1/admin/accounts` accepts `username`, `password`, and `role`, where `role` is `user` or `admin`. Admin password reset and explicit session revocation revoke all sessions for the selected account.
 
@@ -616,8 +618,9 @@ chunks, checkins, stored paths, object keys, owner account IDs, wrapped keys,
 ciphertext, raw keys, plaintext, or user safety narrative. Admin accounts do
 not get cross-account reads through these account routes unless the admin
 account also owns the incident. Legacy unowned incidents are hidden from account
-list/detail reads until a future private reassignment or quarantine workflow is
-implemented; see [legacy unowned incident reassignment](legacy-unowned-incident-reassignment.md).
+list/detail reads unless an admin assigns one incident to an existing account
+through the private reassignment workflow; see
+[legacy unowned incident reassignment](legacy-unowned-incident-reassignment.md).
 
 ### `POST /v1/incidents`
 
@@ -770,6 +773,90 @@ Response `202`:
 
 Returns the non-sensitive deletion status for an incident visible to the
 authenticated account.
+
+### `GET /v1/admin/incidents/unowned`
+
+Lists legacy incidents whose `owner_account_id` is empty. This route is mounted
+only on the private-admin listener and requires an admin account. It is for
+one-incident-at-a-time operator review before reassignment or quarantine.
+
+The optional `limit` query parameter defaults to `100` and is capped at `500`.
+
+The response is count-oriented and intentionally omits notes, chunk paths,
+object keys, `original_filename`, location coordinates, raw tokens, request
+bodies, uploaded bytes, plaintext, raw keys, and user safety narrative:
+
+```json
+{
+  "incidents": [
+    {
+      "incident_id": "inc_...",
+      "status": "open",
+      "deletion_state": "active",
+      "created_at": "2026-06-02T10:00:00Z",
+      "updated_at": "2026-06-02T10:00:00Z",
+      "stream_count": 1,
+      "chunk_count": 5,
+      "checkin_count": 1,
+      "incident_token_count": 1,
+      "has_active_viewer_tokens": true,
+      "incident_mode": "interaction_record",
+      "capture_profile": "audio_location",
+      "escalation_policy": "none",
+      "sharing_state": "private"
+    }
+  ]
+}
+```
+
+### `POST /v1/admin/incidents/{incident_id}/reassignment`
+
+Records one private admin decision for an active legacy unowned incident. The
+route either assigns the incident to an existing account or records a reviewed
+`keep_unowned` decision. It updates only incidents whose `owner_account_id` is
+still empty and does not change public viewer tokens, bundle behavior, deletion
+state, retention state, encrypted blobs, token hashes, or key custody.
+
+Assignment request:
+
+```json
+{
+  "action": "assign_owner",
+  "new_owner_account_id": "acct_...",
+  "reason_code": "owner_verified"
+}
+```
+
+Keep-unowned request:
+
+```json
+{
+  "action": "keep_unowned",
+  "reason_code": "keep_admin_only"
+}
+```
+
+Supported `reason_code` values are `owner_verified`, `owner_request`,
+`operator_review`, `keep_admin_only`, `unknown_owner`, and
+`other_controlled`. Free-form notes are not accepted.
+
+Successful responses return safe audit metadata only:
+
+```json
+{
+  "event": {
+    "id": "lra_...",
+    "incident_id": "inc_...",
+    "new_owner_account_id": "acct_...",
+    "actor_account_id": "acct_admin_...",
+    "action": "assign_owner",
+    "reason_code": "owner_verified",
+    "source": "admin_api",
+    "created_at": "2026-06-02T10:00:00Z",
+    "completed_at": "2026-06-02T10:00:00Z"
+  }
+}
+```
 
 ### `POST /v1/admin/incidents/{incident_id}/deletion`
 
