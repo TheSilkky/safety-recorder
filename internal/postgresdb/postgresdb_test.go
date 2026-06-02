@@ -40,6 +40,7 @@ func TestPostgresMigrateCreatesSchemaAndRejectsChecksumMismatch(t *testing.T) {
 	assertPostgresTable(t, ctx, conn, "contact_public_keys")
 	assertPostgresTable(t, ctx, conn, "sharing_grants")
 	assertPostgresTable(t, ctx, conn, "wrapped_key_records")
+	assertPostgresTable(t, ctx, conn, "legacy_incident_reassignment_events")
 
 	if err := Migrate(ctx, conn); err != nil {
 		t.Fatalf("second Migrate: %v", err)
@@ -834,6 +835,71 @@ func TestPostgresRepositoryAccountsAndSessions(t *testing.T) {
 	}
 	if _, err := repo.LookupSession(ctx, revokedRawToken); !errors.Is(err, auth.ErrNotFound) {
 		t.Fatalf("lookup revoked account session %q error = %v, want ErrNotFound", revokedSession.ID, err)
+	}
+}
+
+func TestPostgresLegacyUnownedIncidentReassignmentParity(t *testing.T) {
+	ctx := context.Background()
+	conn := openPostgresTestDB(t, ctx)
+	if err := Migrate(ctx, conn); err != nil {
+		t.Fatalf("Migrate: %v", err)
+	}
+	repo := NewRepository(conn)
+	passwordHash, err := auth.HashPassword("owner-password", bcrypt.MinCost)
+	if err != nil {
+		t.Fatalf("hash password: %v", err)
+	}
+	account, err := repo.CreateAccount(ctx, auth.CreateAccountParams{
+		Username:     "legacy-owner",
+		PasswordHash: passwordHash,
+		Role:         auth.RoleUser,
+	})
+	if err != nil {
+		t.Fatalf("create account: %v", err)
+	}
+	legacyIncident, err := repo.CreateIncident(ctx, "legacy", "private note")
+	if err != nil {
+		t.Fatalf("create legacy incident: %v", err)
+	}
+	candidates, err := repo.ListLegacyUnownedIncidentCandidates(ctx, 10)
+	if err != nil {
+		t.Fatalf("list legacy unowned candidates: %v", err)
+	}
+	if len(candidates) != 1 || candidates[0].IncidentID != legacyIncident.ID {
+		t.Fatalf("unexpected legacy unowned candidates: %+v", candidates)
+	}
+
+	event, err := repo.ReassignLegacyUnownedIncident(ctx, incidents.LegacyIncidentReassignmentParams{
+		IncidentID:        legacyIncident.ID,
+		NewOwnerAccountID: account.ID,
+		ActorAccountID:    account.ID,
+		Action:            incidents.LegacyIncidentReassignmentActionAssignOwner,
+		ReasonCode:        "owner_verified",
+		Source:            incidents.LegacyIncidentReassignmentSourceAdminAPI,
+	})
+	if err != nil {
+		t.Fatalf("reassign legacy incident: %v", err)
+	}
+	if event.Action != incidents.LegacyIncidentReassignmentActionAssignOwner ||
+		event.NewOwnerAccountID != account.ID ||
+		event.ReasonCode != "owner_verified" {
+		t.Fatalf("unexpected legacy reassignment event: %+v", event)
+	}
+	reassigned, err := repo.GetIncident(ctx, legacyIncident.ID)
+	if err != nil {
+		t.Fatalf("get reassigned incident: %v", err)
+	}
+	if reassigned.OwnerAccountID != account.ID {
+		t.Fatalf("owner account id = %q, want %q", reassigned.OwnerAccountID, account.ID)
+	}
+	if _, err := repo.ReassignLegacyUnownedIncident(ctx, incidents.LegacyIncidentReassignmentParams{
+		IncidentID:     legacyIncident.ID,
+		ActorAccountID: account.ID,
+		Action:         incidents.LegacyIncidentReassignmentActionKeepUnowned,
+		ReasonCode:     "keep_admin_only",
+		Source:         incidents.LegacyIncidentReassignmentSourceAdminAPI,
+	}); !errors.Is(err, incidents.ErrInvalidState) {
+		t.Fatalf("expected second reassignment invalid state, got %v", err)
 	}
 }
 

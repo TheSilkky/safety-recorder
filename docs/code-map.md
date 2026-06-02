@@ -99,9 +99,13 @@ authenticated account as the owner. `GET /v1/incidents` and
 `GET /v1/incidents/{incident_id}` return only public-safe metadata for incidents
 owned by the authenticated account; cross-account, deleted, and legacy unowned
 incidents use the same not-found shape. Other incident routes retain their
-documented owner or owner/admin authorization policies. Legacy unowned incidents
-are admin-only until a future private reassignment or quarantine workflow is
-implemented; see
+documented owner or owner/admin authorization policies. Private-admin legacy
+unowned incident review and reassignment routes are handled by
+`internal/httpapi` on the admin handler and call repository methods that list
+safe count-oriented candidates or record one `assign_owner`/`keep_unowned`
+audit event. Assignment updates only active incidents whose `owner_account_id`
+is still empty; quarantine records audit metadata without granting regular-user
+access. See
 [legacy unowned incident reassignment](legacy-unowned-incident-reassignment.md).
 
 Chunks are uploaded through `POST /v1/incidents/{incident_id}/chunks`, handled by `internal/httpapi.uploadChunk`.

@@ -18,6 +18,8 @@ type MetadataRepository interface {
 	CreateIncidentForAccount(ctx context.Context, accountID string, params incidents.CreateIncidentParams) (incidents.Incident, error)
 	GetIncident(ctx context.Context, id string) (incidents.Incident, error)
 	ListIncidentsForAccount(ctx context.Context, accountID string) ([]incidents.Incident, error)
+	ListLegacyUnownedIncidentCandidates(ctx context.Context, limit int) ([]incidents.LegacyUnownedIncidentCandidate, error)
+	ReassignLegacyUnownedIncident(ctx context.Context, params incidents.LegacyIncidentReassignmentParams) (incidents.LegacyIncidentReassignmentEvent, error)
 	GetIncidentDetail(ctx context.Context, id string) (incidents.IncidentDetail, error)
 	CloseIncident(ctx context.Context, id string) (incidents.Incident, error)
 	RequestIncidentDeletion(ctx context.Context, params incidents.IncidentDeletionRequest) (incidents.IncidentDeletionStatus, error)

@@ -99,6 +99,7 @@ The private admin listener should serve only private admin routes:
 | `/admin`, `/admin/login`, `/admin/bootstrap`, `/admin/logout`, `/admin/password`, `/admin/accounts/{account_id}/password` | Private `8081` only. | Keep HttpOnly SameSite admin cookie scoped to `/admin`, session-bound CSRF tokens for state-changing forms, no-store, and conservative browser headers. |
 | `/admin/static/...` | Private `8081` only. | Token-neutral admin CSS only; no incident evidence, tokens, keys, or deployment details. |
 | `/v1/admin/accounts`, `/v1/admin/accounts/{account_id}/password`, `/v1/admin/accounts/{account_id}/sessions/revoke` | Private `8081` only. | Keep bearer or browser-cookie session authentication and admin-role checks; do not route from public entry points. |
+| `GET /v1/admin/incidents/unowned` and `POST /v1/admin/incidents/{incident_id}/reassignment` | Private `8081` only. | Legacy unowned incident review and one-incident reassignment or keep-unowned audit decisions remain admin-only and must not be routed from public entry points. |
 | `GET` and `POST /v1/admin/incidents/{incident_id}/deletion` | Private `8081` only. | Admin-global incident deletion remains an admin-only action and must not be routed from public entry points. |
 | `/v1/bootstrap/admin` | Not mounted. | Use private `/admin/bootstrap`; remove the bootstrap secret after first-admin creation. |
 | `/v1/health/live`, `/v1/health/ready` | Not mounted. | Do not publish operator readiness details on the main public origin or the private-admin listener. |

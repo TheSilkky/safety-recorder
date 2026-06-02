@@ -531,8 +531,8 @@ unless the current SQLite schema already stores a meaningful empty string.
    - Preserve incident IDs, timestamps, status, `client_label`, `notes`,
      `owner_account_id`, optional mode fields, and `deletion_state`.
    - Preserve `owner_account_id` before private owner-scoped access is tested.
-   - Legacy rows with no owner must remain unowned and admin-only until a
-     separate reassignment workflow is explicitly implemented; see
+   - Legacy rows with no owner must remain unowned and admin-only unless an
+     admin explicitly assigns one through the private reassignment workflow; see
      [legacy unowned incident reassignment](legacy-unowned-incident-reassignment.md).
 3. `media_streams`
    - Preserve stream IDs, owning incident IDs, media type, label, status,
@@ -597,7 +597,8 @@ Minimum checks:
 - Confirm missing blob or mismatched metadata drills fail closed rather than
   producing partial bundles.
 - Test private owner-scoped incident access after preserving
-  `owner_account_id`, and confirm legacy unowned incidents remain admin-only.
+  `owner_account_id`, and confirm legacy unowned incidents remain admin-only
+  unless explicitly assigned through the private reassignment workflow.
 - Test expired and revoked incident tokens and sessions preserve their existing
   failure behavior.
 - Confirm startup, private `/admin` dashboard access, and private account

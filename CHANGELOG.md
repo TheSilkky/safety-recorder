@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Added private-admin legacy unowned incident review and one-incident
+  reassignment/quarantine APIs with safe count-oriented candidate metadata,
+  controlled audit fields, and SQLite/PostgreSQL parity while preserving public
+  viewer, bundle, deletion, retention, and ciphertext-only behavior.
 - Added optional TOML configuration loading from `proofline.toml`, explicit
   config-file selection with `--config` or `SAFE_CONFIG_FILE`, and secret-file
   references for bootstrap, PostgreSQL, S3, Valkey, and SMTP credentials while

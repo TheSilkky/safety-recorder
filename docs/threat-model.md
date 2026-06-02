@@ -35,6 +35,12 @@ metadata, grant-bound wrapped-key metadata, and encrypted evidence bundles.
   metadata, which is access-enabling metadata. These records do not contain
   contact private keys, raw media keys, plaintext, browser fragment secrets, or
   server-decryptable key material.
+- Legacy unowned incident reassignment audit metadata in SQLite by default or
+  optional PostgreSQL. These records contain incident IDs, previous/new owner
+  account IDs where applicable, actor account IDs, controlled action and reason
+  codes, source, and timestamps. They do not contain notes, locations,
+  filenames, stored paths, object keys, raw tokens, uploaded bytes, plaintext,
+  raw keys, request bodies, or Authorization headers.
 - Optional Valkey/Redis-compatible coordination is startup-checked when
   explicitly configured, but it is short-lived coordination state only and is
   not durable evidence storage. It can hold route-class counters and
@@ -96,6 +102,8 @@ metadata, grant-bound wrapped-key metadata, and encrypted evidence bundles.
   manage grant-bound wrapped-key records, and read encrypted bytes.
 - Existing `/v1/admin/...` JSON routes require an admin account, are mounted on
   the private-admin server, and must not be routed from public entry points.
+  This includes legacy unowned incident candidate review, reassignment, and
+  keep-unowned audit decisions.
 - `/v1/bootstrap/admin`, `/v1/health/live`, and `/v1/health/ready` are not
   mounted on either listener.
 - `/admin`, `/admin/login`, `/admin/bootstrap`, `/admin/logout`,
@@ -172,8 +180,8 @@ metadata, grant-bound wrapped-key metadata, and encrypted evidence bundles.
 - Private incident access is authorized by account owner and role. Regular
   users can access their own incidents. Admins can access incidents across
   accounts and use `/v1/admin/...` account routes. Legacy unowned incidents are
-  admin-only until a future private reassignment or quarantine workflow exists;
-  see
+  admin-only unless an admin assigns one incident through the private
+  reassignment workflow; see
   [legacy unowned incident reassignment](legacy-unowned-incident-reassignment.md).
 - Contact public-key routes are scoped to the authenticated account. Current
   sharing-grant and wrapped-key routes are owner-only: users and admins can
