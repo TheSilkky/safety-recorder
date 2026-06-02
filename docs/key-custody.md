@@ -32,10 +32,6 @@ be designed separately from the encryption envelope itself.
 The contact public-key lifecycle, trusted-contact grants, and wrapped-key
 metadata boundary are designed in
 [contact-key-sharing-grants.md](contact-key-sharing-grants.md).
-The proposed first pure post-quantum contact-wrapping profile is documented in
-[post-quantum-envelope.md](post-quantum-envelope.md). That design uses
-ML-KEM-768, HKDF-SHA384, SHA-384 metadata digests, and AES-256-GCM while keeping
-the backend ciphertext-only by default.
 
 ## Goals
 
@@ -257,8 +253,7 @@ The first production contact-wrapped implementation should follow
 must remain separate from decryption capability, wrapped-key records must remain
 separate from viewer tokens, and the server must not store raw media keys,
 contact private keys, plaintext, or unwrapped shared secrets in the default
-path. For a pure post-quantum first implementation, the proposed wrapping profile
-is documented in [post-quantum-envelope.md](post-quantum-envelope.md).
+path.
 
 ## Key Hierarchy
 
@@ -295,9 +290,6 @@ Initial production direction:
   metadata that must not be logged.
 - Keep raw media keys and contact private keys in client or trusted-contact
   environments only, except for separately approved break-glass modes.
-- Treat [post-quantum-envelope.md](post-quantum-envelope.md) as the proposed
-  first pure post-quantum wrapping profile for future contact-wrapped CEKs until
-  an explicit protocol decision replaces it.
 
 ## Trusted Contact Access
 
@@ -397,8 +389,8 @@ future design should define:
 Future custody, decryption, client, or bundle-manifest changes remain separate
 implementation work. They should update this document,
 [security-model.md](security-model.md), [threat-model.md](threat-model.md),
-[encryption.md](encryption.md), [post-quantum-envelope.md](post-quantum-envelope.md),
-and deployment guidance before or alongside code changes.
+[encryption.md](encryption.md), and deployment guidance before or alongside
+code changes.
 
 ## Metadata And Live Dashboard Implications
 
@@ -434,9 +426,7 @@ The hybrid model is designed to keep uploaded ciphertext useful after the phone 
 ## Open Questions
 
 - Should media encryption use per-stream media keys only, or a per-incident parent key plus per-stream keys?
-- Should the proposed pure post-quantum ML-KEM-768 wrapping profile be the first
-  production contact-wrapped scheme, or should a classical or hybrid transition
-  profile be designed first?
+- What exact public-key wrapping scheme should be used for contact-wrapped keys?
 - How are trusted contact public keys verified during enrollment?
 - What account model is required for web, iOS, and Android clients?
 - How should contacts recover from lost private keys?
@@ -453,8 +443,7 @@ The hybrid model is designed to keep uploaded ciphertext useful after the phone 
 
 Phase 1: design and docs.
 
-Create this design, update the security, encryption, and post-quantum envelope
-documentation, and keep the current backend ciphertext-only.
+Create this design, update the security and encryption documentation, and keep the current backend ciphertext-only.
 
 Phase 2: protocol and incident-mode design.
 
