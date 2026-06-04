@@ -3,7 +3,7 @@
 [![CI](https://github.com/open-proofline/server/actions/workflows/ci.yml/badge.svg)](https://github.com/open-proofline/server/actions/workflows/ci.yml)
 [![Latest Tag](https://img.shields.io/github/v/tag/open-proofline/server?sort=semver)](https://github.com/open-proofline/server/tags)
 [![License: AGPL-3.0-only](https://img.shields.io/badge/license-AGPL--3.0--only-blue.svg)](LICENSE)
-[![Go Version](https://img.shields.io/badge/go-1.26.3-00ADD8?logo=go&logoColor=white)](go.mod)
+[![Go Version](https://img.shields.io/badge/go-1.26.4-00ADD8?logo=go&logoColor=white)](go.mod)
 [![Status: Experimental](https://img.shields.io/badge/status-experimental-orange.svg)](#security-warning)
 [![Security Policy](https://img.shields.io/badge/security-policy-blue.svg)](SECURITY.md)
 [![GHCR](https://img.shields.io/static/v1?label=GHCR&message=ghcr.io%2Fopen-proofline%2Fserver&color=blue&logo=github)](https://github.com/orgs/open-proofline/packages/container/package/server)
@@ -175,7 +175,7 @@ For more diagrams and package-level details, see [docs/architecture.md](docs/arc
 
 Requirements:
 
-- Go 1.26.3
+- Go 1.26.4
 - SQLite via the bundled Go SQLite driver dependency
 - Local disk storage for encrypted uploaded blobs by default
 

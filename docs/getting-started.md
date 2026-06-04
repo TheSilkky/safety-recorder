@@ -4,7 +4,7 @@ This guide starts the Proofline backend locally and runs the simulator against i
 
 ## Requirements
 
-- Go 1.26.3
+- Go 1.26.4
 - SQLite through the bundled Go SQLite driver dependency
 - PostgreSQL only when explicitly setting `[metadata].backend = "postgresql"`
   in TOML, or using the equivalent `SAFE_METADATA_BACKEND=postgresql`
