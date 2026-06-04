@@ -121,7 +121,31 @@ The server does not own:
 ## Proposed Configuration
 
 Configuration names are illustrative and should be aligned with current config
-style during implementation.
+style during implementation. TOML should be the primary documented shape, with
+`SAFE_*` environment variables retained as compatibility inputs and deployment
+overrides.
+
+Proposed TOML shape:
+
+```toml
+[account_registration]
+mode = "paid"
+
+[billing]
+provider = "stripe"
+grace_period = "72h"
+
+[billing.stripe]
+secret_key_file = "/run/secrets/proofline-stripe-secret-key"
+webhook_secret_file = "/run/secrets/proofline-stripe-webhook-secret"
+price_id = "price_..."
+success_url = "https://app.example.invalid/account/billing/success"
+cancel_url = "https://app.example.invalid/account/billing/cancelled"
+portal_return_url = "https://app.example.invalid/account/billing"
+api_version = ""
+```
+
+Proposed environment override mapping:
 
 ```text
 SAFE_BILLING_PROVIDER=disabled|stripe
@@ -132,7 +156,14 @@ SAFE_STRIPE_SUCCESS_URL=https://app.example/account/billing/success
 SAFE_STRIPE_CANCEL_URL=https://app.example/account/billing/cancelled
 SAFE_STRIPE_PORTAL_RETURN_URL=https://app.example/account/billing
 SAFE_BILLING_GRACE_PERIOD=...
+SAFE_STRIPE_API_VERSION=...
 ```
+
+If `stripe-go` is used, match the Stripe webhook endpoint API version to the
+version pinned by the selected `stripe-go` release unless a deliberate API
+version override is designed and tested. Keep API-version changes explicit in
+tests and release notes because webhook event shapes and generated SDK types can
+otherwise drift apart.
 
 Defaults must fail closed:
 
@@ -192,9 +223,12 @@ not account authentication. It must read and verify the raw request body, reject
 invalid signatures, store the provider event ID, and process events
 idempotently.
 
-The webhook route must use strict body limits and safe logging. It must not log
-raw event bodies, customer email addresses, payment method details, subscription
-metadata, request bodies, headers, or secrets.
+The webhook route may need public reachability for Stripe delivery, but exposing
+that single signed webhook path must not become approval to expose the whole
+main `/v1` tree or any private-admin route group. It needs a dedicated
+deployment review, strict body limits, an appropriate rate-limit class, and safe
+logging. It must not log raw event bodies, customer email addresses, payment
+method details, subscription metadata, request bodies, headers, or secrets.
 
 ## Proposed Data Model
 
@@ -229,6 +263,9 @@ billing_events
   provider
   provider_event_id
   event_type
+  provider_api_version
+  provider_created_at
+  livemode
   received_at
   processed_at
   processing_error_code
@@ -258,21 +295,27 @@ Initial Stripe mapping should be explicit and documented in tests. For example,
 `incomplete_expired`, and `paused` should generally restrict access. `past_due`
 requires a product decision: either a short configured grace period or immediate
 restriction. If a grace period is used, it must be local, explicit, and visible
-in account billing state.
+in account billing state. Do not treat `active` as proof that every outstanding
+invoice is paid; the initial access decision should require the expected
+subscription state and a successful payment signal such as `invoice.paid`.
 
 ## Webhook Event Handling
 
 Initial event handling should cover the minimum set needed to keep local state
 accurate:
 
-- checkout completion for initial customer/subscription mapping;
+- checkout completion for initial customer/subscription correlation;
+- paid invoice events for initial access provisioning and renewal confirmation;
 - subscription created/updated/deleted events for lifecycle state;
-- invoice paid and payment failed events for entitlement updates and recovery
-  state.
+- payment failed events for entitlement updates and recovery state.
 
 Implementation should verify event signatures, deduplicate by provider event ID,
-and process updates transactionally. Unknown event types should be acknowledged
-only after safe recording or ignored with a safe count/log category, depending on
+prefer Stripe's documented Go webhook signature verification path over custom
+signature code, and process updates transactionally. Events such as
+`invoice.payment_action_required` and `invoice.finalization_failed` should at
+least be safely recorded and surfaced to operator reconciliation before live
+hosted billing is relied on. Unknown event types should be acknowledged only
+after safe recording or ignored with a safe count/log category, depending on
 Stripe retry behavior and implementation choice.
 
 ## Private Operator Reconciliation
@@ -305,7 +348,9 @@ The web client should:
 - never store Stripe secret keys or webhook secrets;
 - never decide entitlement state from browser-visible Stripe parameters.
 
-The web-client design is documented separately in `open-proofline/web-client`.
+The web-client design should be documented separately in
+`open-proofline/web-client` when that companion-repository work is explicitly
+scoped.
 
 ## Donations
 
@@ -337,8 +382,9 @@ Before implementation or PR review, verify:
 
 ## Implementation Phases
 
-1. **Design and docs only.** Create this document and the matching web-client
-   document.
+1. **Design and docs only.** Create this server document. Create a matching
+   web-client document only in the companion repository and only when that work
+   is explicitly scoped.
 2. **Configuration scaffold.** Add disabled-by-default billing config and safe
    startup validation without calling Stripe.
 3. **Data model.** Add billing customer, subscription, and event tables with
