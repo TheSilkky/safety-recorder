@@ -37,7 +37,7 @@ wrapped-key metadata boundary are designed separately in
 - No server-side decryption, browser decryption, key escrow, or break-glass
   behavior.
 - No raw server-held media keys or contact private keys.
-- No public `/v1` exposure and no authentication model changes.
+- No new broad public `/v1` exposure model and no authentication model changes.
 - No web, iOS, Android, or shared protocol repository implementation.
 - No custom public-key wrapping, KDF, AEAD, padding, MAC, random generator, or
   secret-sharing primitive.

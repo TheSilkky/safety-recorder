@@ -1,6 +1,6 @@
 # Security Policy
 
-Proofline is a private encrypted incident-capture backend. It is not production-ready public infrastructure. The main `/v1` API uses local account sessions and can optionally use browser cookie sessions for future web-client calls. It includes narrow owner-only incident list/detail metadata reads for future web-client use, but the rest of `/v1` is not a public product API. Private-admin `/v1/admin/...` JSON routes and the private `/admin` web surface require admin authentication and must stay behind localhost, WireGuard, a firewall, or an equivalent private boundary.
+Proofline is a private encrypted incident-capture backend. It is not production-ready public infrastructure. The main `/v1` API uses local account sessions, optional browser cookie sessions for future web-client calls, and app-level route-class rate limits. Broad public `/v1` exposure still needs route-by-route deployment review, TLS, edge abuse controls, browser credential review, logging review, proxy hardening, and operational testing. Private-admin `/v1/admin/...` JSON routes and the private `/admin` web surface require admin authentication and must stay behind localhost, WireGuard, a firewall, or an equivalent private boundary.
 
 The current implementation supports generic incident capture, optional
 incident-mode metadata fields, and token-scoped read-only incident review.
@@ -72,7 +72,7 @@ The following are generally out of scope unless they demonstrate a concrete vuln
 
 - missing features already documented as absent, such as public account workflows, OAuth, JWT, SMS, push notifications, trusted-contact accounts, Android/iOS clients, a web client, mode-driven escalation behavior, or a public admin dashboard
 - lack of production hardening already documented as a known limitation, without a new exploit path
-- reports requiring public exposure of the main `/v1` API contrary to documented deployment guidance
+- reports requiring unreviewed broad public exposure of main `/v1` route groups contrary to documented deployment guidance
 - denial-of-service reports based only on unrealistic local access or unbounded physical access
 - findings in future clients, recording implementations, account systems, notification systems, or key-sharing systems that are not in this repository
 - legal admissibility, recording-law, or emergency-response claims that are not implemented behavior in this repository

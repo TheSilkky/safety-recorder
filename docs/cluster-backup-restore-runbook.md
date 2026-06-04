@@ -6,7 +6,7 @@ encrypted blob backend, and optional Valkey/Redis-compatible coordination
 backend.
 
 Proofline is still experimental and not production-ready public
-infrastructure. These runbooks do not add public `/v1` exposure, public account
+infrastructure. These runbooks do not add broad public `/v1` exposure, public account
 workflows, retention enforcement, observability, abuse controls, backup
 automation, cloud deployment scripts, backend decryption, key escrow, or key
 custody behavior.
@@ -157,7 +157,7 @@ main `/v1` routes publicly without a reviewed deployment boundary.
      PostgreSQL and committed blob storage.
 
 7. Keep restored environments private.
-   - Do not expose `/v1` publicly during validation.
+   - Do not broaden `/v1` public routing during validation.
    - Do not use restore drills to claim production readiness.
    - Tear down or lock down restored copies according to the deployment's
      private retention and backup policy.

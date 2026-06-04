@@ -29,6 +29,11 @@ contact key-sharing boundaries in
 - `go.mod`: defines the root Go module `github.com/open-proofline/server`.
 - `proofline.toml`: safe local-first example TOML config loaded automatically
   when running from the repository root.
+- `docker-default-config.toml`: container default TOML config copied into the
+  image as `/etc/proofline/proofline.toml`, using `/var/lib/proofline` for
+  container state.
+- `Dockerfile`: builds the `proofline-server` binary and starts it with
+  `--config /etc/proofline/proofline.toml`.
 - `.github/workflows/ci.yml`: runs Go tests with a coverage signal on pull requests and pushes, runs `govulncheck`, builds the `proofline-server-linux-amd64` binary artifact, gates release binary attestation and trusted GHCR publishing on the vulnerability scan, uploads the binary as a GitHub Release asset on `v*` tag pushes, builds the Docker image, and publishes attested images to GitHub Container Registry from a trusted job limited to `main`, `develop`, and `v*` tag pushes.
 - `.dockerignore`: excludes local runtime, review, and build artifacts from the root Docker build context used by `Dockerfile`.
 - `cmd/api`: starts one main API/viewer HTTP server per main bind address and one private-admin HTTP server per admin bind address, loads config, enforces the local account bootstrap gate, checks the selected coordination backend, opens the selected metadata backend, creates storage, wires shared handlers including main API, private admin JSON API, public viewer rate limiting, upload coordination, and the private `/admin` dashboard, starts the deletion worker, and handles graceful shutdown.
@@ -80,8 +85,8 @@ session and clears the cookie. Requests that send both bearer and browser
 cookie credentials are rejected. Existing `/v1/admin/...` JSON routes are
 mounted on the private-admin handler and require an admin account. First-admin
 bootstrap uses the private
-`/admin/bootstrap` form when no admin exists and `SAFE_AUTH_BOOTSTRAP_SECRET`
-is configured.
+`/admin/bootstrap` form when no admin exists and a bootstrap secret is
+configured.
 Session tokens are opaque, returned only to the client, and stored as hashes by
 the metadata repository. `POST /v1/auth/register` is controlled by
 `SAFE_ACCOUNT_REGISTRATION_MODE`: disabled and admin-only modes reject public
@@ -221,8 +226,8 @@ marks the deletion decision `deleted`.
 ## Admin Web Flow
 
 `GET /admin` is mounted only on the private-admin listener, outside the `/v1` API
-namespace. When no admin account exists and `SAFE_AUTH_BOOTSTRAP_SECRET` is
-configured, it renders a first-admin bootstrap screen. After an admin exists,
+namespace. When no admin account exists and a bootstrap secret is configured,
+it renders a first-admin bootstrap screen. After an admin exists,
 it renders an admin login screen until a valid admin web session cookie is
 present. `POST /admin/login`, `POST /admin/bootstrap`, and
 `POST /admin/logout` use the same account and server-side session repository
@@ -280,14 +285,15 @@ This repository should stay focused on server/backend work:
 - simulator/reference backend flow
 - planning docs for future decryption clients
 
-Before public exposure, review and add:
+Before broad public exposure, review route groups and add:
 
-- the public product API and separately bound private admin API access-control
-  design in [v1-access-control.md](v1-access-control.md), or a strict
-  WireGuard/firewall-only deployment for the current main `/v1` API
+- the current authenticated `/v1` access-control design and separately bound
+  private admin API boundary in [v1-access-control.md](v1-access-control.md),
+  including which route groups are intended for a public edge
 - the target main API/public viewer and private admin listener split
   in [public-api-listener-split.md](public-api-listener-split.md)
-- edge rate limits, app-level public viewer limits, and broader abuse controls
+- edge rate limits, existing app-level main API and public viewer limits, and
+  broader abuse controls
 - TLS and reverse-proxy settings for the public incident viewer, if reachable over a network
 - deployment-specific enforcement of the documented [retention, backup, and deletion policy](retention-backup-deletion.md)
 - cluster backup, restore, and failure drills for optional PostgreSQL metadata,
@@ -299,7 +305,7 @@ Before public exposure, review and add:
 - mode-driven access, escalation, retention, sharing, viewer, key-custody,
   trusted-contact, public product API, payment-gated registration, account
   recovery, and broader admin/operator authorization
-  design before implementing broad public `/v1`
+  design before expanding broad public `/v1`
   exposure
 
 ## Out Of Scope Today

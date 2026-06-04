@@ -6,12 +6,30 @@ This guide starts the Proofline backend locally and runs the simulator against i
 
 - Go 1.26.3
 - SQLite through the bundled Go SQLite driver dependency
-- PostgreSQL only when explicitly using `SAFE_METADATA_BACKEND=postgresql`
+- PostgreSQL only when explicitly setting `[metadata].backend = "postgresql"`
+  in TOML, or using the equivalent `SAFE_METADATA_BACKEND=postgresql`
+  environment override
 - Local disk storage for encrypted uploaded blobs
 
 ## Run The Backend
 
 From the repository root:
+
+For repeatable local configuration, set the bootstrap secret through a private
+secret file referenced by TOML:
+
+```toml
+[auth]
+bootstrap_secret_file = "/path/to/local-bootstrap-secret"
+```
+
+Then run:
+
+```bash
+go run ./cmd/api --config /path/to/proofline.toml
+```
+
+For a one-off local shell, an environment override remains supported:
 
 ```bash
 SAFE_AUTH_BOOTSTRAP_SECRET='replace-with-local-bootstrap-secret' \
@@ -25,8 +43,12 @@ Default listeners:
 | Main API and incident viewer | `127.0.0.1:8080` |
 | Private admin dashboard | `127.0.0.1:8081` |
 
+The repository root `proofline.toml` is a safe local-first example loaded
+automatically when running from the repository root. It matches the built-in
+defaults and does not include a bootstrap secret.
+
 The private admin web surface is available at
-`http://127.0.0.1:8081/admin`. When `SAFE_AUTH_BOOTSTRAP_SECRET` is set and no
+`http://127.0.0.1:8081/admin`. When a bootstrap secret is configured and no
 admin exists, that page shows the first-admin bootstrap screen; after an admin
 exists, it shows the admin login screen and local account password workflows.
 
@@ -55,7 +77,8 @@ curl -sS -X POST http://127.0.0.1:8081/admin/bootstrap \
   --data-urlencode 'password=replace-with-a-long-local-password'
 ```
 
-Then restart the server without `SAFE_AUTH_BOOTSTRAP_SECRET`.
+Then restart the server without the bootstrap secret in TOML, the environment,
+or the secret mount.
 
 ## Run The Simulator
 

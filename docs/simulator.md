@@ -30,7 +30,7 @@ server-visible evidence.
 The desktop simulator continues using account-aware local sessions without
 turning this repository into a production desktop app. Simulator credentials
 are local development credentials only. The simulator does not add OAuth, JWT,
-public `/v1` exposure, browser decryption, mobile client behavior, a public
+broad public `/v1` exposure, browser decryption, mobile client behavior, a public
 account portal, resumable uploads, partial-upload lease sessions, or
 server-visible queue summary routes.
 
@@ -61,14 +61,31 @@ decision is planned separately in
 
 Start the backend first:
 
+For repeatable local configuration, set the bootstrap secret through a private
+secret file referenced by TOML:
+
+```toml
+[auth]
+bootstrap_secret_file = "/path/to/local-bootstrap-secret"
+```
+
+Then run:
+
+```bash
+go run ./cmd/api --config /path/to/proofline.toml
+```
+
+For a one-off local shell, an environment override remains supported:
+
 ```bash
 SAFE_AUTH_BOOTSTRAP_SECRET='replace-with-local-bootstrap-secret' \
 go run ./cmd/api
 ```
 
 For a new local database, create an admin account through the private
-`/admin` bootstrap screen or `POST /admin/bootstrap`, then remove
-`SAFE_AUTH_BOOTSTRAP_SECRET` and restart the server. See
+`/admin` bootstrap screen or `POST /admin/bootstrap`, then remove the
+bootstrap secret from TOML, the environment, or the secret mount and restart
+the server. See
 [deployment](deployment.md) for the bootstrap flow.
 
 Then run:

@@ -9,7 +9,7 @@ Do **not** add JavaScript crypto code.
 Do **not** change backend behaviour.
 Do **not** add API routes.
 Do **not** change database schema.
-Do **not** add React, Node, npm, Vite, frontend build tooling, OAuth, JWT, user accounts, SMS, Messenger, push notifications, Docker Compose, Kubernetes, or cloud integrations.
+Do **not** add React, Node, npm, Vite, frontend build tooling, OAuth, JWT, new account-system features beyond the implemented local account/session and registration flows, SMS, Messenger, push notifications, Docker Compose, Kubernetes, or cloud integrations.
 
 ## Goal
 
@@ -18,7 +18,7 @@ Explore how the incident viewer might decrypt completed evidence bundles or live
 This design should support the broader hybrid key custody goal:
 
 - client-side encryption by default
-- keys not solely stored on the iPhone
+- keys not solely stored on the user's phone
 - trusted contacts can access emergency evidence
 - browser-side decryption is one possible access path
 - server escrow/break-glass remains a separate explicit design path

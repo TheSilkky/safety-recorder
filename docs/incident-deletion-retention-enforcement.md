@@ -78,7 +78,7 @@ because the metadata and encrypted blob stores need to stay consistent.
 - No public deletion route or public deletion status route.
 - No deletion of generated bundles, downloaded copies, backups, reverse-proxy
   caches, snapshots, or endpoint copies.
-- No public admin routes, public `/v1` exposure, OAuth, JWT, public account
+- No public admin routes, broad public `/v1` exposure, OAuth, JWT, public account
   workflows, cloud service automation, Docker Compose, Kubernetes, or public
   dashboard.
 - No promise of unrecoverable secure erasure from normal file, object, or

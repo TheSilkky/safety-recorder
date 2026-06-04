@@ -1,6 +1,6 @@
 # API
 
-This is the current backend-only HTTP surface for Proofline. The API binary starts a main API/viewer listener and a private-admin listener on one or more configured bind addresses. Main `/v1` routes require local account authentication except for login and the disabled-by-default registration/email-verification routes. Existing `/v1/admin/...` JSON routes require an admin account and are mounted only on the private-admin listener. The private-admin listener also serves the `/admin` dashboard route tree. Incident viewer routes are token-gated, read-only, and mounted on the main listener. Planned web, iOS, and Android clients are not part of this repository yet.
+This is the current backend-only HTTP surface for Proofline. The API binary starts a main API/viewer listener and a private-admin listener on one or more configured bind addresses. Main `/v1` routes require local account authentication except for login and the disabled-by-default registration/email-verification routes, and they use app-level route-class rate limits. Existing `/v1/admin/...` JSON routes require an admin account and are mounted only on the private-admin listener. The private-admin listener also serves the `/admin` dashboard route tree. Incident viewer routes are token-gated, read-only, and mounted on the main listener. Planned web, iOS, and Android clients are not part of this repository yet.
 
 Media bundle downloads are encrypted chunk bundles. The backend does not decrypt, merge, or produce playable media. The simulator's current encrypted uploads use the envelope documented in [encryption.md](encryption.md), but the API treats uploaded bytes as opaque ciphertext.
 
@@ -18,7 +18,8 @@ metadata, owner-scoped sharing-grant records, and wrapped media-key metadata
 for active grants. Trusted-contact accounts, browser or backend decryption,
 notifications, raw key storage, and key escrow do not exist yet. The main API
 does include a narrow public-safe owner incident list/detail read surface for
-the future web client, but this does not make the whole `/v1` tree public-ready.
+the future web client, but this does not make every `/v1` route group
+public-ready without route-level deployment review.
 
 Default bind addresses:
 
@@ -90,12 +91,12 @@ session-bound CSRF token in the configured header, defaulting to
 do not require this CSRF header. Credentialed CORS is sent only for exact
 origins configured with `SAFE_WEB_ALLOWED_ORIGINS`; CORS is not authentication.
 
-On startup, the server fails closed unless an admin account already exists or
-`SAFE_AUTH_BOOTSTRAP_SECRET` is set. With that secret set, create the first
+On startup, the server fails closed unless an admin account already exists or a
+bootstrap secret is configured. With that secret configured, create the first
 admin through the private `/admin` bootstrap screen or by posting form fields
-to `POST /admin/bootstrap`, then remove the environment variable and restart or
-redeploy without it. JSON `POST /v1/bootstrap/admin` is not mounted on either
-listener.
+to `POST /admin/bootstrap`, then remove the bootstrap secret from TOML, the
+environment, or the secret mount and restart or redeploy without it. JSON
+`POST /v1/bootstrap/admin` is not mounted on either listener.
 
 Public account registration is controlled by
 `SAFE_ACCOUNT_REGISTRATION_MODE`, defaulting to `disabled`. Supported modes are:

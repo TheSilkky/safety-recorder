@@ -23,7 +23,7 @@ imply emergency response.
   deletion decisions.
 - Keep public viewer routes read-only and fail-closed.
 - Avoid introducing notifications, key custody, browser decryption, backend
-  decryption, public account workflows, or public `/v1` exposure.
+  decryption, public account workflows, or broad public `/v1` exposure.
 
 ## Non-Goals
 
