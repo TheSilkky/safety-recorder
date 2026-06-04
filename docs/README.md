@@ -20,6 +20,7 @@ This directory contains the detailed documentation for Proofline Server, the Go 
 | [/v1 access control](v1-access-control.md) | Current local account/session and optional browser-cookie boundary plus future role, grant, public product API, private admin API listener, audit, and migration boundaries for account-owner, trusted-contact, public-link, admin/operator, and optional escrow access. |
 | [Main API public exposure listener split](public-api-listener-split.md) | Boundary for keeping main API routes and the read-only incident viewer on `8080` while keeping private `/v1/admin/...` JSON routes and the `/admin` dashboard on `8081`. |
 | [Legacy unowned incident reassignment](legacy-unowned-incident-reassignment.md) | Private admin review, reassignment, and keep-unowned audit workflow for incidents created before account ownership existed. |
+| [Stripe subscription billing](stripe-subscription-billing.md) | Cost-recovery hosted-server subscription boundary for future Stripe Checkout, Billing, Customer Portal, webhook, entitlement, and account-lifecycle work. |
 | [Encryption](encryption.md) | Client-side chunk envelope, simulator key file, and local bundle verification. |
 | [iOS local recorder prototype](ios-local-recorder-prototype.md) | Future native incident-capture scope, chunking, encrypted staging, retry, and API mapping. |
 | [Key custody and emergency access](key-custody.md) | Future production key custody, trusted-contact access, and break-glass design. |
@@ -125,6 +126,13 @@ routes can store and deliver wrapped media-key metadata through private API
 responses when an active grant authorizes ciphertext access. They do not add
 trusted-contact accounts, browser or backend decryption, public viewer changes,
 notifications, raw key storage, or key escrow.
+
+The future Stripe subscription billing design for Official Proofline hosted
+server access is documented in
+[stripe-subscription-billing.md](stripe-subscription-billing.md). It is a
+cost-recovery subscription boundary and implementation plan only; it does not
+implement payment processing, billing webhooks, donations, public production
+deployment, or any change to self-hosted operation.
 
 The future iOS incident-capture prototype is planned in [ios-local-recorder-prototype.md](ios-local-recorder-prototype.md). Future production key custody is documented in [key-custody.md](key-custody.md), with contact key sharing and wrapped-key metadata described in [contact key sharing, grants, and wrapped-key metadata](contact-key-sharing-grants.md), a simulator-only contact-wrapped key metadata prototype in [contact-wrapped-key-metadata-simulator.md](contact-wrapped-key-metadata-simulator.md), browser decryption and break-glass follow-up designs in [browser-decryption.md](browser-decryption.md) and [break-glass-key-access.md](break-glass-key-access.md), and live or partial stream access boundaries in [live-partial-stream-access-boundary.md](live-partial-stream-access-boundary.md). None of those future designs make the current main `/v1` API, private `/v1/admin/...` JSON routes, or `/admin` surface safe for broad public exposure.
 

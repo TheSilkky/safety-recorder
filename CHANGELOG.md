@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Documented the future Stripe subscription billing boundary for cost-recovery
+  hosted server access without implementing payment processing.
 - Added private-admin legacy unowned incident review and one-incident
   reassignment/quarantine APIs with safe count-oriented candidate metadata,
   controlled audit fields, and SQLite/PostgreSQL parity while preserving public
