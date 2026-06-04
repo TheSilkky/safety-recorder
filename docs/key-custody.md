@@ -59,7 +59,8 @@ the backend ciphertext-only by default.
   incident-mode, capture-profile, escalation-policy, or sharing-state metadata.
 - No playable media export.
 - No push, SMS, or Messenger delivery.
-- No user account system.
+- No new account-system implementation, trusted-contact accounts, or public
+  account portal.
 
 ## Incident Mode Implications
 

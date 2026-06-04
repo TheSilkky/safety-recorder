@@ -3,7 +3,7 @@
 [![CI](https://github.com/open-proofline/server/actions/workflows/ci.yml/badge.svg)](https://github.com/open-proofline/server/actions/workflows/ci.yml)
 [![Latest Tag](https://img.shields.io/github/v/tag/open-proofline/server?sort=semver)](https://github.com/open-proofline/server/tags)
 [![License: AGPL-3.0-only](https://img.shields.io/badge/license-AGPL--3.0--only-blue.svg)](LICENSE)
-[![Go Version](https://img.shields.io/badge/go-1.26.3-00ADD8?logo=go&logoColor=white)](go.mod)
+[![Go Version](https://img.shields.io/badge/go-1.26.4-00ADD8?logo=go&logoColor=white)](go.mod)
 [![Status: Experimental](https://img.shields.io/badge/status-experimental-orange.svg)](#security-warning)
 [![Security Policy](https://img.shields.io/badge/security-policy-blue.svg)](SECURITY.md)
 [![GHCR](https://img.shields.io/static/v1?label=GHCR&message=ghcr.io%2Fopen-proofline%2Fserver&color=blue&logo=github)](https://github.com/orgs/open-proofline/packages/container/package/server)
@@ -16,7 +16,7 @@ Proofline Server is the experimental Go server backend for encrypted incident ca
 
 ## Security Warning
 
-> This project is not production-ready public infrastructure. The main `/v1` API now requires local account sessions for most routes and shares a listener with the read-only incident viewer, but public exposure still needs deployment-specific TLS, abuse controls, browser credential review, logging review, and operational hardening. Configurable public self-registration is disabled by default; enabling open registration adds only email-verified account creation and does not make `/v1` public-ready. Optional browser cookie sessions add CSRF checks and configured credentialed CORS for future web-client use, but they also do not make `/v1` public-ready. Existing `/v1/admin/...` JSON routes are mounted only on the private-admin listener and remain authenticated admin-only routes. The private-admin listener also serves the `/admin` dashboard surface and must stay behind localhost, LAN, WireGuard, a firewall, or a strict reverse proxy. Separate bind addresses are a deployment boundary, not a complete security model.
+> This project is not production-ready public infrastructure. The main `/v1` API now requires local account sessions for product routes and uses app-level route-class rate limits, so it is no longer an unauthenticated control plane. Broad public exposure still needs route-by-route deployment review, TLS, edge abuse controls, browser credential review, logging review, proxy hardening, and operational testing. Configurable public self-registration is disabled by default; enabling open registration adds only email-verified account creation and does not by itself approve broad public `/v1` exposure. Optional browser cookie sessions add CSRF checks and configured credentialed CORS for future web-client use, but they also need reviewed deployment rules. Existing `/v1/admin/...` JSON routes are mounted only on the private-admin listener and remain authenticated admin-only routes. The private-admin listener also serves the `/admin` dashboard surface and must stay behind localhost, LAN, WireGuard, a firewall, or a strict reverse proxy. Separate bind addresses are a deployment boundary, not a complete security model.
 
 ## What It Is
 
@@ -175,11 +175,27 @@ For more diagrams and package-level details, see [docs/architecture.md](docs/arc
 
 Requirements:
 
-- Go 1.26.3
+- Go 1.26.4
 - SQLite via the bundled Go SQLite driver dependency
 - Local disk storage for encrypted uploaded blobs by default
 
 Run the backend:
+
+For repeatable local configuration, set the bootstrap secret through a private
+secret file referenced by TOML:
+
+```toml
+[auth]
+bootstrap_secret_file = "/path/to/local-bootstrap-secret"
+```
+
+Then run:
+
+```bash
+go run ./cmd/api --config /path/to/proofline.toml
+```
+
+For a one-off local shell, an environment override remains supported:
 
 ```bash
 SAFE_AUTH_BOOTSTRAP_SECRET='replace-with-local-bootstrap-secret' \
@@ -214,8 +230,9 @@ curl -sS -X POST http://127.0.0.1:8081/admin/bootstrap \
   --data-urlencode 'password=replace-with-a-long-local-password'
 ```
 
-Stop the server, remove `SAFE_AUTH_BOOTSTRAP_SECRET`, and start it again. The
-bootstrap route is disabled once an admin account exists.
+Stop the server, remove the bootstrap secret from TOML, the environment, or
+the secret mount, and start it again. The bootstrap route is disabled once an
+admin account exists.
 
 In another terminal, run the simulator:
 
@@ -249,19 +266,20 @@ docker run --rm \
   -e SAFE_AUTH_BOOTSTRAP_SECRET='replace-with-local-bootstrap-secret' \
   -p 127.0.0.1:8080:8080 \
   -p 127.0.0.1:8081:8081 \
-  -v proofline-server-data:/data \
+  -v proofline-server-data:/var/lib/proofline \
   proofline-server
 ```
 
 Use the private `/admin` bootstrap screen, or `POST /admin/bootstrap` with form
 fields, to create the first admin account. Then restart the container without
-`SAFE_AUTH_BOOTSTRAP_SECRET`.
+the bootstrap secret in TOML, the environment, or the secret mount.
 
 Container defaults bind to `0.0.0.0` inside the container. Restrict host exposure with port publishing, firewall rules, WireGuard, or a reverse proxy. See [docs/deployment.md](docs/deployment.md).
 
-For file-based container configuration, mount a reviewed TOML file and point
-`SAFE_CONFIG_FILE` at it. Keep real secrets in mounted secret files rather than
-in committed TOML.
+For custom container configuration, mount a reviewed TOML file over
+`/etc/proofline/proofline.toml`; the image entrypoint already passes that path
+with `--config`. Keep real secrets in mounted secret files rather than in
+committed TOML.
 
 ## Documentation
 
@@ -283,6 +301,7 @@ in committed TOML.
 - [Encryption](docs/encryption.md)
 - [iOS local recorder prototype](docs/ios-local-recorder-prototype.md)
 - [Key custody and emergency access](docs/key-custody.md)
+- [Pure post-quantum encryption envelope](docs/post-quantum-envelope.md)
 - [Contact key sharing, grants, and wrapped-key metadata](docs/contact-key-sharing-grants.md)
 - [Contact-wrapped key metadata simulator prototype](docs/contact-wrapped-key-metadata-simulator.md)
 - [Browser-side decryption design](docs/browser-decryption.md)
@@ -329,7 +348,7 @@ Do not let Codex create GitHub issues directly during the initial scan.
 
 ## Security
 
-Viewer links, `/v1` bearer session tokens, and browser session cookies are credentials and should be treated as secrets. Browser cookie mode should use HttpOnly Secure cookies, explicit allowed origins, `credentials: "include"`, and CSRF headers for unsafe requests; browser token persistence should not use localStorage in production. Public deployment still needs TLS, rate limiting, log review, proxy hardening, operational testing, and deployment-specific retention, backup, and deletion enforcement. Do not expose `/v1` publicly as-is.
+Viewer links, `/v1` bearer session tokens, and browser session cookies are credentials and should be treated as secrets. Browser cookie mode should use HttpOnly Secure cookies, explicit allowed origins, `credentials: "include"`, and CSRF headers for unsafe requests; browser token persistence should not use localStorage in production. Public deployment still needs TLS, rate limiting, log review, proxy hardening, operational testing, and deployment-specific retention, backup, and deletion enforcement. Do not route `/v1` as an unreviewed public catch-all; expose only explicitly reviewed route groups, and keep `/v1/admin/...` and `/admin` off public edges.
 
 Please see [SECURITY.md](SECURITY.md) for supported versions and vulnerability reporting guidance. Do not report security vulnerabilities through public GitHub issues.
 
@@ -352,7 +371,7 @@ Please see [SECURITY.md](SECURITY.md) for supported versions and vulnerability r
 - Optional break-glass/dead-man-switch key access
 - Playable media export
 - Reverse-proxy/TLS hardening for incident viewer exposure
-- Explicit [`/v1` access-control story](docs/v1-access-control.md) before any public product API deployment
+- Complete route-by-route [`/v1` public deployment review](docs/v1-access-control.md) before broad public product API deployment
 
 ## License
 

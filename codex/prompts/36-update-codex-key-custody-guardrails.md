@@ -31,7 +31,7 @@ Use this meaning throughout reusable prompts and process docs:
 - The current backend should not decrypt or store raw keys as an incidental change.
 - Server-side decryption is not permanently off limits.
 - Server-side key storage is not permanently off limits.
-- Keys must not exist solely on the iPhone in the future production design.
+- Keys must not exist solely on the user's phone in the future production design.
 - Any change to key custody or decryption must be explicit, documented, reviewed, and threat-modeled.
 - Wrapped/encrypted server-stored keys may be acceptable.
 - Raw server-held keys or server-side decryption may be acceptable only as a deliberate break-glass/dead-man-switch/emergency-access mode.
@@ -84,7 +84,7 @@ Replace any absolute "no server keys ever" wording with something like:
 ```md
 - Preserve the current backend ciphertext-only implementation unless a task explicitly concerns key custody, emergency access, or decryption design.
 - Do not introduce backend decryption, raw server-held decryption keys, key escrow, browser decryption, or key-sharing behaviour incidentally.
-- Future production key custody should assume the iPhone may be unavailable; keys must not exist solely on the client device.
+- Future production key custody should assume the user's phone may be unavailable; keys must not exist solely on the client device.
 - Server storage of wrapped/encrypted keys may be acceptable if explicitly designed.
 - Raw server-side key access or server-side decryption may be acceptable only as a deliberate break-glass/dead-man-switch/emergency-access mode with clear access controls, audit expectations, and deployment warnings.
 ```

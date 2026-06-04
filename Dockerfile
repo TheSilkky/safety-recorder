@@ -1,4 +1,4 @@
-FROM golang:1.26-alpine@sha256:91eda9776261207ea25fd06b5b7fed8d397dd2c0a283e77f2ab6e91bfa71079d AS builder
+FROM golang:1.26-alpine@sha256:f23e8b227fb4493eabe03bede4d5a32d04092da71962f1fb79b5f7d1e6c2a17f AS builder
 
 WORKDIR /src
 
@@ -17,19 +17,15 @@ FROM alpine:3.23@sha256:5b10f432ef3da1b8d4c7eb6c487f2f5a8f096bc91145e68878dd4a50
 RUN apk add --no-cache ca-certificates tzdata \
 	&& addgroup -S safety \
 	&& adduser -S -G safety -h /nonexistent -s /sbin/nologin safety \
-	&& mkdir -p /data \
-	&& chown -R safety:safety /data
-
-ENV SAFE_MAIN_BIND_ADDRS=0.0.0.0:8080 \
-	SAFE_ADMIN_BIND_ADDRS=0.0.0.0:8081 \
-	SAFE_DATA_DIR=/data \
-	SAFE_DB_PATH=/data/safety.db
+	&& mkdir -p /var/lib/proofline /etc/proofline \
+	&& chown -R safety:safety /var/lib/proofline
 
 COPY --from=builder /out/proofline-server /usr/local/bin/proofline-server
+COPY docker-default-config.toml /etc/proofline/proofline.toml
 
 USER safety
-WORKDIR /data
-VOLUME ["/data"]
+WORKDIR /var/lib/proofline
+VOLUME ["/var/lib/proofline"]
 EXPOSE 8080 8081
 
-ENTRYPOINT ["proofline-server"]
+ENTRYPOINT ["proofline-server", "--config", "/etc/proofline/proofline.toml"]

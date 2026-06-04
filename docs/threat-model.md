@@ -239,17 +239,18 @@ The current backend does not implement incident-mode-specific controls yet, so f
 
 ## Known Limitations
 
-- No implemented public product API exposure model for `/v1`; local accounts
-  and sessions are authenticated main-API controls, not a complete public
-  security model. The `/v1` credential can be an Authorization bearer session
-  or, when explicitly enabled for the future web client, an HttpOnly browser
-  session cookie with CSRF protection for unsafe requests. The private `/admin`
-  web authenticated state-changing forms continue to use a separate
-  HttpOnly SameSite cookie with a session-bound CSRF token. Browser cookie auth
-  does not make `/v1/admin/...` public-ready.
+- No complete public product API deployment model for `/v1`; local accounts,
+  sessions, and app-level route-class limits are authenticated main-API
+  controls, not a complete public deployment model. The `/v1` credential can be
+  an Authorization bearer session or, when explicitly enabled for the future
+  web client, an HttpOnly browser session cookie with CSRF protection for
+  unsafe requests. The private `/admin` web authenticated state-changing forms
+  continue to use a separate HttpOnly SameSite cookie with a session-bound CSRF
+  token. Browser cookie auth does not make `/v1/admin/...` public-ready.
 - Separate main and private-admin ports reduce accidental route exposure, but
   they are not a complete security model.
-- `/v1` must not be publicly exposed as-is.
+- `/v1` must not be routed as an unreviewed public catch-all; public deployment
+  should be reviewed route group by route group.
 - No iOS app, Android app, web client, production local recording client,
   production client key storage, push notifications, SMS, Messenger
   integration, or public admin dashboard. The private `/admin` surface
@@ -317,8 +318,8 @@ For local/private use, bind the main API/viewer server to localhost or a
 private network and restrict access with WireGuard, firewall rules, or a
 reverse proxy. If exposing only the incident viewer publicly, route only
 viewer paths (`/i/...`, `/e/...`, and `/static/...`) to the main listener and
-do not forward public wildcard traffic to `/v1`. Public edges must block
-`/v1/admin/...`. The `/v1/admin/...` JSON routes and `/admin` dashboard use the
+do not forward public wildcard traffic to unreviewed `/v1` route groups.
+Public edges must block `/v1/admin/...`. The `/v1/admin/...` JSON routes and `/admin` dashboard use the
 separately bound private-admin listener and still require admin authentication.
 Inside Docker containers, bind to container addresses such as `0.0.0.0:8080`
 and restrict host exposure with port publishing, firewall rules, WireGuard, or
@@ -330,9 +331,9 @@ The Go app does not set `Strict-Transport-Security` by default because local dev
 
 ## Next Security Steps
 
-- Extend the current `/v1` access-control implementation before any public
-  product API exposure: add public abuse controls, browser credential rules,
-  audited trusted-contact grants, and deployment operations.
+- Review the current `/v1` route groups before broad public product API
+  exposure: confirm public abuse controls, browser credential rules, audited
+  trusted-contact grants, and deployment operations.
 - Use the first-class incident-mode and escalation design in
   [incident-modes.md](incident-modes.md) before implementing mode-driven
   interaction-record, safety-check, or dead-man switch workflows.

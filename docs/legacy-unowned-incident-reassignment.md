@@ -23,7 +23,7 @@ command remains a possible future wrapper around the same metadata boundary.
 
 ## Non-Goals
 
-- No public account portal or public `/v1` exposure.
+- No public account portal or broad public `/v1` exposure.
 - No public admin dashboard.
 - No bulk reassignment without per-incident operator review.
 - No trusted-contact accounts, notifications, mode-driven access, key custody,

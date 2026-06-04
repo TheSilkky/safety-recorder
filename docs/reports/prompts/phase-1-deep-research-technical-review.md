@@ -66,8 +66,14 @@ Core project boundaries:
 - The main `/v1` API uses local account sessions but is not a public product API; it must stay behind the reviewed deployment boundary, and public edges must not route `/v1/admin/...`.
 - The current backend treats uploaded bytes as opaque ciphertext.
 - The current backend must not be described as production-ready public infrastructure.
-- Current backend incidents are generic unless the reviewed tree implements first-class incident modes, capture profiles, escalation policies, or sharing state.
-- Backend decryption, browser decryption, production key custody, break-glass access, user accounts, OAuth/JWT, push notifications, SMS, Messenger, web/iOS/Android clients, and first-class escalation policies are future or out-of-scope items unless explicitly implemented in the reviewed tree.
+- Current backend incidents are generic by default. Optional incident-mode,
+  capture-profile, escalation-policy, and sharing-state metadata are labels
+  only unless the reviewed tree implements first-class behavior for them.
+- Backend decryption, browser decryption, production key custody, break-glass
+  access, trusted-contact accounts, public account portals, OAuth/JWT, push
+  notifications, SMS, Messenger, web/iOS/Android clients, and first-class
+  escalation policies are future or out-of-scope items unless explicitly
+  implemented in the reviewed tree.
 - Future key custody, browser decryption, break-glass, incident-mode, and client prototype documents are design/planning guardrails, not shipped implementation.
 - Do not treat documented future work as a current defect merely because it is not implemented.
 

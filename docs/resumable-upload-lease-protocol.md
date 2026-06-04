@@ -5,7 +5,7 @@ or upload leases for partially sent encrypted chunks.
 
 It is a planning document only. It does not implement resumable uploads,
 partial-upload lease sessions, changes to the current local account/session
-model, public `/v1` exposure, public account workflows, browser decryption,
+model, broad public `/v1` exposure, public account workflows, browser decryption,
 backend decryption, key custody, or playable media export. Complete-upload
 idempotency keys and short-lived Valkey complete-upload leases are implemented
 separately and documented in
@@ -90,7 +90,7 @@ Server behavior stays unchanged for this simulator client:
 - no upload lease routes
 - no server-visible client queue summary endpoint
 - no partial upload commit state
-- no public `/v1` exposure
+- no new broad public `/v1` exposure model
 - no additional account-management routes, OAuth, JWT, trusted-contact accounts,
   or public account workflows added only for simulator scaffolding
 - no backend decryption or server-held media keys
@@ -333,7 +333,7 @@ Until then, the simulator keeps using complete encrypted chunk uploads.
 
 - Implementing resumable upload routes.
 - Implementing resumable upload leases or partial-upload sessions.
-- Adding public `/v1` product authentication or exposing `/v1` publicly.
+- Adding a broad public `/v1` deployment model or changing public route exposure.
 - Adding web, iOS, Android, or protocol repository code.
 - Adding new PostgreSQL, S3-compatible object storage, or background-worker
   behavior.

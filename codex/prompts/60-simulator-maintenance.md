@@ -28,9 +28,9 @@ Do not rely on stale assumptions from this prompt if the repository has changed.
 - Do not add unrelated features.
 - Do not weaken security warnings.
 - Do not claim production readiness.
-- Do not expose `/v1` publicly.
+- Do not expose `/v1` as an unreviewed public catch-all; keep `/v1/admin/...` and `/admin` off public edges.
 - Do not log raw tokens, request bodies, uploaded bytes, Authorization headers, plaintext, raw keys, or future token-like values.
-- Do not add React, Node, npm, OAuth, JWT, user accounts, SMS, Messenger, push notifications, Docker Compose, Kubernetes, cloud integrations, or public admin dashboard features unless explicitly requested.
+- Do not add React, Node, npm, OAuth, JWT, new account-system features beyond the implemented local account/session and registration flows, SMS, Messenger, push notifications, Docker Compose, Kubernetes, cloud integrations, or public admin dashboard features unless explicitly requested.
 - Prefer Go standard library where practical.
 - Preserve private/public listener separation.
 - Preserve the current backend ciphertext-only implementation unless the task explicitly concerns key custody, emergency access, or decryption design.
@@ -56,8 +56,8 @@ for latency, jitter, request timeouts, bandwidth ceilings, intermittent offline
 windows, upload failure rates, and process restart or resume drills.
 
 It should use the current local account/session flow for private `/v1`
-authentication. Simulator maintenance must not add OAuth, JWT, public `/v1`
-exposure, trusted-contact accounts, public account workflows, or extra
+authentication. Simulator maintenance must not add OAuth, JWT, broad public
+`/v1` exposure, trusted-contact accounts, public account workflows, or extra
 account-management routes incidentally.
 
 It should exercise:
@@ -125,10 +125,15 @@ go test ./...
 go vet ./...
 ```
 
-Manual smoke test:
+Manual smoke test. Prefer TOML for repeatable smoke:
+
+```toml
+[auth]
+bootstrap_secret_file = "/path/to/local-bootstrap-secret"
+```
 
 ```bash
-SAFE_AUTH_BOOTSTRAP_SECRET='replace-with-local-bootstrap-secret' go run ./cmd/api
+go run ./cmd/api --config /path/to/proofline-smoke.toml
 ```
 
 In another terminal, create the first local admin if the test database does not

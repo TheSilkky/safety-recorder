@@ -6,7 +6,7 @@ This is a planning and schema-design document for mode-driven behavior. The
 current backend implements optional nullable `incident_mode`, `capture_profile`,
 `escalation_policy`, and `sharing_state` metadata fields on the existing private
 incident create/read routes. Those fields do not add mobile clients, public
-account workflows, public `/v1` exposure, push notifications, emergency-services
+account workflows, broad public `/v1` exposure, push notifications, emergency-services
 integration, key custody, browser decryption, trusted-contact access, retention
 behavior, or new backend routes. Future account-owner, trusted-contact,
 public-link, admin/operator, and optional escrow role boundaries are documented
@@ -203,7 +203,8 @@ Future API changes should keep current behavior clear:
 
 - Current `/v1/incidents` creates generic incidents by default and accepts
   optional mode metadata.
-- Future public product API routes must wait for implemented authentication and authorization.
+- Future public product API route groups must wait for explicit authorization
+  and deployment review.
 - Future private/admin routes must remain on private listener groups and still require authentication after the future admin API exists.
 - Public incident viewer routes must stay read-only and must not become write, grant-management, admin, escrow, or decryption routes.
 - Bundle manifests may eventually include non-secret incident-mode summaries, but they must not include raw tokens, raw keys, plaintext, private deployment details, server paths, object keys, or unreviewed sensitive context.
@@ -269,7 +270,7 @@ Not implemented today:
 - mode-driven access, capture, escalation, sharing, retention, viewer, or
   key-custody behavior
 - public account workflows
-- public `/v1` product authentication
+- a complete public `/v1` product deployment model
 - trusted-contact accounts
 - mobile clients
 - non-emergency interaction UX

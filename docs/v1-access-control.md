@@ -16,13 +16,13 @@ decryption, key escrow, and server-side decryption are not implemented.
 ## Summary
 
 The current main `/v1` API requires a local account session for product routes
-other than login. Existing `/v1/admin/...` JSON routes are mounted only on the
-private-admin listener and require an admin account; they are not public-ready
-routes and must be blocked from public reverse-proxy routes. First-admin
-bootstrap is handled by the private `/admin` dashboard flow. Local sessions
-reduce accidental unauthenticated access. The owner incident list/detail reads
-are intentionally public-safe for authenticated web-client use, but they do not
-make the rest of `/v1` a public product API.
+other than login and applies app-level route-class limits. Existing
+`/v1/admin/...` JSON routes are mounted only on the private-admin listener and
+require an admin account; they are not public-ready routes and must be blocked
+from public reverse-proxy routes. First-admin bootstrap is handled by the
+private `/admin` dashboard flow. The owner incident list/detail reads are
+intentionally public-safe for authenticated web-client use, but the current
+controls do not make every `/v1` route group a public product API.
 
 Future trusted-contact access, incident modes, notifications, production key
 custody, browser/client-side decryption, and optional break-glass access all need
@@ -61,7 +61,7 @@ Related source-of-truth docs:
 
 ## Non-Goals
 
-- No broad public exposure of the current main `/v1` API.
+- No broad unreviewed public exposure of the current main `/v1` API.
 - No OAuth, JWT, public account portal, or identity-provider implementation.
 - No web-client, iOS-client, Android-client, or protocol implementation.
 - No push notification, SMS, Messenger, email notification beyond registration
@@ -77,7 +77,7 @@ Today the backend has two listener groups:
 
 | Listener group | Current routes | Exposure |
 |---|---|---|
-| Main API and viewer | Non-admin `/v1/...` with local account/session auth except login, disabled-by-default registration, and email verification; owner-only public-safe incident list/detail reads; `/i/{token}` plus legacy `/e/{token}` aliases and `/static/...` | Reviewed main API deployment boundary; viewer paths may be routed publicly when only viewer paths are forwarded. Public edges must not route `/v1/admin/...`. |
+| Main API and viewer | Non-admin `/v1/...` with local account/session auth except login, disabled-by-default registration, email verification, and app-level route-class limits; owner-only public-safe incident list/detail reads; `/i/{token}` plus legacy `/e/{token}` aliases and `/static/...` | Reviewed main API deployment boundary; viewer paths may be routed publicly when only viewer paths are forwarded. Public edges must not route `/v1/admin/...`. |
 | Private admin listener | `/v1/admin/...`, `/admin`, `/admin/...`, `/admin/static/...` | Localhost, LAN, WireGuard, firewall, or strict private reverse proxy only. |
 
 Current non-admin `/v1` routes are on the main handler. The implemented local auth model has admin and user roles, incident ownership, hashed password storage,
@@ -204,9 +204,9 @@ The first admin account is created through a one-time bootstrap flow:
 
 Browser cookie sessions are implemented for the current main route tree and can
 authenticate admin JSON routes on the private-admin listener, but they do not
-make `/v1` a public product API and do not make `/v1/admin/...` public-ready.
-Any broader public product API still needs reviewed exposure, abuse controls,
-audit behavior, TLS, and deployment guidance.
+make every `/v1` route group public-ready and do not make `/v1/admin/...`
+public-ready. Any broader public product API still needs route-level reviewed
+exposure, abuse controls, audit behavior, TLS, and deployment guidance.
 
 Authentication must provide:
 
@@ -400,7 +400,7 @@ incremental:
    API, and public incident viewer behavior in design and tests before changing
    exposure.
 4. Extend authentication and authorization behind private deployments first,
-   without changing public exposure.
+   without broadening public exposure.
 5. Add audited grant lifecycle behavior for incident-scoped access.
 6. Preserve the separately bound private-admin listener before adding more
    operator or admin routes, and require admin authentication even for VPN-only
@@ -420,8 +420,8 @@ deployment docs before or alongside implementation.
 
 ## Implementation Prerequisites
 
-Before any public product API exposure or broader private admin API expansion,
-a future implementation task must define and test:
+Before any broad public product API exposure or broader private admin API
+expansion, a future implementation task must define and test:
 
 - concrete authentication mechanism for the new exposure class
 - authorization policy and role/grant model beyond the current local user/admin

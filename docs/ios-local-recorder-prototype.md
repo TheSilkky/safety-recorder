@@ -1,6 +1,6 @@
 # iOS Local Incident-Capture Prototype Plan
 
-This document scopes a future iOS local incident-capture prototype for Proofline. It is a planning document only. It does not add iOS code, Swift packages, backend routes, database schema, key custody implementation, browser decryption, backend decryption, push notifications, SMS, Messenger integration, public account workflows, OAuth, JWT, or public `/v1` exposure.
+This document scopes a future iOS local incident-capture prototype for Proofline. It is a planning document only. It does not add iOS code, Swift packages, backend routes, database schema, key custody implementation, browser decryption, backend decryption, push notifications, SMS, Messenger integration, public account workflows, OAuth, JWT, or broad public `/v1` exposure.
 
 The prototype should prove that a native iOS client can capture incident media locally, encrypt chunks before upload, stage encrypted chunks durably, retry uploads, and map its local state to the current backend media stream APIs. The Go simulator remains the backend reference flow until a real client exists.
 
@@ -38,7 +38,8 @@ records, timed safety checks, and evidence notes, as described in
 - No playable media export.
 - No cloud service dependency beyond the configured backend.
 - No notification, SMS, or Messenger integration.
-- No user account, OAuth, JWT, or public admin model.
+- No new server account system, OAuth, JWT, or public admin model beyond the
+  current backend local account/session API.
 
 ## Planned Incident-Capture UX
 
