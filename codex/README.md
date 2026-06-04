@@ -100,26 +100,27 @@ Use prompts in this rough order:
 9. `37-browser-decryption-design-spike.md`
 10. `38-break-glass-and-dead-mans-switch-key-access-design.md`
 11. `40-documentation-update.md`
-12. `50-mdn-web-security-header-review.md`, for web-facing changes
-13. `60-simulator-maintenance.md`, for API/client-flow changes
+12. `45-documentation-and-prompt-review.md`, for comprehensive documentation and reusable-prompt consistency review
+13. `50-mdn-web-security-header-review.md`, for web-facing changes
+14. `60-simulator-maintenance.md`, for API/client-flow changes
 
 ### Issue and PR workflow
 
-14. `70-work-on-github-issue.md`
-15. `75-create-draft-pr-from-current-branch.md`
-16. `76-request-codex-pr-review.md`
+15. `70-work-on-github-issue.md`
+16. `75-create-draft-pr-from-current-branch.md`
+17. `76-request-codex-pr-review.md`
 
 ### Backlog workflow
 
-17. `80-backlog-scan-issue-drafts.md`
-18. `81-backlog-drafts-structure-and-hygiene.md`
-19. `82-review-open-issues-for-stale-or-fixed.md`
-20. `85-create-github-issues-from-drafts.md`
+18. `80-backlog-scan-issue-drafts.md`
+19. `81-backlog-drafts-structure-and-hygiene.md`
+20. `82-review-open-issues-for-stale-or-fixed.md`
+21. `85-create-github-issues-from-drafts.md`
 
 ### Release workflow
 
-21. `90-release-check.md`
-22. `95-validate-deep-research-report.md`, for Phase 2 validation of public technical review reports
+22. `90-release-check.md`
+23. `95-validate-deep-research-report.md`, for Phase 2 validation of public technical review reports
 
 ## Current project constraints
 
@@ -143,12 +144,12 @@ Core constraints:
 - Future production key custody should assume the user's phone may be unavailable; keys must not exist solely on the client device.
 - Server storage of wrapped/encrypted keys may be acceptable if explicitly designed.
 - Raw server-side key access or server-side decryption may be acceptable only as a deliberate break-glass/dead-man-switch/emergency-access mode with clear access controls, audit expectations, and deployment warnings.
-- Future product scope includes emergency incidents, non-emergency interaction records, timed safety checks, and evidence notes, but the current backend only stores generic incidents.
-- First-class incident modes, capture profiles, escalation policies, sharing
-  state, public account workflows, trusted-contact accounts, dead-man switch
-  notifications, and public `/v1` product authentication are not implemented
-  yet.
-- Do not add React, Node, npm, OAuth, JWT, user accounts, SMS, Messenger, push notifications, public admin dashboards, Docker Compose, Kubernetes, or cloud integrations unless explicitly requested.
+- Future product scope includes emergency incidents, non-emergency interaction records, timed safety checks, and evidence notes. The current backend stores generic incidents by default and can store optional incident-mode, capture-profile, escalation-policy, and sharing-state metadata as labels only.
+- Mode-driven access, first-class capture-profile behavior, escalation
+  policies, sharing-state behavior, trusted-contact accounts, dead-man switch
+  notifications, public account portals, and public `/v1` product
+  authentication are not implemented yet.
+- Do not add React, Node, npm, OAuth, JWT, new account-system features beyond the implemented local account/session and registration flows, SMS, Messenger, push notifications, public admin dashboards, Docker Compose, Kubernetes, or cloud integrations unless explicitly requested.
 - Put newly discovered future work into issues/backlog items unless it is required for the current task.
 - Backlog scanning creates draft Markdown files first, not GitHub issues directly.
 - Do not create public GitHub issues from backlog drafts until the maintainer has reviewed them.
@@ -226,10 +227,17 @@ go vet ./...
 
 For docs-only changes, inspect the relevant Markdown and links manually. Go tests are not required unless code changed.
 
-For simulator/API flow changes, also run the simulator smoke test when practical:
+For simulator/API flow changes, also run the simulator smoke test when
+practical. Prefer an explicit TOML config for repeatable smoke tests,
+especially when the test database still needs a bootstrap secret:
+
+```toml
+[auth]
+bootstrap_secret_file = "/path/to/local-bootstrap-secret"
+```
 
 ```bash
-go run ./cmd/api
+go run ./cmd/api --config /path/to/proofline-smoke.toml
 ```
 
 In another terminal:

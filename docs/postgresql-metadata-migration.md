@@ -29,7 +29,7 @@ new deployments that need a database suitable for later multi-node work.
 - No PostgreSQL requirement for local development or simulator flows.
 - No changes to S3-compatible blob storage and no operation-level
   Valkey/Redis-compatible coordination behavior.
-- No public `/v1` exposure, public account workflows, OAuth, JWT, public admin
+- No new broad public `/v1` exposure model, public account workflows, OAuth, JWT, public admin
   dashboard, cloud deployment automation, Docker Compose, Kubernetes, or
   Terraform.
 - No backend decryption, raw server-held media keys, key escrow, browser
@@ -472,7 +472,7 @@ Not supported by this runbook:
 - moving or rewriting encrypted blob bytes
 - decrypting chunks, browser decryption, backend decryption, key escrow, or raw
   server-held media keys
-- public `/v1` exposure, public account workflows, cloud-provider automation, or
+- broad public `/v1` exposure, public account workflows, cloud-provider automation, or
   production-readiness claims
 
 ### When To Stay On SQLite

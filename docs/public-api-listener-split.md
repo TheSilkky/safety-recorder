@@ -1,14 +1,15 @@
 # Main API Public Exposure Listener Split Design
 
 This document defines the listener split that prepares Proofline's main API
-routes for future public exposure without exposing admin or operator surfaces.
+routes for route-level reviewed public exposure without exposing admin or
+operator surfaces.
 
 The initial implementation is now in place: the default `127.0.0.1:8080` main
 listener serves authenticated non-admin `/v1` routes and the read-only incident
 viewer, while the default `127.0.0.1:8081` private-admin listener serves
 authenticated admin-only `/v1/admin/...` JSON routes and the `/admin` dashboard
 route tree. This does not make the main `/v1` API production-ready public
-infrastructure.
+infrastructure or approve broad public catch-all routing.
 
 ## Goals
 
@@ -18,8 +19,8 @@ infrastructure.
 - Keep `/admin` and `/admin/...` off the public-facing main listener.
 - Keep `/v1/admin/...` on the private-admin listener and blocked from public
   reverse-proxy routes.
-- Define required app-level rate-limit route classes before any main API route
-  is publicly exposed.
+- Document app-level rate-limit route classes and required edge controls before
+  any main API route group is publicly exposed.
 - Preserve token redaction, ciphertext-only storage, server-controlled ZIP
   paths, and public viewer read-only behavior.
 - Document browser credential, CSRF, audit, logging, configuration, and test
@@ -61,8 +62,9 @@ The implementation keeps two route trees:
 | Private admin listener | `127.0.0.1:8081` | Authenticated admin-only `/v1/admin/...` JSON routes, private `/admin` dashboard routes, and token-neutral `/admin/static/...` assets. | Localhost, LAN, WireGuard, VPN, firewall, or strict private reverse proxy only. Still authenticated and authorized. |
 
 The `8080` main listener is public-facing only after the deployment has added
-the required controls. It must not become a public catch-all for admin/operator
-routes, and public reverse proxies must block `/v1/admin/...`.
+the required controls for the routed groups. It must not become a public
+catch-all for admin/operator routes or unreviewed product route groups, and
+public reverse proxies must block `/v1/admin/...`.
 
 The target `8081` private admin listener must not serve public incident viewer
 routes, product upload routes, public link routes, public viewer static assets,
@@ -70,7 +72,8 @@ bundle routes, or general account-owner product traffic.
 
 ## Target Main `8080` Route Set
 
-The main listener may serve these route classes after public hardening exists:
+The main listener may serve these route classes after route-level public
+deployment review:
 
 | Route group | Target placement | Required controls before exposure |
 |---|---|---|
@@ -226,7 +229,7 @@ is a complete security model.
 
 Implementation and follow-up issues should include tests that prove:
 
-- main listener serves the intended public-ready product API routes
+- main listener serves the intended reviewed product API routes
 - main listener serves `/i/...`, legacy `/e/...`, and `/static/...`
 - main listener returns not-found for `/admin`, `/admin/...`,
   `/v1/admin/...`, `/v1/bootstrap/admin`, `/v1/health/live`, and
@@ -253,5 +256,5 @@ Implementation and follow-up issues should include tests that prove:
 
 The current deployment rule remains: `/admin` and `/v1/admin/...` stay on the
 private admin listener and must be blocked from public reverse-proxy routes.
-The main `/v1` API must not be exposed as production public infrastructure
-until public deployment controls are explicitly reviewed for the deployment.
+The main `/v1` API must not be exposed as a public catch-all. Public deployment
+controls must be explicitly reviewed for each route group in the deployment.

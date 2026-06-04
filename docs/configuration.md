@@ -47,6 +47,11 @@ the built-in local defaults and does not contain real secrets. Do not commit or
 publish real config files that include private endpoints, secret-file paths, or
 deployment credentials.
 
+Examples in this document show TOML first because it is the recommended
+configuration shape for repeatable deployments. Environment snippets are still
+included for compatibility, CI, tests, or short-lived local overrides. When both
+are set, remember that `SAFE_*` environment variables override TOML values.
+
 Secret-bearing values support direct `SAFE_*` environment variables and
 matching `SAFE_*_FILE` variables. File-backed secrets are read once at startup.
 Missing files, empty files, and direct-secret plus secret-file conflicts within
@@ -374,13 +379,19 @@ documented in
 
 ## S3-Compatible Blob Storage
 
-The S3-compatible backend stores only opaque encrypted chunk bytes. It does not add backend decryption, raw media keys, key escrow, browser decryption, public `/v1` exposure, public account workflows, or production-readiness guarantees.
+The S3-compatible backend stores only opaque encrypted chunk bytes. It does not add backend decryption, raw media keys, key escrow, browser decryption, broad public `/v1` exposure, public account workflows, or production-readiness guarantees.
 
-Uploads are first staged as local temp files under `SAFE_DATA_DIR/tmp` while the server enforces `SAFE_MAX_UPLOAD_BYTES` and computes SHA-256 over the uploaded ciphertext. After the client-provided hash is verified, the server writes the final object key with conditional no-overwrite behavior. The final object key is derived from server-controlled incident, stream, media type, and chunk index metadata:
+Uploads are first staged as local temp files under the configured data
+directory's `tmp` subdirectory while the server enforces the configured
+`[uploads].max_upload_bytes` limit and computes SHA-256 over the uploaded
+ciphertext. After the client-provided hash is verified, the server writes the
+final object key with conditional no-overwrite behavior. The final object key
+is derived from server-controlled incident, stream, media type, and chunk
+index metadata:
 
 ```text
-{SAFE_S3_PREFIX}/incidents/{incident_id}/streams/{stream_id}/{media_type}_{zero_padded_chunk_index}.enc
-{SAFE_S3_PREFIX}/incidents/{incident_id}/{media_type}_{zero_padded_chunk_index}.enc
+{s3_prefix}/incidents/{incident_id}/streams/{stream_id}/{media_type}_{zero_padded_chunk_index}.enc
+{s3_prefix}/incidents/{incident_id}/{media_type}_{zero_padded_chunk_index}.enc
 ```
 
 The optional prefix must be relative and must not contain empty, `.`, `..`, or backslash path segments. Client requests never provide final object keys or stored paths.
@@ -392,9 +403,24 @@ network path. Before enabling a provider for evidence storage, run a small
 no-overwrite smoke test that confirms conditional writes reject an existing
 object instead of replacing it.
 
-This implementation does not create S3 staging objects. Failed uploads and hash mismatches clean up local temp files through the normal upload path. If the process crashes, abandoned local temp files under `SAFE_DATA_DIR/tmp` may remain and should be cleaned only by a conservative operator policy that never deletes committed objects. `SAFE_TEMP_UPLOAD_CLEANUP_AGE` applies to this local staging directory for both local and S3-compatible blob backends. Object-store lifecycle cleanup for staging prefixes is not needed unless a future resumable or multipart S3 staging design adds such prefixes.
+This implementation does not create S3 staging objects. Failed uploads and
+hash mismatches clean up local temp files through the normal upload path. If
+the process crashes, abandoned local temp files under the configured data
+directory's `tmp` subdirectory may remain and should be cleaned only by a
+conservative operator policy that never deletes committed objects.
+`[uploads].temp_upload_cleanup_age` applies to this local staging directory for
+both local and S3-compatible blob backends. Object-store lifecycle cleanup for
+staging prefixes is not needed unless a future resumable or multipart S3
+staging design adds such prefixes.
 
-`SAFE_S3_ACCESS_KEY_ID` and `SAFE_S3_SECRET_ACCESS_KEY` are required when the S3 backend is selected. `SAFE_S3_SESSION_TOKEN` is optional. Credentials, endpoints, bucket names, object keys, and private deployment details should not be written to public issue drafts, logs, or support tickets.
+S3 access key ID and secret access key settings are required when the S3
+backend is selected. Prefer `[blob_storage].s3_access_key_id_file` and
+`[blob_storage].s3_secret_access_key_file`; environment-only deployments can
+use `SAFE_S3_ACCESS_KEY_ID_FILE` and `SAFE_S3_SECRET_ACCESS_KEY_FILE`, or the
+direct secret variables for short-lived local overrides. The session token is
+optional. Credentials, endpoints, bucket names, object keys, and private
+deployment details should not be written to public issue drafts, logs, or
+support tickets.
 
 Bundle downloads continue to generate server-controlled ZIP entry names such as `chunks/audio_000001.enc`; they do not expose object-store URLs, bucket names, configured prefixes, or filesystem paths.
 
@@ -466,7 +492,15 @@ Empty entries are rejected. These values fail startup:
 127.0.0.1:8080,,10.66.0.1:8080
 ```
 
-Example:
+TOML accepts these as arrays:
+
+```toml
+[server]
+main_bind_addrs = ["127.0.0.1:8080", "10.66.0.1:8080"]
+admin_bind_addrs = ["127.0.0.1:8081"]
+```
+
+Environment-only deployments remain supported:
 
 ```bash
 SAFE_MAIN_BIND_ADDRS=127.0.0.1:8080,10.66.0.1:8080 \
@@ -485,13 +519,42 @@ go run ./cmd/api
 
 Fractional unit values are allowed when they resolve to at least one byte, for example `0.5KB`. Non-positive, sub-byte, invalid, and oversized values are rejected during startup.
 
+Using TOML:
+
+```toml
+[uploads]
+max_upload_bytes = "250MB"
+```
+
+Environment override:
+
+```bash
+SAFE_MAX_UPLOAD_BYTES=250MB go run ./cmd/api
+```
+
 ## Viewer Token Expiry
 
 Viewer tokens created without an explicit `expires_at` default to expiring after `SAFE_DEFAULT_INCIDENT_TOKEN_TTL`, which is `24h` unless configured otherwise.
 
 The value uses Go duration strings such as `12h` or `168h`.
 
-Set `SAFE_DEFAULT_INCIDENT_TOKEN_TTL=0` only when you deliberately want omitted `expires_at` values to create tokens that remain valid until revoked.
+Set `[retention].default_incident_token_ttl = "0"` only when you deliberately
+want omitted `expires_at` values to create tokens that remain valid until
+revoked. The `SAFE_DEFAULT_INCIDENT_TOKEN_TTL=0` environment override remains
+supported.
+
+Using TOML:
+
+```toml
+[retention]
+default_incident_token_ttl = "24h"
+```
+
+Environment override:
+
+```bash
+SAFE_DEFAULT_INCIDENT_TOKEN_TTL=24h go run ./cmd/api
+```
 
 ## Local Account Sessions
 
@@ -503,6 +566,13 @@ value uses Go duration strings such as `6h` or `30m`.
 
 Public account registration is disabled by default:
 
+```toml
+[account_registration]
+mode = "disabled"
+```
+
+Environment override:
+
 ```bash
 SAFE_ACCOUNT_REGISTRATION_MODE=disabled
 ```
@@ -510,6 +580,22 @@ SAFE_ACCOUNT_REGISTRATION_MODE=disabled
 `admin_only` also rejects public registration while preserving existing
 admin-created account flows. `open` enables public self-registration for
 self-hosted deployments, but it requires email verification before login:
+
+```toml
+[account_registration]
+mode = "open"
+public_web_origin = "https://app.example.invalid"
+
+[email]
+backend = "smtp"
+smtp_host = "smtp.example.invalid"
+smtp_port = 587
+smtp_from = "noreply@example.invalid"
+smtp_starttls = "required"
+smtp_password_file = "/run/secrets/proofline-smtp-password"
+```
+
+Environment-only deployments remain supported:
 
 ```bash
 SAFE_ACCOUNT_REGISTRATION_MODE=open \
@@ -553,6 +639,16 @@ Origins must match exactly and `*` is rejected because credentials are allowed.
 For local plain-HTTP web-client development, use a non-`__Host-` cookie name and
 local origins only, for example:
 
+```toml
+[web_auth]
+enabled = true
+allowed_origins = ["http://127.0.0.1:5173"]
+session_cookie_name = "proofline_session"
+session_cookie_secure = false
+```
+
+Environment-only deployments remain supported:
+
 ```bash
 SAFE_WEB_AUTH_ENABLED=true \
 SAFE_WEB_ALLOWED_ORIGINS=http://127.0.0.1:5173 \
@@ -566,10 +662,24 @@ Production deployments should keep the default `__Host-proofline_session`,
 Browser token persistence should not use localStorage in production.
 
 For a new metadata database, startup fails until an admin account exists unless
-`SAFE_AUTH_BOOTSTRAP_SECRET` or `SAFE_AUTH_BOOTSTRAP_SECRET_FILE` is set. Use
-that secret only long enough to create the first admin through the private
-`/admin` bootstrap screen or `POST /admin/bootstrap`, then remove it from the
-environment or secret mount and restart.
+a bootstrap secret is configured. Use that secret only long enough to create
+the first admin through the private `/admin` bootstrap screen or
+`POST /admin/bootstrap`, then remove it from TOML, the environment, or the
+secret mount and restart.
+
+For repeatable local or private deployments, prefer a secret file reference:
+
+```toml
+[auth]
+bootstrap_secret_file = "/run/secrets/proofline-bootstrap-secret"
+```
+
+For a one-off local shell, an environment override remains supported:
+
+```bash
+SAFE_AUTH_BOOTSTRAP_SECRET='replace-with-local-bootstrap-secret' go run ./cmd/api
+```
+
 Treat the bootstrap secret, account passwords, session tokens, raw
 idempotency keys, and Authorization headers as secrets. They must not appear in
 public issues, logs, dashboards, screenshots, support tickets, or shell
@@ -583,17 +693,34 @@ admin routes, deletes encrypted blobs by server-controlled stored paths from
 metadata, prunes sensitive child metadata after blob deletion, and leaves a
 minimal tombstone.
 
+Using TOML:
+
+```toml
+[retention]
+deletion_worker_interval = "30s"
+```
+
+Environment override:
+
 ```bash
 SAFE_DELETION_WORKER_INTERVAL=30s \
 go run ./cmd/api
 ```
 
-Set `SAFE_DELETION_WORKER_INTERVAL=0` to disable the automatic scheduler. This
-does not delete or discard pending deletion decisions; a later process run with
-the worker enabled can resume them.
+Set `[retention].deletion_worker_interval = "0"` to disable the automatic
+scheduler. The `SAFE_DELETION_WORKER_INTERVAL=0` environment override remains
+supported. This does not delete or discard pending deletion decisions; a later
+process run with the worker enabled can resume them.
 
 Closed-incident retention is disabled by default. To queue deletion decisions
 for closed incidents older than a configured window, set a positive duration:
+
+```toml
+[retention]
+closed_incident_retention = "720h"
+```
+
+Environment override:
 
 ```bash
 SAFE_CLOSED_INCIDENT_RETENTION=720h \
@@ -609,6 +736,13 @@ Expired or revoked viewer-token metadata pruning is disabled by default. Set a
 positive audit window only after reviewing whether token labels and token-hash
 metadata must remain available for operational review:
 
+```toml
+[retention]
+token_metadata_retention = "168h"
+```
+
+Environment override:
+
 ```bash
 SAFE_TOKEN_METADATA_RETENTION=168h \
 go run ./cmd/api
@@ -620,6 +754,13 @@ incidents, streams, chunks, checkins, blobs, backups, or raw tokens. Raw viewer
 tokens are not stored.
 
 Deleted-incident tombstone pruning is also disabled by default:
+
+```toml
+[retention]
+deletion_tombstone_retention = "2160h"
+```
+
+Environment override:
 
 ```bash
 SAFE_DELETION_TOMBSTONE_RETENTION=2160h \
@@ -637,6 +778,13 @@ Temp upload cleanup is disabled by default. To clean up abandoned local upload
 staging files after a crash, set a positive age threshold and restart the
 server:
 
+```toml
+[uploads]
+temp_upload_cleanup_age = "24h"
+```
+
+Environment override:
+
 ```bash
 SAFE_TEMP_UPLOAD_CLEANUP_AGE=24h \
 go run ./cmd/api
@@ -649,6 +797,14 @@ committed chunk blobs, stored object keys, SQLite or PostgreSQL metadata, and
 evidence bundle contents are never cleanup targets.
 
 To preview safe counts without deleting files:
+
+```toml
+[uploads]
+temp_upload_cleanup_age = "24h"
+temp_upload_cleanup_dry_run = true
+```
+
+Environment override:
 
 ```bash
 SAFE_TEMP_UPLOAD_CLEANUP_AGE=24h \
@@ -664,6 +820,22 @@ deployment details.
 ## HTTP Timeouts
 
 Timeout values use Go duration strings such as `10s`, `30s`, or `5m`. `0` and `0s` disable a timeout.
+
+Using TOML:
+
+```toml
+[http.main]
+read_header_timeout = "10s"
+read_timeout = "0"
+write_timeout = "0"
+idle_timeout = "120s"
+
+[http.admin]
+read_header_timeout = "10s"
+read_timeout = "30s"
+write_timeout = "300s"
+idle_timeout = "120s"
+```
 
 Main read and write timeouts default to disabled so slow chunk uploads, private
 downloads, and viewer ZIP downloads are not accidentally cut off. Private-admin

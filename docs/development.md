@@ -306,8 +306,8 @@ publishing depend on that scan passing.
 
 Coverage output, `govulncheck`, builds, and artifact attestations are review
 signals. They do not prove that an artifact is vulnerability free, suitable for
-public production exposure, or safe to deploy with `/v1` reachable from the
-public internet.
+public production exposure, or safe to deploy with broad `/v1` access from the
+public internet without route-level deployment review.
 
 ## Pinned GitHub Actions
 

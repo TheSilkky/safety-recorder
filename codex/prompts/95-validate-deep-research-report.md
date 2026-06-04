@@ -58,7 +58,7 @@ Allowed values:
 
 Product documentation now uses the name Proofline. Repository paths, the Go module path, Docker image names, GHCR package names, and release binary names use the `open-proofline/server` repository namespace. Compatibility identifiers such as the v1 simulator encryption envelope, default SQLite filename, legacy `/e/{token}` aliases, and historical migration names may still use `safety-recorder` or `emergency` until separate protocol or data-layout migrations are explicitly performed.
 
-Proofline's planned product scope includes emergency incidents, non-emergency interaction records, timed safety checks, and evidence notes. The current backend stores generic incidents unless the reviewed tree explicitly implements first-class incident modes, capture profiles, escalation policies, or sharing state.
+Proofline's planned product scope includes emergency incidents, non-emergency interaction records, timed safety checks, and evidence notes. The current backend stores generic incidents by default; optional incident-mode, capture-profile, escalation-policy, and sharing-state metadata are labels only unless the reviewed tree explicitly implements first-class behavior for them.
 
 ## Rules
 
@@ -154,7 +154,10 @@ Check and fix, if needed:
 - Product name is Proofline where describing current docs/product direction.
 - Compatibility names remain when describing current artifacts, APIs, routes, config, or packages.
 - Repository facts are pinned to `<REVIEWED_COMMIT_SHA>`.
-- Future incident modes are marked as planning unless implemented.
+- Mode-driven behavior is marked as planning unless implemented. Optional
+  incident-mode, capture-profile, escalation-policy, and sharing-state metadata
+  may be described as implemented labels only when the reviewed tree supports
+  them.
 - Current `/v1` private boundary and public incident-viewer separation remain clear.
 - Current backend ciphertext-only behavior is represented accurately.
 - Historical report names are not rewritten as if they used the new product name at the time.
@@ -170,7 +173,9 @@ Check and fix, if needed:
 - Missing public product API authentication when docs state `/v1` is private
   and protected by local account sessions.
 - Missing web/iOS/Android clients when docs mark them as future work.
-- Missing first-class incident modes, capture profiles, escalation policies, sharing state, or dead-man switch when docs mark them as future work.
+- Missing first-class incident-mode behavior, capture-profile behavior,
+  escalation policies, sharing-state behavior, or dead-man switch when docs mark
+  them as future work.
 - Missing browser decryption, production key custody, or break-glass behavior when docs mark them as future work.
 - Preserved protocol, data-layout, route-alias, or migration compatibility names treated as stale after the repository/module/artifact rename.
 - Interaction-record planning treated as current implementation.

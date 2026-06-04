@@ -59,24 +59,30 @@ Codex can draft changes, but the maintainer remains responsible for reviewing, t
 
 3. If only Markdown changed, inspect docs and links manually. Go tests are not required unless code changed.
 
-4. For behavior changes, run the simulator smoke test:
+4. For behavior changes, run the simulator smoke test. Prefer a TOML config
+   with a private bootstrap secret file for repeatable smoke tests:
 
-	   ```bash
-	   SAFE_AUTH_BOOTSTRAP_SECRET='replace-with-local-bootstrap-secret' go run ./cmd/api
-	   ```
+   ```toml
+   [auth]
+   bootstrap_secret_file = "/path/to/local-bootstrap-secret"
+   ```
 
-	   In another terminal, create the first local admin if the test database does
-	   not already have one:
+   ```bash
+   go run ./cmd/api --config /path/to/proofline-smoke.toml
+   ```
 
-	   ```bash
-	   curl -sS -X POST http://127.0.0.1:8081/admin/bootstrap \
-	     -H 'Content-Type: application/x-www-form-urlencoded' \
-	     --data-urlencode 'bootstrap_secret=replace-with-local-bootstrap-secret' \
-	     --data-urlencode 'username=admin' \
-	     --data-urlencode 'password=replace-with-a-long-local-password'
-	   ```
+   In another terminal, create the first local admin if the test database does
+   not already have one:
 
-	   Then run the simulator with account credentials:
+   ```bash
+   curl -sS -X POST http://127.0.0.1:8081/admin/bootstrap \
+     -H 'Content-Type: application/x-www-form-urlencoded' \
+     --data-urlencode 'bootstrap_secret=replace-with-local-bootstrap-secret' \
+     --data-urlencode 'username=admin' \
+     --data-urlencode 'password=replace-with-a-long-local-password'
+   ```
+
+   Then run the simulator with account credentials:
 
 	   ```bash
 	   PROOFLINE_SIM_USERNAME='admin' \

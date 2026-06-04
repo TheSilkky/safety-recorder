@@ -23,6 +23,7 @@ This directory contains the detailed documentation for Proofline Server, the Go 
 | [Encryption](encryption.md) | Client-side chunk envelope, simulator key file, and local bundle verification. |
 | [iOS local recorder prototype](ios-local-recorder-prototype.md) | Future native incident-capture scope, chunking, encrypted staging, retry, and API mapping. |
 | [Key custody and emergency access](key-custody.md) | Future production key custody, trusted-contact access, and break-glass design. |
+| [Pure post-quantum encryption envelope](post-quantum-envelope.md) | Future ML-KEM-768, HKDF-SHA384, and AES-256-GCM envelope design for post-quantum recipient wrapping without changing current runtime behavior. |
 | [Contact key sharing, grants, and wrapped-key metadata](contact-key-sharing-grants.md) | Current trusted-contact public-key, grant, and wrapped-key metadata boundaries, plus future trusted-contact delivery, retention, audit, and implementation sequencing. |
 | [Contact-wrapped key metadata simulator prototype](contact-wrapped-key-metadata-simulator.md) | Simulator-only prototype for modeling trusted-contact public keys, non-secret key IDs, wrapped stream media keys, and safe development metadata without production key custody. |
 | [Browser-side decryption](browser-decryption.md) | Future incident viewer decryption options, risks, and phased direction. |
@@ -66,7 +67,7 @@ Proofline Server receives already-encrypted chunks, stores metadata in SQLite by
 
 The future regional stream-ingress relay design is planning-only; see
 [regional-stream-ingress-relay.md](regional-stream-ingress-relay.md). It does
-not add an implemented upload edge, public `/v1` exposure, durable ingress
+not add an implemented upload edge, broad public `/v1` exposure, durable ingress
 storage, backend decryption, key custody, or deployment automation.
 
 The planned production-cluster scope is additive: SQLite and local filesystem
@@ -148,4 +149,4 @@ production-ready public infrastructure.
 
 ## Security Reminder
 
-The main `/v1` API, private `/v1/admin/...` JSON routes, and `/admin` web surface use local account sessions, and open account registration can be enabled only with email verification, but they are still not public product surfaces. Keep main `/v1` behind the reviewed deployment boundary, and keep `/v1/admin/...` and `/admin` behind localhost, LAN, WireGuard, firewall rules, or a strict private reverse proxy. Separate main/private-admin bind addresses reduce accidental exposure, but they are not a complete security model.
+The main `/v1` API uses local account sessions and app-level route-class limits, and open account registration can be enabled only with email verification, but broad public exposure still needs route-level deployment review. Keep unreviewed main `/v1` route groups behind the reviewed deployment boundary, and keep `/v1/admin/...` and `/admin` behind localhost, LAN, WireGuard, firewall rules, or a strict private reverse proxy. Separate main/private-admin bind addresses reduce accidental exposure, but they are not a complete security model.

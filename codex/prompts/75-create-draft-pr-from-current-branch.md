@@ -102,10 +102,15 @@ go vet ./...
 
 If only Markdown changed, inspect docs and links manually. Go tests are not required unless code changed.
 
-If simulator behaviour is relevant:
+If simulator behaviour is relevant, prefer TOML for repeatable smoke:
+
+```toml
+[auth]
+bootstrap_secret_file = "/path/to/local-bootstrap-secret"
+```
 
 ```bash
-SAFE_AUTH_BOOTSTRAP_SECRET='replace-with-local-bootstrap-secret' go run ./cmd/api
+go run ./cmd/api --config /path/to/proofline-smoke.toml
 ```
 
 In another terminal, create the first local admin if the test database does not

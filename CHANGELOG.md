@@ -10,6 +10,9 @@
   config-file selection with `--config` or `SAFE_CONFIG_FILE`, and secret-file
   references for bootstrap, PostgreSQL, S3, Valkey, and SMTP credentials while
   preserving `SAFE_*` environment override compatibility.
+- Added Docker image default TOML configuration copied to
+  `/etc/proofline/proofline.toml`, with the container state volume under
+  `/var/lib/proofline` instead of ad hoc `/data` paths.
 - Added configurable account registration modes for disabled, admin-only, open
   self-registration, and paid-placeholder deployments. Open registration is
   disabled by default, requires SMTP-backed email verification, stores

@@ -11,7 +11,7 @@ Do **not** add API routes.
 Do **not** add background jobs.
 Do **not** implement dead-man-switch logic.
 Do **not** add dependencies.
-Do **not** add OAuth, JWT, user accounts, SMS, Messenger, push notifications, Docker Compose, Kubernetes, cloud integrations, or public admin dashboard features.
+Do **not** add OAuth, JWT, new account-system features beyond the implemented local account/session and registration flows, SMS, Messenger, push notifications, Docker Compose, Kubernetes, cloud integrations, or public admin dashboard features.
 
 ## Goal
 
@@ -61,7 +61,7 @@ State clearly:
 
 ### 2. Availability requirement
 
-Document that the system must assume the iPhone may be lost, damaged, powered off, taken, or destroyed.
+Document that the system must assume the user's phone may be lost, damaged, powered off, taken, or destroyed.
 
 Explain why phone-only keys are not sufficient for this product.
 

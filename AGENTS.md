@@ -6,7 +6,7 @@
 - Prefer Go standard library where practical.
 - This repository is the Proofline Go server backend only. In the current organisation layout it is `open-proofline/server`.
 - Do not add web-client, iOS-client, Android-client, or shared-protocol implementation to this repository unless the maintainer explicitly changes the repository strategy.
-- Do not add React, Node, npm, Docker Compose, Kubernetes, OAuth, JWT, user accounts, SMS, Messenger, push notifications, cloud services, or public admin dashboards unless explicitly requested.
+- Do not add React, Node, npm, Docker Compose, Kubernetes, OAuth, JWT, new account-system features beyond the implemented local account/session and registration flows, SMS, Messenger, push notifications, cloud services, or public admin dashboards unless explicitly requested.
 - Treat uploaded chunks as immutable.
 - Never overwrite stored chunks or evidence bundle contents.
 - Never log raw viewer tokens, incident tokens, request bodies, uploaded file bytes, Authorization headers, plaintext, raw keys, or future token-like values.
@@ -58,7 +58,7 @@
 - The current backend implements local username/password accounts, main `/v1` account/session authentication, admin account management routes, and owner/admin incident authorization.
 - The current backend implements optional incident mode, capture profile, escalation policy, and sharing state metadata fields on private incident create/read routes, but these fields do not grant access, send notifications, change retention, change key custody, expose trusted-contact workflows, or change public viewer and bundle behavior.
 - The current backend implements private owner-scoped and admin-global incident deletion routes, deletion tombstones, retryable blob deletion, and optional closed-incident retention through a background worker.
-- The current backend does not yet implement mode-driven access, trusted-contact accounts, dead-man switch notifications, public account workflows, or public `/v1` product authentication.
+- The current backend does not yet implement mode-driven access, trusted-contact accounts, dead-man switch notifications, public account workflows, or a complete public `/v1` product deployment model beyond local account sessions, optional browser cookie sessions, and route-class limits.
 - Planned production-cluster scope may add cluster-safe idempotent upload semantics and operation-level use of coordination. These additions must not remove SQLite, optional PostgreSQL metadata, local filesystem support, the optional S3-compatible blob backend, or the optional Valkey/Redis-compatible coordination backend.
 - Regional stream-ingress relay work is planning-only unless explicitly scoped for implementation; any future relay must stay upload-only, temporary, ciphertext-only, and subordinate to the core API for authorization, idempotency, durable blob commits, and metadata.
 - Future encryption direction should be a hybrid key custody model.

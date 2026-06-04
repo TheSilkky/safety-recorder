@@ -4,7 +4,7 @@ This document summarizes the current Proofline backend security assumptions and 
 
 ## Maturity
 
-Proofline is experimental and not production-ready public infrastructure. The main `/v1` API has local username/password accounts and opaque server-side sessions. Public self-registration is disabled by default and, when explicitly enabled for self-hosted deployments, requires SMTP-backed email verification before login. Proofline still has no OAuth, no JWT protection, no complete public product API hardening, no password recovery, and no public account portal.
+Proofline is experimental and not production-ready public infrastructure. The main `/v1` API has local username/password accounts, opaque server-side sessions, and app-level route-class rate limits. Public self-registration is disabled by default and, when explicitly enabled for self-hosted deployments, requires SMTP-backed email verification before login. Proofline still has no OAuth, no JWT protection, no complete public product deployment model, no password recovery, and no public account portal.
 
 The current backend stores incidents owned by local accounts. Incidents are
 generic by default and may include optional incident-mode, capture-profile,
@@ -22,11 +22,12 @@ The `/v1` access-control direction is documented in
 [v1-access-control.md](v1-access-control.md). The current implementation covers
 local account sessions, owner-scoped incident access, owner-scoped contact
 public-key, sharing-grant, and wrapped-key metadata routes, admin account
-routes, and route authentication. It does not make `/v1` safe to expose publicly as a
-product API. The implemented account incident list/detail routes are owner-only
-and public-safe, but uploads, chunk reads, bundle downloads, diagnostics,
-operator routes, write routes, and key-custody behavior still need separate
-review before public exposure. Existing `/v1/admin/...` JSON routes are
+routes, route authentication, and route-class limits. It does not by itself
+approve broad public `/v1` routing as a product API. The implemented account
+incident list/detail routes are owner-only and public-safe, but uploads, chunk
+reads, bundle downloads, diagnostics, operator routes, write routes, and
+key-custody behavior still need separate review before public exposure.
+Existing `/v1/admin/...` JSON routes are
 authenticated admin-only routes on the private-admin listener and must not be
 routed from public entry points. The current topology separates the main
 API/viewer listener from a separately bound private admin listener; see
@@ -323,16 +324,16 @@ Normal file or object removal is not treated as guaranteed secure erasure. Deplo
 
 ## Known Security Gaps
 
-- No broad public product API exposure model for `/v1`; local account sessions,
-  optional browser cookie sessions, and the narrow owner incident metadata
-  list/detail reads are authenticated main-API controls, not a complete public
-  security model
+- No complete public product API deployment model for `/v1`; local account
+  sessions, optional browser cookie sessions, app-level route-class limits, and
+  the narrow owner incident metadata list/detail reads are authenticated
+  main-API controls, not a complete public deployment model
 - No built-in TLS
-- No general-purpose abuse-throttling system beyond main API and public viewer
-  route-class rate limiting
+- No deployment-edge abuse-throttling system beyond app-level main API and
+  public viewer route-class rate limiting
 - PostgreSQL metadata and Valkey/Redis-compatible coordination are optional
   and experimental; they do not by themselves complete all cluster-safe upload
-  semantics or make `/v1` safe for public exposure
+  semantics or make every `/v1` route safe for broad public exposure
 - Cluster backup, restore, and failure runbooks are operational guidance only;
   they do not add access control, retention enforcement, observability, abuse
   controls, or production readiness
