@@ -11,6 +11,14 @@ for Proofline evidence media and wrapped media-key metadata. The proposed suite 
 ML-KEM-768 + HKDF-SHA384 + AES-256-GCM
 ```
 
+Recipient lifecycle and trusted-contact enrollment are designed separately in
+[contacts, key model, and viewer replacement](contacts-and-viewer-replacement.md).
+That design treats account, device, and trusted-contact public-key records as
+durable recipient keys. Incidents, streams, and bounded chunk groups own CEKs;
+wrapped-key records connect those CEKs to recipient key versions. End users
+should not manually manage ML-KEM keys, choose algorithms, or paste public keys
+as the primary trusted-contact flow.
+
 The envelope is intended for long-lived encrypted evidence where
 harvest-now/decrypt-later risk matters. It is pure post-quantum in the key
 establishment layer: it does not depend on X25519, P-256, RSA, or another
@@ -198,7 +206,9 @@ key_version = <monotonic recipient-key version or creation identifier>
 The key ID is a lookup and audit identifier. It does not grant access and must not
 be treated as proof that a recipient controls the corresponding private key.
 Public-key verification, contact enrollment, replacement, and revocation remain
-part of the trusted-contact model, not the envelope primitive itself.
+part of the trusted-contact model, not the envelope primitive itself. Recipient
+private keys belong to accounts, devices, and contacts; the envelope must not
+model an incident as its own long-term private-key identity.
 
 ## Key Hierarchy
 
