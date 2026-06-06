@@ -46,8 +46,12 @@ Reports are in scope when they affect the current backend, documentation, or dep
   private `/admin` web surface
 - optional main `/v1` browser cookie-session CSRF and credentialed CORS behavior
 - public incident viewer read-only access
+- owner-scoped contact public-key metadata, sharing-grant metadata, and
+  wrapped-key metadata authorization
 - viewer/incident token leakage
 - raw token logging
+- wrapped-key ciphertext, public wrapping metadata, or key-state metadata
+  leakage
 - raw idempotency-key logging or storage
 - request body logging
 - uploaded file byte logging

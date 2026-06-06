@@ -21,7 +21,7 @@ This directory contains the detailed documentation for Proofline Server, the Go 
 | [Main API public exposure listener split](public-api-listener-split.md) | Boundary for keeping main API routes and the read-only incident viewer on `8080` while keeping private `/v1/admin/...` JSON routes and the `/admin` dashboard on `8081`. |
 | [Legacy unowned incident reassignment](legacy-unowned-incident-reassignment.md) | Private admin review, reassignment, and keep-unowned audit workflow for incidents created before account ownership existed. |
 | [Stripe subscription billing](stripe-subscription-billing.md) | Cost-recovery hosted-server subscription boundary for future Stripe Checkout, Billing, Customer Portal, webhook, entitlement, and account-lifecycle work. |
-| [Contacts and viewer replacement](contacts-and-viewer-replacement.md) | Backend context for future trusted-contact invite/accept flows, automatic client key lifecycle, web-client viewer replacement, and issue-family planning without changing runtime behavior. |
+| [Contacts, key model, and viewer replacement](contacts-and-viewer-replacement.md) | Backend context for future trusted-contact invite/accept flows, durable account/device/contact recipient keys, incident/stream CEKs, GPS privacy, web-client viewer replacement, and issue-family planning without changing runtime behavior. |
 | [Encryption](encryption.md) | Client-side chunk envelope, simulator key file, and local bundle verification. |
 | [iOS local recorder prototype](ios-local-recorder-prototype.md) | Future native incident-capture scope, chunking, encrypted staging, retry, and API mapping. |
 | [Key custody and emergency access](key-custody.md) | Future production key custody, trusted-contact access, and break-glass design. |
