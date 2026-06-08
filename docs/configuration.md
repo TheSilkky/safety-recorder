@@ -229,13 +229,13 @@ values for the same field. Within TOML, set either the direct secret key or the
 | `SAFE_TEMP_UPLOAD_CLEANUP_DRY_RUN` | `false` | When temp cleanup is enabled, log safe counts without deleting eligible temp files. |
 | `SAFE_MAIN_API_RATE_LIMIT_ENABLED` | `true` | Enables app-level rate limiting for main API route classes. Set to `false` to disable the app-level limiter. |
 | `SAFE_MAIN_API_RATE_LIMIT_WINDOW` | `1m` | Fixed-window duration for app-level main API limits. |
-| `SAFE_MAIN_API_RATE_LIMIT_AUTH` | `30` | Main API login/logout requests allowed per window per hashed socket peer. Set to `0` to disable this route-class limit. |
+| `SAFE_MAIN_API_RATE_LIMIT_AUTH` | `30` | Main API bearer login/logout and browser cookie login/logout/CSRF requests allowed per window per hashed socket peer. Set to `0` to disable this route-class limit. |
 | `SAFE_MAIN_API_RATE_LIMIT_AUTH_REGISTER` | `10` | Public registration requests allowed per window per hashed socket peer. Set to `0` to disable this route-class limit. |
 | `SAFE_MAIN_API_RATE_LIMIT_AUTH_EMAIL_VERIFY` | `30` | Email verification requests allowed per window per hashed socket peer. Set to `0` to disable this route-class limit. |
 | `SAFE_MAIN_API_RATE_LIMIT_BOOTSTRAP` | `5` | Compatibility setting for the legacy JSON bootstrap route class. The current first-admin bootstrap flow is the private `/admin/bootstrap` form. |
-| `SAFE_MAIN_API_RATE_LIMIT_ACCOUNT` | `120` | Account self-service requests allowed per window per hashed socket peer. Set to `0` to disable this route-class limit. |
-| `SAFE_MAIN_API_RATE_LIMIT_INCIDENT_READ` | `300` | Incident metadata read requests allowed per window per hashed socket peer. Set to `0` to disable this route-class limit. |
-| `SAFE_MAIN_API_RATE_LIMIT_INCIDENT_WRITE` | `120` | Incident create, close, and owner-scoped deletion requests allowed per window per hashed socket peer. Set to `0` to disable this route-class limit. |
+| `SAFE_MAIN_API_RATE_LIMIT_ACCOUNT` | `120` | Account self-service and owner contact public-key metadata requests allowed per window per hashed socket peer. Set to `0` to disable this route-class limit. |
+| `SAFE_MAIN_API_RATE_LIMIT_INCIDENT_READ` | `300` | Incident metadata, sharing-grant metadata, and wrapped-key metadata read requests allowed per window per hashed socket peer. Set to `0` to disable this route-class limit. |
+| `SAFE_MAIN_API_RATE_LIMIT_INCIDENT_WRITE` | `120` | Incident create, close, owner-scoped deletion, sharing-grant metadata, and wrapped-key metadata write requests allowed per window per hashed socket peer. Set to `0` to disable this route-class limit. |
 | `SAFE_MAIN_API_RATE_LIMIT_UPLOAD` | `120` | Complete encrypted chunk upload requests allowed per window per hashed socket peer. Set to `0` to disable this route-class limit. |
 | `SAFE_MAIN_API_RATE_LIMIT_RECONCILE` | `120` | Duplicate chunk reconciliation requests allowed per window per hashed socket peer. Set to `0` to disable this route-class limit. |
 | `SAFE_MAIN_API_RATE_LIMIT_STREAM` | `120` | Stream create/read/complete/fail requests allowed per window per hashed socket peer. Set to `0` to disable this route-class limit. |

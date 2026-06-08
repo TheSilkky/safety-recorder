@@ -49,13 +49,16 @@ Non-upload JSON bodies are limited to 64 KiB. Upload file bytes are limited by `
 Main API route classes are rate limited by default before authentication using
 safe server-controlled keys based on route class and a hash of the socket peer
 identity. Login/logout, public registration, and email verification have
-separate authentication-related route classes. Rate-limit keys do not include
-raw email addresses, raw usernames, verification tokens, raw session tokens,
-Authorization headers, raw idempotency keys, request bodies, uploaded bytes,
-incident IDs, stored paths, object keys, plaintext, raw keys, or private
-deployment details. Exhausted limits return `429 rate_limited` with
-`Retry-After`. A configured coordination limiter failure returns
-`503 rate_limit_unavailable` with a generic response. See
+separate authentication-related route classes. Existing main API limit classes
+also cover account/contact-key metadata, incident metadata reads and writes,
+sharing-grant metadata, wrapped-key metadata, uploads, reconciliation, streams,
+incident tokens, and private encrypted downloads. Rate-limit keys do not
+include raw email addresses, raw usernames, verification tokens, raw session
+tokens, Authorization headers, raw idempotency keys, request bodies, uploaded
+bytes, incident IDs, stored paths, object keys, plaintext, raw keys, wrapped-key
+ciphertext, or private deployment details. Exhausted limits return
+`429 rate_limited` with `Retry-After`. A configured coordination limiter
+failure returns `503 rate_limit_unavailable` with a generic response. See
 [configuration](configuration.md) for `SAFE_MAIN_API_RATE_LIMIT_*` settings.
 
 ## Health And Readiness

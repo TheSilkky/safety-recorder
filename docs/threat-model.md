@@ -149,14 +149,17 @@ metadata, grant-bound wrapped-key metadata, and encrypted evidence bundles.
   derived from a server-controlled hash of normalized chunk identity. Busy
   leases return `409 upload_in_progress` with a retry hint, while runtime
   coordination failures return a retryable safe error.
-- Route-class rate limiting groups main API authentication, public
-  registration, email verification, account, incident, upload, reconciliation,
-  stream, token, and download requests, plus admin API requests, by safe class
-  labels and a hash of the socket peer identity. Limiter keys do not include
-  raw email addresses, raw usernames, verification tokens, raw session tokens,
-  Authorization headers, raw idempotency keys, request bodies, uploaded bytes,
-  incident IDs, stored paths, object keys, plaintext, raw keys, or private
-  deployment details.
+- Route-class rate limiting groups main API authentication, browser-cookie
+  auth, public registration, email verification, account and contact-key
+  metadata, incident metadata, sharing-grant metadata, wrapped-key metadata,
+  upload, reconciliation, stream, token, and download requests by safe class
+  labels and a hash of the socket peer identity. The legacy main-handler admin
+  limit setting is retained only as a compatibility setting because current
+  `/v1/admin/...` JSON routes are on the private-admin listener. Limiter keys
+  do not include raw email addresses, raw usernames, verification tokens, raw
+  session tokens, Authorization headers, raw idempotency keys, request bodies,
+  uploaded bytes, incident IDs, stored paths, object keys, plaintext, raw keys,
+  wrapped-key ciphertext, or private deployment details.
 - The current listener split does not expose `/v1/health/live` or
   `/v1/health/ready`; operator readiness details should not be published on
   the main API/viewer origin or on the private-admin listener.
