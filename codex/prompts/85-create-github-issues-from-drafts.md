@@ -258,6 +258,7 @@ After generating the script:
 ```bash
 git diff --stat
 git diff -- scripts/create-backlog-issues.sh .backlog-drafts
+git diff --check
 ```
 
 Do not run Go tests unless code was changed.

@@ -15,14 +15,20 @@ Do **not** add React, Node, npm, OAuth, JWT, new account-system features beyond 
 
 ## Goal
 
-Create a design document for the future production key custody model.
+Create or update the relevant design document for the future production key
+custody model. If the document already exists, update it rather than creating a
+duplicate.
 
 The ultimate target should be a **hybrid key custody model**:
 
 - chunks/streams are encrypted client-side
+- private keys belong to accounts, devices, and trusted contacts
+- content-encryption keys belong to incidents, streams, or bounded chunk groups
+- wrapped access records connect recipient key versions to content keys
 - keys are not stored solely on the user's phone
 - trusted contacts can eventually access emergency evidence without needing the phone to survive
 - the backend may store wrapped/encrypted keys
+- current runtime behavior remains ciphertext-only unless separately implemented
 - browser/client-side decryption may be supported
 - server escrow or server-side decryption may be supported only as an explicit break-glass/dead-man-switch mode
 - all key custody and decryption changes must be deliberate, documented, tested, and threat-modeled
@@ -49,7 +55,9 @@ The current repository implementation is simulator/development only:
 - backend creates encrypted ZIP evidence bundles
 - simulator encrypts fake chunks with the documented v1 AES-256-GCM envelope
 - simulator can decrypt-verify downloaded bundles locally
-- backend does not currently store keys
+- backend can store grant-bound wrapped-key metadata for explicitly designed
+  owner-scoped sharing flows
+- backend does not currently store raw keys
 - backend does not currently decrypt chunks
 - evidence bundles are not playable media exports
 
@@ -65,6 +73,10 @@ Read current files before drafting:
 - `SECURITY.md`
 - `docs/README.md`
 - `docs/encryption.md`
+- `docs/contacts-and-viewer-replacement.md`, if present
+- `docs/post-quantum-envelope.md`, if present
+- `docs/browser-decryption.md`, if present
+- `docs/break-glass-key-access.md`, if present
 - `docs/security-model.md`
 - `docs/threat-model.md`
 - `docs/architecture.md`
@@ -84,11 +96,14 @@ If GitHub CLI is unavailable, continue from local docs.
 
 ## Design document
 
-Create:
+Create or update:
 
 ```text
 docs/key-custody.md
 ```
+
+If `docs/key-custody.md` already exists, update it rather than creating a
+duplicate fixed-path design document.
 
 The document should be professional, explicit, and security-focused.
 
@@ -185,11 +200,15 @@ Propose a key hierarchy.
 
 Consider:
 
+- account, device, and trusted-contact recipient keys
+- recipient key versions
 - per-incident media key
 - per-stream media key
+- content-encryption keys for incidents, streams, or bounded chunk groups
 - per-chunk nonce
 - key IDs
 - wrapped media keys
+- wrapped access records that connect recipient key versions to content keys
 - contact public keys
 - server escrow keys
 - future rotation/revocation implications
@@ -287,7 +306,7 @@ Phase 6: optional server escrow/break-glass implementation
 
 ## Docs to update
 
-After creating `docs/key-custody.md`, update only small references in:
+After creating or updating `docs/key-custody.md`, update only small references in:
 
 - `docs/README.md`
 - `docs/encryption.md`
@@ -306,6 +325,7 @@ Because this is a documentation-only task:
 ```bash
 git diff --stat
 git diff -- docs README.md CHANGELOG.md
+git diff --check
 ```
 
 If any code changed, stop and explain why.

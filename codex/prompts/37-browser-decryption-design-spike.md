@@ -41,9 +41,12 @@ Read:
   - `internal/httpapi/web/static/scripts.js`
   - `internal/httpapi/assets.go`
 
-## Document to create
+## Document to create or update
 
-Create:
+Create or update the relevant design document. If the document already exists,
+update it rather than creating a duplicate.
+
+Path:
 
 ```text
 docs/browser-decryption.md
@@ -192,6 +195,7 @@ Markdown-only:
 ```bash
 git diff --stat
 git diff -- docs CHANGELOG.md
+git diff --check
 ```
 
 If code changed, stop and explain why.

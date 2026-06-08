@@ -121,7 +121,7 @@ Do not implement crypto, schema changes, backend decryption, browser decryption,
 
 Do not rename reusable prompts unless needed. If any reusable prompt filename violates the current `NN-short-kebab-title.md` convention, report it before changing it.
 
-Do not modify historical prompts under `codex/archive/`, `codex/features/`, `codex/refactors/`, or `codex/work-orders/` except this work-order file.
+Do not modify historical prompts under `codex/archive/` or `codex/work-orders/` except this work-order file.
 
 ### 6. Add rate-limit coverage checks to security review prompt
 

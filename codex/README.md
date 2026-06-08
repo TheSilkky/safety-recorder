@@ -13,8 +13,6 @@ codex/
   README.md
   prompts/
   archive/
-  features/
-  refactors/
   work-orders/
 ```
 
@@ -28,8 +26,6 @@ Historical prompts live in:
 
 ```text
 codex/archive/
-codex/features/
-codex/refactors/
 codex/work-orders/
 ```
 
@@ -172,14 +168,14 @@ When project scope, architecture, security posture, or workflow changes, update 
 | Bundle, storage, schema, or manifest changes | Update API docs, code-map docs, simulator docs/prompts, and Deep Research scope. |
 | CI/CD, Docker, GHCR, or release workflow changes | Update release/development docs and release/report prompts. |
 | New repeated Codex workflow | Add one reusable `NN-short-kebab-title.md` prompt and list it in this README. |
-| One-off implementation, refactor, or work order | Add a dated historical prompt under `features/`, `refactors/`, or `work-orders/`. |
+| One-off implementation, refactor, or work order | Add a dated historical prompt under `archive/` or `work-orders/`. |
 | Validated Deep Research report finds a recurring false-positive pattern | Update the Deep Research Phase 1 and/or Codex Phase 2 validation prompts so the same mistake is less likely to recur. |
 
 Key custody guardrails need special care. Preserve the current backend ciphertext-only implementation unless the task explicitly concerns key custody, emergency access, or decryption design. Do not turn "no server keys ever" into a permanent absolute rule, and do not introduce backend decryption, browser decryption, raw server-held keys, key escrow, or key-sharing behaviour incidentally. Explicit key custody or decryption work must update the threat model, security model, encryption docs, tests, and operational guidance before or alongside implementation.
 
 For the public-safe report workflow, review Deep Research Phase 1 and Codex Phase 2 validation together when report workflow changes. Phase 1 lives in `docs/reports/prompts/phase-1-deep-research-technical-review.md`. Codex Phase 2 validation lives in `codex/prompts/95-validate-deep-research-report.md`. Keep portable citation keys, pin repository citations to reviewed commits, do not allow ChatGPT internal citation tokens in public reports, and add newly discovered recurring false positives to the Phase 2 checklist.
 
-Do not add a reusable prompt for every one-off idea. Add reusable prompts only for repeated workflows. One-off prompts belong in dated historical directories, and generated local artifacts belong outside `codex/`.
+Do not add a reusable prompt for every one-off idea. Add reusable prompts only for repeated workflows. One-off prompts belong in `archive/` or `work-orders/`, and generated local artifacts belong outside `codex/`.
 
 ## Issue And PR Workflow
 
@@ -223,9 +219,11 @@ Before accepting Codex changes that touch Go code:
 gofmt -w ./cmd ./internal ./migrations
 go test ./...
 go vet ./...
+git diff --check
 ```
 
-For docs-only changes, inspect the relevant Markdown and links manually. Go tests are not required unless code changed.
+For docs-only changes, run `git diff --check` and inspect the relevant
+Markdown and links manually. Go tests are not required unless code changed.
 
 For simulator/API flow changes, also run the simulator smoke test when
 practical. Prefer an explicit TOML config for repeatable smoke tests,

@@ -121,9 +121,11 @@ If Go code changed:
 gofmt -w ./cmd ./internal ./migrations
 go test ./...
 go vet ./...
+git diff --check
 ```
 
-If only Markdown changed, inspect docs and links manually. Go tests are not required unless code changed.
+If only Markdown changed, run `git diff --check` and inspect docs and links
+manually. Go tests are not required unless code changed.
 
 If behaviour changed and the simulator is relevant, prefer TOML for repeatable
 smoke:

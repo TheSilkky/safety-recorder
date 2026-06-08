@@ -95,6 +95,7 @@ After changes:
 gofmt -w ./cmd ./internal ./migrations
 go test ./...
 go vet ./...
+git diff --check
 ```
 
 For documentation-only readability standards changes, inspect the Markdown diff and links manually. Go tests are not required unless code changed.

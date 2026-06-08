@@ -141,6 +141,7 @@ Run:
 gofmt -w ./cmd ./internal ./migrations
 go test ./...
 go vet ./...
+git diff --check
 ```
 
 ## Output

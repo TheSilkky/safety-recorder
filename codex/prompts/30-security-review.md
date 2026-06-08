@@ -2,6 +2,10 @@
 
 Review the backend and documentation for security issues.
 
+Default mode is review-only: inspect current code, docs, and diffs and report
+findings without editing files. Enter fix mode only when the maintainer requests
+fixes or the prompt explicitly says to fix the findings.
+
 Do **not** add new features.
 Do **not** add React, Node, npm, OAuth, JWT, new account-system features beyond the implemented local account/session and registration flows, SMS, Messenger, push notifications, Docker Compose, Kubernetes, cloud integrations, or public admin dashboards.
 Do **not** include sensitive vulnerability details in public-facing docs or issue drafts.
@@ -81,6 +85,15 @@ Check:
 - nonce/key misuse risks in docs/tests
 - stale documentation that overpromises production readiness
 
+Rate-limit coverage checks:
+
+- route registration and rate-limit classifier coverage stay aligned
+- every new main `/v1` route is assigned a rate-limit class or explicitly documented as intentionally unclassified
+- authenticated write routes for accounts, contacts, sharing grants, wrapped keys, tokens, uploads, streams, deletion, and auth/session flows have appropriate rate-limit coverage
+- browser cookie-auth routes such as web login, web logout, and CSRF are checked for rate-limit coverage or explicitly justified
+- tests cover rate-limit classification for every registered main API route class where practical
+- stale, unused, or misleading rate-limit config fields are removed, renamed, wired, or documented
+
 ## Sensitive finding handling
 
 If you find a likely vulnerability that should not be public:
@@ -107,6 +120,7 @@ For each finding, include:
 - minimal recommended fix
 - affected files/routes if known
 - whether it is safe for public issue tracking
+- any registered routes that appear missing from the rate-limit classifier
 
 If fixes are needed, make only minimal fixes and run:
 
@@ -114,4 +128,5 @@ If fixes are needed, make only minimal fixes and run:
 gofmt -w ./cmd ./internal ./migrations
 go test ./...
 go vet ./...
+git diff --check
 ```

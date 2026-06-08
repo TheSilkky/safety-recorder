@@ -2,6 +2,10 @@
 
 Review current changes for correctness, maintainability, security, and scope control.
 
+Default mode is review-only: inspect current changes and report findings
+without editing files. Enter fix mode only when the maintainer requests fixes
+or the prompt explicitly says to fix the findings.
+
 Do **not** add features unless needed to fix a bug.
 Do **not** make broad refactors during review unless required to fix a blocking issue.
 
@@ -87,6 +91,7 @@ If you make changes:
 
 - keep them small
 - do not add unrelated features
+- do not include sensitive vulnerability details in public artifacts
 - do not change public JSON field names unless required for a bug
 - run:
 
@@ -94,6 +99,7 @@ If you make changes:
 gofmt -w ./cmd ./internal ./migrations
 go test ./...
 go vet ./...
+git diff --check
 ```
 
 Then summarize what changed.
