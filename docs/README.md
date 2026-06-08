@@ -16,6 +16,7 @@ This directory contains the detailed documentation for Proofline Server, the Go 
 | [Resumable upload and upload lease protocol](resumable-upload-lease-protocol.md) | Planning decision to keep the desktop recorder simulator on complete encrypted chunk retry semantics while deferring resumable uploads and partial-upload lease sessions. |
 | [Regional stream ingress relay](regional-stream-ingress-relay.md) | Planning boundary for a future optional regional upload-only relay that stages ciphertext temporarily and lets the core API remain authoritative for authorization, durable commits, idempotency, and metadata. |
 | [Incident capture modes](incident-modes.md) | Planned emergency, interaction-record, safety-check, and evidence-note modes, plus future capture-profile, escalation-policy, sharing-state, and migration boundaries. |
+| [Capture stream variants and evidence supersession](capture-stream-variants.md) | Future source-timeline grouping, near-live/evidence-master/audio-priority variants, supersession, failed-stream preservation, encrypted context, and relay fanout boundaries without changing runtime behavior. |
 | [Mode-aware retention policy](mode-aware-retention-policy.md) | Planning boundary for future retention policy based on incident mode, safety-check state, sharing/export state, grants, wrapped keys, tombstones, and backups. |
 | [/v1 access control](v1-access-control.md) | Current local account/session and optional browser-cookie boundary plus future role, grant, public product API, private admin API listener, audit, and migration boundaries for account-owner, trusted-contact, public-link, admin/operator, and optional escrow access. |
 | [Main API public exposure listener split](public-api-listener-split.md) | Boundary for keeping main API routes and the read-only incident viewer on `8080` while keeping private `/v1/admin/...` JSON routes and the `/admin` dashboard on `8081`. |
@@ -71,6 +72,12 @@ The future regional stream-ingress relay design is planning-only; see
 [regional-stream-ingress-relay.md](regional-stream-ingress-relay.md). It does
 not add an implemented upload edge, broad public `/v1` exposure, durable ingress
 storage, backend decryption, key custody, or deployment automation.
+
+Future capture stream variants and evidence supersession are planning-only; see
+[capture-stream-variants.md](capture-stream-variants.md). The current backend
+still treats each media stream as one concrete upload lane, and it does not
+implement capture stream groups, variant roles, source-timeline supersession, or
+canonical evidence selection.
 
 The planned production-cluster scope is additive: SQLite and local filesystem
 storage remain supported, optional PostgreSQL metadata can store incident

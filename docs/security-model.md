@@ -152,6 +152,12 @@ Viewer URLs contain bearer tokens and should be treated as secrets. Reverse prox
   tokens, or conflicting stored values.
 - Chunk metadata inserts recheck incident and stream state in the repository so uploads racing with close or completion are rejected.
 - Media stream completion verifies contiguous chunks and readable stored files, then rechecks chunk rows transactionally before committing completion.
+- Future capture stream groups, variant roles, source-timeline matching, and
+  evidence supersession are planning-only in
+  [capture-stream-variants.md](capture-stream-variants.md). The current backend
+  does not select canonical evidence across variants, and a future supersession
+  decision must not overwrite immutable chunks or delete the only
+  backend-confirmed evidence for a source time range.
 - Local account authorization binds authenticated incident access to the
   authenticated account, the incident owner, and the role. Account incident
   list/detail reads are owner-only and return public-safe metadata only; admins
@@ -235,6 +241,11 @@ paths.
 Incident bundle generation fails closed if any completed stream cannot be reconstructed. It does not silently omit inconsistent completed streams from the ZIP or manifest.
 
 Bundles contain encrypted chunk bytes and JSON manifests only. They are not decrypted, playable, or merged media exports.
+
+Future canonical bundle or export manifests may use capture stream variant
+evidence resolution only after a separate manifest design is accepted. Until
+then, completed bundle behavior remains stream-based and does not delete
+near-live, audio-priority, or failed-stream fallback evidence.
 
 Bundle manifests may include a non-secret client-side encryption hint. They do
 not include keys. Contact public-key, sharing-grant, and wrapped-key metadata
@@ -365,6 +376,10 @@ Normal file or object removal is not treated as guaranteed secure erasure. Deplo
   metadata summaries and completed encrypted bundle downloads; the future
   boundary is documented in
   [live-partial-stream-access-boundary.md](live-partial-stream-access-boundary.md)
+- No implemented capture stream group, variant-role, source-timeline
+  supersession, or canonical evidence resolution behavior beyond the current
+  concrete media stream model; the future design is documented in
+  [capture-stream-variants.md](capture-stream-variants.md)
 - No mode-specific retention, backup lifecycle enforcement, or built-in disk
   encryption; the operational policy is
   documented in [retention-backup-deletion.md](retention-backup-deletion.md),

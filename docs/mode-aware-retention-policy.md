@@ -65,7 +65,8 @@ Future mode-aware retention should use explicit policy inputs, not labels alone:
 | Input | Example values | Retention use |
 |---|---|---|
 | Incident mode | emergency, interaction record, safety check, evidence note | Select the default policy class after owner review. |
-| Capture profile | audio/video/location, location check-in, note or attachment | Decide whether failed/open streams and attachments inherit incident retention. |
+| Capture profile | audio/video/location, location check-in, note or attachment | Decide whether failed/open streams, variants, and attachments inherit incident retention. |
+| Capture stream variant state | live preview, evidence master, audio priority, missing master coverage | Preserve fallback evidence and avoid deleting the only confirmed coverage for a source segment. |
 | Escalation policy | none, trusted contacts on start, trusted contacts on missed check-in | Delay retention decisions while escalation or review is active. |
 | Sharing state | private, trusted-contact access, public link, legal export, revoked/expired | Preserve grant, token, export, and audit metadata long enough for review. |
 | Safety-check state | active, completed, canceled, missed, false alarm | Select completion and missed-check handling without adding notifications here. |
@@ -199,6 +200,9 @@ Policy rules:
   automatic retention deletion.
 - Failed streams stay with their parent incident unless a later issue designs
   stream-level deletion semantics.
+- Superseded stream variants stay with their parent incident unless a later
+  issue designs deletion semantics that prove equivalent backend-confirmed
+  source-time coverage and preserve encrypted context links.
 - Minimal tombstones should retain only non-sensitive fields needed for
   idempotency, audit, and restore reconciliation.
 - Tombstone pruning must wait until deletion is complete and retry state is

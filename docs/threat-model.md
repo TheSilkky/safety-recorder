@@ -14,6 +14,11 @@ metadata, grant-bound wrapped-key metadata, and encrypted evidence bundles.
 
 - Already-encrypted uploaded chunk files under `SAFE_DATA_DIR` for local storage, or committed encrypted objects in the configured S3-compatible bucket
 - Incident, media stream, chunk, checkin, and viewer/incident-token metadata in SQLite by default or optional PostgreSQL
+- Future capture stream group, stream variant, source timeline, and
+  supersession metadata are planning-only. If implemented later, they become
+  evidence-selection metadata and must not expose plaintext GPS/context, stored
+  paths, object keys, raw tokens, raw keys, uploaded bytes, or private
+  deployment details.
 - Deployment configuration and secret material used for startup, including the
   one-time bootstrap secret, optional PostgreSQL DSN, optional S3 credentials,
   optional Valkey password, and optional SMTP password. These values may be
@@ -220,6 +225,11 @@ metadata, grant-bound wrapped-key metadata, and encrypted evidence bundles.
 - Open and failed streams are exposed to the current public viewer only as
   metadata summaries. Live or partial stream access is planning-only in
   [live-partial-stream-access-boundary.md](live-partial-stream-access-boundary.md).
+- Future capture stream variants and evidence supersession are planning-only in
+  [capture-stream-variants.md](capture-stream-variants.md). Reduced-quality
+  near-live chunks are preserved evidence after backend confirmation, and a
+  higher-quality variant must not supersede them for canonical selection until
+  source-time coverage and encrypted context links validate.
 - ZIP bundle entry names are server-controlled and generated from metadata; clients do not provide stored paths for download.
 - Public viewer responses use a strict same-origin `Content-Security-Policy` with `frame-ancestors 'none'`, `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer`, and a restrictive camera/microphone/geolocation `Permissions-Policy`.
 - Token-protected pages, JSON, errors, authenticated responses, authenticated chunk reads, and bundle downloads use `Cache-Control: no-store`.
@@ -304,6 +314,8 @@ The current backend does not implement incident-mode-specific controls yet, so f
 - No malware/content scanning; uploaded bytes are assumed to be client-encrypted blobs.
 - Bundle downloads are encrypted chunk bundles, not decrypted or playable media exports.
 - No implemented live or partial stream chunk access before stream completion.
+- No implemented capture stream group, stream-variant, source-timeline
+  supersession, or canonical evidence resolution behavior.
 - No account self-service recovery, second factor authentication, delegated
   identity provider, or public account portal. The only implemented email
   delivery path is SMTP-backed registration email verification when open
