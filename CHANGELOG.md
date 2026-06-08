@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Aligned key-custody, encryption, API, security, and threat-model docs around
+  durable recipient keys, CEK scopes, wrapped-key records, and prototype
+  migration boundaries without changing runtime behavior.
 - Extended main API route-class rate-limit coverage to browser-cookie auth,
   contact public-key metadata, sharing-grant metadata, and wrapped-key metadata
   routes while reusing existing limit classes and preserving listener

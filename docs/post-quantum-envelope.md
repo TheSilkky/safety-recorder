@@ -530,6 +530,9 @@ The future PQ envelope must be additive:
 
 - keep current v1 fixtures and simulator behavior working until an explicit
   migration is accepted
+- migrate or regenerate prototype/test fixtures that assumed per-incident
+  private-key identities to durable recipient public-key records plus scoped
+  CEKs when those fixtures are touched
 - advertise the new scheme through manifests or metadata only when the payload
   actually uses it
 - reject mismatched scheme and envelope bytes

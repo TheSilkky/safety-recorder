@@ -31,10 +31,12 @@ metadata, grant-bound wrapped-key metadata, and encrypted evidence bundles.
   expose trusted-contact workflows, or change public viewer and bundle behavior.
 - Trusted-contact public-key metadata, owner-scoped sharing-grant records, and
   grant-bound wrapped-key records in SQLite by default or optional PostgreSQL.
-  Wrapped-key records contain encrypted media-key material and public wrapping
-  metadata, which is access-enabling metadata. These records do not contain
-  contact private keys, raw media keys, plaintext, browser fragment secrets, or
-  server-decryptable key material.
+  Wrapped-key records contain encrypted CEK/media-key material and public
+  wrapping metadata, which is access-enabling metadata. In the future key model,
+  long-term private keys belong to accounts, devices, and trusted contacts,
+  while CEKs belong to incidents, streams, or bounded chunk groups. These records
+  do not contain recipient private keys, raw CEKs, raw media keys, plaintext,
+  browser fragment secrets, or server-decryptable key material.
 - Legacy unowned incident reassignment audit metadata in SQLite by default or
   optional PostgreSQL. These records contain incident IDs, previous/new owner
   account IDs where applicable, actor account IDs, controlled action and reason
@@ -193,9 +195,9 @@ metadata, grant-bound wrapped-key metadata, and encrypted evidence bundles.
   active contact public key owned by the same account and can be scoped to an
   incident or one stream. New wrapped-key records require an active, unexpired
   grant that authorizes ciphertext access and an active contact public key.
-  The routes do not store or return contact private keys, raw media keys,
-  plaintext, browser fragment secrets, request bodies, uploaded bytes, stored
-  paths, staging paths, object keys, or private deployment details.
+  The routes do not store or return recipient private keys, raw CEKs, raw media
+  keys, plaintext, browser fragment secrets, request bodies, uploaded bytes,
+  stored paths, staging paths, object keys, or private deployment details.
 - The private admin web surface uses `html/template`, stores browser admin
   sessions in an HttpOnly SameSite cookie scoped to `/admin`, serves embedded
   token-neutral CSS from the private admin prefix without authentication, and
@@ -307,9 +309,10 @@ The current backend does not implement incident-mode-specific controls yet, so f
   delivery path is SMTP-backed registration email verification when open
   registration is explicitly enabled.
 - Viewer links are bearer tokens and must be shared carefully.
-- No implemented production key recovery, Keychain storage, trusted-contact
-  account access, browser decryption, break-glass key access, or playable
-  export. The future key custody and emergency access design is documented in
+- No implemented production durable-recipient-key plus CEK envelope, key
+  recovery, Keychain storage, trusted-contact account access, browser
+  decryption, break-glass key access, or playable export. The future key custody
+  and emergency access design is documented in
   [key-custody.md](key-custody.md), contact key-sharing and wrapped-key grants
   are described in [contact-key-sharing-grants.md](contact-key-sharing-grants.md),
   browser decryption is designed in [browser-decryption.md](browser-decryption.md),

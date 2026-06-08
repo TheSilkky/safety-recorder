@@ -10,7 +10,11 @@ changes, or production key custody behavior.
 
 ## Summary
 
-Proofline currently keeps the backend ciphertext-only. Clients or the simulator upload already-encrypted chunk bytes, the backend validates hashes over those ciphertext bytes, and evidence bundles contain encrypted chunks plus JSON manifests. The backend does not store media keys and does not decrypt media.
+Proofline currently keeps the backend ciphertext-only. Clients or the simulator
+upload already-encrypted chunk bytes, the backend validates hashes over those
+ciphertext bytes, and evidence bundles contain encrypted chunks plus JSON
+manifests. The backend does not store raw content-encryption keys (CEKs), raw
+media keys, or recipient private keys, and it does not decrypt media.
 
 That model is a good confidentiality baseline, but it is not sufficient for the future product. During a real emergency, safety check, or high-risk interaction, the user's phone may be lost, damaged, powered off, taken, destroyed, or otherwise unavailable. Production key material therefore must not exist solely on the phone.
 
@@ -18,7 +22,7 @@ The preferred long-term direction is a hybrid key custody model:
 
 - clients encrypt media before upload
 - the backend stores ciphertext chunks
-- the backend may store wrapped or encrypted media keys
+- the backend may store wrapped or encrypted CEKs
 - trusted contacts can eventually decrypt authorised incident evidence without needing the phone to survive
 - client-side or trusted-contact-side decryption is preferred where practical
 - server escrow or server-side decryption is allowed only as an explicit break-glass or dead-man-switch mode
@@ -47,7 +51,8 @@ the backend ciphertext-only by default.
 - Support future live audio/video streaming design.
 - Support future dead-man-switch flows.
 - Avoid making the phone the only place where usable keys exist.
-- Avoid casual or raw server access to media keys.
+- Avoid casual or raw server access to CEKs, media keys, or recipient private
+  keys.
 - Make key custody decisions auditable and documented.
 
 ## Non-Goals For This Milestone
@@ -84,7 +89,7 @@ designed separately; see [v1-access-control.md](v1-access-control.md).
 
 ### 1. Client-Only Keys
 
-The recording client generates media keys and stores them only on the phone, for example in the iOS Keychain or Android Keystore. Uploaded chunks are encrypted before upload. The backend never receives media keys or wrapped copies.
+The recording client generates CEKs and stores them only on the phone, for example in the iOS Keychain or Android Keystore. Uploaded chunks are encrypted before upload. The backend never receives CEKs, media keys, or wrapped copies.
 
 This protects against passive backend, database, and blob-storage compromise, but it fails the core availability requirement if the phone is lost, destroyed, seized, or unavailable. It remains useful as a development starting point and confidentiality baseline, but it is not sufficient as the production model.
 
@@ -109,7 +114,10 @@ Tradeoffs:
 
 ### 2. Contact-Wrapped Keys
 
-The user pre-registers trusted contacts. Each contact has a public key. For each incident or stream, the client encrypts media with a media key and wraps that media key to one or more contact public keys. The backend stores ciphertext chunks and wrapped media keys, but not raw keys.
+The user pre-registers trusted contacts. Each contact has a durable recipient
+public-key record. For each incident, stream, or bounded chunk group, the client
+encrypts media with a CEK and wraps that CEK to one or more recipient public-key
+records. The backend stores ciphertext chunks and wrapped CEKs, but not raw keys.
 
 This is the strongest default fit for Proofline. It preserves ordinary backend ciphertext-only operation while allowing trusted contacts to decrypt authorised evidence if the phone is gone. It requires careful design for contact enrollment, public-key verification, revocation, key loss, and contact-device compromise.
 
@@ -161,7 +169,7 @@ Tradeoffs:
 
 ### 4. Server Escrow / Break-Glass Access
 
-The backend or deployment environment stores an encrypted or otherwise protected way to recover media keys. During an explicit emergency, dead-man-switch, or break-glass event, the server can obtain key access or perform server-side decryption according to configured policy.
+The backend or deployment environment stores an encrypted or otherwise protected way to recover CEKs. During an explicit emergency, dead-man-switch, or break-glass event, the server can obtain key access or perform server-side decryption according to configured policy.
 
 This improves availability when the phone and trusted-contact keys are unavailable, but it creates serious operator, hosting, audit, and misuse risks. It is acceptable only as an optional future mode. It must be disabled by default or separately configured, clearly documented, audited, rate-limited, and treated as deliberate break-glass capability.
 
@@ -188,7 +196,7 @@ Tradeoffs:
 
 ### 5. Threshold Or Multi-Party Recovery
 
-Key recovery requires multiple parties or shares, such as two trusted contacts, one contact plus server escrow, or another threshold arrangement. No single party can recover the media key alone.
+Key recovery requires multiple parties or shares, such as two trusted contacts, one contact plus server escrow, or another threshold arrangement. No single party can recover the CEK alone.
 
 This may reduce unilateral misuse but can hurt emergency availability if enough parties are not reachable. It may be useful later for high-risk users or escrow modes, but it should not be the first production default.
 
@@ -211,7 +219,7 @@ Tradeoffs:
 
 ### 6. Hybrid Model
 
-The client encrypts media before upload. The backend stores ciphertext chunks and wrapped media keys. Trusted contacts are the default recovery path. Browser or app-based client-side decryption is preferred where practical. Optional server escrow or break-glass access can be added as a separate explicit mode for dead-man-switch and emergency-access cases.
+The client encrypts media before upload. The backend stores ciphertext chunks and wrapped CEKs. Trusted contacts are the default recovery path. Browser or app-based client-side decryption is preferred where practical. Optional server escrow or break-glass access can be added as a separate explicit mode for dead-man-switch and emergency-access cases.
 
 This is the recommended direction.
 
@@ -237,11 +245,12 @@ Tradeoffs:
 
 Default mode:
 
-- The client creates media keys for each incident or stream.
+- The client creates CEKs for each incident, stream, or bounded chunk group.
 - The client encrypts chunks before upload.
 - The backend stores ciphertext chunks and metadata.
-- The backend stores wrapped or encrypted copies of media keys for trusted contacts.
-- The backend does not store raw media keys in the default mode.
+- The backend stores wrapped or encrypted copies of CEKs for trusted contacts.
+- The backend does not store raw CEKs, raw media keys, or recipient private keys
+  in the default mode.
 - The incident viewer or a future trusted client performs decryption client-side where practical.
 
 Optional future mode:
@@ -256,10 +265,11 @@ This document decides the long-term direction: contact-wrapped keys plus client-
 The first production contact-wrapped implementation should follow
 [contact-key-sharing-grants.md](contact-key-sharing-grants.md): access grants
 must remain separate from decryption capability, wrapped-key records must remain
-separate from viewer tokens, and the server must not store raw media keys,
-contact private keys, plaintext, or unwrapped shared secrets in the default
-path. For a pure post-quantum first implementation, the proposed wrapping profile
-is documented in [post-quantum-envelope.md](post-quantum-envelope.md).
+separate from viewer tokens, and the server must not store raw CEKs, raw media
+keys, recipient private keys, plaintext, or unwrapped shared secrets in the
+default path. For a pure post-quantum first implementation, the proposed
+wrapping profile is documented in
+[post-quantum-envelope.md](post-quantum-envelope.md).
 
 ## Key Hierarchy
 
@@ -267,24 +277,39 @@ Future implementations should keep the hierarchy simple and auditable.
 
 Suggested hierarchy:
 
-- Device identity key: a long-lived client key pair controlled by the user's device or account model in a future client.
-- Contact identity key: a long-lived public/private key pair controlled by each trusted contact.
-- Incident key: an optional per-incident wrapping or coordination key for all streams in one incident.
-- Stream media key: the symmetric key used to encrypt chunks in one media stream.
-- Chunk nonce: a fresh nonce for each encrypted chunk under the relevant stream media key.
-- Key ID: a non-secret identifier used to match encrypted chunks and wrapped keys with the correct decrypting key.
-- Wrapped media key: an encrypted copy of an incident or stream key for a device, contact, recovery method, or escrow mode.
+- Account or device recipient key: a long-lived client key pair controlled by
+  the user's account or device in a future client.
+- Trusted-contact recipient key: a long-lived public/private key pair
+  controlled by each trusted contact.
+- CEK: a symmetric content-encryption key scoped to one incident, stream, or
+  bounded chunk group.
+- Chunk nonce: a fresh nonce for each encrypted chunk under the relevant CEK.
+- Key ID: a non-secret identifier used to match encrypted chunks and
+  wrapped-key records with the correct CEK and recipient key version.
+- Wrapped-key record: an encrypted copy of a CEK for a device, contact,
+  recovery method, or escrow mode.
 - Server escrow key: an optional future deployment key used only in explicit break-glass mode.
 
-The current simulator uses one AES-256-GCM key for development/test chunks. A production client should prefer per-stream media keys so compromise or rotation can be contained to a smaller unit, especially for long-running or multi-media incidents.
+Long-term private keys belong to accounts, devices, and trusted contacts.
+Incidents, streams, and bounded chunk groups own CEKs. A future implementation
+must not model an incident as its own long-term private-key identity.
 
-Each encrypted chunk must use a unique nonce for its media key. Key IDs and non-secret envelope metadata may be stored in manifests and database rows. Raw media keys, contact private keys, escrow private keys, and plaintext must not be logged or placed in bundle manifests.
+The current simulator uses one AES-256-GCM key for development/test chunks. In
+future design terms that key is a development CEK. A production client should
+prefer per-stream or bounded chunk-group CEKs so compromise or rotation can be
+contained to a smaller unit, especially for long-running or multi-media
+incidents.
+
+Each encrypted chunk must use a unique nonce for its CEK. Key IDs and non-secret
+envelope metadata may be stored in manifests and database rows. Raw CEKs, media
+keys, recipient private keys, escrow private keys, and plaintext must not be
+logged or placed in bundle manifests.
 
 Future implementation must use stable, reviewed cryptographic libraries. Do not implement custom AEAD, block modes, padding, MACs, KDFs, random generators, public-key wrapping, threshold recovery, or secret-sharing primitives.
 
 Initial production direction:
 
-- Prefer one stream media key per stream.
+- Prefer one stream CEK per stream.
 - Use an optional incident-level key only if it simplifies rotation,
   late-contact enrollment, or multi-stream policy without widening compromise
   impact.
@@ -294,8 +319,9 @@ Initial production direction:
 - Treat key IDs, contact IDs, algorithm names, and public wrapping metadata as
   non-secret identifiers, but treat wrapped-key ciphertext as access-enabling
   metadata that must not be logged.
-- Keep raw media keys and contact private keys in client or trusted-contact
-  environments only, except for separately approved break-glass modes.
+- Keep raw CEKs, media keys, and recipient private keys in client or
+  trusted-contact environments only, except for separately approved break-glass
+  modes.
 - Treat [post-quantum-envelope.md](post-quantum-envelope.md) as the proposed
   first pure post-quantum wrapping profile for future contact-wrapped CEKs until
   an explicit protocol decision replaces it.
@@ -308,11 +334,11 @@ Possible flow:
 
 1. A trusted contact generates or imports a public/private key pair.
 2. The user verifies and registers the contact public key.
-3. The recording client creates stream media keys during an incident.
-4. The client uploads encrypted chunks and wrapped media keys for the selected trusted contacts.
+3. The recording client creates stream CEKs during an incident.
+4. The client uploads encrypted chunks and wrapped CEKs for the selected trusted contacts.
 5. The trusted contact receives an incident viewer token or future account-based access grant through a separate sharing path.
 6. The viewer or future trusted contact app downloads ciphertext chunks, bundle manifests, and contact-wrapped key material.
-7. The contact private key unwraps the media key and decrypts evidence client-side.
+7. The contact private key unwraps the CEK and decrypts evidence client-side.
 
 The viewer token should authorize read access to incident metadata and
 encrypted evidence. It should not, by itself, be the only decryption capability
@@ -320,7 +346,12 @@ unless the system intentionally chooses a weaker bearer-token-only emergency
 mode. Future account-owner, trusted-contact, and public-link grant rules are
 tracked in [v1-access-control.md](v1-access-control.md).
 
-Lost contact keys must be handled explicitly. If a contact loses their private key, existing media keys wrapped only to that contact may be unrecoverable by that contact. Future schema and API design should distinguish removing a contact from future incidents, stopping new key wrapping, revoking viewer tokens, rotating media keys, and marking older wrapped keys as no longer offered by the server.
+Lost contact keys must be handled explicitly. If a contact loses their private
+key, existing CEKs wrapped only to that contact may be unrecoverable by that
+contact. Future schema and API design should distinguish removing a contact
+from future incidents, stopping new key wrapping, revoking viewer tokens,
+rotating CEKs, and marking older wrapped keys as no longer offered by the
+server.
 
 ## Browser Decryption Considerations
 
@@ -333,7 +364,7 @@ Important constraints:
 - URL fragment key delivery can keep raw key material out of normal HTTP
   requests, reverse-proxy paths, and server access logs.
 - JavaScript delivered by the backend can still read URL fragments, imported
-  keys, unwrapped media keys, and plaintext.
+  keys, unwrapped CEKs or media keys, and plaintext.
 - A compromised backend can potentially serve malicious JavaScript even if the
   encrypted chunks and wrapped-key records are sound.
 - Strict CSP, static assets, no-store responses, no inline script, signed or
@@ -434,14 +465,16 @@ The hybrid model is designed to keep uploaded ciphertext useful after the phone 
 
 ## Open Questions
 
-- Should media encryption use per-stream media keys only, or a per-incident parent key plus per-stream keys?
+- Should media encryption use per-stream CEKs only, or a per-incident parent
+  wrapping key plus per-stream CEKs?
 - Should the proposed pure post-quantum ML-KEM-768 wrapping profile be the first
   production contact-wrapped scheme, or should a classical or hybrid transition
   profile be designed first?
 - How are trusted contact public keys verified during enrollment?
 - What account model is required for web, iOS, and Android clients?
 - How should contacts recover from lost private keys?
-- Can contacts be added to an incident after recording has started, and which existing media keys should be wrapped for them?
+- Can contacts be added to an incident after recording has started, and which
+  existing CEKs should be wrapped for them?
 - What metadata should be encrypted, and what must remain server-visible for the incident dashboard?
 - Should browser decryption be the first contact UX, or should a native trusted contact app come first?
 - Are signed/static viewer assets or reproducible builds needed before browser decryption is considered acceptable?
@@ -466,7 +499,7 @@ client workflows.
 
 Phase 3: contact-wrapped key prototype in the simulator.
 
-Prototype media-key wrapping and bundle metadata in development flows only. Do
+Prototype CEK wrapping and bundle metadata in development flows only. Do
 not add production server decryption. The simulator-only design is documented
 in [contact-wrapped-key-metadata-simulator.md](contact-wrapped-key-metadata-simulator.md).
 
