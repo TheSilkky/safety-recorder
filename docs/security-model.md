@@ -134,13 +134,17 @@ Viewer URLs contain bearer tokens and should be treated as secrets. Reverse prox
   keys and errors do not include raw tokens, raw idempotency keys, request
   bodies, uploaded bytes, stored paths, object keys, plaintext, or raw keys.
 - Main API route-class rate limiting is enabled by default for authentication,
-  public registration, email verification, bootstrap, account, incident,
-  upload, reconciliation, stream, token, download, and admin API classes.
-  Limiter keys use server-controlled class labels and a hash of the socket peer
-  identity. They do not include raw email addresses, raw usernames,
+  public registration, email verification, bootstrap, account and contact-key
+  metadata, incident metadata, sharing-grant metadata, wrapped-key metadata,
+  upload, reconciliation, stream, token, and download classes. The legacy admin
+  API limit setting is retained only as a documented compatibility setting
+  because current `/v1/admin/...` JSON routes are on the private-admin
+  listener. Limiter keys use server-controlled class labels and a hash of the
+  socket peer identity. They do not include raw email addresses, raw usernames,
   verification tokens, raw session tokens, Authorization headers, raw
   idempotency keys, request bodies, uploaded bytes, incident IDs, stored paths,
-  object keys, plaintext, raw keys, or private deployment details.
+  object keys, plaintext, raw keys, wrapped-key ciphertext, or private
+  deployment details.
 - The authenticated duplicate chunk reconciliation route compares a requested
   normalized chunk identity and expected immutable fingerprint against accepted
   chunk metadata without re-uploading ciphertext, reading stored bytes, or

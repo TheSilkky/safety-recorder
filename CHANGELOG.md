@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Extended main API route-class rate-limit coverage to browser-cookie auth,
+  contact public-key metadata, sharing-grant metadata, and wrapped-key metadata
+  routes while reusing existing limit classes and preserving listener
+  separation.
 - Expanded the future contacts, durable recipient-key model, GPS privacy, and
   web-client viewer-replacement planning context without changing runtime
   behavior.

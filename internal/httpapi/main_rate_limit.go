@@ -125,12 +125,18 @@ func classifyMainAPIRateLimit(r *http.Request) (mainRateLimitClass, bool) {
 			(r.Method == http.MethodPost && len(segments) == 3 && segments[2] == "password") {
 			return mainRateLimitAccount, true
 		}
+	case "contact-public-keys":
+		return classifyMainAPIContactPublicKeyRateLimit(r, segments)
 	case "incidents":
 		return classifyMainAPIIncidentRateLimit(r, segments)
 	case "incident-tokens":
 		if r.Method == http.MethodPost && len(segments) == 4 && segments[3] == "revoke" {
 			return mainRateLimitToken, true
 		}
+	case "sharing-grants":
+		return classifyMainAPIRecordRateLimit(r, segments)
+	case "wrapped-keys":
+		return classifyMainAPIRecordRateLimit(r, segments)
 	}
 
 	return "", false
@@ -148,7 +154,28 @@ func classifyMainAPIAuthRateLimit(r *http.Request, segments []string) (mainRateL
 	if r.Method == http.MethodPost && len(segments) == 4 && segments[2] == "email" && segments[3] == "verify" {
 		return mainRateLimitAuthEmailVerify, true
 	}
+	if len(segments) == 4 && segments[2] == "web" {
+		switch {
+		case r.Method == http.MethodPost && (segments[3] == "login" || segments[3] == "logout"):
+			return mainRateLimitAuth, true
+		case r.Method == http.MethodGet && segments[3] == "csrf":
+			return mainRateLimitAuth, true
+		}
+	}
 	return "", false
+}
+
+func classifyMainAPIContactPublicKeyRateLimit(r *http.Request, segments []string) (mainRateLimitClass, bool) {
+	switch {
+	case len(segments) == 2 && (r.Method == http.MethodGet || r.Method == http.MethodPost):
+		return mainRateLimitAccount, true
+	case len(segments) == 3 && (r.Method == http.MethodGet || r.Method == http.MethodPatch):
+		return mainRateLimitAccount, true
+	case len(segments) == 4 && r.Method == http.MethodPost && segments[3] == "revoke":
+		return mainRateLimitAccount, true
+	default:
+		return "", false
+	}
 }
 
 func classifyMainAPIIncidentRateLimit(r *http.Request, segments []string) (mainRateLimitClass, bool) {
@@ -188,15 +215,40 @@ func classifyMainAPIIncidentRateLimit(r *http.Request, segments []string) (mainR
 		if r.Method == http.MethodPost && len(segments) == 4 {
 			return mainRateLimitIncidentWrite, true
 		}
+	case "sharing-grants":
+		if r.Method == http.MethodGet && len(segments) == 4 {
+			return mainRateLimitIncidentRead, true
+		}
+		if r.Method == http.MethodPost && len(segments) == 4 {
+			return mainRateLimitIncidentWrite, true
+		}
 	case "streams":
 		return classifyMainAPIStreamRateLimit(r, segments)
 	case "incident-tokens":
 		if r.Method == http.MethodPost && len(segments) == 4 {
 			return mainRateLimitToken, true
 		}
+	case "wrapped-keys":
+		if r.Method == http.MethodGet && len(segments) == 4 {
+			return mainRateLimitIncidentRead, true
+		}
+		if r.Method == http.MethodPost && len(segments) == 4 {
+			return mainRateLimitIncidentWrite, true
+		}
 	}
 
 	return "", false
+}
+
+func classifyMainAPIRecordRateLimit(r *http.Request, segments []string) (mainRateLimitClass, bool) {
+	switch {
+	case len(segments) == 3 && r.Method == http.MethodGet:
+		return mainRateLimitIncidentRead, true
+	case len(segments) == 4 && r.Method == http.MethodPost && segments[3] == "revoke":
+		return mainRateLimitIncidentWrite, true
+	default:
+		return "", false
+	}
 }
 
 func classifyMainAPIChunkRateLimit(r *http.Request, segments []string) (mainRateLimitClass, bool) {

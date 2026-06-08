@@ -829,18 +829,18 @@ The Go app also applies route-class-aware limits to main API routes by default:
 
 | App route class | Default |
 |---|---|
-| Login/logout | 30 requests per 1 minute |
+| Bearer and browser login/logout/CSRF | 30 requests per 1 minute |
 | Public registration | 10 requests per 1 minute |
 | Email verification | 30 requests per 1 minute |
-| Account self-service | 120 requests per 1 minute |
-| Incident reads | 300 requests per 1 minute |
-| Incident writes | 120 requests per 1 minute |
+| Account self-service and contact public-key metadata | 120 requests per 1 minute |
+| Incident, sharing-grant, and wrapped-key metadata reads | 300 requests per 1 minute |
+| Incident, sharing-grant, and wrapped-key metadata writes | 120 requests per 1 minute |
 | Chunk uploads | 120 requests per 1 minute |
 | Duplicate reconciliation | 120 requests per 1 minute |
 | Stream actions | 120 requests per 1 minute |
 | Token actions | 60 requests per 1 minute |
 | Authenticated downloads | 30 request starts per 1 minute |
-| Admin JSON API | 60 requests per 1 minute |
+| Legacy main-handler admin compatibility setting | 60 requests per 1 minute |
 
 The main API limits are configured under `[rate_limits.main_api]` in TOML.
 Environment overrides such as `SAFE_MAIN_API_RATE_LIMIT_WINDOW`,
@@ -852,6 +852,10 @@ Environment overrides such as `SAFE_MAIN_API_RATE_LIMIT_WINDOW`,
 to `0` to disable that route-class limit, or set `enabled = false` in TOML
 or `SAFE_MAIN_API_RATE_LIMIT_ENABLED=false` to disable the app-level main API
 limiter.
+
+Current `/v1/admin/...` JSON routes are on the private-admin listener and are
+not classified by the main API limiter. The admin setting remains as a
+compatibility setting for older main-handler configuration.
 
 Public viewer limits are configured separately:
 
