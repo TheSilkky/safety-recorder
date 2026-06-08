@@ -27,7 +27,7 @@ This directory contains the detailed documentation for Proofline Server, the Go 
 | [Key custody and emergency access](key-custody.md) | Future production key custody, trusted-contact access, and break-glass design. |
 | [Pure post-quantum encryption envelope](post-quantum-envelope.md) | Future ML-KEM-768, HKDF-SHA384, and AES-256-GCM envelope design for post-quantum recipient wrapping without changing current runtime behavior. |
 | [Contact key sharing, grants, and wrapped-key metadata](contact-key-sharing-grants.md) | Current trusted-contact public-key, grant, and wrapped-key metadata boundaries, plus future trusted-contact delivery, retention, audit, and implementation sequencing. |
-| [Contact-wrapped key metadata simulator prototype](contact-wrapped-key-metadata-simulator.md) | Simulator-only prototype for modeling trusted-contact public keys, non-secret key IDs, wrapped stream media keys, and safe development metadata without production key custody. |
+| [Contact-wrapped key metadata simulator prototype](contact-wrapped-key-metadata-simulator.md) | Simulator-only prototype for modeling trusted-contact public keys, non-secret key IDs, wrapped stream CEKs, and safe development metadata without production key custody. |
 | [Browser-side decryption](browser-decryption.md) | Future incident viewer decryption options, risks, and phased direction. |
 | [Live partial stream access boundary](live-partial-stream-access-boundary.md) | Future live or partial stream access roles, stream-state exposure, partial manifests, caching, and key-custody dependencies. |
 | [Break-glass key access](break-glass-key-access.md) | Future optional server-assisted emergency key access and dead-man-switch design. |
@@ -123,7 +123,7 @@ reassignment workflow documented in
 
 Authenticated account owners can register trusted-contact public-key metadata
 and manage incident/stream-scoped sharing grants for their own incidents. Those
-routes can store and deliver wrapped media-key metadata through private API
+routes can store and deliver wrapped CEK/media-key metadata through private API
 responses when an active grant authorizes ciphertext access. They do not add
 trusted-contact accounts, browser or backend decryption, public viewer changes,
 notifications, raw key storage, or key escrow.

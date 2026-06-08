@@ -178,10 +178,13 @@ Viewer URLs contain bearer tokens and should be treated as secrets. Reverse prox
   New grants require an active contact public key owned by the same account and
   can be scoped to an incident or one stream. Wrapped-key records require an
   active, unexpired grant that authorizes ciphertext access and an active
-  contact public key. These routes do not store or return contact private keys,
-  raw media keys, plaintext, browser fragment secrets, request bodies, uploaded
-  bytes, stored paths, staging paths, object keys, or private deployment
-  details.
+  contact public key. In the future key model, those wrapped-key records connect
+  recipient public-key versions to CEKs scoped to incidents, streams, or bounded
+  chunk groups; current `media_key_id` fields remain compatibility identifiers
+  for that CEK. These routes do not store or return recipient private keys, raw
+  CEKs, raw media keys, plaintext, browser fragment secrets, request bodies,
+  uploaded bytes, stored paths, staging paths, object keys, or private
+  deployment details.
 
 Optional S3-compatible storage preserves ciphertext-only behavior for committed
 encrypted chunks. It uses server-controlled object keys, does not expose object
@@ -355,6 +358,9 @@ Normal file or object removal is not treated as guaranteed secure erasure. Deplo
   backend decryption, payment-gated registration, password recovery, or public
   account portal behavior
 - No implemented production client key storage, browser decryption, server-assisted break-glass key access, or emergency-contact key access model; the future designs are documented in [key-custody.md](key-custody.md), [contact-key-sharing-grants.md](contact-key-sharing-grants.md), [browser-decryption.md](browser-decryption.md), and [break-glass-key-access.md](break-glass-key-access.md)
+- No implemented production durable-recipient-key plus CEK envelope; current
+  wrapped-key metadata routes store encrypted key metadata only and do not
+  introduce recipient private-key custody, raw CEK storage, or decryption
 - No implemented live or partial stream access beyond current read-only stream
   metadata summaries and completed encrypted bundle downloads; the future
   boundary is documented in

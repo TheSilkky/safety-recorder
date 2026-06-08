@@ -77,7 +77,7 @@ trusted-contact workflows, or change public viewer and bundle behavior. See
 Authenticated account owners can also register trusted-contact public-key
 metadata and create or revoke incident/stream-scoped sharing grants for their
 own incidents. Those grants can authorize private API storage and delivery of
-contact-wrapped media-key metadata for owned incidents or streams. These
+contact-wrapped CEK/media-key metadata for owned incidents or streams. These
 records do not add trusted-contact accounts, browser or backend decryption,
 public viewer changes, notifications, raw key storage, or key escrow.
 
@@ -115,8 +115,8 @@ public viewer changes, notifications, raw key storage, or key escrow.
   audit APIs with count-oriented candidate metadata and controlled reason codes
 - Owner-scoped contact public-key metadata and sharing-grant records for owned
   incidents or streams
-- Owner-scoped wrapped media-key metadata storage and private API delivery for
-  active sharing grants
+- Owner-scoped wrapped CEK/media-key metadata storage and private API delivery
+  for active sharing grants
 - Documented client-side chunk encryption envelope
 - Media streams with `open`, `complete`, and `failed` states
 - Completed encrypted stream and incident ZIP evidence bundle downloads

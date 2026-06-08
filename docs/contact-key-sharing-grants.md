@@ -21,10 +21,10 @@ The backend remains ciphertext-only by default:
 
 - clients encrypt media before upload
 - the server stores encrypted chunks and metadata
-- the server may store contact public keys and wrapped media-key ciphertext
-- the server must not store raw media keys, contact private keys, plaintext,
-  unwrapped shared secrets, browser fragment secrets, or server-decryptable key
-  material in the default contact-sharing path
+- the server may store recipient public-key records and wrapped CEK ciphertext
+- the server must not store raw CEKs, raw media keys, recipient private keys,
+  plaintext, unwrapped shared secrets, browser fragment secrets, or
+  server-decryptable key material in the default contact-sharing path
 - server escrow, break-glass key access, browser decryption, and backend
   decryption remain separate security-sensitive designs
 
@@ -41,12 +41,22 @@ The future model should keep these concepts separate:
 |---|---|---|
 | Account owner | Owns incidents, contacts, sharing policy, and revocation decisions. | Authenticated product actor; can create and revoke grants for owned incidents. |
 | Trusted contact | A person authorized by the account owner or escalation policy. | Receives only grant-scoped metadata, ciphertext, and wrapped keys. |
-| Contact public key | Public key registered for a trusted contact device or account. | Server-visible metadata, but still privacy-sensitive because it links contacts and sharing history. |
-| Contact private key | Secret key controlled by the trusted contact. | Never stored, logged, backed up, or handled by the server. |
+| Recipient public-key record | Versioned public key material for an account, device, trusted contact, or future escrow target. | Server-visible metadata, but still privacy-sensitive because it links recipients and sharing history. |
+| Recipient private key | Secret key controlled by the account, device, trusted contact, or future escrow holder. | Never stored, logged, backed up, or handled by the server in the default contact-sharing model. |
+| CEK | Content-encryption key for an incident, stream, or bounded chunk group. | Never stored raw by the server in the default model. Existing `media_key_id` fields identify this key material until a protocol/API naming migration is accepted. |
 | Access grant | Authorization record for an actor, incident or stream, data classes, expiry, and state. | Does not itself contain decryption material. |
 | Viewer token | Bearer public-link capability for the read-only incident viewer. | Separate from trusted-contact identity and grants; not a general `/v1` credential. |
-| Media key | Symmetric key used by a client to encrypt an incident or stream. | Never stored raw by the server in the default model. |
-| Wrapped-key record | Encrypted copy of a media key for a contact key, owner device, recovery target, or future escrow target. | Access-enabling encrypted metadata; deliver only under explicit policy. |
+| Wrapped-key record | Encrypted copy of a CEK for a recipient public-key record. | Access-enabling encrypted metadata; deliver only under explicit policy. |
+
+Do not model an incident as its own long-term private-key identity. Long-term
+private keys belong to accounts, devices, and trusted contacts. Incidents,
+streams, and bounded chunk groups own CEKs, and wrapped-key records connect
+authorized recipient key versions to those CEKs.
+
+Prototype data or test fixtures that assumed per-incident private keys should
+be migrated or regenerated against this model when they are touched. Do not add
+unnecessary dual-stack compatibility just to preserve that prototype shape; use
+an explicit migration issue if old local data or fixtures need support.
 
 ## Contact Public-Key Lifecycle
 
@@ -61,7 +71,7 @@ Registration requirements:
 - record the wrapping profile, public key material, creation time, verification
   state, and non-sensitive display metadata
 - require explicit account-owner approval before a key can receive wrapped
-  media keys
+  CEKs
 - provide an out-of-band verification step, such as comparing a short
   fingerprint or safety number, before marking a key trusted
 
@@ -79,10 +89,10 @@ Suggested contact key states:
 - `lost`: contact reports private-key loss; not eligible for new wrapping
 
 Replacing or rotating a contact key should not mutate old wrapped-key records.
-New media keys should be wrapped only to the active key version. Rewrapping
-older media keys is possible only when an authorized client or reviewed future
-service still has access to the raw media key; the server must not invent a
-rewrap path by decrypting existing wrapped-key ciphertext.
+New CEKs should be wrapped only to the active key version. Rewrapping older
+CEKs is possible only when an authorized client or reviewed future service
+still has access to the raw CEK; the server must not invent a rewrap path by
+decrypting existing wrapped-key ciphertext.
 
 ## Grants
 
@@ -139,14 +149,15 @@ Rules:
 Late-added contacts should not automatically receive old incident keys. The
 account owner must explicitly choose whether the new contact receives access to
 existing incidents or only future incidents. If the owner's client no longer
-has the raw media keys and no explicit escrow mode exists, the backend cannot
+has the raw CEKs and no explicit escrow mode exists, the backend cannot
 produce new wrapped keys for old evidence.
 
-Media-key rotation should use new `media_key_id` values. A stream can have one
-media key, or later designs may use key generations for long-running streams.
-Wrapped-key records must identify the exact media key or generation they wrap.
+CEK rotation should use new `media_key_id` values until a protocol/API naming
+migration introduces a CEK-named field. A stream can have one CEK, or later
+designs may use key generations for long-running streams.
+Wrapped-key records must identify the exact CEK or generation they wrap.
 Revoking a contact does not rotate already uploaded ciphertext; future clients
-may rotate media keys after revocation to limit future exposure.
+may rotate CEKs after revocation to limit future exposure.
 
 ## Wrapped-Key Records
 
@@ -159,7 +170,7 @@ Server-stored fields should include:
 - `wrapped_key_id`
 - incident ID
 - optional stream ID, or incident scope
-- `media_key_id` and optional media-key generation
+- `media_key_id` and optional CEK generation
 - recipient type
 - `grant_id` or recipient/grant binding identifier
 - contact ID, when recipient type is trusted contact
@@ -173,8 +184,9 @@ Server-stored fields should include:
 
 Server-stored wrapped-key records must not include:
 
+- raw CEKs
 - raw media keys
-- contact private keys
+- recipient private keys
 - plaintext
 - unwrapped shared secrets
 - browser fragment secrets
@@ -298,7 +310,7 @@ Implementation should stay split into narrow issues:
    replacement, revocation, and grant management behind the existing reviewed
    `/v1` boundary.
 3. Implemented: add wrapped-key metadata schema and repository behavior without
-   exposing raw media keys or contact private keys.
+   exposing raw CEKs, raw media keys, or recipient private keys.
 4. Implemented: add owner-authenticated wrapped-key delivery through private
    API responses, with bundle manifests remaining key-free and tests proving
    unauthorized actors do not receive wrapped-key records.
@@ -317,10 +329,11 @@ Each implementation issue must include tests for:
 - grant scope by account owner, incident, stream, data class, and recipient
 - contact key replacement and revocation
 - late-contact behavior
-- media-key rotation or generation matching
-- no raw media keys, contact private keys, plaintext, request bodies, uploaded
-  bytes, raw tokens, stored paths, object keys, or private deployment details in
-  logs, manifests, API errors, tests, or public documentation
+- CEK rotation or generation matching
+- no raw CEKs, raw media keys, recipient private keys, plaintext, request
+  bodies, uploaded bytes, raw tokens, stored paths, object keys, or private
+  deployment details in logs, manifests, API errors, tests, or public
+  documentation
 - unchanged ciphertext-only backend behavior outside explicit future
   break-glass work
 

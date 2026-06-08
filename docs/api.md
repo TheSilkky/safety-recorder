@@ -14,7 +14,7 @@ implemented; deletion and closed-incident retention enforcement are documented
 in [retention-backup-deletion.md](retention-backup-deletion.md). Planned
 mode-driven behavior is documented in [incident-modes.md](incident-modes.md).
 Authenticated account-owner routes can store trusted-contact public-key
-metadata, owner-scoped sharing-grant records, and wrapped media-key metadata
+metadata, owner-scoped sharing-grant records, and wrapped CEK/media-key metadata
 for active grants. Trusted-contact accounts, browser or backend decryption,
 notifications, raw key storage, and key escrow do not exist yet. The main API
 does include a narrow public-safe owner incident list/detail read surface for
@@ -347,9 +347,9 @@ valid local account session. They are scoped to the authenticated account only;
 admins do not use these routes to manage another account's contact keys. The
 server stores public-key metadata, wrapping algorithm names, fingerprints,
 state, and optional display labels. It does not store contact private keys, raw
-media keys, wrapped media keys, browser fragment secrets, plaintext, request
-bodies, uploaded bytes, stored paths, staging paths, object keys, or private
-deployment details.
+CEKs, raw media keys, wrapped CEKs/media keys, browser fragment secrets,
+plaintext, request bodies, uploaded bytes, stored paths, staging paths, object
+keys, or private deployment details.
 
 Contact key states are:
 
@@ -523,13 +523,15 @@ local account session. They are account-owner routes: admins are not allowed to
 store, list, read, or revoke another account's wrapped-key records through
 these product routes unless the admin account owns the incident or record.
 
-The backend stores encrypted media-key material only when it is bound to an
+The backend stores encrypted CEK/media-key material only when it is bound to an
 active sharing grant that authorizes ciphertext access. The record includes the
-incident, optional stream, media key ID, grant ID, trusted-contact public key
-ID and version, wrapping algorithm/version, wrapped-key ciphertext, and public
-wrapping metadata. It must not include raw media keys, contact private keys,
-plaintext, unwrapped shared secrets, browser fragment secrets, raw tokens, or
-server escrow material.
+incident, optional stream, `media_key_id` compatibility identifier, grant ID,
+trusted-contact public key ID and version, wrapping algorithm/version,
+wrapped-key ciphertext, and public wrapping metadata. In the future key model,
+that identifier names the CEK scoped to the incident, stream, or bounded chunk
+group. The record must not include raw CEKs, raw media keys, contact private
+keys, plaintext, unwrapped shared secrets, browser fragment secrets, raw tokens,
+or server escrow material.
 
 Bundle manifests remain key-free. The current public incident viewer does not
 deliver wrapped keys, and public viewer bundle downloads keep their existing
@@ -537,7 +539,7 @@ ciphertext-only behavior.
 
 ### `POST /v1/incidents/{incident_id}/wrapped-keys`
 
-Stores one wrapped media-key record for an incident owned by the authenticated
+Stores one wrapped CEK/media-key record for an incident owned by the authenticated
 account. `grant_id` must name an active owner-scoped sharing grant for the same
 incident. The grant must authorize `ciphertext` or `metadata_ciphertext`, must
 not be expired, and must point at an active contact public key. If the grant is
@@ -590,7 +592,7 @@ Response `201`:
 Missing incidents, streams, active grants, or active contact public keys return
 `404 wrapped_key_dependency_not_found`. Metadata-only grants return
 `409 wrapped_key_grant_not_authorized`. Reusing the same owner, incident,
-stream scope, grant, media key ID, and contact public key returns
+stream scope, grant, `media_key_id`, and contact public key returns
 `409 wrapped_key_duplicate`.
 
 ### `GET /v1/incidents/{incident_id}/wrapped-keys`

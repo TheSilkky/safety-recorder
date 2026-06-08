@@ -12,7 +12,14 @@ The current envelope scheme and associated-data prefix still use `safety-recorde
 
 The v1 envelope protects chunk plaintext from the backend, SQLite, configured blob storage, and evidence bundle readers who do not have the client-held key. It does not protect metadata that is already sent to the backend, such as incident ID, stream ID, media type, chunk index, timestamps, byte size, and ciphertext hashes.
 
-The simulator key handling in this repository is for development and test use only. Future production client key storage, sharing, recovery, trusted-contact access, account-owner access, and incident-mode sharing are out of scope for the current implementation and are designed separately in [key-custody.md](key-custody.md), [incident-modes.md](incident-modes.md), and [v1-access-control.md](v1-access-control.md).
+The simulator key handling in this repository is for development and test use
+only. In future-design terminology, the current simulator key is a development
+CEK rather than a long-term private-key identity for an incident. Future
+production client key storage, sharing, recovery, trusted-contact access,
+account-owner access, and incident-mode sharing are out of scope for the current
+implementation and are designed separately in [key-custody.md](key-custody.md),
+[incident-modes.md](incident-modes.md), and
+[v1-access-control.md](v1-access-control.md).
 
 ## Scheme v1
 
@@ -156,9 +163,9 @@ go run ./cmd/simclient --download-bundle --verify-bundle-decryption=false
 The backend sees opaque uploaded bytes and client-provided metadata. It stores
 ciphertext and validates SHA-256 over the ciphertext envelope. Private
 owner-authenticated routes can store grant-bound wrapped-key records as
-encrypted metadata, but the backend does not parse raw media keys, store raw
-keys in SQLite, upload raw keys, decrypt chunks, or expose public decryption
-endpoints.
+encrypted metadata, but the backend does not parse raw CEKs or media keys,
+store raw keys in SQLite, upload raw keys, decrypt chunks, or expose public
+decryption endpoints.
 
 Evidence bundles remain ZIP files containing encrypted `.enc` chunk files and JSON manifests. Bundle manifests include a non-secret hint that client-side encryption is expected and that the server does not decrypt.
 
@@ -174,16 +181,16 @@ Future work includes production client key storage, Keychain integration, truste
 
 A future pure post-quantum envelope profile is designed separately in
 [post-quantum-envelope.md](post-quantum-envelope.md). That design proposes
-`ML-KEM-768 + HKDF-SHA384 + AES-256-GCM` for future recipient key wrapping and
-payload encryption, but it is documentation-only until a separate implementation
-phase adds test vectors, simulator support, storage/API changes, and migration
-notes.
+`ML-KEM-768 + HKDF-SHA384 + AES-256-GCM` for future recipient-key wrapping of
+CEKs and payload encryption, but it is documentation-only until a separate
+implementation phase adds test vectors, simulator support, storage/API changes,
+and migration notes.
 
 The simulator-only contact-wrapped key metadata prototype is implemented
 separately in
 [contact-wrapped-key-metadata-simulator.md](contact-wrapped-key-metadata-simulator.md).
 That prototype can model contact public keys, non-secret key IDs, and wrapped
-stream media keys in local development artifacts, but it does not change the
-current v1 envelope, make the backend store raw keys, or make the backend
-decrypt media. Server-side wrapped-key records remain encrypted metadata behind
+stream CEKs in local development artifacts, but it does not change the current
+v1 envelope, make the backend store raw keys, or make the backend decrypt
+media. Server-side wrapped-key records remain encrypted metadata behind
 authenticated owner routes.
