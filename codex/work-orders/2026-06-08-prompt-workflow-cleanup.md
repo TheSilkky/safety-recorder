@@ -17,7 +17,7 @@ This is a prompt/documentation maintenance task only. Do not change runtime Go c
 
 Use very-high reasoning.
 
-This work touches reusable prompt workflow behavior, key-custody wording, review/fix-mode boundaries, and validation instructions. Keep the changes small, mechanical, and reviewable.
+This work touches reusable prompt workflow behavior, key-custody wording, review/fix-mode boundaries, validation instructions, and security review coverage expectations. Keep the changes small, mechanical, and reviewable.
 
 ## Source of truth to inspect
 
@@ -37,6 +37,9 @@ Before editing, inspect:
 - `docs/break-glass-key-access.md`, if present
 - `docs/security-model.md`
 - `docs/threat-model.md`
+- `internal/httpapi/routes.go`
+- `internal/httpapi/main_rate_limit.go`
+- `internal/httpapi/main_rate_limit_test.go`
 - `codex/README.md`
 - every reusable prompt under `codex/prompts/`
 
@@ -120,11 +123,29 @@ Do not rename reusable prompts unless needed. If any reusable prompt filename vi
 
 Do not modify historical prompts under `codex/archive/`, `codex/features/`, `codex/refactors/`, or `codex/work-orders/` except this work-order file.
 
+### 6. Add rate-limit coverage checks to security review prompt
+
+Update `codex/prompts/30-security-review.md` so security review explicitly checks app-level rate-limit coverage for current route classes.
+
+Add a rate-limit-specific checklist under `## Review focus` that covers:
+
+- route registration and rate-limit classifier coverage staying aligned;
+- every new main `/v1` route being assigned a rate-limit class or explicitly documented as intentionally unclassified;
+- authenticated write routes for accounts, contacts, sharing grants, wrapped keys, tokens, uploads, streams, deletion, and auth/session flows having appropriate rate-limit coverage;
+- browser cookie-auth routes such as web login, web logout, and CSRF being checked for rate-limit coverage or explicitly justified;
+- tests covering rate-limit classification for every registered main API route class where practical;
+- stale, unused, or misleading rate-limit config fields being removed, renamed, wired, or documented.
+
+Also update the security-review output requirements so Codex reports any registered routes that appear missing from the rate-limit classifier.
+
+This work order only updates the reusable security review prompt. Do not fix runtime rate limiting in this branch. If the route audit finds actual unclassified routes, report that as a follow-up security-hardening issue or separate branch, without including sensitive details beyond route categories that are safe for public issue tracking.
+
 ## Explicit non-goals
 
 Do not:
 
 - change Go runtime code;
+- change rate-limit classifier code in this branch;
 - change migrations;
 - change API behavior;
 - add backend decryption;
@@ -164,6 +185,7 @@ Summarize:
 3. review-only/fix-mode wording updated;
 4. key-custody prompt wording updated;
 5. whether existing design-doc handling was changed from create-only to create-or-update;
-6. prompts intentionally not changed;
-7. validation commands run and results;
-8. confirmation that no runtime code, migrations, API behavior, issues, PRs, or sibling repositories were changed.
+6. rate-limit coverage review wording added to `30-security-review.md`;
+7. prompts intentionally not changed;
+8. validation commands run and results;
+9. confirmation that no runtime code, migrations, API behavior, issues, PRs, or sibling repositories were changed.
