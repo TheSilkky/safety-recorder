@@ -142,6 +142,8 @@ public viewer changes, notifications, raw key storage, or key escrow.
 - No mode-driven access, notification, retention, trusted-contact account,
   key-custody, or viewer behavior
 - No production client-side encryption implementation
+- No implemented capture stream group, stream-variant, or evidence-supersession
+  model beyond the current concrete media stream upload lanes
 - No implemented resumable or partial upload protocol; current Valkey upload
   leases are short-lived complete-upload hints, not durable evidence truth
 - No implemented live or partial stream chunk access before stream completion

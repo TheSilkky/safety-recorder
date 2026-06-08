@@ -44,6 +44,10 @@ implementation. The future policy boundary is documented in
 - Keep metadata and encrypted blobs in sync; either both are retained, or both
   are removed by the deletion workflow.
 - Treat failed and open streams as possible evidence. Do not discard them just because they are not downloadable as completed stream bundles.
+- Treat reduced-quality, audio-priority, or near-live chunks as preserved
+  evidence when they are backend-confirmed. A future higher-quality variant can
+  change canonical selection only after source-time coverage validation; it does
+  not by itself authorize deletion.
 - Keep raw viewer/incident tokens out of storage and logs. Only token hashes are retained in metadata.
 - Treat non-emergency interaction records as potentially sensitive even when they are not urgent safety incidents.
 - Do not promise unrecoverable deletion from normal file removal.
@@ -186,6 +190,10 @@ Current deletion policy still distinguishes:
 - applying different retention to emergency incidents, interaction records,
   safety checks, and evidence notes after incident-mode, capture-profile,
   escalation-policy, and sharing-state fields exist
+- retaining or pruning lower-quality stream variants only after the capture
+  stream variant and supersession model proves equivalent backend-confirmed
+  source-time coverage; see
+  [capture-stream-variants.md](capture-stream-variants.md)
 - identifying orphaned blobs or rows after interrupted manual operations
 - deleting downloaded bundles or plaintext exports if such derived files are ever implemented
 

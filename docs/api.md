@@ -21,6 +21,12 @@ does include a narrow public-safe owner incident list/detail read surface for
 the future web client, but this does not make every `/v1` route group
 public-ready without route-level deployment review.
 
+Future capture stream groups, stream variant roles, source-timeline identity,
+and evidence supersession are planning-only in
+[capture-stream-variants.md](capture-stream-variants.md). The current API still
+treats each media stream as one concrete upload lane and does not select
+canonical evidence across variants.
+
 Default bind addresses:
 
 - main API and incident viewer listener: `127.0.0.1:8080`
@@ -1149,6 +1155,14 @@ Returns encrypted bytes for a legacy unstreamed chunk as `application/octet-stre
 
 Media stream routes are mounted on the main API listener.
 
+The current `MediaStream` model represents one concrete upload lane with one
+`media_type`, stream-local chunk indexes, and `open`, `complete`, or `failed`
+state. Future browser and native capture may group multiple concrete streams
+under one capture source timeline, with explicit variant roles such as
+`live_preview`, `evidence_master`, or `audio_priority`; that design is tracked
+in [capture-stream-variants.md](capture-stream-variants.md). Do not encode
+critical future variant semantics only in the free-form `label` field.
+
 ### `POST /v1/incidents/{incident_id}/streams`
 
 Creates an open media stream for an incident.
@@ -1254,6 +1268,10 @@ Request:
 
 Response `200` is the updated stream object with `status: "failed"` and `failed_at` set.
 
+Failed streams can still contain preserved backend-confirmed evidence. Future
+evidence resolution should account for failed or incomplete stream variants
+instead of treating them as disposable previews.
+
 ### `GET /v1/incidents/{incident_id}/streams/{stream_id}/download`
 
 Downloads a completed stream as a ZIP bundle. Open or failed streams return `409 stream_not_complete`.
@@ -1302,6 +1320,11 @@ streams/{stream_id}/chunks/audio_000001.enc
 Open, failed, and legacy unstreamed chunks are omitted from this initial bundle format.
 
 If any completed stream cannot be reconstructed, the incident bundle request fails with `409 incident_bundle_inconsistent` rather than returning a partial bundle. The error response does not include server filesystem paths, stored chunk paths, or ZIP entry names.
+
+Future canonical bundle or export manifests may use source-timeline evidence
+resolution to choose the best backend-confirmed variant per segment. That must
+be a separate manifest/API design and must not delete lower-quality fallback
+chunks merely because a higher-quality variant was planned.
 
 ## Checkins
 

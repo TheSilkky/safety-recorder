@@ -50,6 +50,12 @@ Those features do not make `/v1` production-ready public infrastructure. The
 relay design is an optional future upload edge, not a reason to expose the
 whole main API or private admin surfaces.
 
+Future stream variant and supersession behavior is documented in
+[capture-stream-variants.md](capture-stream-variants.md). The relay may use
+variant roles such as `live_preview`, `audio_priority`, and `evidence_master`
+as future policy inputs, but it must still treat the core API as the authority
+for backend confirmation and evidence preservation.
+
 ## Goals
 
 - Keep a small upload-only service boundary that is easier to deploy close to
@@ -64,6 +70,8 @@ whole main API or private admin surfaces.
 - Preserve the backend ciphertext-only posture.
 - Support local in-memory counters for single-node/dev relay deployments and
   optional Valkey/Redis-compatible counters for multi-node relay deployments.
+- Support future role-aware fanout decisions without making relay-local staging
+  durable evidence or canonical supersession truth.
 
 ## Non-Goals
 
@@ -161,6 +169,11 @@ the final core outcome is ambiguous because of timeout, connection loss, or
 core `5xx`, the client should retry the complete encrypted chunk and rely on
 the documented idempotency and duplicate reconciliation paths.
 
+Future relay fanout may optimistically forward `live_preview` or
+`audio_priority` variants to an authorized live viewer before core confirmation,
+but those chunks must be labeled unconfirmed. They become preserved evidence
+only after the core API commits the encrypted bytes and metadata.
+
 ## Preflight And Abuse Controls
 
 The relay needs layered controls because it cannot fully know whether an upload
@@ -254,6 +267,11 @@ Core `5xx`, DNS failure, TLS failure, upstream timeout, and relay-to-core
 network loss should not be interpreted as evidence that the client credential
 is invalid.
 
+Relay failure must not cause the core system to discard already confirmed
+reduced-quality or audio-priority chunks. If a full-quality evidence-master
+variant never arrives, backend-confirmed lower-quality chunks remain preserved
+evidence under the capture stream variant model.
+
 ## Temporary Staging
 
 Ingress staging is for in-flight encrypted bytes only.
@@ -309,6 +327,7 @@ applicable:
 - `AGENTS.md`
 - `docs/api.md`
 - `docs/architecture.md`
+- `docs/capture-stream-variants.md`
 - `docs/configuration.md`
 - `docs/deployment.md`
 - `docs/production-cluster-scope.md`
@@ -345,6 +364,8 @@ Expected implementation tests:
 - hash mismatch does not forward to core and cleans staging
 - temp disk pressure rejects new uploads
 - no raw token, body, path, key, staging path, object key, or secret logging
+- relay-fanned near-live chunks remain unconfirmed until core commit
+- variant-role fanout does not make the relay authoritative for supersession
 - Valkey counter keys use safe non-reversible keys only
 - local in-memory limiter works for single-node/dev
 - core-confirmed success is required before relay success

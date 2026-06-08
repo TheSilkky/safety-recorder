@@ -20,6 +20,9 @@ Core principles:
 
 - capture can be emergency or non-emergency
 - upload should preserve already-captured evidence if the device is lost, damaged, powered off, or taken
+- future capture may use multiple encrypted stream variants for one source
+  session, but reduced-quality near-live chunks must remain preserved evidence
+  unless a confirmed higher-quality variant covers the same source timeline
 - emergency-services contact should remain a user or trusted-contact action, not an automatic backend action
 - sharing, export, publication, and legal submission should be deliberate user-controlled steps
 - recording and sharing laws vary by jurisdiction, so future clients should include clear user-facing guidance without giving legal advice
@@ -48,6 +51,13 @@ Future implementation should keep these concepts separate:
 - User tags and notes are context metadata. They must not silently change access, key custody, notification, retention, or legal/export behavior.
 
 The exact public protocol field names may differ, but the distinction between mode, capture, escalation, and sharing should remain.
+
+Capture-profile design should also stay distinct from concrete stream variants.
+The current `MediaStream` is one upload lane. Future capture stream groups,
+variant roles, source timeline identity, and supersession rules are documented
+in [capture-stream-variants.md](capture-stream-variants.md). Incident mode or
+capture profile labels must not silently choose a canonical evidence variant,
+delete fallback chunks, or expose near-live chunks.
 
 ## Interaction Records
 
@@ -226,6 +236,8 @@ Future design should decide:
 - whether safety-check retention changes after the check is completed, canceled, or missed
 - how legal/export state interacts with deletion, tombstones, backups, and revocation
 - how retention applies to wrapped keys, public links, trusted-contact grants, and bundle manifests
+- how retention applies to lower-quality stream variants after a future
+  evidence-master upload supersedes them for canonical review
 - what audit fields can be retained without leaking raw tokens, raw keys, plaintext, request bodies, uploaded bytes, or private deployment details
 
 The current backend implements generic incident deletion and optional

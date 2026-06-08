@@ -60,6 +60,12 @@ chunk_index=1
 
 Encryption and decryption must use identical associated data. IDs and media type must not contain newlines, and `chunk_index` must be positive. This matches streamed upload semantics; legacy unstreamed `chunk_index = 0` chunks cannot use this v1 associated data. Decryption fails when incident ID, stream ID, media type, or chunk index differs from the original metadata.
 
+The v1 associated data does not include capture stream group IDs, variant roles,
+source timeline identity, supersession state, or encrypted GPS/context
+bindings. Those fields are future planning work in
+[capture-stream-variants.md](capture-stream-variants.md) and require explicit
+protocol and envelope review before they are implemented.
+
 ## Chunk Envelope
 
 Each uploaded `.enc` file contains:
@@ -178,6 +184,11 @@ Future incident modes do not change the backend ciphertext-only posture by thems
 The intended Apple-side equivalent is CryptoKit or Swift Crypto AES-GCM. This repository does not include iOS or Swift code yet.
 
 Future work includes production client key storage, Keychain integration, trusted-contact key access, key sharing, browser/client-side decryption, account-based access, incident-mode sharing, and playable export. The intended production key custody direction is a hybrid trusted-contact model documented in [key-custody.md](key-custody.md), with future access boundaries in [v1-access-control.md](v1-access-control.md), browser decryption constraints in [browser-decryption.md](browser-decryption.md), and optional break-glass design in [break-glass-key-access.md](break-glass-key-access.md). Password-derived keys, passphrases, production public-key wrapping, key escrow, backend decryption, and browser decryption are not implemented in this milestone.
+
+Future capture stream variant and supersession work may need new encrypted
+context bindings or source-timeline metadata. That must not be inferred from
+the current envelope; it is a separate design tracked in
+[capture-stream-variants.md](capture-stream-variants.md).
 
 A future pure post-quantum envelope profile is designed separately in
 [post-quantum-envelope.md](post-quantum-envelope.md). That design proposes

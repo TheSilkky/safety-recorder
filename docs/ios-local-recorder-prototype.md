@@ -4,6 +4,13 @@ This document scopes a future iOS local incident-capture prototype for Proofline
 
 The prototype should prove that a native iOS client can capture incident media locally, encrypt chunks before upload, stage encrypted chunks durably, retry uploads, and map its local state to the current backend media stream APIs. The Go simulator remains the backend reference flow until a real client exists.
 
+Future production capture may use multiple encrypted variants for the same
+source timeline, such as near-live reduced-quality chunks plus queued
+full-quality evidence-master chunks. That planning boundary is documented in
+[capture-stream-variants.md](capture-stream-variants.md). The first iOS
+prototype should still use the current simple stream contract unless a later
+implementation issue explicitly adds capture stream groups or variant fields.
+
 ## Prototype Goal
 
 Build the smallest useful native iOS client that exercises the current Proofline backend contract:
@@ -91,6 +98,9 @@ The prototype should expose a plain start/stop capture flow:
 - optionally create a separate video stream before foreground video chunk upload
 - persist the current incident ID, stream IDs, next chunk indexes, and staged upload queue
 - keep recording and upload concerns separated so recording can continue while older encrypted chunks are retried
+- treat any future reduced-quality or audio-priority uploaded chunks as
+  preserved evidence unless a backend-confirmed higher-quality variant covers
+  the same source timeline under the accepted supersession model
 - allow the user to add a local label or note that distinguishes emergency versus non-emergency interaction context without changing backend behavior
 
 For the first milestone, do not require viewer token sharing from the iOS app. A development-only option to create a token may be useful later, but token sharing is not necessary to prove local recording, encryption, staging, and upload semantics.
@@ -246,6 +256,9 @@ Do not implement these as part of the prototype plan. Track them as future backe
 - no endpoint for live partial-stream bundle viewing before stream completion;
   the future access boundary is documented in
   [live-partial-stream-access-boundary.md](live-partial-stream-access-boundary.md)
+- no capture stream group, variant-role, source-timeline supersession, or
+  canonical evidence resolution API; the future design is documented in
+  [capture-stream-variants.md](capture-stream-variants.md)
 - no first-class upload telemetry endpoint for client storage pressure, interruption reasons, or retry state
 - no notification or dead-man switch delivery system
 

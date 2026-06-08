@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Documented the future capture stream variant and evidence-preservation
+  supersession model for near-live, audio-priority, and evidence-master
+  encrypted streams without changing runtime behavior.
 - Aligned key-custody, encryption, API, security, and threat-model docs around
   durable recipient keys, CEK scopes, wrapped-key records, and prototype
   migration boundaries without changing runtime behavior.
