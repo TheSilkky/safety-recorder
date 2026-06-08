@@ -1,23 +1,23 @@
 # Historical Work Order: Prompt Workflow Cleanup
 
-This is a one-off Codex work order for `open-proofline/web-client`.
+This is a one-off Codex work order for `open-proofline/server`.
 
 Date: 2026-06-08
 Branch: `codex/prompt-workflow-work-orders-2026-06-08`
 Base branch: `develop`
-Base commit: `2434b39ccec62cf6a842b0aa9d3bb9219e7d89cb`
+Base commit: `6417c8e345d9a40ca01bfd131d9c1c2f99ae5a5f`
 
 ## Goal
 
-Update the reusable Codex prompt workflow so prompt naming conventions, issue/PR workflow guidance, source-of-truth requirements, and validation instructions match the current web-client repository state.
+Update the reusable Codex prompt workflow so prompt names, workflow ordering, validation instructions, and key-custody design guardrails match the current server repository state.
 
-This is a prompt/documentation maintenance task only. Do not change React application behavior, routes, API client behavior, authentication behavior, styling, tests, build configuration, or backend assumptions unless the maintainer explicitly expands scope.
+This is a prompt/documentation maintenance task only. Do not change runtime Go code, migrations, deployment behavior, API behavior, storage behavior, encryption behavior, or tests unless the maintainer explicitly expands scope.
 
 ## Reasoning
 
 Use very-high reasoning.
 
-This work touches reusable prompt workflow behavior, frontend validation expectations, backend source-of-truth boundaries, and review/fix-mode wording. Keep the changes small, mechanical, and reviewable.
+This work touches reusable prompt workflow behavior, key-custody wording, review/fix-mode boundaries, and validation instructions. Keep the changes small, mechanical, and reviewable.
 
 ## Source of truth to inspect
 
@@ -26,52 +26,38 @@ Before editing, inspect:
 - `README.md`
 - `AGENTS.md`
 - `SECURITY.md`
-- `CHANGELOG.md`, if present
-- `docs/README.md`, if present
-- relevant docs under `docs/`
-- `package.json`
-- `package-lock.json`
-- `.github/workflows/`
+- `CHANGELOG.md`
+- `docs/README.md`
+- `docs/development.md`
+- `docs/codex-change-control.md`, if present
+- `docs/key-custody.md`, if present
+- `docs/contacts-and-viewer-replacement.md`, if present
+- `docs/post-quantum-envelope.md`, if present
+- `docs/browser-decryption.md`, if present
+- `docs/break-glass-key-access.md`, if present
+- `docs/security-model.md`
+- `docs/threat-model.md`
 - `codex/README.md`
 - every reusable prompt under `codex/prompts/`
-- `../server/README.md` and `../server/SECURITY.md` as read-only backend source inputs, if available locally
 
 Do not rely on stale assumptions from this work order if current repository files disagree.
 
 ## Scoped changes
 
-### 1. Add naming and workflow conventions to `codex/README.md`
+### 1. Align validation instructions
 
-Update `codex/README.md` so it documents the reusable prompt naming convention rather than only listing existing prompts.
+Review `codex/README.md` and reusable prompts for validation drift.
 
-Add or align wording for:
+Ensure Go-code workflows consistently include:
 
-- reusable prompts live in `codex/prompts/`;
-- reusable prompts use `NN-short-kebab-title.md`;
-- use two-digit numeric prefixes;
-- use kebab-case;
-- use `.md` extension;
-- use one reusable workflow per file;
-- historical/one-off prompts should not be placed under `codex/prompts/` unless they are intended to be reusable;
-- generated backlog or issue-review drafts belong outside `codex/`.
-
-Also document the normal issue/PR workflow:
-
-```text
-00-project-context-check.md
-05-codex-change-control.md
-70-work-on-github-issue.md
-75-create-draft-pr-from-current-branch.md
-76-request-codex-pr-review.md
+```bash
+gofmt -w ./cmd ./internal ./migrations
+go test ./...
+go vet ./...
+git diff --check
 ```
 
-Clarify that review prompts such as `20-code-review.md` and `30-security-review.md` are review/fix-mode prompts, not ordinary preflight prompts.
-
-### 2. Align validation instructions
-
-Review validation instructions in `codex/README.md` and reusable prompts.
-
-The repo standard validation should be internally consistent. Use the current `package.json` scripts and existing CI reality as source of truth.
+Docs-only workflows may continue to use docs-safe validation, but should include `git diff --check` where appropriate.
 
 At minimum, review and update as needed:
 
@@ -82,88 +68,80 @@ At minimum, review and update as needed:
 - `codex/prompts/75-create-draft-pr-from-current-branch.md`
 - any other reusable prompt with stale validation commands
 
-Decide and document whether `npm run test:e2e` is required for every full validation run or only when route/browser flows change. Avoid contradictory wording.
+### 2. Clarify review-only versus fix mode
 
-Ensure relevant implementation/PR prompts include `git diff --check`.
+Review prompts that are titled as reviews but may edit files.
 
-### 3. Add minimal source-of-truth blocks to lightweight prompts
-
-Review lightweight prompts that currently start directly with focus/constraints and lack a source-of-truth section.
-
-At minimum, inspect:
-
-- `codex/prompts/10-frontend-readability-maintenance.md`
-- `codex/prompts/20-code-review.md`
-- `codex/prompts/30-security-review.md`
-- `codex/prompts/50-web-security-header-review.md`
-
-Add a short source-of-truth section where useful:
-
-- `README.md`
-- `AGENTS.md`
-- `SECURITY.md`
-- relevant docs
-- relevant `src/` and tests
-- `open-proofline/server` docs for backend behavior and route assumptions
-
-Keep these additions concise. Do not bloat lightweight prompts into the comprehensive review prompt.
-
-### 4. Clarify review-only versus fix mode
-
-Review prompts titled as reviews, especially:
+At minimum, check:
 
 - `codex/prompts/20-code-review.md`
 - `codex/prompts/30-security-review.md`
-- `codex/prompts/50-web-security-header-review.md`
 
 Add clear mode wording if needed:
 
-- default mode is review-only unless the maintainer requests fixes or the prompt explicitly enters fix mode;
+- default mode is review-only unless the maintainer requests fixes, or the prompt explicitly enters fix mode;
 - if fixes are made, keep them minimal and scoped;
 - do not add unrelated features during a review pass;
 - do not include sensitive vulnerability details in public artifacts.
 
-### 5. Preserve web-client boundaries
+### 3. Update key-custody design prompts for existing docs
 
-Keep existing web-client boundaries intact:
+Review:
 
-- frontend-only repository;
-- server remains source of truth for backend behavior;
-- no backend features;
-- no recording/capture;
-- no browser decryption or key unwrapping unless explicitly scoped and threat-modeled;
-- no key escrow;
-- no playable export;
-- no emergency dispatch;
-- no OAuth/JWT;
-- no public admin dashboards;
-- preserve Tailwind Catalyst/Tailwind Plus licensing boundaries.
+- `codex/prompts/35-key-custody-and-emergency-access-design.md`
+- `codex/prompts/37-browser-decryption-design-spike.md`
+- `codex/prompts/38-break-glass-and-dead-mans-switch-key-access-design.md`
+
+Update wording so these prompts create or update the relevant design document instead of blindly creating a duplicate fixed-path document when the document already exists.
+
+Use wording like:
+
+```text
+Create or update the relevant design document. If the document already exists, update it rather than creating a duplicate.
+```
+
+### 4. Align key-custody prompt with durable recipient-key plus CEK model
+
+Update `35-key-custody-and-emergency-access-design.md` so it reflects the current accepted direction:
+
+- private keys belong to accounts, devices, and trusted contacts;
+- content-encryption keys belong to incidents, streams, or bounded chunk groups;
+- wrapped access records connect recipient key versions to content keys;
+- current runtime behavior remains ciphertext-only unless separately implemented;
+- future key custody remains explicit, documented, reviewed, and threat-modeled;
+- server storage of wrapped/encrypted keys may be acceptable when explicitly designed;
+- raw server-side key access or server-side decryption remains a deliberate break-glass/dead-man-switch/emergency-access design path only.
+
+Do not implement crypto, schema changes, backend decryption, browser decryption, key escrow, or wrapped-key delivery in this task.
+
+### 5. Preserve prompt naming conventions
+
+Do not rename reusable prompts unless needed. If any reusable prompt filename violates the current `NN-short-kebab-title.md` convention, report it before changing it.
+
+Do not modify historical prompts under `codex/archive/`, `codex/features/`, `codex/refactors/`, or `codex/work-orders/` except this work-order file.
 
 ## Explicit non-goals
 
 Do not:
 
-- change React application code;
-- change route behavior;
-- change API client behavior;
-- change auth/session behavior;
-- change browser storage behavior;
-- add recording/capture;
-- add browser decryption;
-- add key unwrapping;
-- add trusted-contact decryption;
+- change Go runtime code;
+- change migrations;
+- change API behavior;
 - add backend decryption;
+- add browser decryption;
 - add key escrow;
-- add notification delivery;
+- add raw server-held keys;
+- add trusted-contact decryption or wrapped-key delivery behavior;
+- add notifications;
+- add recording/capture;
 - add paid registration, billing, Stripe, or payment-provider behavior;
-- change package dependencies;
 - create GitHub issues;
 - create or merge pull requests;
 - edit sibling repositories.
 
 ## Sensitive-data rules
 
-Do not include raw tokens, session cookies, CSRF tokens, Authorization headers, request bodies, uploaded bytes, plaintext, raw keys, raw media keys, contact private keys, unwrapped secrets, wrapped-key ciphertext, exploit payloads, object-store credentials, stored paths, object keys, private deployment details, or user safety data in public docs, prompts, comments, tests, or summaries.
+Do not include raw tokens, secrets, request bodies, uploaded bytes, Authorization headers, plaintext, raw keys, raw media keys, contact private keys, unwrapped secrets, wrapped-key ciphertext, exploit payloads, object-store credentials, stored paths, object keys, private deployment details, or user safety data in public docs, prompts, comments, tests, or summaries.
 
 ## Validation
 
@@ -172,26 +150,20 @@ For prompt/docs-only changes, run:
 ```bash
 git diff --check
 git diff --stat
-git diff -- README.md AGENTS.md SECURITY.md CHANGELOG.md docs codex package.json .github
+git diff -- AGENTS.md codex docs README.md SECURITY.md CHANGELOG.md
 ```
 
-If formatting checks are available and relevant for Markdown, run the documented command, for example:
-
-```bash
-npm run format:check
-```
-
-If application code changes unexpectedly, stop and explain why. Do not run full frontend validation unless code/config changed or the maintainer explicitly requests it.
+If any Go code changes unexpectedly, stop and explain why. Do not run Go validation unless code changed or the maintainer explicitly requests it.
 
 ## Output
 
 Summarize:
 
 1. files changed;
-2. naming/workflow conventions added;
-3. validation wording updated;
-4. source-of-truth sections added;
-5. review-only/fix-mode wording updated;
+2. validation wording updated;
+3. review-only/fix-mode wording updated;
+4. key-custody prompt wording updated;
+5. whether existing design-doc handling was changed from create-only to create-or-update;
 6. prompts intentionally not changed;
 7. validation commands run and results;
-8. confirmation that no React app code, route behavior, API behavior, auth/session behavior, issues, PRs, or sibling repositories were changed.
+8. confirmation that no runtime code, migrations, API behavior, issues, PRs, or sibling repositories were changed.
