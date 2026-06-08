@@ -109,6 +109,7 @@ If only Markdown changed:
 ```bash
 git diff --stat
 git diff -- README.md docs codex AGENTS.md SECURITY.md CHANGELOG.md .github/ISSUE_TEMPLATE
+git diff --check
 ```
 
 Go tests are not required unless code changed.

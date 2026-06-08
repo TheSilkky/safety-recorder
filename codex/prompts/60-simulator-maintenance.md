@@ -123,6 +123,7 @@ Run:
 gofmt -w ./cmd ./internal ./migrations
 go test ./...
 go vet ./...
+git diff --check
 ```
 
 Manual smoke test. Prefer TOML for repeatable smoke:

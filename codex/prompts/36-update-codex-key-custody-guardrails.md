@@ -61,7 +61,7 @@ Update only Markdown files as needed:
 - `docs/security-model.md`, only if a short wording clarification is needed
 - `docs/threat-model.md`, only if a short wording clarification is needed
 
-Do not update historical prompts in `codex/archive/`, `codex/features/`, `codex/refactors/`, or `codex/work-orders/` unless they are explicitly marked reusable.
+Do not update historical prompts in `codex/archive/` or `codex/work-orders/` unless they are explicitly marked reusable.
 
 ## Recommended replacement language
 
@@ -122,6 +122,7 @@ Because this is Markdown-only:
 ```bash
 git diff --stat
 git diff -- AGENTS.md codex docs
+git diff --check
 ```
 
 If any non-Markdown files changed, stop and explain why.

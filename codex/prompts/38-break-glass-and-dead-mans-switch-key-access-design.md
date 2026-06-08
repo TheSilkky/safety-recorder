@@ -39,9 +39,12 @@ Read:
 - `docs/architecture.md`
 - GitHub issue `#9`, if available
 
-## Document to create
+## Document to create or update
 
-Create:
+Create or update the relevant design document. If the document already exists,
+update it rather than creating a duplicate.
+
+Path:
 
 ```text
 docs/break-glass-key-access.md
@@ -227,6 +230,7 @@ Markdown-only:
 ```bash
 git diff --stat
 git diff -- docs CHANGELOG.md
+git diff --check
 ```
 
 If code changed, stop and explain why.

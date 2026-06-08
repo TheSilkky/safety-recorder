@@ -18,7 +18,7 @@ Make `codex/` consistent, reusable, and easy to maintain.
 Enforce a clear distinction between:
 
 - reusable prompts
-- historical feature/refactor/work-order prompts
+- historical work-order prompts
 - archived one-off prompts
 - generated local artifacts that should not be committed
 
@@ -42,8 +42,6 @@ codex/
   README.md
   prompts/
   archive/
-  features/
-  refactors/
   work-orders/
 ```
 
@@ -92,8 +90,6 @@ Historical prompts belong in:
 
 ```text
 codex/archive/
-codex/features/
-codex/refactors/
 codex/work-orders/
 ```
 
@@ -116,14 +112,6 @@ Rules:
 ### `codex/prompts/`
 
 Reusable prompts that can be safely run again against the current repository.
-
-### `codex/features/`
-
-Historical feature implementation prompts.
-
-### `codex/refactors/`
-
-Historical refactor prompts.
 
 ### `codex/work-orders/`
 
@@ -154,7 +142,7 @@ Check for:
 Allowed:
 
 - rename prompt files to match convention
-- move prompt files between `prompts/`, `archive/`, `features/`, `refactors/`, and `work-orders/`
+- move prompt files between `prompts/`, `archive/`, and `work-orders/`
 - update `codex/README.md`
 - add short README files inside historical directories if useful
 - update `AGENTS.md` only if needed to align prompt workflow rules
@@ -188,6 +176,7 @@ After changes:
 ```bash
 git diff --stat
 git diff -- AGENTS.md codex
+git diff --check
 ```
 
 If any files outside `AGENTS.md` or `codex/` changed, stop and explain why.

@@ -161,6 +161,7 @@ From the repository root, run:
 gofmt -w ./cmd ./internal ./migrations
 go test ./...
 go vet ./...
+git diff --check
 ```
 
 If `go vet ./...` fails because of a known harmless issue, document the reason rather than silently ignoring it.
