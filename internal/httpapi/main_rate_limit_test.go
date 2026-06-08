@@ -3,6 +3,7 @@ package httpapi_test
 import (
 	"bytes"
 	"errors"
+	"log/slog"
 	"net/http"
 	"strings"
 	"testing"
@@ -159,8 +160,10 @@ func TestMainAPIRateLimitExhaustionUsesSafeNoStoreResponse(t *testing.T) {
 }
 
 func TestMainAPIRateLimitBackendFailureUsesSafeResponse(t *testing.T) {
+	var logs bytes.Buffer
+	logger := slog.New(slog.NewTextHandler(&logs, nil))
 	limiter := &recordingPublicRateLimiter{
-		err: errors.New("dial 10.0.0.5:6379 with password secret failed"),
+		err: errors.New("dependency failure with <private endpoint> and <credential>"),
 	}
 	app := newTestAppWithOptions(t, httpapi.Options{
 		MainRateLimit: httpapi.MainRateLimitConfig{
@@ -169,6 +172,7 @@ func TestMainAPIRateLimitBackendFailureUsesSafeResponse(t *testing.T) {
 			UploadLimit: 1,
 		},
 		MainRateLimiter: limiter,
+		Logger:          logger,
 	})
 
 	headers := map[string]string{"Idempotency-Key": "raw-idempotency-key-secret"}
@@ -179,9 +183,24 @@ func TestMainAPIRateLimitBackendFailureUsesSafeResponse(t *testing.T) {
 	}
 	assertMainJSONSecurityHeaders(t, response)
 	assertErrorCode(t, body, "rate_limit_unavailable")
-	for _, disallowed := range []string{"inc_secret", "raw-session-token-secret", "raw-idempotency-key-secret", "10.0.0.5", "secret"} {
+	for _, disallowed := range []string{"inc_secret", "raw-session-token-secret", "raw-idempotency-key-secret", "<private endpoint>", "<credential>"} {
 		if bytes.Contains(body, []byte(disallowed)) {
 			t.Fatalf("rate limiter error response exposed %q: %s", disallowed, body)
+		}
+	}
+	for _, disallowed := range []string{"inc_secret", "raw-session-token-secret", "raw-idempotency-key-secret", "<private endpoint>", "<credential>"} {
+		if bytes.Contains(logs.Bytes(), []byte(disallowed)) {
+			t.Fatalf("rate limiter log exposed %q: %s", disallowed, logs.String())
+		}
+	}
+	for _, want := range []string{
+		"component=httpapi",
+		"operation=\"main api rate limit\"",
+		"route_class=upload",
+		"error_category=rate_limit_unavailable",
+	} {
+		if !bytes.Contains(logs.Bytes(), []byte(want)) {
+			t.Fatalf("rate limiter log omitted %q: %s", want, logs.String())
 		}
 	}
 }

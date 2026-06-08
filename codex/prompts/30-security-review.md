@@ -32,7 +32,7 @@ Do not rely on stale assumptions from this prompt if the repository has changed.
 - Do not weaken security warnings.
 - Do not claim production readiness.
 - Do not expose `/v1` as an unreviewed public catch-all; keep `/v1/admin/...` and `/admin` off public edges.
-- Do not log raw tokens, request bodies, uploaded bytes, Authorization headers, plaintext, raw keys, or future token-like values.
+- Do not log raw tokens, request bodies, uploaded bytes, Authorization headers, plaintext, raw keys, wrapped-key ciphertext, private deployment details, stored paths, object keys, user safety data, or future token-like values; check logging changes against `docs/logging-requirements.md`.
 - Do not add React, Node, npm, OAuth, JWT, new account-system features beyond the implemented local account/session and registration flows, SMS, Messenger, push notifications, Docker Compose, Kubernetes, cloud integrations, or public admin dashboard features unless explicitly requested.
 - Prefer Go standard library where practical.
 - Preserve private/public listener separation.
@@ -56,6 +56,9 @@ Check:
 - raw token logging
 - token leakage through URLs/referrers/logs
 - request body / uploaded bytes / Authorization header logging
+- structured logging field consistency with `docs/logging-requirements.md`
+- no raw `err.Error()` logging in startup, request, upload, storage, token, key, auth, object-store, email, or user-safety paths
+- wrapped-key ciphertext, stored path, object key, private deployment detail, and user safety data log leakage
 - upload size limits
 - SHA-256 verification
 - temp file cleanup

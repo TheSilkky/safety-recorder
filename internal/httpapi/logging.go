@@ -7,16 +7,26 @@ import (
 	"os"
 	"reflect"
 
+	"github.com/open-proofline/server/internal/email"
 	"github.com/open-proofline/server/internal/incidents"
 	"github.com/open-proofline/server/internal/storage"
 )
 
-func (a *API) logInternalError(operation string, err error) {
-	a.logger.Error("internal error", "operation", operation, "error_category", safeErrorCategory(err))
+var errRateLimitUnavailable = errors.New("rate limiter unavailable")
+
+func (a *API) logInternalError(operation string, err error, attrs ...any) {
+	logAttrs := []any{"component", "httpapi", "operation", operation, "error_category", safeErrorCategory(err)}
+	logAttrs = append(logAttrs, attrs...)
+	a.logger.Error("internal error", logAttrs...)
 }
 
 func (a *API) logRecoveredPanic(recovered any) {
-	a.logger.Error("panic recovered", "panic_type", safePanicType(recovered))
+	a.logger.Error("panic recovered",
+		"component", "httpapi",
+		"operation", "panic_recovery",
+		"error_category", "unknown",
+		"panic_type", safePanicType(recovered),
+	)
 }
 
 func safePanicType(recovered any) string {
@@ -34,7 +44,7 @@ func safeErrorCategory(err error) string {
 	case errors.Is(err, context.Canceled):
 		return "canceled"
 	case errors.Is(err, context.DeadlineExceeded):
-		return "deadline_exceeded"
+		return "timeout"
 	case errors.Is(err, storage.ErrUnsafePath):
 		return "unsafe_path"
 	case errors.Is(err, storage.ErrTooLarge):
@@ -51,6 +61,10 @@ func safeErrorCategory(err error) string {
 		return "invalid_state"
 	case errors.Is(err, incidents.ErrNotFound):
 		return "not_found"
+	case errors.Is(err, email.ErrDisabled):
+		return "email"
+	case errors.Is(err, errRateLimitUnavailable):
+		return "rate_limit_unavailable"
 	case errors.Is(err, os.ErrNotExist):
 		return "not_found"
 	case errors.Is(err, os.ErrExist):
@@ -74,7 +88,7 @@ func safeErrorCategory(err error) string {
 	}
 	var syscallErr *os.SyscallError
 	if errors.As(err, &syscallErr) {
-		return "system"
+		return "filesystem"
 	}
-	return "internal"
+	return "unknown"
 }

@@ -427,7 +427,7 @@ func (a *API) renderAdminWeb(w http.ResponseWriter, status int, data adminWebDat
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(status)
 	if err := adminWebTemplate.Execute(w, data); err != nil {
-		a.logger.Error("render admin web page", "err", err)
+		a.logInternalError("render admin web page", err)
 	}
 }
 

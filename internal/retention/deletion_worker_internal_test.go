@@ -17,7 +17,7 @@ import (
 func TestRunAndLogDoesNotExposeRawMaintenanceErrors(t *testing.T) {
 	var logs bytes.Buffer
 	worker := NewWorker(errorRepository{
-		err: errors.New("dial private-db.internal:5432 with secret token"),
+		err: errors.New("metadata dependency failure with <private endpoint> and <credential>"),
 	}, noopBlobStore{}, Options{
 		Logger: slog.New(slog.NewJSONHandler(&logs, nil)),
 	})
@@ -25,12 +25,19 @@ func TestRunAndLogDoesNotExposeRawMaintenanceErrors(t *testing.T) {
 	worker.runAndLog(context.Background())
 
 	output := logs.String()
-	if strings.Contains(output, "private-db.internal") ||
-		strings.Contains(output, "secret token") {
+	if strings.Contains(output, "<private endpoint>") ||
+		strings.Contains(output, "<credential>") {
 		t.Fatalf("maintenance log exposed raw error details: %s", output)
 	}
-	if !strings.Contains(output, `"error_category":"maintenance_error"`) {
-		t.Fatalf("maintenance log omitted safe error category: %s", output)
+	for _, want := range []string{
+		`"component":"retention"`,
+		`"operation":"incident_deletion_maintenance"`,
+		`"status":"failed"`,
+		`"error_category":"metadata"`,
+	} {
+		if !strings.Contains(output, want) {
+			t.Fatalf("maintenance log omitted %s: %s", want, output)
+		}
 	}
 }
 

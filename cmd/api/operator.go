@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -47,16 +48,53 @@ type operatorDeletionStatusOutput struct {
 	Status              incidents.IncidentDeletionJobStatus `json:"status"`
 }
 
+type operatorError struct {
+	operation string
+	category  string
+	err       error
+}
+
+func (e operatorError) Error() string {
+	return e.err.Error()
+}
+
+func (e operatorError) Unwrap() error {
+	return e.err
+}
+
+func withOperatorError(operation, category string, err error) error {
+	if err == nil {
+		return nil
+	}
+	return operatorError{operation: operation, category: category, err: err}
+}
+
+func safeOperatorOperation(err error) string {
+	var operatorErr operatorError
+	if errors.As(err, &operatorErr) && operatorErr.operation != "" {
+		return operatorErr.operation
+	}
+	return "unknown"
+}
+
+func safeOperatorErrorCategory(err error) string {
+	var operatorErr operatorError
+	if errors.As(err, &operatorErr) && operatorErr.category != "" {
+		return operatorErr.category
+	}
+	return "unknown"
+}
+
 func runCommand(args []string, stdout io.Writer, logger *slog.Logger) error {
 	configFilePath, args, err := extractConfigFlag(args)
 	if err != nil {
-		return err
+		return withStartupStage(startupStageArgsParse, err)
 	}
 	if len(args) > 0 && args[0] == "operator" {
 		return runOperatorCommand(context.Background(), args[1:], stdout, configFilePath)
 	}
 	if len(args) != 0 {
-		return fmt.Errorf("unknown command or flag %q", args[0])
+		return withStartupStage(startupStageArgsParse, fmt.Errorf("unknown command or flag %q", args[0]))
 	}
 	return run(logger, configFilePath)
 }
@@ -65,19 +103,19 @@ func runOperatorCommand(ctx context.Context, args []string, stdout io.Writer, co
 	var err error
 	configFilePath, args, err = extractConfigFlagWithExisting(args, configFilePath)
 	if err != nil {
-		return err
+		return withStartupStage(startupStageArgsParse, err)
 	}
 	if len(args) == 0 {
-		return fmt.Errorf("operator command required: retention-preview or deletion-status")
+		return withStartupStage(startupStageArgsParse, fmt.Errorf("operator command required: retention-preview or deletion-status"))
 	}
 
 	cfg, err := config.LoadWithOptions(config.LoadOptions{ConfigFilePath: configFilePath})
 	if err != nil {
-		return err
+		return withStartupStage(startupStageConfigLoad, err)
 	}
 	repo, closeRepo, err := newOperatorRepository(ctx, cfg)
 	if err != nil {
-		return err
+		return withStartupStage(startupStageMetadataOpen, err)
 	}
 	defer closeRepo()
 
@@ -87,7 +125,7 @@ func runOperatorCommand(ctx context.Context, args []string, stdout io.Writer, co
 	case "deletion-status":
 		return runOperatorDeletionStatus(ctx, args[1:], stdout, cfg, repo)
 	default:
-		return fmt.Errorf("unknown operator command %q", args[0])
+		return withStartupStage(startupStageArgsParse, fmt.Errorf("unknown operator command %q", args[0]))
 	}
 }
 
@@ -148,29 +186,29 @@ func runOperatorRetentionPreview(ctx context.Context, args []string, stdout io.W
 	flags.IntVar(&limit, "limit", limit, "maximum candidates to include")
 	flags.StringVar(&nowText, "now", nowText, "RFC3339 time override for deterministic previews")
 	if err := flags.Parse(args); err != nil {
-		return err
+		return withOperatorError("retention_preview", "invalid_config_value", err)
 	}
 	if flags.NArg() != 0 {
-		return fmt.Errorf("operator retention-preview does not accept positional arguments")
+		return withOperatorError("retention_preview", "invalid_config_value", fmt.Errorf("operator retention-preview does not accept positional arguments"))
 	}
 	if closedIncidentRetention <= 0 {
-		return fmt.Errorf("operator retention-preview requires --closed-incident-retention or SAFE_CLOSED_INCIDENT_RETENTION")
+		return withOperatorError("retention_preview", "invalid_config_value", fmt.Errorf("operator retention-preview requires --closed-incident-retention or SAFE_CLOSED_INCIDENT_RETENTION"))
 	}
 	if limit <= 0 {
-		return fmt.Errorf("operator retention-preview requires a positive --limit")
+		return withOperatorError("retention_preview", "invalid_config_value", fmt.Errorf("operator retention-preview requires a positive --limit"))
 	}
 
 	now, err := operatorNow(nowText)
 	if err != nil {
-		return err
+		return withOperatorError("retention_preview", "invalid_config_value", err)
 	}
 	cutoff := now.Add(-closedIncidentRetention)
 	candidates, err := repo.ListRetentionDeletionCandidates(ctx, cutoff, limit)
 	if err != nil {
-		return err
+		return withOperatorError("retention_preview", "metadata", err)
 	}
 
-	return writeOperatorJSON(stdout, operatorRetentionPreviewOutput{
+	return withOperatorError("retention_preview", "unknown", writeOperatorJSON(stdout, operatorRetentionPreviewOutput{
 		Type:                    "retention_preview",
 		MetadataBackend:         cfg.Backends.Metadata,
 		ReadOnly:                true,
@@ -179,7 +217,7 @@ func runOperatorRetentionPreview(ctx context.Context, args []string, stdout io.W
 		Limit:                   limit,
 		CandidateCount:          len(candidates),
 		Candidates:              candidates,
-	})
+	}))
 }
 
 func runOperatorDeletionStatus(ctx context.Context, args []string, stdout io.Writer, cfg config.Config, repo operatorRepository) error {
@@ -192,29 +230,29 @@ func runOperatorDeletionStatus(ctx context.Context, args []string, stdout io.Wri
 	flags.DurationVar(&deletingRetryAfter, "deleting-retry-after", deletingRetryAfter, "age after which deleting jobs are considered retryable")
 	flags.StringVar(&nowText, "now", nowText, "RFC3339 time override for deterministic status output")
 	if err := flags.Parse(args); err != nil {
-		return err
+		return withOperatorError("deletion_status", "invalid_config_value", err)
 	}
 	if flags.NArg() != 0 {
-		return fmt.Errorf("operator deletion-status does not accept positional arguments")
+		return withOperatorError("deletion_status", "invalid_config_value", fmt.Errorf("operator deletion-status does not accept positional arguments"))
 	}
 	if limit <= 0 {
-		return fmt.Errorf("operator deletion-status requires a positive --limit")
+		return withOperatorError("deletion_status", "invalid_config_value", fmt.Errorf("operator deletion-status requires a positive --limit"))
 	}
 	if deletingRetryAfter <= 0 {
-		return fmt.Errorf("operator deletion-status requires a positive --deleting-retry-after")
+		return withOperatorError("deletion_status", "invalid_config_value", fmt.Errorf("operator deletion-status requires a positive --deleting-retry-after"))
 	}
 
 	now, err := operatorNow(nowText)
 	if err != nil {
-		return err
+		return withOperatorError("deletion_status", "invalid_config_value", err)
 	}
 	staleDeletingBefore := now.Add(-deletingRetryAfter)
 	status, err := repo.GetIncidentDeletionJobStatus(ctx, limit, staleDeletingBefore)
 	if err != nil {
-		return err
+		return withOperatorError("deletion_status", "metadata", err)
 	}
 
-	return writeOperatorJSON(stdout, operatorDeletionStatusOutput{
+	return withOperatorError("deletion_status", "unknown", writeOperatorJSON(stdout, operatorDeletionStatusOutput{
 		Type:                "deletion_status",
 		MetadataBackend:     cfg.Backends.Metadata,
 		ReadOnly:            true,
@@ -223,7 +261,7 @@ func runOperatorDeletionStatus(ctx context.Context, args []string, stdout io.Wri
 		Limit:               limit,
 		RunnableJobCount:    len(status.RunnableJobs),
 		Status:              status,
-	})
+	}))
 }
 
 func operatorNow(value string) (time.Time, error) {

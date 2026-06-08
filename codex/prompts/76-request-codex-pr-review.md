@@ -66,8 +66,9 @@ Focus on:
 - whether unrelated scope was added
 - tests and validation
 - private/public listener separation
+- logging consistency with `docs/logging-requirements.md`
 - raw token / request body / uploaded byte / Authorization header logging
-- plaintext/key logging
+- plaintext/key, wrapped-key ciphertext, stored path, object key, private deployment detail, and user safety data logging
 - backend decryption, server-side key access, or key custody changes accidentally introduced or introduced without explicit design scope
 - whether explicit key custody/decryption changes update threat model, security model, encryption docs, tests, and operational guidance
 - ZIP bundle path safety, if relevant
