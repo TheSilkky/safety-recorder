@@ -203,7 +203,7 @@ func (a *API) incidentViewerPage(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if err := incidentViewerPageTemplate.Execute(w, data); err != nil {
-		a.logger.Error("render incident viewer page", "err", err)
+		a.logInternalError("render incident viewer page", err)
 	}
 }
 

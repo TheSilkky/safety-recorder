@@ -300,7 +300,7 @@ func TestUploadCoordinationBusyReturnsRetryableHint(t *testing.T) {
 func TestUploadCoordinationUnavailableReturnsSafeRetryableError(t *testing.T) {
 	var logs bytes.Buffer
 	coord := &recordingUploadCoordinator{
-		err: errors.New("dial 10.0.0.5:6379 with password secret failed"),
+		err: errors.New("dependency failure with <private endpoint> and <credential>"),
 	}
 	app := newTestAppWithOptions(t, httpapi.Options{
 		UploadCoordinator:          coord,
@@ -321,7 +321,7 @@ func TestUploadCoordinationUnavailableReturnsSafeRetryableError(t *testing.T) {
 	if response.Header.Get("Retry-After") != "60" {
 		t.Fatalf("Retry-After = %q, want 60", response.Header.Get("Retry-After"))
 	}
-	for _, disallowed := range []string{"10.0.0.5", "secret", incidentID, stream.ID, string(payload)} {
+	for _, disallowed := range []string{"<private endpoint>", "<credential>", incidentID, stream.ID, string(payload)} {
 		if bytes.Contains(body, []byte(disallowed)) {
 			t.Fatalf("upload coordination response exposed %q: %s", disallowed, body)
 		}

@@ -62,7 +62,7 @@ func (a *API) mainRateLimitMiddlewareWithClassFilter(next http.Handler, allowCla
 
 		allowed, err := limiter.Allow(r.Context(), mainAPIRateLimitKey(r, class), limit, cfg.Window)
 		if err != nil {
-			a.logInternalError("main api rate limit", err)
+			a.logInternalError("main api rate limit", errRateLimitUnavailable, "route_class", string(class))
 			writeError(w, http.StatusServiceUnavailable, "rate_limit_unavailable", "rate limiter is temporarily unavailable")
 			return
 		}

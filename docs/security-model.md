@@ -278,6 +278,10 @@ admin/operator, escrow, key, or plaintext access.
 
 ## Logging And Headers
 
+Logging requirements, standard safe fields, raw-error restrictions, and test
+expectations are documented in
+[logging-requirements.md](logging-requirements.md).
+
 Request logging records method, redacted route pattern, status, byte count, and duration. It does not log request bodies, uploaded bytes, Authorization headers, raw session tokens, raw viewer tokens, raw incident tokens, raw idempotency keys, plaintext, or raw keys.
 
 Background deletion maintenance logs only non-sensitive summary counts and safe

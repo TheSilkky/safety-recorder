@@ -38,6 +38,7 @@ This directory contains the detailed documentation for Proofline Server, the Go 
 | [Incident deletion and retention enforcement](incident-deletion-retention-enforcement.md) | Current private/admin deletion decisions, retention worker behavior, tombstones, blob deletion retry, and remaining lifecycle boundaries. |
 | [Security model](security-model.md) | Current controls, browser headers, logging posture, and security assumptions. |
 | [Threat model](threat-model.md) | Assets, trust boundaries, controls, limitations, and next security steps. |
+| [Logging requirements](logging-requirements.md) | Standard structured logging fields, safe error categories, redaction rules, and review/test requirements for logging changes. |
 | [Simulator](simulator.md) | Simulator commands, durable desktop-recorder staging, poor-network controls, and test flows. |
 | [Development](development.md) | Repository layout, commands, AI assistance note, branch rulesets, checks, and release checklist notes. |
 | [Compose smoke tests](../compose/README.md) | Local release-smoke stacks for SQLite/local, PostgreSQL/local, SQLite/S3-compatible MinIO, and full PostgreSQL/MinIO/Valkey combinations. |

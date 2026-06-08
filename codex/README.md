@@ -132,7 +132,7 @@ Core constraints:
 - Keep the main API/viewer route tree and the private `/admin` dashboard route tree on separate listener groups and muxes.
 - Treat uploaded chunks as immutable.
 - Evidence bundles are encrypted chunk bundles, not decrypted/playable media exports.
-- Do not log raw viewer tokens, incident tokens, request bodies, uploaded bytes, Authorization headers, plaintext, raw keys, or future token-like values.
+- Do not log raw viewer tokens, incident tokens, request bodies, uploaded bytes, Authorization headers, plaintext, raw keys, wrapped-key ciphertext, private deployment details, stored paths, object keys, user safety data, or future token-like values. Logging changes should follow `docs/logging-requirements.md`.
 - Use stable, documented crypto libraries only. Do not implement cryptographic primitives.
 - Preserve the current backend ciphertext-only implementation unless the task explicitly concerns key custody, emergency access, or decryption design.
 - Do not introduce backend decryption, raw server-held decryption keys, key escrow, browser decryption, or key-sharing behaviour incidentally.
@@ -163,6 +163,7 @@ When project scope, architecture, security posture, or workflow changes, update 
 | First-class incident modes, capture profiles, escalation policies, sharing state, safety checks, interaction records, or evidence notes | Update `docs/incident-modes.md`, `README.md`, API docs, security/threat docs, client prototype docs, and relevant review prompts. |
 | New API routes or listener exposure | Review `AGENTS.md`, `docs/api.md`, security/threat docs, and relevant review prompts. |
 | Private `/v1` exposure or authentication model changes | Review `AGENTS.md`, `docs/deployment.md`, `docs/security-model.md`, `docs/threat-model.md`, and every reusable prompt that references private/public route separation. |
+| Logging behavior, startup/config error logs, request logs, or worker/operator logs | Review `docs/logging-requirements.md`, `docs/security-model.md`, `docs/threat-model.md`, and relevant review prompts. |
 | Encryption envelope changes | Update `docs/encryption.md`, `60-simulator-maintenance.md`, `30-security-review.md`, and Deep Research review scope. |
 | Key custody, browser decryption, break-glass, or dead-man-switch design changes | Use or update the key-custody prompts and update threat model, security model, encryption docs, incident-mode docs, and operational guidance. |
 | Bundle, storage, schema, or manifest changes | Update API docs, code-map docs, simulator docs/prompts, and Deep Research scope. |

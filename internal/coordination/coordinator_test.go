@@ -46,7 +46,7 @@ func TestValkeyCoordinatorCheck(t *testing.T) {
 
 func TestValkeyCoordinatorCheckFailureIsSafe(t *testing.T) {
 	client := &fakePinger{
-		pingErr: errors.New("dial 10.0.0.5:6379 with password secret failed"),
+		pingErr: errors.New("dependency failure with <private endpoint> and <credential>"),
 	}
 	coord, err := NewValkey(client)
 	if err != nil {
@@ -57,7 +57,7 @@ func TestValkeyCoordinatorCheckFailureIsSafe(t *testing.T) {
 	if !errors.Is(err, ErrUnavailable) {
 		t.Fatalf("Check error = %v, want ErrUnavailable", err)
 	}
-	if strings.Contains(err.Error(), "10.0.0.5") || strings.Contains(err.Error(), "secret") {
+	if strings.Contains(err.Error(), "<private endpoint>") || strings.Contains(err.Error(), "<credential>") {
 		t.Fatalf("coordination error exposed backend detail: %v", err)
 	}
 }
@@ -107,7 +107,7 @@ func TestValkeyCoordinatorRateLimit(t *testing.T) {
 
 func TestValkeyCoordinatorRateLimitFailureIsSafe(t *testing.T) {
 	client := &fakePinger{
-		incrementErr: errors.New("dial 10.0.0.5:6379 with password secret failed"),
+		incrementErr: errors.New("dependency failure with <private endpoint> and <credential>"),
 	}
 	coord, err := NewValkey(client)
 	if err != nil {
@@ -121,7 +121,7 @@ func TestValkeyCoordinatorRateLimitFailureIsSafe(t *testing.T) {
 	if !errors.Is(err, ErrUnavailable) {
 		t.Fatalf("Allow error = %v, want ErrUnavailable", err)
 	}
-	if strings.Contains(err.Error(), "10.0.0.5") || strings.Contains(err.Error(), "secret") {
+	if strings.Contains(err.Error(), "<private endpoint>") || strings.Contains(err.Error(), "<credential>") {
 		t.Fatalf("rate limit error exposed backend detail: %v", err)
 	}
 }
@@ -171,7 +171,7 @@ func TestValkeyCoordinatorUploadLease(t *testing.T) {
 
 func TestValkeyCoordinatorUploadLeaseFailureIsSafe(t *testing.T) {
 	client := &fakePinger{
-		setNXErr: errors.New("dial 10.0.0.5:6379 with password secret failed"),
+		setNXErr: errors.New("dependency failure with <private endpoint> and <credential>"),
 	}
 	coord, err := NewValkey(client)
 	if err != nil {
@@ -182,27 +182,27 @@ func TestValkeyCoordinatorUploadLeaseFailureIsSafe(t *testing.T) {
 	if !errors.Is(err, ErrUnavailable) {
 		t.Fatalf("AcquireUploadLease error = %v, want ErrUnavailable", err)
 	}
-	if strings.Contains(err.Error(), "10.0.0.5") || strings.Contains(err.Error(), "secret") {
+	if strings.Contains(err.Error(), "<private endpoint>") || strings.Contains(err.Error(), "<credential>") {
 		t.Fatalf("upload lease error exposed backend detail: %v", err)
 	}
 
 	err = coord.ReleaseUploadLease(context.Background(), UploadLease{
 		Key:   "proofline:upload-operation:v1:hash",
-		Token: "server-generated-token",
+		Token: "lease-marker",
 	})
 	if err != nil {
 		t.Fatalf("ReleaseUploadLease without release error: %v", err)
 	}
 
-	client.deleteErr = errors.New("dial 10.0.0.5:6379 with password secret failed")
+	client.deleteErr = errors.New("dependency failure with <private endpoint> and <credential>")
 	err = coord.ReleaseUploadLease(context.Background(), UploadLease{
 		Key:   "proofline:upload-operation:v1:hash",
-		Token: "server-generated-token",
+		Token: "lease-marker",
 	})
 	if !errors.Is(err, ErrUnavailable) {
 		t.Fatalf("ReleaseUploadLease error = %v, want ErrUnavailable", err)
 	}
-	if strings.Contains(err.Error(), "10.0.0.5") || strings.Contains(err.Error(), "secret") {
+	if strings.Contains(err.Error(), "<private endpoint>") || strings.Contains(err.Error(), "<credential>") {
 		t.Fatalf("upload lease release error exposed backend detail: %v", err)
 	}
 }

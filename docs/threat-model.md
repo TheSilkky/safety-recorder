@@ -233,7 +233,7 @@ metadata, grant-bound wrapped-key metadata, and encrypted evidence bundles.
 - ZIP bundle entry names are server-controlled and generated from metadata; clients do not provide stored paths for download.
 - Public viewer responses use a strict same-origin `Content-Security-Policy` with `frame-ancestors 'none'`, `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer`, and a restrictive camera/microphone/geolocation `Permissions-Policy`.
 - Token-protected pages, JSON, errors, authenticated responses, authenticated chunk reads, and bundle downloads use `Cache-Control: no-store`.
-- Request logging records method, redacted route pattern, status, byte count, and duration. It does not log request bodies, uploaded bytes, Authorization headers, raw session tokens, raw viewer tokens, raw incident tokens, raw idempotency keys, plaintext, or raw keys.
+- Request logging records method, redacted route pattern, status, byte count, and duration. It does not log request bodies, uploaded bytes, Authorization headers, raw session tokens, raw viewer tokens, raw incident tokens, raw idempotency keys, plaintext, or raw keys. Standard safe fields, raw-error restrictions, and logging test expectations are documented in [logging-requirements.md](logging-requirements.md).
 - Templates use Go `html/template` escaping.
 - Storage rejects absolute paths, `..`, slash-containing path segments, and backslash traversal. S3 object keys are derived from server-controlled stored paths and an optional safe prefix.
 

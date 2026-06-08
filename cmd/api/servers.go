@@ -12,15 +12,17 @@ import (
 )
 
 type namedServer struct {
-	name   string
-	server *http.Server
+	name     string
+	listener string
+	server   *http.Server
 }
 
 func newHTTPServers(cfg config.Config, mainHandler, adminHandler http.Handler) []namedServer {
 	servers := make([]namedServer, 0, len(cfg.MainBindAddrs)+len(cfg.AdminBindAddrs))
 	for _, addr := range cfg.MainBindAddrs {
 		servers = append(servers, namedServer{
-			name: "main api and viewer",
+			name:     "main api and viewer",
+			listener: "main_api_viewer",
 			server: &http.Server{
 				Addr:              addr,
 				Handler:           mainHandler,
@@ -33,7 +35,8 @@ func newHTTPServers(cfg config.Config, mainHandler, adminHandler http.Handler) [
 	}
 	for _, addr := range cfg.AdminBindAddrs {
 		servers = append(servers, namedServer{
-			name: "private admin",
+			name:     "private admin",
+			listener: "private_admin",
 			server: &http.Server{
 				Addr:              addr,
 				Handler:           adminHandler,
@@ -49,9 +52,13 @@ func newHTTPServers(cfg config.Config, mainHandler, adminHandler http.Handler) [
 
 func startServer(errCh chan<- error, logger *slog.Logger, named namedServer) {
 	go func() {
-		logger.Info("starting "+named.name+" server", "addr", named.server.Addr)
+		logger.Info("starting http server",
+			"component", "startup",
+			"startup_stage", startupStageHTTPListen,
+			"listener", named.listener,
+		)
 		if err := named.server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			errCh <- fmt.Errorf("%s server %s: %w", named.name, named.server.Addr, err)
+			errCh <- withStartupListenerStage(startupStageHTTPListen, named.listener, fmt.Errorf("%s server listen failed: %w", named.name, err))
 		}
 	}()
 }

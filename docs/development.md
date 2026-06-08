@@ -141,6 +141,10 @@ Readability refactors should preserve:
 - main `/v1`/viewer and private-admin route separation
 - logging exclusions for raw tokens, request bodies, uploaded bytes, Authorization headers, plaintext, raw keys, and future token-like values
 
+Logging changes should also follow the standard fields, safe error taxonomy,
+raw-error restrictions, redaction rules, and test expectations in
+[logging-requirements.md](logging-requirements.md).
+
 When a refactor touches security-sensitive paths, keep the old invariant visible in the new shape. For example, incident viewer code should still make it obvious that invalid, expired, and revoked tokens collapse into the same public error, and upload code should still make the temp-file, hash-verification, immutable-commit, and metadata-write order easy to follow.
 
 ### Comments And Invariants

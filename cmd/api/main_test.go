@@ -34,10 +34,10 @@ func TestNewHTTPServersCreatesOneServerPerBindAddress(t *testing.T) {
 	if len(servers) != 4 {
 		t.Fatalf("got %d servers, want 4", len(servers))
 	}
-	assertServer(t, servers[0], "main api and viewer", "127.0.0.1:8080", mainHandler)
-	assertServer(t, servers[1], "main api and viewer", "10.66.0.1:8080", mainHandler)
-	assertServer(t, servers[2], "private admin", "127.0.0.1:8081", adminHandler)
-	assertServer(t, servers[3], "private admin", "192.168.1.20:8081", adminHandler)
+	assertServer(t, servers[0], "main api and viewer", "main_api_viewer", "127.0.0.1:8080", mainHandler)
+	assertServer(t, servers[1], "main api and viewer", "main_api_viewer", "10.66.0.1:8080", mainHandler)
+	assertServer(t, servers[2], "private admin", "private_admin", "127.0.0.1:8081", adminHandler)
+	assertServer(t, servers[3], "private admin", "private_admin", "192.168.1.20:8081", adminHandler)
 }
 
 func TestNewHTTPServersAppliesMainAndAdminTimeouts(t *testing.T) {
@@ -69,34 +69,52 @@ func TestNewHTTPServersAppliesMainAndAdminTimeouts(t *testing.T) {
 func TestStartupErrorLogDoesNotExposeFilesystemPath(t *testing.T) {
 	var logs bytes.Buffer
 	logger := slog.New(slog.NewTextHandler(&logs, nil))
-	err := &os.PathError{Op: "mkdir", Path: "/tmp/proofline/private/data", Err: os.ErrPermission}
+	err := withStartupStage(startupStageBlobStoreOpen, &os.PathError{
+		Op:   "mkdir",
+		Path: "<private filesystem path>",
+		Err:  os.ErrPermission,
+	})
 
 	logStartupError(logger, err)
 
-	if bytes.Contains(logs.Bytes(), []byte("/tmp/proofline/private/data")) {
+	if bytes.Contains(logs.Bytes(), []byte("<private filesystem path>")) {
 		t.Fatalf("startup log exposed filesystem path: %s", logs.String())
+	}
+	if !bytes.Contains(logs.Bytes(), []byte("component=startup")) {
+		t.Fatalf("startup log omitted component: %s", logs.String())
+	}
+	if !bytes.Contains(logs.Bytes(), []byte("startup_stage=blob_store_open")) {
+		t.Fatalf("startup log omitted safe stage: %s", logs.String())
 	}
 	if !bytes.Contains(logs.Bytes(), []byte("error_category=permission")) {
 		t.Fatalf("startup log omitted safe error category: %s", logs.String())
 	}
 }
 
-func TestStartupErrorLogDoesNotExposeConfigSecretDetail(t *testing.T) {
+func TestStartupErrorLogRedactsSecretConfigNameAndUsesSafeDetail(t *testing.T) {
 	var logs bytes.Buffer
 	logger := slog.New(slog.NewTextHandler(&logs, nil))
-	err := config.ParseError{
+	err := withStartupStage(startupStageConfigLoad, config.ParseError{
 		Name:    "SAFE_AUTH_BOOTSTRAP_SECRET_FILE",
 		Message: "secret file cannot be read",
-	}
+	})
 
 	logStartupError(logger, err)
 
-	if !bytes.Contains(logs.Bytes(), []byte("error_category=config")) {
-		t.Fatalf("startup log omitted config category: %s", logs.String())
+	if !bytes.Contains(logs.Bytes(), []byte("startup_stage=config_load")) {
+		t.Fatalf("startup log omitted config stage: %s", logs.String())
 	}
-	if bytes.Contains(logs.Bytes(), []byte("SAFE_AUTH_BOOTSTRAP_SECRET_FILE")) ||
-		bytes.Contains(logs.Bytes(), []byte("secret file cannot be read")) {
-		t.Fatalf("startup log exposed config detail: %s", logs.String())
+	if !bytes.Contains(logs.Bytes(), []byte("error_category=secret_file_config")) {
+		t.Fatalf("startup log omitted secret config category: %s", logs.String())
+	}
+	if !bytes.Contains(logs.Bytes(), []byte("config_key_class=secret_file_config")) {
+		t.Fatalf("startup log omitted secret config key class: %s", logs.String())
+	}
+	if !bytes.Contains(logs.Bytes(), []byte("safe_error_detail=\"secret file cannot be read\"")) {
+		t.Fatalf("startup log omitted safe secret-file detail: %s", logs.String())
+	}
+	if bytes.Contains(logs.Bytes(), []byte("SAFE_AUTH_BOOTSTRAP_SECRET_FILE")) {
+		t.Fatalf("startup log exposed secret config key name: %s", logs.String())
 	}
 }
 
@@ -185,6 +203,9 @@ func TestRunTempUploadCleanupLogsSafeCounts(t *testing.T) {
 	}
 	for _, want := range [][]byte{
 		[]byte("msg=\"temp upload cleanup completed\""),
+		[]byte("component=startup"),
+		[]byte("startup_stage=temp_upload_cleanup"),
+		[]byte("status=completed"),
 		[]byte("eligible=1"),
 		[]byte("removed=1"),
 	} {
@@ -200,20 +221,23 @@ func TestRunTempUploadCleanupLogsSafeCounts(t *testing.T) {
 func TestStartupErrorLogIncludesSafeBackendConfigDetail(t *testing.T) {
 	var logs bytes.Buffer
 	logger := slog.New(slog.NewTextHandler(&logs, nil))
-	err := config.UnsupportedBackendError{
+	err := withStartupStage(startupStageConfigLoad, config.UnsupportedBackendError{
 		EnvName:   "SAFE_METADATA_BACKEND",
 		Supported: []string{config.MetadataBackendSQLite, config.MetadataBackendPostgres},
-	}
+	})
 
 	logStartupError(logger, err)
 
-	if !bytes.Contains(logs.Bytes(), []byte("error_category=config")) {
-		t.Fatalf("startup log omitted config category: %s", logs.String())
+	if !bytes.Contains(logs.Bytes(), []byte("startup_stage=config_load")) {
+		t.Fatalf("startup log omitted config stage: %s", logs.String())
 	}
-	if !bytes.Contains(logs.Bytes(), []byte("SAFE_METADATA_BACKEND")) {
+	if !bytes.Contains(logs.Bytes(), []byte("error_category=unsupported_backend")) {
+		t.Fatalf("startup log omitted unsupported backend category: %s", logs.String())
+	}
+	if !bytes.Contains(logs.Bytes(), []byte("config_key=SAFE_METADATA_BACKEND")) {
 		t.Fatalf("startup log omitted backend env name: %s", logs.String())
 	}
-	if !bytes.Contains(logs.Bytes(), []byte("supported values: sqlite, postgresql")) {
+	if !bytes.Contains(logs.Bytes(), []byte("safe_error_detail=\"unsupported backend; supported values: sqlite, postgresql\"")) {
 		t.Fatalf("startup log omitted supported backend values: %s", logs.String())
 	}
 }
@@ -222,20 +246,63 @@ func TestStartupErrorLogDoesNotExposeCoordinationConnectionDetail(t *testing.T) 
 	var logs bytes.Buffer
 	logger := slog.New(slog.NewTextHandler(&logs, nil))
 
-	logStartupError(logger, coordination.ErrUnavailable)
+	logStartupError(logger, withStartupStage(startupStageCoordinationCheck, coordination.ErrUnavailable))
 
+	if !bytes.Contains(logs.Bytes(), []byte("startup_stage=coordination_check")) {
+		t.Fatalf("startup log omitted coordination stage: %s", logs.String())
+	}
 	if !bytes.Contains(logs.Bytes(), []byte("error_category=coordination_unavailable")) {
 		t.Fatalf("startup log omitted coordination category: %s", logs.String())
 	}
-	if bytes.Contains(logs.Bytes(), []byte("error_detail")) {
+	if bytes.Contains(logs.Bytes(), []byte("safe_error_detail")) {
 		t.Fatalf("startup log exposed coordination detail: %s", logs.String())
 	}
 }
 
-func assertServer(t *testing.T, got namedServer, name, addr string, handler http.Handler) {
+func TestStartupErrorLogIncludesAuthBootstrapStageAndSafeDetail(t *testing.T) {
+	var logs bytes.Buffer
+	logger := slog.New(slog.NewTextHandler(&logs, nil))
+
+	logStartupError(logger, withStartupStage(startupStageAuthBootstrapCheck, errAuthBootstrapRequired))
+
+	for _, want := range [][]byte{
+		[]byte("startup_stage=auth_bootstrap_check"),
+		[]byte("error_category=auth_bootstrap_required"),
+		[]byte("safe_error_detail=\"admin account required before serving authenticated routes\""),
+	} {
+		if !bytes.Contains(logs.Bytes(), want) {
+			t.Fatalf("startup log omitted %q: %s", want, logs.String())
+		}
+	}
+	if bytes.Contains(logs.Bytes(), []byte("SAFE_AUTH_BOOTSTRAP_SECRET")) {
+		t.Fatalf("startup log exposed bootstrap secret config key: %s", logs.String())
+	}
+}
+
+func TestStartupErrorLogIncludesSafeListenerClass(t *testing.T) {
+	var logs bytes.Buffer
+	logger := slog.New(slog.NewTextHandler(&logs, nil))
+
+	logStartupError(logger, withStartupListenerStage(startupStageHTTPListen, "private_admin", os.ErrPermission))
+
+	for _, want := range [][]byte{
+		[]byte("startup_stage=http_listen"),
+		[]byte("listener=private_admin"),
+		[]byte("error_category=permission"),
+	} {
+		if !bytes.Contains(logs.Bytes(), want) {
+			t.Fatalf("startup log omitted %q: %s", want, logs.String())
+		}
+	}
+}
+
+func assertServer(t *testing.T, got namedServer, name, listener, addr string, handler http.Handler) {
 	t.Helper()
 	if got.name != name {
 		t.Fatalf("server name = %q, want %q", got.name, name)
+	}
+	if got.listener != listener {
+		t.Fatalf("server listener = %q, want %q", got.listener, listener)
 	}
 	if got.server.Addr != addr {
 		t.Fatalf("server addr = %q, want %q", got.server.Addr, addr)

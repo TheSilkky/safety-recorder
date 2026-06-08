@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Standardized startup, request-adjacent, rate-limit, template-render, and
+  retention worker logs around safe structured fields, startup stages,
+  low-cardinality categories, and redacted error details without changing API,
+  storage, auth, or migration behavior.
 - Documented the future capture stream variant and evidence-preservation
   supersession model for near-live, audio-priority, and evidence-master
   encrypted streams without changing runtime behavior.

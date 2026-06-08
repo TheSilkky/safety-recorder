@@ -9,7 +9,7 @@
 - Do not add React, Node, npm, Docker Compose, Kubernetes, OAuth, JWT, new account-system features beyond the implemented local account/session and registration flows, SMS, Messenger, push notifications, cloud services, or public admin dashboards unless explicitly requested.
 - Treat uploaded chunks as immutable.
 - Never overwrite stored chunks or evidence bundle contents.
-- Never log raw viewer tokens, incident tokens, request bodies, uploaded file bytes, Authorization headers, plaintext, raw keys, or future token-like values.
+- Never log raw viewer tokens, incident tokens, request bodies, uploaded file bytes, Authorization headers, plaintext, raw keys, wrapped-key ciphertext, private deployment details, stored paths, object keys, user safety data, or future token-like values. Logging changes should follow `docs/logging-requirements.md`.
 - Keep the main API/viewer route tree and the private `/admin` dashboard route tree on separate listener groups and separate muxes.
 - Do not route private write/admin routes from public incident viewer edges.
 - Public incident viewer routes must remain read-only.
@@ -88,6 +88,7 @@ Before accepting Codex changes, check:
 - private/public route separation is preserved
 - raw tokens are not logged
 - plaintext and raw keys are not logged
+- wrapped-key ciphertext, private deployment details, stored paths, object keys, and user safety data are not logged
 - ZIP downloads use safe headers and controlled paths
 - documentation still matches `README.md`
 - future web, iOS, Android, or protocol work was not accidentally added to this server repository

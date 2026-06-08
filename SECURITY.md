@@ -84,4 +84,4 @@ The following are generally out of scope unless they demonstrate a concrete vuln
 
 ## Public Disclosure Guidance
 
-Please allow time for private triage and remediation before public disclosure. Do not publish raw viewer tokens, incident tokens, idempotency keys, request bodies, uploaded bytes, private deployment details, proof-of-concept material, or user safety data.
+Please allow time for private triage and remediation before public disclosure. Do not publish raw viewer tokens, incident tokens, idempotency keys, request bodies, uploaded bytes, plaintext, raw keys, wrapped-key ciphertext, stored paths, object keys, private deployment details, proof-of-concept material, or user safety data.

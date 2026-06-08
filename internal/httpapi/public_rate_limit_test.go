@@ -143,8 +143,10 @@ func TestPublicViewerRateLimitAppliesToHeadRequests(t *testing.T) {
 }
 
 func TestPublicViewerRateLimitBackendFailureUsesSafeResponse(t *testing.T) {
+	var logs bytes.Buffer
+	logger := slog.New(slog.NewTextHandler(&logs, nil))
 	limiter := &recordingPublicRateLimiter{
-		err: errors.New("dial 10.0.0.5:6379 with password secret failed"),
+		err: errors.New("dependency failure with <private endpoint> and <credential>"),
 	}
 	app := newTestAppWithOptions(t, httpapi.Options{
 		PublicRateLimit: httpapi.PublicRateLimitConfig{
@@ -153,6 +155,7 @@ func TestPublicViewerRateLimitBackendFailureUsesSafeResponse(t *testing.T) {
 			DataLimit: 1,
 		},
 		PublicRateLimiter: limiter,
+		Logger:            logger,
 	})
 
 	response, body := getPublic(t, app, "/i/raw-viewer-token-secret/data")
@@ -162,9 +165,24 @@ func TestPublicViewerRateLimitBackendFailureUsesSafeResponse(t *testing.T) {
 	}
 	assertIncidentViewerPrivacyHeaders(t, response)
 	assertErrorCode(t, body, "rate_limit_unavailable")
-	for _, disallowed := range []string{"raw-viewer-token-secret", "10.0.0.5", "secret"} {
+	for _, disallowed := range []string{"raw-viewer-token-secret", "<private endpoint>", "<credential>"} {
 		if bytes.Contains(body, []byte(disallowed)) {
 			t.Fatalf("rate limiter error response exposed %q: %s", disallowed, body)
+		}
+	}
+	for _, disallowed := range []string{"raw-viewer-token-secret", "<private endpoint>", "<credential>"} {
+		if bytes.Contains(logs.Bytes(), []byte(disallowed)) {
+			t.Fatalf("rate limiter log exposed %q: %s", disallowed, logs.String())
+		}
+	}
+	for _, want := range []string{
+		"component=httpapi",
+		"operation=\"public viewer rate limit\"",
+		"route_class=data",
+		"error_category=rate_limit_unavailable",
+	} {
+		if !bytes.Contains(logs.Bytes(), []byte(want)) {
+			t.Fatalf("rate limiter log omitted %q: %s", want, logs.String())
 		}
 	}
 }

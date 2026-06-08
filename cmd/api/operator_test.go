@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
+	"log/slog"
 	"strings"
 	"testing"
 	"time"
@@ -57,6 +59,56 @@ func TestRunOperatorRetentionPreviewRequiresRetentionWindow(t *testing.T) {
 	err := runOperatorRetentionPreview(context.Background(), nil, &bytes.Buffer{}, config.Config{}, &fakeOperatorRepository{})
 	if err == nil || !strings.Contains(err.Error(), "closed-incident-retention") {
 		t.Fatalf("expected retention window error, got %v", err)
+	}
+	var operatorErr operatorError
+	if !errors.As(err, &operatorErr) {
+		t.Fatalf("expected operator error wrapper, got %T", err)
+	}
+	if operatorErr.operation != "retention_preview" || operatorErr.category != "invalid_config_value" {
+		t.Fatalf("operator error operation=%q category=%q", operatorErr.operation, operatorErr.category)
+	}
+}
+
+func TestOperatorErrorLogUsesSafeOperatorFields(t *testing.T) {
+	ctx := context.Background()
+	repo := &fakeOperatorRepository{
+		err: errors.New("metadata dependency failure with <private endpoint> and <credential>"),
+	}
+	var out bytes.Buffer
+
+	err := runOperatorRetentionPreview(ctx, []string{
+		"--closed-incident-retention", "24h",
+		"--now", "2026-06-01T10:00:00Z",
+	}, &out, config.Config{
+		Backends: config.BackendSelection{Metadata: config.MetadataBackendSQLite},
+	}, repo)
+	if err == nil {
+		t.Fatal("expected retention preview metadata error")
+	}
+
+	var logs bytes.Buffer
+	logger := slog.New(slog.NewTextHandler(&logs, nil))
+	logCommandError(logger, err)
+
+	for _, want := range []string{
+		"component=operator",
+		"operation=retention_preview",
+		"status=failed",
+		"error_category=metadata",
+	} {
+		if !strings.Contains(logs.String(), want) {
+			t.Fatalf("operator log omitted %q: %s", want, logs.String())
+		}
+	}
+	for _, disallowed := range []string{
+		"component=startup",
+		"<private endpoint>",
+		"<credential>",
+		"err=",
+	} {
+		if strings.Contains(logs.String(), disallowed) {
+			t.Fatalf("operator log exposed %q: %s", disallowed, logs.String())
+		}
 	}
 }
 
@@ -117,22 +169,29 @@ func TestRunOperatorDeletionStatusOutputsSafeRetryCategories(t *testing.T) {
 type fakeOperatorRepository struct {
 	candidates          []incidents.RetentionDeletionCandidate
 	status              incidents.IncidentDeletionJobStatus
+	err                 error
 	cutoff              time.Time
 	staleDeletingBefore time.Time
 	limit               int
 }
 
 func (r *fakeOperatorRepository) Check(context.Context) error {
-	return nil
+	return r.err
 }
 
 func (r *fakeOperatorRepository) ListRetentionDeletionCandidates(_ context.Context, cutoff time.Time, limit int) ([]incidents.RetentionDeletionCandidate, error) {
+	if r.err != nil {
+		return nil, r.err
+	}
 	r.cutoff = cutoff
 	r.limit = limit
 	return r.candidates, nil
 }
 
 func (r *fakeOperatorRepository) GetIncidentDeletionJobStatus(_ context.Context, limit int, staleDeletingBefore time.Time) (incidents.IncidentDeletionJobStatus, error) {
+	if r.err != nil {
+		return incidents.IncidentDeletionJobStatus{}, r.err
+	}
 	r.limit = limit
 	r.staleDeletingBefore = staleDeletingBefore
 	return r.status, nil

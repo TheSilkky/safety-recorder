@@ -29,7 +29,7 @@ func main() {
 	}
 	logger := slog.New(slog.NewJSONHandler(logOutput, nil))
 	if err := runCommand(os.Args[1:], os.Stdout, logger); err != nil {
-		logStartupError(logger, err)
+		logCommandError(logger, err)
 		os.Exit(1)
 	}
 }
@@ -52,7 +52,7 @@ func commandIsOperator(args []string) bool {
 func run(logger *slog.Logger, configFilePath string) error {
 	cfg, err := config.LoadWithOptions(config.LoadOptions{ConfigFilePath: configFilePath})
 	if err != nil {
-		return err
+		return withStartupStage(startupStageConfigLoad, err)
 	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -60,28 +60,28 @@ func run(logger *slog.Logger, configFilePath string) error {
 
 	coord, err := newCoordinator(cfg)
 	if err != nil {
-		return err
+		return withStartupStage(startupStageCoordinationInit, err)
 	}
 	defer func() { _ = coord.Close() }()
 	if err := coord.Check(ctx); err != nil {
-		return err
+		return withStartupStage(startupStageCoordinationCheck, err)
 	}
 
 	repo, closeRepo, err := newMetadataRepository(ctx, cfg)
 	if err != nil {
-		return err
+		return withStartupStage(startupStageMetadataOpen, err)
 	}
 	defer closeRepo()
 	if err := checkAuthBootstrap(ctx, repo, cfg); err != nil {
-		return err
+		return withStartupStage(startupStageAuthBootstrapCheck, err)
 	}
 
 	blobStore, err := newBlobStore(cfg)
 	if err != nil {
-		return err
+		return withStartupStage(startupStageBlobStoreOpen, err)
 	}
 	if err := runTempUploadCleanup(ctx, logger, blobStore, cfg); err != nil {
-		return err
+		return withStartupStage(startupStageTempUploadCleanup, err)
 	}
 
 	apiOptions := httpapi.Options{
@@ -119,7 +119,7 @@ func run(logger *slog.Logger, configFilePath string) error {
 
 	select {
 	case <-ctx.Done():
-		return shutdownServers(servers)
+		return withStartupStage(startupStageShutdown, shutdownServers(servers))
 	case err := <-errCh:
 		_ = shutdownServers(servers)
 		return err
@@ -237,7 +237,14 @@ func newCoordinator(cfg config.Config) (coordination.Coordinator, error) {
 			WriteTimeout: cfg.Valkey.WriteTimeout,
 		})
 	default:
-		return nil, fmt.Errorf("unsupported coordination backend %q", cfg.Backends.Coordination)
+		return nil, config.UnsupportedBackendError{
+			EnvName: "SAFE_COORDINATION_BACKEND",
+			Supported: []string{
+				config.CoordinationBackendNone,
+				config.CoordinationBackendValkey,
+				config.CoordinationBackendRedis,
+			},
+		}
 	}
 }
 
@@ -256,7 +263,10 @@ func newMetadataRepository(ctx context.Context, cfg config.Config) (httpapi.Meta
 		}
 		return postgresdb.NewRepository(conn), func() { _ = conn.Close() }, nil
 	default:
-		return nil, nil, fmt.Errorf("unsupported metadata backend %q", cfg.Backends.Metadata)
+		return nil, nil, config.UnsupportedBackendError{
+			EnvName:   "SAFE_METADATA_BACKEND",
+			Supported: []string{config.MetadataBackendSQLite, config.MetadataBackendPostgres},
+		}
 	}
 }
 
@@ -277,7 +287,10 @@ func newBlobStore(cfg config.Config) (storage.BlobStore, error) {
 			TempDir:         filepath.Join(cfg.DataDir, "tmp"),
 		})
 	default:
-		return nil, fmt.Errorf("unsupported blob backend %q", cfg.Backends.Blob)
+		return nil, config.UnsupportedBackendError{
+			EnvName:   "SAFE_BLOB_BACKEND",
+			Supported: []string{config.BlobBackendLocal, config.BlobBackendS3},
+		}
 	}
 }
 
@@ -297,6 +310,9 @@ func runTempUploadCleanup(ctx context.Context, logger *slog.Logger, store storag
 		return fmt.Errorf("temp upload cleanup: %w", err)
 	}
 	logger.Info("temp upload cleanup completed",
+		"component", "startup",
+		"startup_stage", startupStageTempUploadCleanup,
+		"status", "completed",
 		"dry_run", cfg.TempUploadCleanupDryRun,
 		"scanned", summary.Scanned,
 		"eligible", summary.Eligible,
