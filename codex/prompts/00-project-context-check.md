@@ -18,6 +18,7 @@ Before making changes, read current source-of-truth files as relevant:
 - `CHANGELOG.md`
 - `SECURITY.md`
 - `docs/README.md`
+- `docs/v1-preview-direction.md`
 - `docs/key-custody.md`, if present
 - relevant files in `docs/`
 - relevant source files

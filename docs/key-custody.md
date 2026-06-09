@@ -36,8 +36,8 @@ be designed separately from the encryption envelope itself.
 The contact public-key lifecycle, trusted-contact grants, and wrapped-key
 metadata boundary are designed in
 [contact-key-sharing-grants.md](contact-key-sharing-grants.md).
-The proposed first pure post-quantum contact-wrapping profile is documented in
-[post-quantum-envelope.md](post-quantum-envelope.md). That design uses
+The v1-required first pure post-quantum contact-wrapping profile is documented
+in [post-quantum-envelope.md](post-quantum-envelope.md). That design uses
 ML-KEM-768, HKDF-SHA384, SHA-384 metadata digests, and AES-256-GCM while keeping
 the backend ciphertext-only by default.
 
@@ -267,7 +267,7 @@ The first production contact-wrapped implementation should follow
 must remain separate from decryption capability, wrapped-key records must remain
 separate from viewer tokens, and the server must not store raw CEKs, raw media
 keys, recipient private keys, plaintext, or unwrapped shared secrets in the
-default path. For a pure post-quantum first implementation, the proposed
+default path. For the v1-required pure post-quantum first implementation, the
 wrapping profile is documented in
 [post-quantum-envelope.md](post-quantum-envelope.md).
 
@@ -322,9 +322,9 @@ Initial production direction:
 - Keep raw CEKs, media keys, and recipient private keys in client or
   trusted-contact environments only, except for separately approved break-glass
   modes.
-- Treat [post-quantum-envelope.md](post-quantum-envelope.md) as the proposed
-  first pure post-quantum wrapping profile for future contact-wrapped CEKs until
-  an explicit protocol decision replaces it.
+- Treat [post-quantum-envelope.md](post-quantum-envelope.md) as the required
+  first pure post-quantum wrapping profile for v1 preview contact-wrapped CEKs
+  until an explicit protocol decision replaces it.
 
 ## Trusted Contact Access
 
@@ -467,9 +467,8 @@ The hybrid model is designed to keep uploaded ciphertext useful after the phone 
 
 - Should media encryption use per-stream CEKs only, or a per-incident parent
   wrapping key plus per-stream CEKs?
-- Should the proposed pure post-quantum ML-KEM-768 wrapping profile be the first
-  production contact-wrapped scheme, or should a classical or hybrid transition
-  profile be designed first?
+- Should ML-KEM-1024 or another explicitly reviewed post-quantum suite be
+  offered after the default ML-KEM-768 v1 preview profile lands?
 - How are trusted contact public keys verified during enrollment?
 - What account model is required for web, iOS, and Android clients?
 - How should contacts recover from lost private keys?

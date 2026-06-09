@@ -58,7 +58,7 @@ Allowed values:
 
 Product documentation now uses the name Proofline. Repository paths, the Go module path, Docker image names, GHCR package names, and release binary names use the `open-proofline/server` repository namespace. Compatibility identifiers such as the v1 simulator encryption envelope, default SQLite filename, legacy `/e/{token}` aliases, and historical migration names may still use `safety-recorder` or `emergency` until separate protocol or data-layout migrations are explicitly performed.
 
-Proofline's planned product scope includes emergency incidents, non-emergency interaction records, timed safety checks, and evidence notes. The current backend stores generic incidents by default; optional incident-mode, capture-profile, escalation-policy, and sharing-state metadata are labels only unless the reviewed tree explicitly implements first-class behavior for them.
+Proofline's planned product scope includes emergency incidents, non-emergency interaction records, timed safety checks, and evidence notes. The current backend stores generic incidents by default; optional incident-mode, capture-profile, escalation-policy, and sharing-state metadata are labels only unless the reviewed tree explicitly implements first-class behavior for them. The post-quantum envelope is a v1 preview requirement, but it is not current runtime behavior unless implementation files prove it.
 
 ## Rules
 
@@ -71,7 +71,7 @@ Proofline's planned product scope includes emergency incidents, non-emergency in
 - Do not claim production readiness, platform-store approval, legal review, compliance certification, penetration test, or formal audit.
 - Do not treat absence of future-design features as a defect when source-of-truth docs mark them out of scope.
 - Preserve the current backend ciphertext-only implementation boundary unless the report identifies implemented behavior that contradicts it.
-- Treat future incident-mode, web/iOS/Android client, key-custody, browser-decryption, and break-glass documents as planning unless implementation files exist in the reviewed tree.
+- Treat future incident-mode, web/iOS/Android client, key-custody, browser-decryption, break-glass, and post-quantum envelope documents as planning or future preview requirements unless implementation files exist in the reviewed tree.
 
 ## First Steps
 
@@ -91,6 +91,7 @@ sed -n '1,240p' README.md
 sed -n '1,220p' SECURITY.md
 sed -n '1,260p' AGENTS.md
 sed -n '1,280p' docs/README.md
+sed -n '1,700p' docs/v1-preview-direction.md
 sed -n '1,260p' docs/incident-modes.md
 sed -n '1,320p' docs/security-model.md
 sed -n '1,340p' docs/threat-model.md
@@ -103,6 +104,7 @@ Read future-design docs when present:
 
 ```bash
 test -f docs/key-custody.md && sed -n '1,360p' docs/key-custody.md
+test -f docs/post-quantum-envelope.md && sed -n '1,720p' docs/post-quantum-envelope.md
 test -f docs/browser-decryption.md && sed -n '1,360p' docs/browser-decryption.md
 test -f docs/break-glass-key-access.md && sed -n '1,360p' docs/break-glass-key-access.md
 test -f docs/ios-local-recorder-prototype.md && sed -n '1,360p' docs/ios-local-recorder-prototype.md

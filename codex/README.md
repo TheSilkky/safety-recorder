@@ -120,7 +120,7 @@ Use prompts in this rough order:
 
 ## Current project constraints
 
-Treat `README.md`, `AGENTS.md`, `SECURITY.md`, and the `docs/` directory as the current source of truth.
+Treat `README.md`, `AGENTS.md`, `SECURITY.md`, and the `docs/` directory as the current source of truth. For v1 preview terminology, repository roles, and current-versus-future product direction, read `docs/v1-preview-direction.md` before turning prototype gaps into backlog or implementation assumptions.
 
 Product documentation now uses the name Proofline. The repository URL is `open-proofline/server`, the root Go module path is `github.com/open-proofline/server`, release binaries use `proofline-server-*` names, and the published GHCR image is `ghcr.io/open-proofline/server`. Compatibility identifiers such as the v1 simulator encryption envelope and default SQLite filename may still use earlier `safety-recorder` names until separate protocol or data-layout migrations are explicitly performed.
 

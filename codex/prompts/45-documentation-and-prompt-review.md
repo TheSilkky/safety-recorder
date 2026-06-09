@@ -22,6 +22,7 @@ Start with current source-of-truth files:
 - `SECURITY.md`
 - `CHANGELOG.md`, if present
 - `docs/README.md`
+- `docs/v1-preview-direction.md`
 - every current source-of-truth file under `docs/`
 - `codex/README.md`
 - every reusable prompt under `codex/prompts/`, including this prompt

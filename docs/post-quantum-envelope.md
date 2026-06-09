@@ -1,11 +1,13 @@
 # Pure Post-Quantum Encryption Envelope
 
-Status: design and implementation plan only. This document does not change the
-current runtime encryption envelope, backend storage behavior, viewer behavior, or
-trusted-contact access model.
+Status: v1 preview requirement, design and implementation plan only until
+runtime work lands. This document does not change the current runtime encryption
+envelope, backend storage behavior, viewer behavior, or trusted-contact access
+model.
 
-This document defines the intended future pure post-quantum encryption envelope
-for Proofline evidence media and wrapped media-key metadata. The proposed suite is:
+This document defines the required v1 preview pure post-quantum encryption
+envelope for Proofline evidence media and wrapped media-key metadata. The
+proposed suite is:
 
 ```text
 ML-KEM-768 + HKDF-SHA384 + AES-256-GCM
@@ -20,7 +22,10 @@ should not manually manage ML-KEM keys, choose algorithms, or paste public keys
 as the primary trusted-contact flow.
 
 The envelope is intended for long-lived encrypted evidence where
-harvest-now/decrypt-later risk matters. It is pure post-quantum in the key
+harvest-now/decrypt-later risk matters. Proofline evidence may be extremely
+sensitive, may involve victims, and may later be used in real legal settings.
+The v1 preview default must therefore protect users from the earliest possible
+date that real evidence may be uploaded. It is pure post-quantum in the key
 establishment layer: it does not depend on X25519, P-256, RSA, or another
 classical public-key algorithm for confidentiality.
 
@@ -32,7 +37,7 @@ symmetric key and binds incident ID, stream ID, media type, and chunk index as
 associated data. The backend stores opaque encrypted bytes and validates hashes
 over ciphertext rather than decrypting media.
 
-This future envelope keeps the same backend posture:
+This envelope keeps the same backend posture:
 
 - clients encrypt before upload
 - the backend stores ciphertext and non-secret metadata
@@ -42,9 +47,12 @@ This future envelope keeps the same backend posture:
 - bundle and viewer flows must remain explicit about whether key-wrapping
   metadata is present and who can use it
 
-The new design is not a transparent in-place replacement for
-`safety-recorder-chunk-encryption-v1`. It should be introduced as an explicit
-new scheme with compatibility tests and migration notes.
+The post-quantum envelope must become the documented and tested default before
+v1 preview. It is not a transparent in-place replacement for
+`safety-recorder-chunk-encryption-v1`; it should be introduced as an explicit
+new scheme with compatibility tests and migration notes. Legacy or simulator
+envelopes may remain for development, migration, or test compatibility, but
+they must not be the real-user v1 preview default.
 
 ## Goals
 
@@ -59,6 +67,8 @@ new scheme with compatibility tests and migration notes.
 - Keep the format versioned and algorithm-agile without allowing downgrade
   behavior.
 - Make implementation constraints explicit before adding runtime code.
+- Become the fully implemented, documented, and tested default envelope before
+  v1 preview server and web-client use.
 
 ## Non-Goals
 

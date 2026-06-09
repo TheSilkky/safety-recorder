@@ -85,6 +85,7 @@ Then read:
 - `AGENTS.md`
 - `CHANGELOG.md`
 - `SECURITY.md`
+- `docs/v1-preview-direction.md`
 - relevant files in `docs/`
 - relevant source files
 - relevant tests

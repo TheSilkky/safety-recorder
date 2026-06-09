@@ -59,6 +59,7 @@ Read current repository files where present:
 - `SECURITY.md`
 - `LICENSE`
 - `docs/README.md`
+- `docs/v1-preview-direction.md`
 - `docs/api.md`
 - `docs/architecture.md`
 - `docs/configuration.md`

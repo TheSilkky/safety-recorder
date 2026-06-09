@@ -167,7 +167,7 @@ Do **not** claim production readiness.
 
 Do **not** claim formal security audit, penetration test, compliance certification, legal review, App Store review, Play Store review, or production-readiness endorsement.
 
-Do **not** describe future incident modes, account access, key custody, browser decryption, break-glass access, mobile clients, or web clients as implemented features unless the reviewed tree contains implementation code.
+Do **not** describe future incident modes, account access, key custody, browser decryption, break-glass access, mobile clients, web clients, or the post-quantum envelope as implemented features unless the reviewed tree contains implementation code. The post-quantum envelope is a v1 preview requirement, not current runtime behavior unless implementation has landed.
 
 ## Expected Source Plan
 

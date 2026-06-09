@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Added a v1 preview direction source-of-truth document covering terminology,
+  repository roles, current-versus-future boundaries, viewer replacement,
+  browser crypto, the post-quantum envelope requirement, trusted contacts,
+  capture variants, edge posture, public registration, quota, deployment
+  responsibility, and Codex guidance without changing runtime behavior.
 - Standardized startup, request-adjacent, rate-limit, template-render, and
   retention worker logs around safe structured fields, startup stages,
   low-cardinality categories, and redacted error details without changing API,

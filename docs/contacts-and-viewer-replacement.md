@@ -55,8 +55,8 @@ source docs or accepted migration work prove it is needed.
 
 Compatibility still matters for file formats, encryption scheme identifiers,
 test vectors, and explicit migration planning. The current runtime v1 envelope
-and any future post-quantum envelope must remain distinguishable by documented
-scheme and suite identifiers.
+and the v1-required post-quantum envelope must remain distinguishable by
+documented scheme and suite identifiers.
 
 ## Current Backend State
 
@@ -157,7 +157,7 @@ client-side encryption envelope using AES-256-GCM chunks with client-held
 symmetric key material. The backend stores ciphertext and validates hashes. It
 does not decrypt chunks or bundles.
 
-`docs/post-quantum-envelope.md` defines a future, explicit post-quantum
+`docs/post-quantum-envelope.md` defines the v1-required, explicit post-quantum
 recipient wrapping direction using `ML-KEM-768 + HKDF-SHA384 + AES-256-GCM`.
 That document is design and implementation-plan context only. It does not
 change the current runtime envelope, stored chunks, viewer behavior,
@@ -203,8 +203,8 @@ long-term fit:
 - browser, mobile-device, and recovery flows become brittle;
 - trusted-contact UX becomes technical because users must reason about
   incident-specific keys rather than people and devices;
-- future post-quantum recipient keys fit better as durable account, device, or
-  contact recipient key records; and
+- v1-required post-quantum recipient keys fit better as durable account,
+  device, or contact recipient key records; and
 - per-incident, per-stream, or bounded chunk-group CEKs still provide blast
   radius isolation without turning every incident into a private-key identity.
 
@@ -273,8 +273,8 @@ private deployment details.
 
 ## Post-Quantum Recipient Alignment
 
-The future trusted-contact key model should align with the pure post-quantum
-envelope plan:
+The trusted-contact key model should align with the v1-required pure
+post-quantum envelope plan:
 
 - trusted contacts should eventually publish ML-KEM-768 encapsulation keys or
   compatible recipient public-key records;
@@ -289,8 +289,8 @@ envelope plan:
   users to choose algorithms;
 - once runtime support exists, the backend should reject unknown mandatory
   schemes and suite IDs rather than silently downgrade; and
-- the current runtime v1 envelope and future post-quantum envelope must remain
-  explicitly separated until implementation and migration work lands.
+- the current runtime v1 envelope and v1-required post-quantum envelope must
+  remain explicitly separated until implementation and migration work lands.
 
 The backend should store public encapsulation key metadata and wrapped-key
 records, not decapsulation/private keys, ML-KEM shared secrets, raw CEKs, raw

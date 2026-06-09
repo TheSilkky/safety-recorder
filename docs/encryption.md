@@ -190,12 +190,12 @@ context bindings or source-timeline metadata. That must not be inferred from
 the current envelope; it is a separate design tracked in
 [capture-stream-variants.md](capture-stream-variants.md).
 
-A future pure post-quantum envelope profile is designed separately in
-[post-quantum-envelope.md](post-quantum-envelope.md). That design proposes
-`ML-KEM-768 + HKDF-SHA384 + AES-256-GCM` for future recipient-key wrapping of
-CEKs and payload encryption, but it is documentation-only until a separate
-implementation phase adds test vectors, simulator support, storage/API changes,
-and migration notes.
+The required v1 preview pure post-quantum envelope profile is designed
+separately in [post-quantum-envelope.md](post-quantum-envelope.md). That design
+uses `ML-KEM-768 + HKDF-SHA384 + AES-256-GCM` for recipient-key wrapping of
+CEKs and payload encryption. It is still documentation-only in the current
+runtime, but it must be implemented, documented, tested, and made default
+before server or web-client v1 preview use with real sensitive evidence.
 
 The simulator-only contact-wrapped key metadata prototype is implemented
 separately in
