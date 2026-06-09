@@ -43,6 +43,7 @@ Read:
 
 - `README.md`
 - `AGENTS.md`
+- `docs/v1-preview-direction.md`
 - `docs/encryption.md`
 - `docs/key-custody.md`, if present
 - `docs/security-model.md`

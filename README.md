@@ -40,11 +40,12 @@ is expected to use a hybrid trusted-contact model; see
 
 Planned production-cluster work is additive. SQLite metadata and local filesystem blob storage remain supported. Optional PostgreSQL metadata, S3-compatible object storage, and Valkey/Redis-compatible coordination are available only when explicitly configured. Complete-upload idempotency is implemented through metadata-backed upload-operation state, and Valkey can hold short-lived complete-upload leases and retry hints when configured. Resumable or partial-upload protocols remain future work. See [docs/production-cluster-scope.md](docs/production-cluster-scope.md).
 
-## Planned Open Proofline Repositories
+## Open Proofline Repository Roles
 
-The intended organisation is `open-proofline`, with responsibilities split across repositories:
+The current organisation is `open-proofline`, with current and planned
+responsibilities split across repositories:
 
-| Future repository | Responsibility |
+| Repository | Responsibility |
 |---|---|
 | `open-proofline/server` | Go backend, main API, private admin web surface, read-only incident viewer, storage, migrations, deployment docs, and server release workflow. |
 | `open-proofline/web-client` | Account portal, authorised incident review, trusted-contact access, and eventual replacement for the current token-only viewer. |
@@ -52,7 +53,9 @@ The intended organisation is `open-proofline`, with responsibilities split acros
 | `open-proofline/android-client` | Android incident capture, encrypted staging, upload, local account flows, and platform-specific recording behavior. |
 | `open-proofline/protocol` | Shared API specs, encryption envelope specs, bundle manifests, compatibility matrix, and conformance tests. |
 
-This repository should remain scoped to the server/backend role. Product-level or client-specific work should be documented here only as planning context until the relevant future repository exists.
+This repository should remain scoped to the server/backend role. Product-level
+or client-specific work should be documented here only as planning context until
+the relevant separate repository scope is ready.
 
 ## Planned Incident Modes
 
@@ -286,6 +289,7 @@ committed TOML.
 ## Documentation
 
 - [Docs index](docs/README.md)
+- [v1 preview direction](docs/v1-preview-direction.md)
 - [Getting started](docs/getting-started.md)
 - [Architecture](docs/architecture.md)
 - [Configuration](docs/configuration.md)

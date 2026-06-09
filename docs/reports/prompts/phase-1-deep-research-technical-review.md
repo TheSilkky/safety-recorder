@@ -74,7 +74,12 @@ Core project boundaries:
   notifications, SMS, Messenger, web/iOS/Android clients, and first-class
   escalation policies are future or out-of-scope items unless explicitly
   implemented in the reviewed tree.
-- Future key custody, browser decryption, break-glass, incident-mode, and client prototype documents are design/planning guardrails, not shipped implementation.
+- The post-quantum envelope is documented as a v1 preview requirement, but it
+  is not shipped runtime behavior unless implementation files prove it.
+- Future key custody, browser decryption, break-glass, incident-mode, v1
+  direction, post-quantum envelope, and client prototype documents are
+  design/planning guardrails or future preview requirements, not shipped
+  implementation.
 - Do not treat documented future work as a current defect merely because it is not implemented.
 
 ## Validation Evidence Policy
@@ -284,6 +289,9 @@ Do not recommend public GitHub issues for private vulnerabilities, raw tokens, s
 
 - Do not say `/v1` lacks public auth as a vulnerability unless the docs claim it is safe to expose publicly.
 - Do not say missing iOS, Android, web-client, accounts, incident modes, capture profiles, escalation policies, sharing state, browser decryption, production key custody, or break-glass behavior is a defect when docs mark those as future work.
+- Do not describe the post-quantum envelope as implemented unless code proves
+  it. If reviewing a v1 preview readiness claim, verify that the post-quantum
+  envelope is implemented, documented, tested, and default.
 - Do not treat remaining `safety-recorder` or `emergency` compatibility identifiers as stale when docs explicitly state those names remain for protocol, data-layout, route-alias, or migration compatibility.
 - Do not claim emergency-services integration exists.
 - Do not imply Proofline reports crimes, contacts police, guarantees legal admissibility, or provides legal advice.

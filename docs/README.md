@@ -6,6 +6,7 @@ This directory contains the detailed documentation for Proofline Server, the Go 
 
 | Document | Purpose |
 |---|---|
+| [v1 preview direction](v1-preview-direction.md) | Direction-setting source of truth for v1 preview terminology, repository roles, current-versus-future boundaries, and Codex guidance. |
 | [Getting started](getting-started.md) | Run the backend locally and exercise the simulator flow. |
 | [Architecture](architecture.md) | System diagrams, listener boundaries, repository split, and server data flow. |
 | [Configuration](configuration.md) | TOML config, `SAFE_*` environment overrides, secret files, backend selectors, bind addresses, upload limits, and data layout. |
@@ -26,7 +27,7 @@ This directory contains the detailed documentation for Proofline Server, the Go 
 | [Encryption](encryption.md) | Client-side chunk envelope, simulator key file, and local bundle verification. |
 | [iOS local recorder prototype](ios-local-recorder-prototype.md) | Future native incident-capture scope, chunking, encrypted staging, retry, and API mapping. |
 | [Key custody and emergency access](key-custody.md) | Future production key custody, trusted-contact access, and break-glass design. |
-| [Pure post-quantum encryption envelope](post-quantum-envelope.md) | Future ML-KEM-768, HKDF-SHA384, and AES-256-GCM envelope design for post-quantum recipient wrapping without changing current runtime behavior. |
+| [Pure post-quantum encryption envelope](post-quantum-envelope.md) | V1 preview requirement and current implementation plan for an ML-KEM-768, HKDF-SHA384, and AES-256-GCM evidence envelope without changing current runtime behavior yet. |
 | [Contact key sharing, grants, and wrapped-key metadata](contact-key-sharing-grants.md) | Current trusted-contact public-key, grant, and wrapped-key metadata boundaries, plus future trusted-contact delivery, retention, audit, and implementation sequencing. |
 | [Contact-wrapped key metadata simulator prototype](contact-wrapped-key-metadata-simulator.md) | Simulator-only prototype for modeling trusted-contact public keys, non-secret key IDs, wrapped stream CEKs, and safe development metadata without production key custody. |
 | [Browser-side decryption](browser-decryption.md) | Future incident viewer decryption options, risks, and phased direction. |
@@ -48,13 +49,15 @@ This directory contains the detailed documentation for Proofline Server, the Go 
 
 ## Current Repository Scope
 
-This repository is the Go server backend only. In the planned multi-repo layout it corresponds to:
+This repository is the Go server backend only. In the current `open-proofline`
+organisation it is:
 
 ```text
 open-proofline/server
 ```
 
-Future companion repositories are expected to be separate projects:
+Companion repositories are separate current or future projects outside this
+server repository:
 
 ```text
 open-proofline/web-client
@@ -63,7 +66,9 @@ open-proofline/android-client
 open-proofline/protocol
 ```
 
-Those repositories do not exist in this repository and should not be implemented here by accident. This server repository may keep planning notes for client and protocol work only while the split is being designed.
+Those repositories do not exist in this repository and should not be implemented
+here by accident. This server repository may keep planning notes for client and
+protocol work only as repository-boundary context.
 
 ## Current Backend Scope
 
@@ -143,7 +148,23 @@ cost-recovery subscription boundary and implementation plan only; it does not
 implement payment processing, billing webhooks, donations, public production
 deployment, or any change to self-hosted operation.
 
-The future iOS incident-capture prototype is planned in [ios-local-recorder-prototype.md](ios-local-recorder-prototype.md). Future production key custody is documented in [key-custody.md](key-custody.md), with contact key sharing and wrapped-key metadata described in [contact key sharing, grants, and wrapped-key metadata](contact-key-sharing-grants.md), a simulator-only contact-wrapped key metadata prototype in [contact-wrapped-key-metadata-simulator.md](contact-wrapped-key-metadata-simulator.md), browser decryption and break-glass follow-up designs in [browser-decryption.md](browser-decryption.md) and [break-glass-key-access.md](break-glass-key-access.md), and live or partial stream access boundaries in [live-partial-stream-access-boundary.md](live-partial-stream-access-boundary.md). None of those future designs make the current main `/v1` API, private `/v1/admin/...` JSON routes, or `/admin` surface safe for broad public exposure.
+The future iOS incident-capture prototype is planned in
+[ios-local-recorder-prototype.md](ios-local-recorder-prototype.md). Future
+production key custody is documented in [key-custody.md](key-custody.md), with
+the v1 preview post-quantum envelope requirement in
+[post-quantum-envelope.md](post-quantum-envelope.md), contact key sharing and
+wrapped-key metadata in
+[contact key sharing, grants, and wrapped-key metadata](contact-key-sharing-grants.md),
+a simulator-only contact-wrapped key metadata prototype in
+[contact-wrapped-key-metadata-simulator.md](contact-wrapped-key-metadata-simulator.md),
+browser decryption and break-glass follow-up designs in
+[browser-decryption.md](browser-decryption.md) and
+[break-glass-key-access.md](break-glass-key-access.md), and live or partial
+stream access boundaries in
+[live-partial-stream-access-boundary.md](live-partial-stream-access-boundary.md).
+None of those future designs or preview requirements make the current main
+`/v1` API, private `/v1/admin/...` JSON routes, or `/admin` surface safe for
+broad public exposure.
 
 Evidence bundles are encrypted chunk bundles with JSON manifests. They are not decrypted, playable, or merged media exports.
 

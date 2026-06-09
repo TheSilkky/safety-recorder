@@ -14,6 +14,7 @@ Before making changes, read current source-of-truth files as relevant:
 - `CHANGELOG.md`
 - `SECURITY.md`
 - `docs/README.md`
+- `docs/v1-preview-direction.md`
 - relevant files in `docs/`
 - relevant source files
 - relevant tests
@@ -47,6 +48,7 @@ Update only relevant files:
 - `CHANGELOG.md`
 - `SECURITY.md`, only for small consistency updates
 - `docs/README.md`
+- `docs/v1-preview-direction.md`
 - `docs/api.md`
 - `docs/architecture.md`
 - `docs/configuration.md`

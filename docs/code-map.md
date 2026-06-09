@@ -10,7 +10,10 @@ encrypted evidence bundle downloads. It also stores owner-scoped
 trusted-contact public-key metadata, incident/stream sharing-grant metadata,
 and grant-bound wrapped-key records without adding decryption.
 
-This repository is the server/backend component only. In the planned `open-proofline` organisation layout it corresponds to `open-proofline/server`. Future web-client, iOS-client, Android-client, and protocol implementation should live in separate repositories.
+This repository is the server/backend component only. In the current
+`open-proofline` organisation it is `open-proofline/server`. Web-client,
+iOS-client, Android-client, and protocol implementation should live in separate
+repositories.
 
 The current backend stores generic incidents by default and can store optional
 incident-mode, capture-profile, escalation-policy, and sharing-state metadata on
@@ -289,6 +292,10 @@ This repository should stay focused on server/backend work:
 - backend security, retention, and threat-model docs
 - simulator/reference backend flow
 - planning docs for future decryption clients
+
+For v1 preview terminology, repository roles, and current-versus-future product
+direction, read [v1 preview direction](v1-preview-direction.md) before turning
+prototype gaps into backlog or implementation assumptions.
 
 Before broad public exposure, review route groups and add:
 

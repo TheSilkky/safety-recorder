@@ -72,6 +72,7 @@ Read current files before drafting:
 - `CHANGELOG.md`
 - `SECURITY.md`
 - `docs/README.md`
+- `docs/v1-preview-direction.md`
 - `docs/encryption.md`
 - `docs/contacts-and-viewer-replacement.md`, if present
 - `docs/post-quantum-envelope.md`, if present

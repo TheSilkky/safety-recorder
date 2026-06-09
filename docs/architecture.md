@@ -9,7 +9,9 @@ Valkey/Redis-compatible short-lived coordination when explicitly configured.
 The future regional stream-ingress relay is planning-only and documented in
 [regional-stream-ingress-relay.md](regional-stream-ingress-relay.md).
 
-This repository is the server/backend component only. In the planned multi-repo layout it corresponds to `open-proofline/server`. Web, iOS, Android, and shared protocol work are expected to live in separate future repositories.
+This repository is the server/backend component only. In the current
+`open-proofline` organisation it is `open-proofline/server`. Web, iOS, Android,
+and shared protocol work should live in separate repositories.
 
 The long-term product direction is broader than emergency-only recording. Future
 clients may support emergency incidents, non-emergency interaction records,
@@ -61,11 +63,11 @@ flowchart LR
     Viewer --> Bundle["Encrypted ZIP evidence bundles"]
 ```
 
-## Planned Open Proofline Repository Layout
+## Open Proofline Repository Roles
 
-The intended organisation is `open-proofline`.
+The current organisation is `open-proofline`.
 
-Planned repositories:
+Current and planned repositories:
 
 ```text
 open-proofline/server
@@ -79,11 +81,11 @@ Responsibilities:
 
 | Repository | Responsibility |
 |---|---|
-| `server` | Go backend, authenticated main API, private admin web surface, public incident viewer, SQLite migrations, encrypted blob storage, deployment docs, and server release workflow. |
-| `web-client` | Account portal, authorised incident review, trusted-contact access, and eventual replacement for the current token-only viewer. |
-| `ios-client` | iOS incident capture, encrypted staging, upload, local account flows, and platform-specific recording behavior. |
-| `android-client` | Android incident capture, encrypted staging, upload, local account flows, and platform-specific recording behavior. |
-| `protocol` | Shared API specs, encryption envelope specs, bundle manifests, compatibility matrix, and conformance tests. |
+| `open-proofline/server` | Go backend, authenticated main API, private admin web surface, public incident viewer, SQLite migrations, encrypted blob storage, deployment docs, and server release workflow. |
+| `open-proofline/web-client` | Account portal, authorised incident review, trusted-contact access, and eventual replacement for the current token-only viewer. |
+| `open-proofline/ios-client` | iOS incident capture, encrypted staging, upload, local account flows, and platform-specific recording behavior. |
+| `open-proofline/android-client` | Android incident capture, encrypted staging, upload, local account flows, and platform-specific recording behavior. |
+| `open-proofline/protocol` | Shared API specs, encryption envelope specs, bundle manifests, compatibility matrix, and conformance tests. |
 
 The Go module path is `github.com/open-proofline/server`, release binaries use `proofline-server-*` names, and the published GHCR image is `ghcr.io/open-proofline/server`. Compatibility identifiers such as the v1 simulator encryption envelope and default SQLite filename may still use earlier `safety-recorder` names until separate protocol or data-layout migrations are explicitly performed.
 
