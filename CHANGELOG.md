@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Added backend-issued regional relay session capabilities for authorized open
+  media streams, with HMAC-signed upload-role tokens, explicit expiry, bounded
+  chunk limits, stream binding, route-limit coverage, config validation, tests,
+  and docs confirming that relay upload, core preflight/commit, staging,
+  fanout, metrics, and service identity remain unimplemented.
+
 - Added a separate `cmd/stream-ingress` regional relay skeleton with private
   bind/readiness config, token-neutral health/readiness routes only, route
   surface tests, and docs clarifying that relay upload, core commit, fanout,

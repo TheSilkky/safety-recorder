@@ -102,6 +102,7 @@ func TestMainAPIRateLimitGroupsRoutesWithSafeKeys(t *testing.T) {
 		{http.MethodPost, "/v1/incidents/inc_secret/streams", ":stream:", 18},
 		{http.MethodGet, "/v1/incidents/inc_secret/streams", ":stream:", 18},
 		{http.MethodGet, "/v1/incidents/inc_secret/streams/str_secret", ":stream:", 18},
+		{http.MethodPost, "/v1/incidents/inc_secret/streams/str_secret/relay-session", ":stream:", 18},
 		{http.MethodPost, "/v1/incidents/inc_secret/streams/str_secret/complete", ":stream:", 18},
 		{http.MethodPost, "/v1/incidents/inc_secret/streams/str_secret/fail", ":stream:", 18},
 		{http.MethodGet, "/v1/incidents/inc_secret/incident-tokens", ":token:", 19},

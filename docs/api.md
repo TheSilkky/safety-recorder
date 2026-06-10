@@ -1907,11 +1907,12 @@ Future upload telemetry remains client-local before v1 preview unless a later
 issue implements the safe coarse-code boundary documented in
 [upload-telemetry-boundary.md](upload-telemetry-boundary.md).
 
-The current API does not implement regional stream-ingress upload routes or
-service-authenticated relay preflight/commit endpoints. A separate
-`cmd/stream-ingress` skeleton exposes only `/health/live` and `/health/ready`;
-the future relay upload design is documented in
-[regional-stream-ingress-relay.md](regional-stream-ingress-relay.md).
+The current API can issue short-lived regional relay upload capabilities for
+authorized open streams. It does not implement regional stream-ingress upload
+routes, encrypted relay staging, or service-authenticated relay
+preflight/commit endpoints. A separate `cmd/stream-ingress` skeleton exposes
+only `/health/live` and `/health/ready`; the future relay upload design is
+documented in [regional-stream-ingress-relay.md](regional-stream-ingress-relay.md).
 Any implementation must keep the core API authoritative for authorization,
 idempotency, final blob commits, and metadata, and must not expose the full
 `/v1` control plane or admin routes through the relay.
@@ -2163,6 +2164,45 @@ Response `200` is the updated stream object with `status: "failed"` and `failed_
 Failed streams can still contain preserved backend-confirmed evidence. Future
 evidence resolution should account for failed or incomplete stream variants
 instead of treating them as disposable previews.
+
+### `POST /v1/incidents/{incident_id}/streams/{stream_id}/relay-session`
+
+Issues a short-lived regional relay upload capability for one authorized open
+stream. This route is mounted on the authenticated main API listener and uses
+the same incident write authorization as encrypted chunk upload. It does not
+upload bytes, stage ciphertext, call a relay, commit to storage, fan out live
+chunks, or create a durable evidence record.
+
+Relay capability issuance is disabled until a secret is configured with
+`SAFE_RELAY_CAPABILITY_SECRET` or `SAFE_RELAY_CAPABILITY_SECRET_FILE`. The
+secret must be at least 32 bytes. The issued capability is HMAC-signed,
+expires after `SAFE_RELAY_CAPABILITY_TTL`, is bound to the returned
+`relay_session_id`, incident ID, stream ID, and `upload` role, and carries
+bounded upload limits. It is a bearer-like credential and must not be logged or
+copied into public artifacts.
+
+Response `201`:
+
+```json
+{
+  "relay_session": {
+    "relay_session_id": "Lzhc7ZXZQD6bLztwBBqJ8A",
+    "capability": "proofline-relay-capability-v1...",
+    "role": "upload",
+    "incident_id": "inc_...",
+    "stream_id": "str_...",
+    "expires_at": "2026-06-11T10:05:00Z",
+    "max_chunk_bytes": 52428800,
+    "max_chunks": 64,
+    "allowed_media_types": ["audio"]
+  }
+}
+```
+
+Closed incidents return `409 incident_closed`; missing streams return
+`404 stream_not_found`; completed or failed streams return `409
+stream_not_open`; missing capability secret returns `503
+relay_capability_not_configured`.
 
 ### `GET /v1/incidents/{incident_id}/streams/{stream_id}/download`
 

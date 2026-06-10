@@ -94,6 +94,7 @@ func run(logger *slog.Logger, configFilePath string) error {
 		WebAuthn:                   webAuthnConfig(cfg.WebAuthn),
 		AccountRegistration:        accountRegistrationConfig(cfg.AccountRegistration),
 		SecondFactorEmailTTL:       cfg.SecondFactorEmailChallengeTTL,
+		RelayCapability:            relayCapabilityConfig(cfg.RelayCapability),
 		EmailSender:                newEmailSender(cfg.Email),
 		MainRateLimit:              mainRateLimitConfig(cfg.MainAPIRateLimit),
 		MainRateLimiter:            newMainRateLimiter(cfg, coord),
@@ -191,6 +192,14 @@ func accountRegistrationConfig(cfg config.AccountRegistrationConfig) httpapi.Acc
 		Mode:                 cfg.Mode,
 		EmailVerificationTTL: cfg.EmailVerificationTTL,
 		PublicWebOrigin:      cfg.PublicWebOrigin,
+	}
+}
+
+func relayCapabilityConfig(cfg config.RelayCapabilityConfig) httpapi.RelayCapabilityConfig {
+	return httpapi.RelayCapabilityConfig{
+		Secret:    cfg.Secret,
+		TTL:       cfg.TTL,
+		MaxChunks: cfg.MaxChunks,
 	}
 }
 

@@ -58,6 +58,97 @@ func TestLoadDefaultSecondFactorEmailChallengeTTL(t *testing.T) {
 	}
 }
 
+func TestLoadDefaultRelayCapabilityConfig(t *testing.T) {
+	cfg := loadConfigForTest(t, nil)
+
+	if cfg.RelayCapability.Secret != "" {
+		t.Fatal("relay capability secret should default to unset")
+	}
+	if cfg.RelayCapability.TTL != 5*time.Minute {
+		t.Fatalf("relay capability ttl = %s, want 5m", cfg.RelayCapability.TTL)
+	}
+	if cfg.RelayCapability.MaxChunks != 64 {
+		t.Fatalf("relay capability max chunks = %d, want 64", cfg.RelayCapability.MaxChunks)
+	}
+}
+
+func TestLoadRelayCapabilityConfigFromEnv(t *testing.T) {
+	cfg := loadConfigForTest(t, map[string]string{
+		"SAFE_RELAY_CAPABILITY_SECRET":     "0123456789abcdef0123456789abcdef",
+		"SAFE_RELAY_CAPABILITY_TTL":        "2m",
+		"SAFE_RELAY_CAPABILITY_MAX_CHUNKS": "12",
+	})
+
+	if cfg.RelayCapability.Secret != "0123456789abcdef0123456789abcdef" {
+		t.Fatalf("relay capability secret = %q", cfg.RelayCapability.Secret)
+	}
+	if cfg.RelayCapability.TTL != 2*time.Minute {
+		t.Fatalf("relay capability ttl = %s, want 2m", cfg.RelayCapability.TTL)
+	}
+	if cfg.RelayCapability.MaxChunks != 12 {
+		t.Fatalf("relay capability max chunks = %d, want 12", cfg.RelayCapability.MaxChunks)
+	}
+}
+
+func TestLoadRelayCapabilitySecretFileFromEnv(t *testing.T) {
+	secretPath := writeSecretFile(t, "file-relay-capability-secret-12345\n")
+
+	cfg := loadConfigForTest(t, map[string]string{
+		"SAFE_RELAY_CAPABILITY_SECRET":      "direct-relay-capability-secret-123",
+		"SAFE_RELAY_CAPABILITY_SECRET_FILE": secretPath,
+	})
+
+	if cfg.RelayCapability.Secret != "file-relay-capability-secret-12345" {
+		t.Fatalf("relay capability secret = %q, want file value", cfg.RelayCapability.Secret)
+	}
+}
+
+func TestLoadRelayCapabilityConfigFromTOML(t *testing.T) {
+	secretPath := writeSecretFile(t, "toml-relay-capability-secret-12345\n")
+	configPath := writeConfigFile(t, fmt.Sprintf(`
+[relay_capability]
+secret_file = %q
+ttl = "3m"
+max_chunks = 9
+`, secretPath))
+
+	cfg := loadConfigWithOptionsForTest(t, LoadOptions{ConfigFilePath: configPath}, nil)
+
+	if cfg.RelayCapability.Secret != "toml-relay-capability-secret-12345" {
+		t.Fatalf("relay capability secret = %q, want toml file value", cfg.RelayCapability.Secret)
+	}
+	if cfg.RelayCapability.TTL != 3*time.Minute {
+		t.Fatalf("relay capability ttl = %s, want 3m", cfg.RelayCapability.TTL)
+	}
+	if cfg.RelayCapability.MaxChunks != 9 {
+		t.Fatalf("relay capability max chunks = %d, want 9", cfg.RelayCapability.MaxChunks)
+	}
+}
+
+func TestLoadRejectsInvalidRelayCapabilityConfig(t *testing.T) {
+	for name, env := range map[string]map[string]string{
+		"short secret": {
+			"SAFE_RELAY_CAPABILITY_SECRET": "short",
+		},
+		"zero ttl": {
+			"SAFE_RELAY_CAPABILITY_TTL": "0",
+		},
+		"zero max chunks": {
+			"SAFE_RELAY_CAPABILITY_MAX_CHUNKS": "0",
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			_, err := loadConfigForTestErr(t, env)
+			if err == nil {
+				t.Fatal("expected relay capability config error")
+			}
+			if strings.Contains(err.Error(), "0123456789abcdef") {
+				t.Fatalf("relay capability config error exposed secret: %v", err)
+			}
+		})
+	}
+}
+
 func TestLoadNoConfigFileUsesBuiltInDefaults(t *testing.T) {
 	t.Chdir(t.TempDir())
 
@@ -1943,6 +2034,10 @@ func loadConfigWithOptionsForTestErr(t *testing.T, opts LoadOptions, env map[str
 		"SAFE_DEFAULT_INCIDENT_TOKEN_TTL",
 		"SAFE_SESSION_TTL",
 		"SAFE_SECOND_FACTOR_EMAIL_CHALLENGE_TTL",
+		"SAFE_RELAY_CAPABILITY_SECRET",
+		"SAFE_RELAY_CAPABILITY_SECRET_FILE",
+		"SAFE_RELAY_CAPABILITY_TTL",
+		"SAFE_RELAY_CAPABILITY_MAX_CHUNKS",
 		"SAFE_ACCOUNT_REGISTRATION_MODE",
 		"SAFE_EMAIL_VERIFICATION_TTL",
 		"SAFE_PUBLIC_WEB_ORIGIN",

@@ -339,6 +339,8 @@ func classifyMainAPIStreamRateLimit(r *http.Request, segments []string) (mainRat
 		return mainRateLimitStream, true
 	case len(segments) == 5 && r.Method == http.MethodGet:
 		return mainRateLimitStream, true
+	case len(segments) == 6 && r.Method == http.MethodPost && segments[5] == "relay-session":
+		return mainRateLimitStream, true
 	case len(segments) == 6 && r.Method == http.MethodPost && (segments[5] == "complete" || segments[5] == "fail"):
 		return mainRateLimitStream, true
 	case len(segments) == 6 && r.Method == http.MethodGet && segments[5] == "download":

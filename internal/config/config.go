@@ -17,6 +17,8 @@ const (
 	defaultSessionTTL                         = 12 * time.Hour
 	defaultEmailVerificationTTL               = 24 * time.Hour
 	defaultSecondFactorEmailChallengeTTL      = 10 * time.Minute
+	defaultRelayCapabilityTTL                 = 5 * time.Minute
+	defaultRelayCapabilityMaxChunks           = 64
 	defaultWebAuthnEnabled                    = false
 	defaultWebAuthnRPDisplayName              = "Proofline"
 	defaultWebAuthnUserVerification           = "required"
@@ -92,6 +94,7 @@ type Config struct {
 	SessionTTL                    time.Duration
 	AccountRegistration           AccountRegistrationConfig
 	SecondFactorEmailChallengeTTL time.Duration
+	RelayCapability               RelayCapabilityConfig
 	Email                         EmailConfig
 	AuthBootstrapSecret           string
 	DeletionWorkerInterval        time.Duration
@@ -120,6 +123,14 @@ type AccountRegistrationConfig struct {
 type EmailConfig struct {
 	Backend string
 	SMTP    SMTPConfig
+}
+
+// RelayCapabilityConfig controls backend-issued regional relay session
+// capabilities. Empty Secret disables issuance while preserving normal startup.
+type RelayCapabilityConfig struct {
+	Secret    string
+	TTL       time.Duration
+	MaxChunks int
 }
 
 // SMTPConfig contains SMTP settings for verification email delivery.
@@ -324,6 +335,10 @@ func loadFromSource(source configSource) (Config, error) {
 	if secondFactorEmailChallengeTTL <= 0 {
 		return Config{}, fmt.Errorf("parse SAFE_SECOND_FACTOR_EMAIL_CHALLENGE_TTL: duration must be positive")
 	}
+	relayCapability, err := relayCapabilityConfigFromSource(source)
+	if err != nil {
+		return Config{}, err
+	}
 	authBootstrapSecret, err := secretFromSource(source, "SAFE_AUTH_BOOTSTRAP_SECRET", "SAFE_AUTH_BOOTSTRAP_SECRET_FILE")
 	if err != nil {
 		return Config{}, err
@@ -402,6 +417,7 @@ func loadFromSource(source configSource) (Config, error) {
 		SessionTTL:                    sessionTTL,
 		AccountRegistration:           accountRegistration,
 		SecondFactorEmailChallengeTTL: secondFactorEmailChallengeTTL,
+		RelayCapability:               relayCapability,
 		Email:                         email,
 		AuthBootstrapSecret:           authBootstrapSecret,
 		DeletionWorkerInterval:        deletionWorkerInterval,
