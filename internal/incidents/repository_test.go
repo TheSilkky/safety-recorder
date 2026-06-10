@@ -100,12 +100,25 @@ func TestAccountRegistrationAndVerificationTokens(t *testing.T) {
 	ctx := context.Background()
 	repo := newRepository(t, ctx)
 
+	defaultAccount, err := repo.CreateAccount(ctx, auth.CreateAccountParams{
+		Username:     "default-setup-user",
+		PasswordHash: "hash",
+		Role:         auth.RoleUser,
+	})
+	if err != nil {
+		t.Fatalf("create default setup account: %v", err)
+	}
+	if defaultAccount.SecondFactorSetup != auth.SecondFactorSetupStateNotRequired {
+		t.Fatalf("default second-factor setup state = %q, want not_required", defaultAccount.SecondFactorSetup)
+	}
+
 	account, err := repo.CreateAccount(ctx, auth.CreateAccountParams{
-		Username:        "verify-user",
-		EmailNormalized: "Verify.User@Example.Invalid",
-		AccountState:    auth.AccountStatePendingEmailVerification,
-		PasswordHash:    "hash",
-		Role:            auth.RoleUser,
+		Username:          "verify-user",
+		EmailNormalized:   "Verify.User@Example.Invalid",
+		AccountState:      auth.AccountStatePendingEmailVerification,
+		SecondFactorSetup: auth.SecondFactorSetupStateSetupRequired,
+		PasswordHash:      "hash",
+		Role:              auth.RoleUser,
 	})
 	if err != nil {
 		t.Fatalf("create pending account: %v", err)
@@ -115,6 +128,9 @@ func TestAccountRegistrationAndVerificationTokens(t *testing.T) {
 	}
 	if account.AccountState != auth.AccountStatePendingEmailVerification {
 		t.Fatalf("account state = %q", account.AccountState)
+	}
+	if account.SecondFactorSetup != auth.SecondFactorSetupStateSetupRequired {
+		t.Fatalf("account second-factor setup = %q, want setup_required", account.SecondFactorSetup)
 	}
 	if _, err := repo.CreateAccount(ctx, auth.CreateAccountParams{
 		Username:        "verify-other",
@@ -147,6 +163,9 @@ func TestAccountRegistrationAndVerificationTokens(t *testing.T) {
 	}
 	if verified.AccountState != auth.AccountStateActive {
 		t.Fatalf("verified account state = %q, want active", verified.AccountState)
+	}
+	if verified.SecondFactorSetup != auth.SecondFactorSetupStateSetupRequired {
+		t.Fatalf("verified second-factor setup = %q, want setup_required", verified.SecondFactorSetup)
 	}
 	if verified.EmailVerifiedAt == nil {
 		t.Fatal("verified account missing email_verified_at")

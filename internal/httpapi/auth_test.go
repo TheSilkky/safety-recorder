@@ -302,6 +302,143 @@ func TestBrowserCookieCSRFAndBearerCompatibility(t *testing.T) {
 	}
 }
 
+func TestSecondFactorSetupRequiredBearerSessionCannotUseProductRoutes(t *testing.T) {
+	app := newTestApp(t)
+	createAccountForStateTest(t, app, "setup-user", "state-password")
+	account := mustGetRegistrationAccount(t, app, "setup-user")
+	if account.AccountState != auth.AccountStateActive {
+		t.Fatalf("setup account state = %q, want active", account.AccountState)
+	}
+	if account.SecondFactorSetup != auth.SecondFactorSetupStateSetupRequired {
+		t.Fatalf("setup account second-factor state = %q, want setup_required", account.SecondFactorSetup)
+	}
+
+	token, loginAccount := loginWithAccountForTest(t, app, "setup-user", "state-password")
+	if loginAccount.SecondFactorSetup != auth.SecondFactorSetupStateSetupRequired || !loginAccount.RequiresSetup {
+		t.Fatalf("login account did not expose setup-required state: %+v", loginAccount)
+	}
+
+	response, body := requestWithAuth(t, app.privateHandler, http.MethodGet, "/v1/account", "", nil, token)
+	response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("setup account metadata status = %d, want 200: %s", response.StatusCode, body)
+	}
+	var accountResult struct {
+		Account struct {
+			SecondFactorSetup string `json:"second_factor_setup_state"`
+			RequiresSetup     bool   `json:"second_factor_setup_required"`
+		} `json:"account"`
+	}
+	if err := json.Unmarshal(body, &accountResult); err != nil {
+		t.Fatalf("decode setup account response: %v", err)
+	}
+	if accountResult.Account.SecondFactorSetup != auth.SecondFactorSetupStateSetupRequired || !accountResult.Account.RequiresSetup {
+		t.Fatalf("account response did not expose setup-required state: %+v", accountResult.Account)
+	}
+
+	response, body = requestWithAuth(t, app.privateHandler, http.MethodGet, "/v1/incidents", "", nil, token)
+	response.Body.Close()
+	if response.StatusCode != http.StatusForbidden {
+		t.Fatalf("setup account product GET status = %d, want 403: %s", response.StatusCode, body)
+	}
+	assertErrorCode(t, body, "second_factor_setup_required")
+	for _, disallowed := range []string{"setup-user", "state-password", token} {
+		if bytes.Contains(body, []byte(disallowed)) {
+			t.Fatalf("setup-required response exposed %q: %s", disallowed, body)
+		}
+	}
+
+	response, body = requestWithAuth(t, app.privateHandler, http.MethodPost, "/v1/incidents", "application/json", bytes.NewBufferString(`{}`), token)
+	response.Body.Close()
+	if response.StatusCode != http.StatusForbidden {
+		t.Fatalf("setup account product POST status = %d, want 403: %s", response.StatusCode, body)
+	}
+	assertErrorCode(t, body, "second_factor_setup_required")
+
+	response, body = requestWithAuth(t, app.privateHandler, http.MethodPost, "/v1/auth/logout", "application/json", bytes.NewBufferString(`{}`), token)
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("setup account logout status = %d, want 200: %s", response.StatusCode, body)
+	}
+}
+
+func TestSecondFactorSetupRequiredBrowserCookieSessionCannotUseProductRoutes(t *testing.T) {
+	app := newTestAppWithOptions(t, webAuthTestOptions(true, nil))
+	createAccountForStateTest(t, app, "setup-web-user", "state-password")
+
+	cookie, loginAccount := webLoginForTest(t, app, "setup-web-user", "state-password")
+	loginAccountMap, ok := loginAccount["account"].(map[string]any)
+	if !ok {
+		t.Fatalf("web login account response had unexpected shape: %v", loginAccount)
+	}
+	if rawState, ok := loginAccountMap["second_factor_setup_state"].(string); !ok || rawState != auth.SecondFactorSetupStateSetupRequired {
+		t.Fatalf("web login account setup state = %v, want setup_required", loginAccountMap)
+	}
+	if rawRequired, ok := loginAccountMap["second_factor_setup_required"].(bool); !ok || !rawRequired {
+		t.Fatalf("web login account setup-required flag = %v, want true", loginAccountMap)
+	}
+
+	response, body := requestWithCookie(t, app.privateHandler, http.MethodGet, "/v1/account", "", nil, cookie)
+	response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("setup web account metadata status = %d, want 200: %s", response.StatusCode, body)
+	}
+
+	response, body = requestWithCookie(t, app.privateHandler, http.MethodGet, "/v1/incidents", "", nil, cookie)
+	response.Body.Close()
+	if response.StatusCode != http.StatusForbidden {
+		t.Fatalf("setup web product GET status = %d, want 403: %s", response.StatusCode, body)
+	}
+	assertErrorCode(t, body, "second_factor_setup_required")
+	if bytes.Contains(body, []byte(cookie.Value)) || bytes.Contains(body, []byte("setup-web-user")) {
+		t.Fatalf("setup-required cookie response exposed sensitive account material: %s", body)
+	}
+
+	csrfToken := webCSRFTokenForTest(t, app, cookie)
+	response, body = requestWithCookieAndHeaders(t, app.privateHandler, http.MethodPost, "/v1/incidents", "application/json", bytes.NewBufferString(`{}`), cookie, map[string]string{
+		"X-CSRF-Token": csrfToken,
+	})
+	response.Body.Close()
+	if response.StatusCode != http.StatusForbidden {
+		t.Fatalf("setup web product POST status = %d, want 403: %s", response.StatusCode, body)
+	}
+	assertErrorCode(t, body, "second_factor_setup_required")
+	if bytes.Contains(body, []byte(csrfToken)) {
+		t.Fatalf("setup-required response exposed CSRF token: %s", body)
+	}
+
+	response, body = requestWithCookieAndHeaders(t, app.privateHandler, http.MethodPost, "/v1/auth/web/logout", "application/json", bytes.NewBufferString(`{}`), cookie, map[string]string{
+		"X-CSRF-Token": csrfToken,
+	})
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("setup web logout status = %d, want 200: %s", response.StatusCode, body)
+	}
+}
+
+func TestSecondFactorSetupRequiredAdminKeepsPrivateAdminBoundary(t *testing.T) {
+	app := newTestApp(t)
+	createAccountForStateTest(t, app, "setup-admin", "state-password")
+	account := mustGetRegistrationAccount(t, app, "setup-admin")
+	if _, err := app.db.ExecContext(context.Background(), `UPDATE accounts SET role = ? WHERE id = ?`, auth.RoleAdmin, account.ID); err != nil {
+		t.Fatalf("promote setup account to admin: %v", err)
+	}
+	token, _ := loginWithAccountForTest(t, app, "setup-admin", "state-password")
+
+	response, body := requestWithAuth(t, app.adminHandler, http.MethodGet, "/v1/admin/accounts", "", nil, token)
+	response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("setup admin private-admin route status = %d, want 200: %s", response.StatusCode, body)
+	}
+
+	response, body = requestWithAuth(t, app.privateHandler, http.MethodGet, "/v1/incidents", "", nil, token)
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusForbidden {
+		t.Fatalf("setup admin main product route status = %d, want 403: %s", response.StatusCode, body)
+	}
+	assertErrorCode(t, body, "second_factor_setup_required")
+}
+
 func TestBrowserLogoutRevokesSessionAndClearsCookie(t *testing.T) {
 	app := newTestAppWithOptions(t, webAuthTestOptions(true, nil))
 	cookie, _ := webLoginForTest(t, app, "test-admin", "test-password")
@@ -438,6 +575,9 @@ func TestOpenRegistrationRequiresEmailVerificationBeforeLogin(t *testing.T) {
 	if account.AccountState != auth.AccountStatePendingEmailVerification {
 		t.Fatalf("account state = %q, want pending email verification", account.AccountState)
 	}
+	if account.SecondFactorSetup != auth.SecondFactorSetupStateSetupRequired {
+		t.Fatalf("account second-factor setup = %q, want setup_required", account.SecondFactorSetup)
+	}
 	if account.EmailVerifiedAt != nil {
 		t.Fatalf("email verified at = %v, want nil", account.EmailVerifiedAt)
 	}
@@ -473,14 +613,27 @@ func TestOpenRegistrationRequiresEmailVerificationBeforeLogin(t *testing.T) {
 	if account.AccountState != auth.AccountStateActive {
 		t.Fatalf("account state after verify = %q, want active", account.AccountState)
 	}
+	if account.SecondFactorSetup != auth.SecondFactorSetupStateSetupRequired {
+		t.Fatalf("account second-factor setup after verify = %q, want setup_required", account.SecondFactorSetup)
+	}
 	if account.EmailVerifiedAt == nil {
 		t.Fatal("email_verified_at was not set")
 	}
 
-	token := loginForTest(t, app, "new.user", "valid-password")
+	token, loginAccount := loginWithAccountForTest(t, app, "new.user", "valid-password")
 	if token == "" {
 		t.Fatal("verified account did not receive bearer token")
 	}
+	if loginAccount.SecondFactorSetup != auth.SecondFactorSetupStateSetupRequired || !loginAccount.RequiresSetup {
+		t.Fatalf("verified account login did not expose setup-required state: %+v", loginAccount)
+	}
+
+	response, body = requestWithAuth(t, app.privateHandler, http.MethodGet, "/v1/incidents", "", nil, token)
+	response.Body.Close()
+	if response.StatusCode != http.StatusForbidden {
+		t.Fatalf("verified setup-incomplete product route status = %d, want 403: %s", response.StatusCode, body)
+	}
+	assertErrorCode(t, body, "second_factor_setup_required")
 
 	response, body = postUnauthenticated(t, app, "/v1/auth/email/verify", "application/json", bytes.NewBufferString(`{"token":"`+rawToken+`"}`))
 	response.Body.Close()
@@ -676,7 +829,7 @@ func TestInactiveAccountStatesCannotAuthenticate(t *testing.T) {
 	}
 }
 
-func TestAdminCreatedAccountsRemainActiveByDefault(t *testing.T) {
+func TestAdminCreatedAccountsRemainActiveAndRequireSecondFactorSetupByDefault(t *testing.T) {
 	app := newTestApp(t)
 
 	createAccountForStateTest(t, app, "admin-created-user", "state-password")
@@ -684,12 +837,18 @@ func TestAdminCreatedAccountsRemainActiveByDefault(t *testing.T) {
 	if account.AccountState != auth.AccountStateActive {
 		t.Fatalf("admin-created account state = %q, want active", account.AccountState)
 	}
+	if account.SecondFactorSetup != auth.SecondFactorSetupStateSetupRequired {
+		t.Fatalf("admin-created account second-factor setup = %q, want setup_required", account.SecondFactorSetup)
+	}
 	if account.EmailNormalized != "" {
 		t.Fatalf("admin-created account email = %q, want empty", account.EmailNormalized)
 	}
-	token := loginForTest(t, app, "admin-created-user", "state-password")
+	token, loginAccount := loginWithAccountForTest(t, app, "admin-created-user", "state-password")
 	if token == "" {
 		t.Fatal("admin-created active account did not receive bearer token")
+	}
+	if loginAccount.SecondFactorSetup != auth.SecondFactorSetupStateSetupRequired || !loginAccount.RequiresSetup {
+		t.Fatalf("admin-created login did not expose setup-required state: %+v", loginAccount)
 	}
 }
 
@@ -813,6 +972,17 @@ func TestWebAuthDisabledAndPublicViewerBoundary(t *testing.T) {
 
 func loginForTest(t *testing.T, app *testApp, username, password string) string {
 	t.Helper()
+	token, _ := loginWithAccountForTest(t, app, username, password)
+	return token
+}
+
+type testLoginAccountResponse struct {
+	SecondFactorSetup string `json:"second_factor_setup_state"`
+	RequiresSetup     bool   `json:"second_factor_setup_required"`
+}
+
+func loginWithAccountForTest(t *testing.T, app *testApp, username, password string) (string, testLoginAccountResponse) {
+	t.Helper()
 	requestBody := bytes.NewBufferString(`{"username":"` + username + `","password":"` + password + `"}`)
 	response, body := postUnauthenticated(t, app, "/v1/auth/login", "application/json", requestBody)
 	defer response.Body.Close()
@@ -821,8 +991,9 @@ func loginForTest(t *testing.T, app *testApp, username, password string) string 
 	}
 	assertMainJSONSecurityHeaders(t, response)
 	var result struct {
-		Token     string    `json:"token"`
-		ExpiresAt time.Time `json:"expires_at"`
+		Token     string                   `json:"token"`
+		Account   testLoginAccountResponse `json:"account"`
+		ExpiresAt time.Time                `json:"expires_at"`
 	}
 	if err := json.Unmarshal(body, &result); err != nil {
 		t.Fatalf("decode login response: %v", err)
@@ -830,7 +1001,7 @@ func loginForTest(t *testing.T, app *testApp, username, password string) string 
 	if result.Token == "" || !result.ExpiresAt.After(time.Now().UTC()) {
 		t.Fatalf("unexpected login response: %+v", result)
 	}
-	return result.Token
+	return result.Token, result.Account
 }
 
 func webAuthTestOptions(secure bool, allowedOrigins []string) httpapi.Options {
@@ -918,7 +1089,21 @@ func createAccountAndLogin(t *testing.T, app *testApp, username, password, role 
 	if response.StatusCode != http.StatusCreated {
 		t.Fatalf("expected create account status 201, got %d: %s", response.StatusCode, body)
 	}
+	markSecondFactorSetupComplete(t, app, username)
 	return loginForTest(t, app, username, password)
+}
+
+func markSecondFactorSetupComplete(t *testing.T, app *testApp, username string) {
+	t.Helper()
+	if _, err := app.db.ExecContext(context.Background(), `
+		UPDATE accounts
+		SET second_factor_setup_state = ?
+		WHERE username = ?`,
+		auth.SecondFactorSetupStateComplete,
+		auth.NormalizeUsername(username),
+	); err != nil {
+		t.Fatalf("mark second-factor setup complete: %v", err)
+	}
 }
 
 func createAccountForStateTest(t *testing.T, app *testApp, username, password string) {
@@ -993,7 +1178,7 @@ func mustGetAccountByUsername(t *testing.T, app *testApp, username string) auth.
 func mustGetRegistrationAccount(t *testing.T, app *testApp, username string) auth.Account {
 	t.Helper()
 	row := app.db.QueryRowContext(context.Background(), `
-		SELECT id, username, email_normalized, email_verified_at, account_state, password_hash, role, created_at, updated_at, password_changed_at
+		SELECT id, username, email_normalized, email_verified_at, account_state, second_factor_setup_state, password_hash, role, created_at, updated_at, password_changed_at
 		FROM accounts
 		WHERE username = ?`,
 		username,
@@ -1002,7 +1187,7 @@ func mustGetRegistrationAccount(t *testing.T, app *testApp, username string) aut
 	var emailNormalized sql.NullString
 	var emailVerifiedAt sql.NullString
 	var createdAt, updatedAt, passwordChangedAt string
-	if err := row.Scan(&account.ID, &account.Username, &emailNormalized, &emailVerifiedAt, &account.AccountState, &account.PasswordHash, &account.Role, &createdAt, &updatedAt, &passwordChangedAt); err != nil {
+	if err := row.Scan(&account.ID, &account.Username, &emailNormalized, &emailVerifiedAt, &account.AccountState, &account.SecondFactorSetup, &account.PasswordHash, &account.Role, &createdAt, &updatedAt, &passwordChangedAt); err != nil {
 		t.Fatalf("read registration account %s: %v", username, err)
 	}
 	if emailNormalized.Valid {

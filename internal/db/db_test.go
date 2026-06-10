@@ -48,6 +48,40 @@ func TestMigrateIsIdempotent(t *testing.T) {
 	}
 }
 
+func TestMigrateAddsSecondFactorSetupState(t *testing.T) {
+	ctx := context.Background()
+	conn := openMemoryDB(t)
+	defer conn.Close()
+
+	if err := Migrate(ctx, conn); err != nil {
+		t.Fatalf("Migrate: %v", err)
+	}
+	if !hasColumn(t, ctx, conn, "accounts", "second_factor_setup_state") {
+		t.Fatal("expected accounts.second_factor_setup_state column")
+	}
+	if _, err := conn.ExecContext(ctx, `
+		INSERT INTO accounts (id, username, password_hash, role, created_at, updated_at, password_changed_at)
+		VALUES ('acct_default_2fa', 'default-2fa', 'hash', 'user', '2026-06-10T00:00:00Z', '2026-06-10T00:00:00Z', '2026-06-10T00:00:00Z')`); err != nil {
+		t.Fatalf("insert default second-factor setup account: %v", err)
+	}
+	var state string
+	if err := conn.QueryRowContext(ctx, `
+		SELECT second_factor_setup_state
+		FROM accounts
+		WHERE id = 'acct_default_2fa'`,
+	).Scan(&state); err != nil {
+		t.Fatalf("read second-factor setup state: %v", err)
+	}
+	if state != "not_required" {
+		t.Fatalf("default second-factor setup state = %q, want not_required", state)
+	}
+	if _, err := conn.ExecContext(ctx, `
+		INSERT INTO accounts (id, username, password_hash, role, second_factor_setup_state, created_at, updated_at, password_changed_at)
+		VALUES ('acct_bad_2fa', 'bad-2fa', 'hash', 'user', 'bypassed', '2026-06-10T00:00:00Z', '2026-06-10T00:00:00Z', '2026-06-10T00:00:00Z')`); err == nil {
+		t.Fatal("expected invalid second_factor_setup_state to fail")
+	}
+}
+
 func TestMigrateAddsIncidentModeColumns(t *testing.T) {
 	ctx := context.Background()
 	conn := openMemoryDB(t)

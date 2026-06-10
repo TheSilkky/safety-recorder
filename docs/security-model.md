@@ -4,7 +4,7 @@ This document summarizes the current Proofline backend security assumptions and 
 
 ## Maturity
 
-Proofline is experimental and not production-ready public infrastructure. The main `/v1` API has local username/password accounts, opaque server-side sessions, and app-level route-class rate limits. Public self-registration is disabled by default and, when explicitly enabled for self-hosted deployments, requires SMTP-backed email verification before login. Proofline still has no OAuth, no JWT protection, no complete public product deployment model, no password recovery, and no public account portal.
+Proofline is experimental and not production-ready public infrastructure. The main `/v1` API has local username/password accounts, opaque server-side sessions, factor-neutral second-factor setup state for account gating, and app-level route-class rate limits. Public self-registration is disabled by default and, when explicitly enabled for self-hosted deployments, requires SMTP-backed email verification before login. Proofline still has no implemented second-factor method, no OAuth, no JWT protection, no complete public product deployment model, no password recovery, and no public account portal.
 
 The current backend stores incidents owned by local accounts. Incidents are
 generic by default and may include optional incident-mode, capture-profile,
@@ -73,6 +73,17 @@ fragment and accepted only in the verification request body; metadata stores
 only a SHA-256 hash, purpose, expiry, and consumed timestamp. Pending accounts
 cannot authenticate until verification activates them. The paid registration
 mode is a fail-closed placeholder and does not create an active account.
+
+New admin-created accounts, `/admin` bootstrap accounts, and open-registration
+accounts start with `second_factor_setup_state=setup_required`. Password login
+and browser-cookie login can still create primary-authenticated sessions for
+active setup-incomplete accounts, but main product routes fail closed with
+`403 second_factor_setup_required` until a future factor-specific setup flow
+marks the state `complete`. `GET /v1/account`, browser CSRF metadata for future
+setup flows, logout, and private-admin listener routes remain available. Existing
+migrated accounts default to `not_required` for preview compatibility, which
+must be revisited before real required-2FA preview deployments. Email
+verification is distinct from second-factor setup and does not complete it.
 
 When enabled, main `/v1` browser cookie auth uses a dedicated session cookie
 for future web-client calls. Bearer auth remains supported for CLI, simulator,
@@ -506,7 +517,8 @@ Normal file or object removal is not treated as guaranteed secure erasure. Deplo
   and future policy boundaries in
   [mode-aware retention policy](mode-aware-retention-policy.md)
 - No malware/content scanning for uploaded encrypted blobs
-- No implemented account self-service recovery, second factor authentication,
-  delegated identity provider, or public account portal. The only implemented
-  email delivery path is SMTP-backed registration email verification when open
-  registration is explicitly enabled.
+- No implemented account self-service recovery, concrete second-factor method,
+  delegated identity provider, or public account portal. The current backend
+  only has a factor-neutral setup-required account state and product-route gate.
+  The only implemented email delivery path is SMTP-backed registration email
+  verification when open registration is explicitly enabled.

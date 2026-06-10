@@ -147,7 +147,7 @@ func getAccountVerificationTokenTx(ctx context.Context, tx *sql.Tx, tokenHash, p
 
 func getAccountByIDTx(ctx context.Context, tx *sql.Tx, accountID string) (auth.Account, error) {
 	row := tx.QueryRowContext(ctx, `
-		SELECT id, username, email_normalized, email_verified_at, account_state, password_hash, role, created_at, updated_at, password_changed_at
+		SELECT id, username, email_normalized, email_verified_at, account_state, second_factor_setup_state, password_hash, role, created_at, updated_at, password_changed_at
 		FROM accounts
 		WHERE id = $1`,
 		accountID,

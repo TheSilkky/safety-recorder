@@ -145,6 +145,33 @@ The token is placed in the URL fragment so a future web client can submit it in
 the JSON request body without sending it to the web server as a path or query
 value. The backend stores only token hashes, not raw verification tokens.
 
+Accounts also carry a factor-neutral `second_factor_setup_state`:
+
+| State | Meaning |
+|---|---|
+| `not_required` | Product-route access is not blocked by second-factor setup. Existing migrated accounts default to this state for preview compatibility. |
+| `setup_required` | Primary login can create bearer or browser-cookie sessions, but main product routes fail closed until setup is completed by a future factor-specific flow. |
+| `complete` | Required second-factor setup is complete for product-route access. |
+
+New accounts created through the private admin API, the `/admin` bootstrap
+surface, or open registration start in `setup_required`. Email verification
+only moves `account_state` from `pending_email_verification` to `active`; it
+does not complete second-factor setup. While setup is required, authenticated
+clients can inspect `GET /v1/account`, obtain browser CSRF metadata for future
+setup flows, and log out. Other main product routes return:
+
+```json
+{
+  "error": {
+    "code": "second_factor_setup_required",
+    "message": "second factor setup is required before account access"
+  }
+}
+```
+
+No concrete email challenge, TOTP, WebAuthn/passkey, security-key, recovery, or
+lost-factor flow is implemented by this foundation.
+
 ### `POST /v1/auth/login`
 
 Authenticates a local account and returns a raw session token once.
@@ -167,6 +194,8 @@ Response `201`:
     "id": "acct_...",
     "username": "admin",
     "account_state": "active",
+    "second_factor_setup_state": "not_required",
+    "second_factor_setup_required": false,
     "role": "admin",
     "created_at": "2026-05-31T10:00:00Z",
     "updated_at": "2026-05-31T10:00:00Z",
@@ -288,7 +317,8 @@ continues to support bearer-token logout.
 ### `GET /v1/account`
 
 Returns the authenticated account for either bearer authentication or, when
-enabled, browser cookie authentication.
+enabled, browser cookie authentication. This route remains available to
+setup-incomplete accounts so clients can display account and setup state.
 
 ### `POST /v1/account/password`
 

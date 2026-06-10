@@ -654,6 +654,15 @@ stores only token hashes. The raw verification token must be treated as a
 secret and must not appear in logs, metrics labels, docs examples, support
 tickets, screenshots, shell history, or public issue drafts.
 
+New admin-created, `/admin` bootstrap, and open-registration accounts are
+created with `second_factor_setup_state=setup_required`; existing migrated
+accounts default to `not_required` for preview compatibility. Password login
+and browser-cookie login can create a primary-authenticated session for an
+active setup-incomplete account, but main product routes fail closed until a
+future factor-specific setup flow marks the account `complete`. There is no
+`SAFE_*` setting in this foundation to choose email challenge, TOTP, WebAuthn,
+passkeys, recovery codes, or lost-factor behavior.
+
 `SAFE_ACCOUNT_REGISTRATION_MODE=paid` is accepted only as a future
 hosted-service placeholder. `POST /v1/auth/register` returns
 `503 registration_payment_unavailable`; it does not create an active account,

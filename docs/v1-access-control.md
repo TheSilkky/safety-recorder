@@ -88,11 +88,13 @@ Current non-admin `/v1` routes are on the main handler. The implemented local au
 hashed session-token storage, bearer sessions, optional browser cookie sessions
 with CSRF checks for unsafe cookie-authenticated requests, session expiry,
 logout, account password change, admin account creation, configurable
-registration modes with email verification for open self-registration, admin
-session revocation, owner-scoped trusted-contact relationship metadata,
-owner-scoped contact public-key metadata, owner-managed sharing grants,
-owner-managed wrapped-key records, signed-in trusted-contact wrapped-key reads,
-and owner-only public-safe incident metadata list/detail reads. Contact
+registration modes with email verification for open self-registration,
+factor-neutral second-factor setup state that blocks main product routes for
+setup-incomplete accounts, admin session revocation, owner-scoped
+trusted-contact relationship metadata, owner-scoped contact public-key metadata,
+owner-managed sharing grants, owner-managed wrapped-key records, signed-in
+trusted-contact wrapped-key reads, and owner-only public-safe incident metadata
+list/detail reads. Contact
 public-key replacement and lost/revoked states are metadata-only lifecycle
 controls and do not rewrite old wrapped-key records or add backend decryption.
 Sharing-grant and wrapped-key management are deliberately
@@ -201,7 +203,11 @@ closed until a future billing system exists. Bearer login returns the raw
 session token once for CLI/simulator/API clients. Optional browser login sets a
 dedicated HttpOnly cookie for future web-client calls and does not return the
 raw token in JSON. Stored session material is hashed. Sessions expire and can
-be revoked.
+be revoked. New admin-created, `/admin` bootstrap, and open-registration
+accounts start as setup-incomplete for required second-factor setup; primary
+login can create sessions, but main product routes fail closed until a later
+factor-specific flow marks setup complete. Existing migrated accounts default
+to `not_required` for preview compatibility.
 
 The first admin account is created through a one-time bootstrap flow:
 

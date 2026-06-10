@@ -54,11 +54,12 @@ func (a *API) registerOpenAccount(w http.ResponseWriter, r *http.Request) {
 	}
 
 	account, err := a.repo.CreateAccount(r.Context(), auth.CreateAccountParams{
-		Username:        username,
-		EmailNormalized: emailAddress,
-		AccountState:    auth.AccountStatePendingEmailVerification,
-		PasswordHash:    passwordHash,
-		Role:            auth.RoleUser,
+		Username:          username,
+		EmailNormalized:   emailAddress,
+		AccountState:      auth.AccountStatePendingEmailVerification,
+		SecondFactorSetup: auth.SecondFactorSetupStateSetupRequired,
+		PasswordHash:      passwordHash,
+		Role:              auth.RoleUser,
 	})
 	if errors.Is(err, auth.ErrDuplicate) {
 		a.resendPendingRegistrationEmail(w, r, username, emailAddress)

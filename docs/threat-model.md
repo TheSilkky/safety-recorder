@@ -88,6 +88,8 @@ encrypted evidence bundles.
   headers
 - Optional account email addresses, email verification timestamps, and
   single-use email verification token hashes when open registration is enabled
+- Factor-neutral account `second_factor_setup_state` values used to block main
+  product-route access until required setup is complete
 - Raw viewer/incident tokens returned once at creation time
 - Owner-visible viewer-token metadata for owned incidents: token IDs, labels,
   active/expired/revoked state, and creation/expiry/revocation timestamps.
@@ -214,8 +216,12 @@ encrypted evidence bundles.
   for open self-hosted registration, it requires SMTP-backed email
   verification, creates `pending_email_verification` accounts, stores only
   verification token hashes, and activates accounts only after one successful
-  token consumption. Paid registration fails closed and does not create active
-  accounts.
+  token consumption. New admin-created, `/admin` bootstrap, and
+  open-registration accounts start with required second-factor setup state; this
+  state blocks main product routes after primary login until a future
+  factor-specific setup flow completes it. Existing migrated accounts default to
+  `not_required` for preview compatibility. Paid registration fails closed and
+  does not create active accounts.
 - Cookie-authenticated unsafe `/v1` requests require a session-bound HMAC CSRF
   token in the configured header. Bearer-authenticated requests keep their
   existing behavior. Credentialed CORS is emitted only for exact configured web
@@ -390,10 +396,11 @@ The current backend does not implement incident-mode-specific controls yet, so f
   full-fidelity location evidence binding. Future implementation must test
   encrypted field handling, token-viewer allowlists, relay/log redaction, and
   envelope or authenticated metadata mismatch failures.
-- No account self-service recovery, second factor authentication, delegated
-  identity provider, or public account portal. The only implemented email
-  delivery path is SMTP-backed registration email verification when open
-  registration is explicitly enabled.
+- No account self-service recovery, concrete second-factor method, delegated
+  identity provider, or public account portal. The current backend has only a
+  factor-neutral setup-required account state and product-route gate. The only
+  implemented email delivery path is SMTP-backed registration email verification
+  when open registration is explicitly enabled.
 - Viewer links are bearer tokens and must be shared carefully.
 - No implemented production key recovery, Keychain storage, trusted-contact
   incident access, browser decryption, break-glass key access, or playable

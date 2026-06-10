@@ -44,6 +44,7 @@ func (r *Repository) CreateAccount(ctx context.Context, params auth.CreateAccoun
 		EmailNormalized:   auth.NormalizeEmail(params.EmailNormalized),
 		EmailVerifiedAt:   params.EmailVerifiedAt,
 		AccountState:      params.AccountState,
+		SecondFactorSetup: params.SecondFactorSetup,
 		PasswordHash:      params.PasswordHash,
 		Role:              params.Role,
 		CreatedAt:         now,
@@ -53,16 +54,20 @@ func (r *Repository) CreateAccount(ctx context.Context, params auth.CreateAccoun
 	if account.AccountState == "" {
 		account.AccountState = auth.AccountStateActive
 	}
+	if account.SecondFactorSetup == "" {
+		account.SecondFactorSetup = auth.SecondFactorSetupStateNotRequired
+	}
 	_, err = r.db.ExecContext(ctx, `
 		INSERT INTO accounts (
-			id, username, email_normalized, email_verified_at, account_state, password_hash, role, created_at, updated_at, password_changed_at
+			id, username, email_normalized, email_verified_at, account_state, second_factor_setup_state, password_hash, role, created_at, updated_at, password_changed_at
 		)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
 		account.ID,
 		account.Username,
 		nullableString(account.EmailNormalized),
 		account.EmailVerifiedAt,
 		account.AccountState,
+		account.SecondFactorSetup,
 		account.PasswordHash,
 		account.Role,
 		account.CreatedAt,
@@ -83,7 +88,7 @@ func (r *Repository) CreateAccount(ctx context.Context, params auth.CreateAccoun
 
 func (r *Repository) GetAccountByUsername(ctx context.Context, username string) (auth.Account, error) {
 	row := r.db.QueryRowContext(ctx, `
-		SELECT id, username, email_normalized, email_verified_at, account_state, password_hash, role, created_at, updated_at, password_changed_at
+		SELECT id, username, email_normalized, email_verified_at, account_state, second_factor_setup_state, password_hash, role, created_at, updated_at, password_changed_at
 		FROM accounts
 		WHERE username = $1`,
 		auth.NormalizeUsername(username),
@@ -93,7 +98,7 @@ func (r *Repository) GetAccountByUsername(ctx context.Context, username string) 
 
 func (r *Repository) GetAccountByID(ctx context.Context, accountID string) (auth.Account, error) {
 	row := r.db.QueryRowContext(ctx, `
-		SELECT id, username, email_normalized, email_verified_at, account_state, password_hash, role, created_at, updated_at, password_changed_at
+		SELECT id, username, email_normalized, email_verified_at, account_state, second_factor_setup_state, password_hash, role, created_at, updated_at, password_changed_at
 		FROM accounts
 		WHERE id = $1`,
 		accountID,
@@ -103,7 +108,7 @@ func (r *Repository) GetAccountByID(ctx context.Context, accountID string) (auth
 
 func (r *Repository) ListAccounts(ctx context.Context) ([]auth.Account, error) {
 	rows, err := r.db.QueryContext(ctx, `
-		SELECT id, username, email_normalized, email_verified_at, account_state, password_hash, role, created_at, updated_at, password_changed_at
+		SELECT id, username, email_normalized, email_verified_at, account_state, second_factor_setup_state, password_hash, role, created_at, updated_at, password_changed_at
 		FROM accounts
 		ORDER BY created_at, id`)
 	if err != nil {
@@ -260,6 +265,7 @@ func scanAccount(s scanner) (auth.Account, error) {
 		&emailNormalized,
 		&emailVerifiedAt,
 		&account.AccountState,
+		&account.SecondFactorSetup,
 		&account.PasswordHash,
 		&account.Role,
 		&account.CreatedAt,
