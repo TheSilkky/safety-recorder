@@ -118,9 +118,16 @@ Use prompts in this rough order:
 22. `90-release-check.md`
 23. `95-validate-deep-research-report.md`, for Phase 2 validation of public technical review reports
 
+For any `v1 preview`, `v1.0.0`, or real-user evidence-upload readiness claim,
+run [docs/v1-preview-readiness-checklist.md](../docs/v1-preview-readiness-checklist.md)
+as part of the release workflow before using preview-ready language.
+
 ## Current project constraints
 
 Treat `README.md`, `AGENTS.md`, `SECURITY.md`, and the `docs/` directory as the current source of truth. For v1 preview terminology, repository roles, and current-versus-future product direction, read `docs/v1-preview-direction.md` before turning prototype gaps into backlog or implementation assumptions.
+For v1 preview release claims, also read
+`docs/v1-preview-readiness-checklist.md` and preserve its hard-blocker,
+non-goal, optional hosted-service, and issue-hygiene boundaries.
 
 Product documentation now uses the name Proofline. The repository URL is `open-proofline/server`, the root Go module path is `github.com/open-proofline/server`, release binaries use `proofline-server-*` names, and the published GHCR image is `ghcr.io/open-proofline/server`. Compatibility identifiers such as the v1 simulator encryption envelope and default SQLite filename may still use earlier `safety-recorder` names until separate protocol or data-layout migrations are explicitly performed.
 

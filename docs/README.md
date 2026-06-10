@@ -7,6 +7,7 @@ This directory contains the detailed documentation for Proofline Server, the Go 
 | Document | Purpose |
 |---|---|
 | [v1 preview direction](v1-preview-direction.md) | Direction-setting source of truth for v1 preview terminology, repository roles, current-versus-future boundaries, and Codex guidance. |
+| [v1 preview readiness checklist](v1-preview-readiness-checklist.md) | Release gate for v1 preview, v1.0.0, or real-user evidence-upload readiness claims. |
 | [Getting started](getting-started.md) | Run the backend locally and exercise the simulator flow. |
 | [Architecture](architecture.md) | System diagrams, listener boundaries, repository split, and server data flow. |
 | [Configuration](configuration.md) | TOML config, `SAFE_*` environment overrides, secret files, backend selectors, bind addresses, upload limits, and data layout. |

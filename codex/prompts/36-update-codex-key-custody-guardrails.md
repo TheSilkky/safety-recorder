@@ -18,7 +18,7 @@ Do **not** add dependencies.
 Replace overly absolute wording such as:
 
 ```text
-Preserve the backend's ciphertext-only posture: no backend decryption and no server-side key storage.
+Preserve the current backend ciphertext-only implementation unless the task explicitly concerns key custody, emergency access, or decryption design.
 ```
 
 with wording that preserves the **current implementation** while allowing future explicit key custody design.

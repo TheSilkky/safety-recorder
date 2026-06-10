@@ -50,6 +50,8 @@ Before making changes, read current source-of-truth files as relevant:
 - `SECURITY.md`
 - `docs/README.md`
 - `docs/v1-preview-direction.md`
+- `docs/v1-preview-readiness-checklist.md`, for `v1 preview`, `v1.0.0`, or
+  real-user evidence-upload readiness claims
 - relevant files in `docs/`
 - relevant source files
 - relevant tests
@@ -132,6 +134,12 @@ Check:
 - no stale generated artifacts are committed
 - no accidental `.env` files are committed
 - `.backlog-drafts/` contents are intentional, or excluded if they are local-only drafts
+
+For any `v1 preview`, `v1.0.0`, or real-user evidence-upload readiness claim,
+also run `docs/v1-preview-readiness-checklist.md` and record whether the
+outcome is `Ready for v1 preview claim`, `Not ready for v1 preview claim`, or
+`Ready for ordinary pre-v1 release`. Do not use preview-ready language if any
+hard blocker remains incomplete.
 
 ## Security review items
 
@@ -240,6 +248,7 @@ Return:
 7. Suggested version tag
 8. Suggested changelog entry
 9. Any backlog follow-ups
+10. V1 preview readiness checklist outcome, if applicable
 
 If you make fixes:
 

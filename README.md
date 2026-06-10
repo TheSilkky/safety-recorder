@@ -290,6 +290,7 @@ committed TOML.
 
 - [Docs index](docs/README.md)
 - [v1 preview direction](docs/v1-preview-direction.md)
+- [v1 preview readiness checklist](docs/v1-preview-readiness-checklist.md)
 - [Getting started](docs/getting-started.md)
 - [Architecture](docs/architecture.md)
 - [Configuration](docs/configuration.md)

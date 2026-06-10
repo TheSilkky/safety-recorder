@@ -76,6 +76,10 @@ Core project boundaries:
   implemented in the reviewed tree.
 - The post-quantum envelope is documented as a v1 preview requirement, but it
   is not shipped runtime behavior unless implementation files prove it.
+- V1 preview, v1.0.0, or real-user evidence-upload readiness claims must be
+  checked against `docs/v1-preview-readiness-checklist.md` when that file is
+  present. Passing ordinary tests is not enough to support preview-ready
+  language if checklist hard blockers remain incomplete.
 - Future key custody, browser decryption, break-glass, incident-mode, v1
   direction, post-quantum envelope, and client prototype documents are
   design/planning guardrails or future preview requirements, not shipped
@@ -236,6 +240,8 @@ Review these repository areas when present in the reviewed tree:
 Pay special attention to future-design and planning documents when present:
 
 - `docs/incident-modes.md`
+- `docs/v1-preview-direction.md`
+- `docs/v1-preview-readiness-checklist.md`
 - `docs/key-custody.md`
 - `docs/browser-decryption.md`
 - `docs/break-glass-key-access.md`
@@ -292,6 +298,9 @@ Do not recommend public GitHub issues for private vulnerabilities, raw tokens, s
 - Do not describe the post-quantum envelope as implemented unless code proves
   it. If reviewing a v1 preview readiness claim, verify that the post-quantum
   envelope is implemented, documented, tested, and default.
+- Do not describe Proofline as ready for v1 preview, v1.0.0, or real-user
+  evidence upload unless the reviewed tree satisfies the v1 preview readiness
+  checklist hard blockers.
 - Do not treat remaining `safety-recorder` or `emergency` compatibility identifiers as stale when docs explicitly state those names remain for protocol, data-layout, route-alias, or migration compatibility.
 - Do not claim emergency-services integration exists.
 - Do not imply Proofline reports crimes, contacts police, guarantees legal admissibility, or provides legal advice.
