@@ -570,39 +570,50 @@ deployment automation, backend decryption, key escrow, or production readiness.
 ## Regional Stream Ingress Relay
 
 The regional stream-ingress relay currently has a separate `cmd/stream-ingress`
-skeleton plus core API issuance of configured short-lived upload capabilities
+command plus core API issuance of configured short-lived upload capabilities
 for authorized open streams and service-authenticated core relay
-preflight/commit endpoints. The skeleton is not a public upload edge and
-exposes only token-neutral `GET /health/live` and `GET /health/ready`. The core
-relay endpoints require the separate `X-Proofline-Relay-Service-Token` header
-when `[relay_service]` auth is configured; user sessions and relay
-capabilities are not service identity. This does not implement relay listener
-upload handling, relay-local staging, relay forwarding, optimistic fanout,
-metrics, durable relay storage, production service-identity rotation, or
-production deployment automation.
+preflight/commit endpoints. The relay command exposes token-neutral
+`GET /health/live`, token-neutral `GET /health/ready`, and configured
+`POST /upload/complete-chunk` for complete encrypted chunk upload. The upload
+route requires client-supplied relay metadata/capability, calls core preflight
+before accepting the file part when metadata is ordered correctly, stages
+ciphertext temporarily, verifies `sha256_hex`, and returns success only after
+core commit succeeds. The core relay endpoints require the separate
+`X-Proofline-Relay-Service-Token` header when `[relay_service]` auth is
+configured; user sessions and relay capabilities are not service identity.
+This does not implement optimistic fanout, metrics, durable relay storage,
+production service-identity rotation, or production deployment automation.
 
 The full relay planning boundary is documented in
 [regional-stream-ingress-relay.md](regional-stream-ingress-relay.md).
 
-For a private smoke check, run the skeleton explicitly:
+For a private smoke check, run the relay explicitly:
 
 ```bash
 SAFE_STREAM_INGRESS_READY=true go run ./cmd/stream-ingress
 ```
 
-The default bind is `127.0.0.1:8090`. Keep the skeleton on loopback, LAN,
+The default bind is `127.0.0.1:8090`. Keep the relay on loopback, LAN,
 WireGuard, firewall, or a private reverse proxy unless a later deployment
 issue explicitly reviews relay exposure. The readiness response intentionally
-does not return configured relay identity or region labels.
+does not return configured relay identity, region labels, core URLs, service
+tokens, data directories, temp paths, or upload state.
 
-Later upload slices should keep the relay as a separate upload-only edge close
-to users. It should accept complete encrypted chunks over HTTPS, apply
-anonymous pre-body limits, ask the core API for a cheap upload preflight, stage
-ciphertext only in local temporary storage, verify `sha256_hex`, and return
-success only after the core API confirms committed or equivalent success. The
-core API remains the durable source of truth for service-authenticated relay
-preflight/commit decisions, authorization, incident and stream state,
-idempotency, final blob commits, and metadata.
+To exercise the upload route locally, configure at least:
+
+```bash
+SAFE_STREAM_INGRESS_CORE_BASE_URL=http://127.0.0.1:8080 \
+SAFE_STREAM_INGRESS_CORE_SERVICE_AUTH_TOKEN_FILE=/path/to/relay-service-token \
+SAFE_STREAM_INGRESS_READY=true \
+go run ./cmd/stream-ingress
+```
+
+The same token must be configured on the core API with
+`SAFE_RELAY_SERVICE_AUTH_TOKEN_FILE` or `[relay_service].auth_token_file`, and
+the core API must also have relay capability issuance configured. The relay is
+a temporary upload edge only; the core API remains the durable source of truth
+for service-authenticated relay preflight/commit decisions, authorization,
+incident and stream state, idempotency, final blob commits, and metadata.
 
 Do not route `/admin`, `/v1/admin/...`, public incident viewer routes, bundle
 downloads, deletion, retention, backup, restore, escrow, break-glass,

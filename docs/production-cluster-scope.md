@@ -186,12 +186,14 @@ A successful chunk upload should mean encrypted bytes are durably committed outs
 
 ## Regional Stream Ingress Relay Scope
 
-The regional stream-ingress relay currently has a separate health/readiness
-skeleton and core API issuance of configured short-lived upload capabilities
-for authorized open streams, plus service-authenticated core relay
-preflight/commit endpoints. Future slices may make the separate relay listener
-an optional upload-only edge that can run close to users while the core API
-remains authoritative. The full relay design is documented in
+The regional stream-ingress relay currently has separate health/readiness
+routes, core API issuance of configured short-lived upload capabilities for
+authorized open streams, service-authenticated core relay preflight/commit
+endpoints, and a configured complete-chunk upload route with temporary
+ciphertext staging, hash verification, and core forwarding. Future slices may
+add fanout, confirmation propagation, relay Valkey counters, production service
+identity, and deployment hardening while the core API remains authoritative. The
+full relay design is documented in
 [regional-stream-ingress-relay.md](regional-stream-ingress-relay.md).
 
 The relay may use local in-memory counters for single-node/dev deployments or
