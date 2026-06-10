@@ -569,17 +569,34 @@ deployment automation, backend decryption, key escrow, or production readiness.
 
 ## Regional Stream Ingress Relay
 
-The regional stream-ingress relay is not implemented. The planning boundary is
-documented in
+The regional stream-ingress relay currently has only a separate
+`cmd/stream-ingress` skeleton. The skeleton is not a public upload edge and
+exposes only token-neutral `GET /health/live` and `GET /health/ready`. It does
+not implement relay upload, backend-issued relay sessions, core preflight,
+core commit, optimistic fanout, metrics, service identity, durable storage, or
+production deployment automation.
+
+The full relay planning boundary is documented in
 [regional-stream-ingress-relay.md](regional-stream-ingress-relay.md).
 
-If implemented later, the relay should be deployed as a separate upload-only
-edge close to users. It should accept complete encrypted chunks over HTTPS,
-apply anonymous pre-body limits, ask the core API for a cheap upload preflight,
-stage ciphertext only in local temporary storage, verify `sha256_hex`, and
-return success only after the core API confirms committed or equivalent
-success. The core API remains the durable source of truth for authorization,
-incident and stream state, idempotency, final blob commits, and metadata.
+For a private smoke check, run the skeleton explicitly:
+
+```bash
+SAFE_STREAM_INGRESS_READY=true go run ./cmd/stream-ingress
+```
+
+The default bind is `127.0.0.1:8090`. Keep the skeleton on loopback, LAN,
+WireGuard, firewall, or a private reverse proxy unless a later deployment
+issue explicitly reviews relay exposure. The readiness response intentionally
+does not return configured relay identity or region labels.
+
+Later upload slices should keep the relay as a separate upload-only edge close
+to users. It should accept complete encrypted chunks over HTTPS, apply
+anonymous pre-body limits, ask the core API for a cheap upload preflight, stage
+ciphertext only in local temporary storage, verify `sha256_hex`, and return
+success only after the core API confirms committed or equivalent success. The
+core API remains the durable source of truth for authorization, incident and
+stream state, idempotency, final blob commits, and metadata.
 
 Do not route `/admin`, `/v1/admin/...`, public incident viewer routes, bundle
 downloads, deletion, retention, backup, restore, escrow, break-glass,

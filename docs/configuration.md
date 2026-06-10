@@ -282,12 +282,28 @@ accepted as legacy aliases for the main listener only. `SAFE_PUBLIC_BIND_ADDRS`
 and `SAFE_PUBLIC_BIND_ADDR` now fail startup so a previously public viewer bind
 cannot silently become the private-admin listener.
 
-There are no implemented regional stream-ingress relay configuration variables.
-The future relay configuration and service identity shape is planning-only in
-[regional-stream-ingress-relay.md](regional-stream-ingress-relay.md). Any later
-relay settings should use a distinct namespace, keep the relay upload-only, and
-avoid logging service credentials, token fingerprints, staging paths, object
-keys, private endpoints, or other private deployment details.
+The separate `cmd/stream-ingress` skeleton has its own small environment and
+flag surface. It does not use the main API TOML config file yet, and it does
+not add upload, core preflight, core commit, fanout, metrics, service identity,
+storage, or coordination settings.
+
+| Stream-ingress variable | Default | Equivalent flag | Notes |
+|---|---|---|---|
+| `SAFE_STREAM_INGRESS_BIND_ADDR` | `127.0.0.1:8090` | `--bind` | Private bind address for the skeleton health/readiness listener. Keep it on loopback, LAN, WireGuard, firewall, or a private reverse proxy unless a later deployment issue explicitly reviews exposure. |
+| `SAFE_STREAM_INGRESS_RELAY_ID` | unset | `--relay-id` | Optional relay identity label for future service identity planning. The skeleton records only whether it is configured and must not expose the label value in readiness output or logs. |
+| `SAFE_STREAM_INGRESS_REGION` | unset | `--region` | Optional coarse region label for future relay planning. The skeleton records only whether it is configured and must not expose the label value in readiness output or logs. |
+| `SAFE_STREAM_INGRESS_READY` | `false` | `--ready` | Controls whether `GET /health/ready` returns `200 ready` or `503 not_ready`. This readiness flag is only a skeleton smoke signal and does not mean upload, relay session, core commit, fanout, or production readiness exists. |
+
+Run the skeleton locally with explicit readiness for a private smoke check:
+
+```bash
+SAFE_STREAM_INGRESS_READY=true go run ./cmd/stream-ingress
+```
+
+Any later relay settings should continue to use a distinct namespace, keep the
+relay upload-only, and avoid logging service credentials, token fingerprints,
+staging paths, object keys, private endpoints, or other private deployment
+details.
 
 ## Backend Selection Scaffold
 
