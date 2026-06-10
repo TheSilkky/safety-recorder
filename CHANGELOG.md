@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Documented the future no-account web-client viewer routing decision:
+  canonical links should point at the web-client origin with a fragment token,
+  while current `/i` and `/e` server routes are prototype/local compatibility
+  until a later runtime issue changes them.
 - Added owner-authenticated viewer-token metadata list/read routes that expose
   only non-secret token IDs, labels, active/expired/revoked state, and
   timestamps without returning raw viewer tokens or token hashes.

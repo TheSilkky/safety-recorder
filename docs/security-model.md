@@ -48,7 +48,7 @@ The API binary starts separate listener groups:
 
 | Listener group | Routes | Intended exposure |
 |---|---|---|
-| Main API and viewer | Authenticated non-admin `/v1/...` routes, `/i/{token}` and related read-only routes, plus pre-rename `/e/{token}` compatibility aliases | Reviewed main API deployment boundary; viewer paths may be routed publicly when only viewer paths are forwarded. Public edges must not route `/v1/admin/...`. |
+| Main API and viewer | Authenticated non-admin `/v1/...` routes, current prototype/local `/i/{token}` read-only viewer routes, and pre-rename `/e/{token}` aliases only when explicit local/test compatibility needs them | Reviewed main API deployment boundary; viewer paths may be routed publicly when only reviewed viewer paths are forwarded. Future canonical no-account viewer links belong to the web-client origin. Public edges must not route `/v1/admin/...`. |
 | Private admin listener | Authenticated admin-only `/v1/admin/...` JSON routes, `/admin`, `/admin/...`, and `/admin/static/...` | Localhost, LAN, WireGuard, firewall, or strict reverse proxy only. |
 
 The `/admin` dashboard must not be mounted on the main listener. Incident
@@ -124,7 +124,14 @@ lifetime unless `SAFE_DEFAULT_INCIDENT_TOKEN_TTL` is configured differently.
 Expired, revoked, and invalid tokens return the same public error on public
 viewer routes.
 
-Viewer URLs contain bearer tokens and should be treated as secrets. Reverse proxies and operational logs should avoid recording raw `/i/{token}` paths. During upgrades from pre-rename releases, `/e/{token}` compatibility links may also reach the edge proxy and should be redacted.
+Viewer URLs contain bearer tokens and should be treated as secrets. The future
+canonical no-account viewer link should use the web-client origin and a
+fragment token as documented in
+[web-client-viewer-routing.md](web-client-viewer-routing.md). Reverse proxies
+and operational logs should avoid recording raw `/i/{token}` paths. There are
+no current public deployments that require long-lived `/e/{token}`
+compatibility; if `/e` aliases are enabled for local/test compatibility, those
+paths are also token-bearing and must be redacted.
 
 ## Upload And Storage Controls
 
@@ -361,6 +368,11 @@ Implementation tests cover the token-viewer field allowlist, redaction
 assertions, and indistinguishable invalid, expired, and revoked token behavior.
 Future encrypted location-context envelope or authenticated metadata binding
 work still needs separate relay/logging and privacy validation.
+
+`GET /i/{token}/viewer-payload` is a backend data primitive for the future
+web-client viewer, not a decision to keep the server-rendered `/i/{token}` page
+as the canonical viewer. The routing decision for future no-account viewer
+links is documented in [web-client-viewer-routing.md](web-client-viewer-routing.md).
 
 ## Logging And Headers
 

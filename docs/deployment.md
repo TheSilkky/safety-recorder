@@ -24,6 +24,11 @@ cache, edge, and logging boundary documented in
 [public-web-client-deployment-boundary.md](public-web-client-deployment-boundary.md).
 That document separates metadata-only account portals, evidence capture/review
 previews, no-account viewer replacement, and browser decrypting viewers.
+The no-account viewer route decision is documented in
+[web-client-viewer-routing.md](web-client-viewer-routing.md): future canonical
+viewer links should point at the web-client origin, while current `/i` and `/e`
+server routes are prototype/local compatibility until a later runtime issue
+changes them.
 
 ## Local Development
 
@@ -618,11 +623,18 @@ SAFE_MAIN_WRITE_TIMEOUT=10m go run ./cmd/api
 
 ## Public Incident Viewer Exposure
 
-If exposing only the incident viewer publicly, route only the viewer paths from
-the public edge to the main listener. Do not forward a public wildcard or host
-fallback to the main listener unless the deployment has explicitly reviewed
-public main-API exposure. Public edges must not route `/admin`, `/admin/...`,
-or `/v1/admin/...`.
+This section covers the current built-in token viewer. For the future
+no-account web-client viewer, use
+[web-client-viewer-routing.md](web-client-viewer-routing.md) and the public
+web-client deployment boundary instead of treating `/i/{token}` as the
+canonical public entry point.
+
+If exposing only the current incident viewer publicly for local, preview, or
+test use, route only the viewer paths from the public edge to the main
+listener. Do not forward a public wildcard or host fallback to the main
+listener unless the deployment has explicitly reviewed public main-API
+exposure. Public edges must not route `/admin`, `/admin/...`, or
+`/v1/admin/...`.
 
 The checklist below is a deployment review aid. Completing it does not make
 Proofline production-ready public infrastructure, and it does not approve broad
@@ -630,9 +642,11 @@ public `/v1` exposure beyond explicitly reviewed route groups.
 
 Before exposing the public incident viewer:
 
-- [ ] The public route group forwards only viewer paths (`/i/...`, `/e/...`,
-      and token-neutral `/static/...`) to the main listener configured by
-      `SAFE_MAIN_BIND_ADDRS`.
+- [ ] The public route group forwards only reviewed viewer paths to the main
+      listener configured by `SAFE_MAIN_BIND_ADDRS`. Include `/i/...` for the
+      current built-in viewer only while it is explicitly needed. Include
+      `/e/...` only for explicit local/test compatibility. Token-neutral
+      `/static/...` assets may be forwarded when the built-in viewer is used.
 - [ ] No public reverse-proxy route, service, wildcard rule, or fallback reaches
       `/v1`, `/admin`, `/v1/admin/...`, or the private-admin listener
       configured by `SAFE_ADMIN_BIND_ADDRS`.
@@ -696,9 +710,11 @@ https://developer.mozilla.org/en-US/observatory
 
 ### HTTPS Incident Viewer With Traefik
 
-The reverse proxy should route only viewer paths to the main listener. Private
-dashboard routes should stay on localhost, WireGuard, LAN, or another private
-boundary, and public edges must block `/v1/admin/...`.
+The reverse proxy should route only reviewed current-viewer paths to the main
+listener. Private dashboard routes should stay on localhost, WireGuard, LAN, or
+another private boundary, and public edges must block `/v1/admin/...`. For a
+future web-client viewer, point shared viewer links at the web-client origin
+instead of making this built-in viewer route the canonical public entry point.
 
 One same-host shape is:
 
@@ -711,10 +727,11 @@ docker run --rm \
   proofline-server
 ```
 
-Then configure Traefik to forward only viewer paths on the public HTTPS
-hostname to `http://127.0.0.1:8080`. This example is documentation, not a
-maintained deployment file; review it against the Traefik version you run
-before use:
+Then configure Traefik to forward only reviewed current-viewer paths on the
+public HTTPS hostname to `http://127.0.0.1:8080`. This example is
+documentation, not a maintained deployment file; review it against the Traefik
+version you run before use. Remove `/e/` from the rule unless explicit
+local/test compatibility needs it:
 
 ```yaml
 # traefik.yml

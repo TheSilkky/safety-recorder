@@ -79,7 +79,7 @@ The current server has two listener groups:
 
 | Listener group | Current routes | Direction |
 |---|---|---|
-| Main API and viewer | Authenticated non-admin `/v1/...` routes, `/i/{token}` viewer routes, legacy `/e/{token}` aliases, and `/static/...` viewer assets. | Reviewed main API deployment boundary. Viewer paths may be routed publicly only when route paths, logs, headers, TLS, and abuse controls are reviewed. |
+| Main API and viewer | Authenticated non-admin `/v1/...` routes, current prototype/local `/i/{token}` viewer routes, `/e/{token}` aliases only when explicit local/test compatibility needs them, and `/static/...` viewer assets. | Reviewed main API deployment boundary. Viewer paths may be routed publicly only when route paths, logs, headers, TLS, and abuse controls are reviewed. Future canonical no-account viewer links belong to the web-client origin. |
 | Private admin | Authenticated admin-only `/v1/admin/...` JSON routes, `/admin`, `/admin/...`, and `/admin/static/...`. | Localhost, LAN, WireGuard, firewall, VPN, or strict private reverse proxy. Still authenticated and authorized. |
 
 Separate bind addresses reduce accidental exposure. They are not a complete
@@ -222,7 +222,9 @@ carried into v1 preview as the primary fallback or compatibility surface. This
 is an experimental pre-v1 project, so removing the built-in viewer before v1 is
 acceptable when release notes and migration guidance document the change. That
 removal is not part of this document and requires a separate implementation
-task.
+task. The future no-account viewer link should point at the web-client origin
+using the fragment-token routing decision in
+[web-client-viewer-routing.md](web-client-viewer-routing.md).
 
 The server must not incidentally add browser crypto, browser recording, web UI,
 native client code, protocol repository code, backend decryption, raw
