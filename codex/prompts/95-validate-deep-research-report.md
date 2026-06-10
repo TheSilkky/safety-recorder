@@ -58,7 +58,7 @@ Allowed values:
 
 Product documentation now uses the name Proofline. Repository paths, the Go module path, Docker image names, GHCR package names, and release binary names use the `open-proofline/server` repository namespace. Compatibility identifiers such as the v1 simulator encryption envelope, default SQLite filename, legacy `/e/{token}` aliases, and historical migration names may still use `safety-recorder` or `emergency` until separate protocol or data-layout migrations are explicitly performed.
 
-Proofline's planned product scope includes emergency incidents, non-emergency interaction records, timed safety checks, and evidence notes. The current backend stores generic incidents by default; optional incident-mode, capture-profile, escalation-policy, and sharing-state metadata are labels only unless the reviewed tree explicitly implements first-class behavior for them. The post-quantum envelope is a v1 preview requirement, but it is not current runtime behavior unless implementation files prove it.
+Proofline's planned product scope includes emergency incidents, non-emergency interaction records, timed safety checks, and evidence notes. The current backend stores generic incidents by default; optional incident-mode, capture-profile, escalation-policy, and sharing-state metadata are labels only unless the reviewed tree explicitly implements first-class behavior for them. The post-quantum envelope is a v1 preview requirement, but it is not current runtime behavior unless implementation files prove it. Any report claim that Proofline is ready for `v1 preview`, `v1.0.0`, or real-user evidence upload must be checked against `docs/v1-preview-readiness-checklist.md`.
 
 ## Rules
 
@@ -92,6 +92,7 @@ sed -n '1,220p' SECURITY.md
 sed -n '1,260p' AGENTS.md
 sed -n '1,280p' docs/README.md
 sed -n '1,700p' docs/v1-preview-direction.md
+test -f docs/v1-preview-readiness-checklist.md && sed -n '1,260p' docs/v1-preview-readiness-checklist.md
 sed -n '1,260p' docs/incident-modes.md
 sed -n '1,320p' docs/security-model.md
 sed -n '1,340p' docs/threat-model.md
@@ -162,6 +163,10 @@ Check and fix, if needed:
   them.
 - Current `/v1` private boundary and public incident-viewer separation remain clear.
 - Current backend ciphertext-only behavior is represented accurately.
+- V1 preview, v1.0.0, and real-user evidence-upload readiness claims are
+  checked against `docs/v1-preview-readiness-checklist.md`; if any hard
+  blocker remains incomplete, the report must use pre-v1 or experimental
+  language instead of preview-ready language.
 - Historical report names are not rewritten as if they used the new product name at the time.
 - ChatGPT internal citation tokens are removed or converted to portable citation keys.
 - Remove informal or conversational draft language, including humour, mascot references, assistant/meta commentary, and chat-only tone, unless it is quoted as reviewed evidence.
@@ -182,6 +187,8 @@ Check and fix, if needed:
 - Preserved protocol, data-layout, route-alias, or migration compatibility names treated as stale after the repository/module/artifact rename.
 - Interaction-record planning treated as current implementation.
 - Backend decryption or server-held keys assumed from future design docs.
+- V1 preview readiness claimed only because ordinary tests passed, without
+  checking the v1 preview readiness checklist hard blockers.
 - Wording that says review constraints prohibited network calls, web access, or external source consultation unless the maintainer explicitly imposed that constraint.
 - Findings supported by the absence of external sources instead of by repository evidence plus authoritative sources.
 

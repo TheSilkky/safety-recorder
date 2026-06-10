@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Added a v1 preview readiness checklist and release-gate guidance for v1
+  preview, v1.0.0, and real-user evidence-upload readiness claims without
+  changing runtime behavior or adding release automation.
 - Added a v1 preview direction source-of-truth document covering terminology,
   repository roles, current-versus-future boundaries, viewer replacement,
   browser crypto, the post-quantum envelope requirement, trusted contacts,

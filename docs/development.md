@@ -425,6 +425,12 @@ commit has passed CI. If an emergency fix is needed, keep the change narrow,
 preserve review discipline, and document any skipped validation in the release
 or follow-up notes.
 
+Before any release, PR, report, or documentation claims `v1 preview`,
+`v1.0.0`, or real-user evidence-upload readiness, run the
+[v1 preview readiness checklist](v1-preview-readiness-checklist.md). If any
+hard blocker remains incomplete, keep release language to `pre-v1`,
+`experimental`, `planning`, or another limited claim.
+
 Codex-generated changes should be reviewed like any other contribution: inspect
 the diff, confirm the scope matches the issue, run the relevant validation
 commands, and make sure security warnings and main/private-admin boundaries
@@ -447,3 +453,6 @@ Before tagging:
 - verify private/public route separation is documented
 - verify raw tokens, request bodies, uploaded bytes, and Authorization headers are not logged
 - verify no local DBs, uploaded blobs, generated binaries, `.env` files, or temporary files are committed
+- for `v1 preview`, `v1.0.0`, or real-user evidence-upload readiness claims,
+  run [v1 preview readiness checklist](v1-preview-readiness-checklist.md) and
+  record the outcome

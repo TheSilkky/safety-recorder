@@ -23,6 +23,7 @@ Start with current source-of-truth files:
 - `CHANGELOG.md`, if present
 - `docs/README.md`
 - `docs/v1-preview-direction.md`
+- `docs/v1-preview-readiness-checklist.md`
 - every current source-of-truth file under `docs/`
 - `codex/README.md`
 - every reusable prompt under `codex/prompts/`, including this prompt

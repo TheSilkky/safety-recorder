@@ -13,6 +13,10 @@ behavior. This document records how future work should interpret those
 implementation docs when deciding what belongs in v1 preview and what remains a
 separate issue.
 
+For release decisions, use the
+[v1 preview readiness checklist](v1-preview-readiness-checklist.md) before any
+`v1 preview`, `v1.0.0`, or real-user evidence-upload readiness claim.
+
 ## Purpose
 
 Proofline v1 preview should mean the intended encrypted capture and review flow
@@ -602,6 +606,7 @@ Read these docs together:
 | Topic | Source docs |
 |---|---|
 | Current server overview and limits | [README](../README.md), [docs index](README.md), [architecture](architecture.md), [code map](code-map.md) |
+| V1 preview release gate | [v1 preview readiness checklist](v1-preview-readiness-checklist.md) |
 | Current API behavior | [API](api.md), [configuration](configuration.md), [deployment](deployment.md) |
 | Security boundaries | [security model](security-model.md), [threat model](threat-model.md), [SECURITY](../SECURITY.md), [public API listener split](public-api-listener-split.md) |
 | Incident modes | [incident modes](incident-modes.md), [mode-aware retention policy](mode-aware-retention-policy.md) |
