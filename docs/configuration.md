@@ -376,11 +376,15 @@ It does not return relay labels, core URLs, service tokens, data directories,
 temp paths, object keys, uploaded bytes, per-session counters, per-client
 counters, private deployment details, or user safety data.
 
-Run the relay locally with explicit readiness for a private smoke check:
+Run the relay locally for a private listener smoke check:
 
 ```bash
-SAFE_STREAM_INGRESS_READY=true go run ./cmd/stream-ingress
+go run ./cmd/stream-ingress
 ```
+
+`GET /health/live` should return `200`. `GET /health/ready` remains `503
+not_ready` with `uploads: core_unconfigured` until core forwarding settings
+and the manual ready flag are configured.
 
 Any later relay settings should continue to use a distinct namespace, keep the
 relay temporary and subordinate to the core API, and avoid logging service
