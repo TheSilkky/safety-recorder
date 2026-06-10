@@ -414,6 +414,8 @@ The Go app does not set `Strict-Transport-Security` by default because local dev
   expiry, restore reconciliation, and any needed mode-specific retention policy
   using [mode-aware retention policy](mode-aware-retention-policy.md).
 - Prototype the documented hybrid key custody model without weakening the current ciphertext-only backend.
-- Prototype browser decryption only after accepting the browser trust model and malicious-server limitations.
+- Prototype browser decryption only after accepting the browser trust model,
+  malicious-server limitations, and the static/signed or native/offline trust
+  gate documented in [browser-decryption.md](browser-decryption.md).
 - Treat server-assisted break-glass access as an optional future mode only after explicit policy, audit, and deployment design.
 - Review deployment logging so raw tokens are not captured outside the Go server.
