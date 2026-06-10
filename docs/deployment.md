@@ -228,6 +228,22 @@ deletion decisions or delete blobs. Record a backup/restore checkpoint before
 enabling live retention, and confirm older backups, snapshots, and downloaded
 bundles are handled by the deployment's own retention policy.
 
+To inspect the disabled mode-aware retention scaffold without creating live
+deletion decisions, pass explicit dry-run windows for one or more policy
+classes:
+
+```bash
+proofline-server operator mode-retention-preview \
+  --interaction-record-retention 720h \
+  --evidence-note-retention 168h
+```
+
+Mode-aware preview windows default to `0s`, do not change
+`SAFE_CLOSED_INCIDENT_RETENTION`, and do not enable mode-specific deletion. The
+JSON output groups eligible closed active incidents by policy class and reports
+missing, invalid, disabled, or not-yet-eligible policy inputs as ineligible.
+Keep this output private because it includes incident IDs.
+
 To inspect deletion maintenance without exposing stored paths or object keys:
 
 ```bash

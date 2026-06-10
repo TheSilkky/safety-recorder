@@ -592,12 +592,25 @@ func TestPostgresDeletionOperatorStatusAndPreview(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create closed incident: %v", err)
 	}
+	modeIncident, err := repo.CreateIncidentForAccount(ctx, "", incidents.CreateIncidentParams{
+		ClientLabel:      "mode",
+		IncidentMode:     incidents.IncidentModeInteractionRecord,
+		CaptureProfile:   incidents.CaptureProfileAudioLocation,
+		EscalationPolicy: incidents.EscalationPolicyNone,
+		SharingState:     incidents.SharingStatePrivate,
+	})
+	if err != nil {
+		t.Fatalf("create mode incident: %v", err)
+	}
 	failedIncident, err := repo.CreateIncident(ctx, "failed", "")
 	if err != nil {
 		t.Fatalf("create failed incident: %v", err)
 	}
 	if _, err := repo.CloseIncident(ctx, closedIncident.ID); err != nil {
 		t.Fatalf("close candidate incident: %v", err)
+	}
+	if _, err := repo.CloseIncident(ctx, modeIncident.ID); err != nil {
+		t.Fatalf("close mode incident: %v", err)
 	}
 	if _, err := repo.CreateChunk(ctx, testChunkParams(failedIncident.ID, "", incidents.MediaTypeAudio, 1)); err != nil {
 		t.Fatalf("create chunk: %v", err)
@@ -628,8 +641,30 @@ func TestPostgresDeletionOperatorStatusAndPreview(t *testing.T) {
 	if err != nil {
 		t.Fatalf("list retention candidates: %v", err)
 	}
-	if len(candidates) != 1 || candidates[0].IncidentID != closedIncident.ID {
-		t.Fatalf("retention candidates = %+v, want only %s", candidates, closedIncident.ID)
+	candidateIDs := map[string]bool{}
+	for _, candidate := range candidates {
+		candidateIDs[candidate.IncidentID] = true
+	}
+	if len(candidates) != 2 ||
+		!candidateIDs[closedIncident.ID] ||
+		!candidateIDs[modeIncident.ID] {
+		t.Fatalf("retention candidates = %+v, want %s and %s", candidates, closedIncident.ID, modeIncident.ID)
+	}
+	modeItems, err := repo.ListModeAwareRetentionPreviewIncidents(ctx, 10)
+	if err != nil {
+		t.Fatalf("list mode-aware retention preview incidents: %v", err)
+	}
+	modeItemsByID := map[string]incidents.ModeAwareRetentionPreviewIncident{}
+	for _, item := range modeItems {
+		modeItemsByID[item.IncidentID] = item
+	}
+	gotMode := modeItemsByID[modeIncident.ID]
+	if len(modeItems) != 2 ||
+		gotMode.IncidentMode != incidents.IncidentModeInteractionRecord ||
+		gotMode.CaptureProfile != incidents.CaptureProfileAudioLocation ||
+		gotMode.EscalationPolicy != incidents.EscalationPolicyNone ||
+		gotMode.SharingState != incidents.SharingStatePrivate {
+		t.Fatalf("mode-aware preview incidents = %+v, want closed rows with mode metadata", modeItems)
 	}
 
 	report, err := repo.GetIncidentDeletionJobStatus(ctx, 10, time.Now().UTC().Add(time.Minute))

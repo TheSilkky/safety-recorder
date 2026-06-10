@@ -187,6 +187,23 @@ Mode-aware retention must have a dry-run path before live deletion:
 The existing closed-incident retention preview is the model: it reports safe
 counts and IDs without mutating state.
 
+The current server includes a local/private `operator mode-retention-preview`
+dry-run scaffold. It is disabled by default because every mode policy window
+defaults to `0s`. A private operator may provide one or more dry-run windows,
+for example:
+
+```bash
+proofline-server operator mode-retention-preview \
+  --interaction-record-retention 720h \
+  --evidence-note-retention 168h
+```
+
+The command reads closed active incidents, groups eligible rows by explicit
+policy class using `incident_mode`, and reports rows with missing, invalid,
+disabled, or not-yet-eligible policy inputs as ineligible. It is read-only, does
+not use or change `SAFE_CLOSED_INCIDENT_RETENTION`, and does not create deletion
+decisions.
+
 ## Deletion, Tombstones, And Backup Interaction
 
 Mode-aware retention should create ordinary deletion decisions through the same
@@ -242,5 +259,5 @@ A future implementation issue should include:
 - security-model, threat-model, API, deployment, and retention docs updates
 - clear changelog entry and operational warnings
 
-Until that implementation exists, the current backend remains generic and
-evidence-preserving by default.
+Until live mode-aware deletion is explicitly implemented, the current backend
+remains generic and evidence-preserving by default.

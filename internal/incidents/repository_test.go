@@ -1754,6 +1754,87 @@ func TestListRetentionDeletionCandidatesPreviewsClosedActiveOnly(t *testing.T) {
 	}
 }
 
+func TestListModeAwareRetentionPreviewIncidentsSelectsClosedActiveMetadata(t *testing.T) {
+	ctx := context.Background()
+	repo := newRepository(t, ctx)
+	openIncident, err := repo.CreateIncidentForAccount(ctx, "", incidents.CreateIncidentParams{
+		ClientLabel:      "open",
+		IncidentMode:     incidents.IncidentModeEmergency,
+		CaptureProfile:   incidents.CaptureProfileAudioVideoLocation,
+		EscalationPolicy: incidents.EscalationPolicyTrustedContactsOnStart,
+		SharingState:     incidents.SharingStatePrivate,
+	})
+	if err != nil {
+		t.Fatalf("create open incident: %v", err)
+	}
+	closedIncident, err := repo.CreateIncidentForAccount(ctx, "", incidents.CreateIncidentParams{
+		ClientLabel:      "closed",
+		IncidentMode:     incidents.IncidentModeInteractionRecord,
+		CaptureProfile:   incidents.CaptureProfileAudioLocation,
+		EscalationPolicy: incidents.EscalationPolicyNone,
+		SharingState:     incidents.SharingStatePrivate,
+	})
+	if err != nil {
+		t.Fatalf("create closed incident: %v", err)
+	}
+	missingInputIncident, err := repo.CreateIncident(ctx, "missing", "")
+	if err != nil {
+		t.Fatalf("create missing-input incident: %v", err)
+	}
+	deletingIncident, err := repo.CreateIncidentForAccount(ctx, "", incidents.CreateIncidentParams{
+		ClientLabel:      "deleting",
+		IncidentMode:     incidents.IncidentModeEvidenceNote,
+		CaptureProfile:   incidents.CaptureProfileNoteOrAttachment,
+		EscalationPolicy: incidents.EscalationPolicyNone,
+		SharingState:     incidents.SharingStatePrivate,
+	})
+	if err != nil {
+		t.Fatalf("create deleting incident: %v", err)
+	}
+	for _, incidentID := range []string{closedIncident.ID, missingInputIncident.ID, deletingIncident.ID} {
+		if _, err := repo.CloseIncident(ctx, incidentID); err != nil {
+			t.Fatalf("close incident %s: %v", incidentID, err)
+		}
+	}
+	if _, err := repo.RequestIncidentDeletion(ctx, incidents.IncidentDeletionRequest{
+		IncidentID: deletingIncident.ID,
+		Source:     incidents.IncidentDeletionSourceAdminRequest,
+	}); err != nil {
+		t.Fatalf("request deletion: %v", err)
+	}
+
+	items, err := repo.ListModeAwareRetentionPreviewIncidents(ctx, 10)
+	if err != nil {
+		t.Fatalf("list mode-aware retention preview incidents: %v", err)
+	}
+	if len(items) != 2 {
+		t.Fatalf("preview incidents = %+v, want two closed active rows", items)
+	}
+	byID := map[string]incidents.ModeAwareRetentionPreviewIncident{}
+	for _, item := range items {
+		if item.IncidentID == openIncident.ID || item.IncidentID == deletingIncident.ID {
+			t.Fatalf("preview included ineligible incident: %+v", item)
+		}
+		byID[item.IncidentID] = item
+	}
+	gotClosed, ok := byID[closedIncident.ID]
+	if !ok ||
+		gotClosed.IncidentMode != incidents.IncidentModeInteractionRecord ||
+		gotClosed.CaptureProfile != incidents.CaptureProfileAudioLocation ||
+		gotClosed.EscalationPolicy != incidents.EscalationPolicyNone ||
+		gotClosed.SharingState != incidents.SharingStatePrivate {
+		t.Fatalf("closed preview incident lost mode metadata: %+v", gotClosed)
+	}
+	gotMissing, ok := byID[missingInputIncident.ID]
+	if !ok ||
+		gotMissing.IncidentMode != "" ||
+		gotMissing.CaptureProfile != "" ||
+		gotMissing.EscalationPolicy != "" ||
+		gotMissing.SharingState != "" {
+		t.Fatalf("missing-input preview incident should preserve missing inputs: %+v", gotMissing)
+	}
+}
+
 func TestIncidentDeletionJobStatusSummarizesSafeRetryCategories(t *testing.T) {
 	ctx := context.Background()
 	repo := newRepository(t, ctx)

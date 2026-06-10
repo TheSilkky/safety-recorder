@@ -343,6 +343,44 @@ type RetentionDeletionCandidate struct {
 	UpdatedAt  time.Time `json:"updated_at"`
 }
 
+// ModeAwareRetentionPreviewIncident is a safe local-operator preview item for
+// closed active incidents that may eventually be evaluated by mode-aware
+// retention policy. It excludes notes, paths, tokens, keys, and location data.
+type ModeAwareRetentionPreviewIncident struct {
+	IncidentID       string    `json:"incident_id"`
+	UpdatedAt        time.Time `json:"updated_at"`
+	IncidentMode     string    `json:"incident_mode,omitempty"`
+	CaptureProfile   string    `json:"capture_profile,omitempty"`
+	EscalationPolicy string    `json:"escalation_policy,omitempty"`
+	SharingState     string    `json:"sharing_state,omitempty"`
+}
+
+// ModeAwareRetentionCandidate is a safe local-operator dry-run item grouped by
+// an explicit mode-aware policy class. It does not create deletion decisions.
+type ModeAwareRetentionCandidate struct {
+	IncidentID       string    `json:"incident_id"`
+	PolicyClass      string    `json:"policy_class"`
+	IncidentMode     string    `json:"incident_mode"`
+	CaptureProfile   string    `json:"capture_profile"`
+	EscalationPolicy string    `json:"escalation_policy"`
+	SharingState     string    `json:"sharing_state"`
+	UpdatedAt        time.Time `json:"updated_at"`
+	Cutoff           time.Time `json:"cutoff"`
+}
+
+// ModeAwareRetentionIneligible is a safe local-operator dry-run item for a
+// closed active incident that lacks explicit policy inputs or is not yet past a
+// configured mode-aware cutoff.
+type ModeAwareRetentionIneligible struct {
+	IncidentID       string    `json:"incident_id"`
+	Reason           string    `json:"reason"`
+	IncidentMode     string    `json:"incident_mode,omitempty"`
+	CaptureProfile   string    `json:"capture_profile,omitempty"`
+	EscalationPolicy string    `json:"escalation_policy,omitempty"`
+	SharingState     string    `json:"sharing_state,omitempty"`
+	UpdatedAt        time.Time `json:"updated_at"`
+}
+
 // IncidentDeletionStateCount is a safe aggregate count for deletion decisions.
 type IncidentDeletionStateCount struct {
 	State string `json:"state"`

@@ -295,16 +295,23 @@ Local read-only operator commands are available through the server binary:
 
 ```bash
 proofline-server operator retention-preview --closed-incident-retention 720h
+proofline-server operator mode-retention-preview --interaction-record-retention 720h
 proofline-server operator deletion-status
 ```
 
 The preview command uses the configured metadata backend and reports closed
 incident IDs and update times that match the requested retention window. It does
-not queue deletion decisions. The status command reports deletion decision
-counts, retry categories, and runnable jobs. Both commands produce JSON and
-must be run from a trusted local operator environment with the same metadata
-configuration as the server. They must not be exposed through public viewer
-routes or public dashboards.
+not queue deletion decisions. The mode-aware preview scaffold is also read-only
+and disabled by default: each policy class has a `0s` window unless the operator
+passes an explicit dry-run flag. It groups eligible closed active incidents by
+mode policy class and reports missing, invalid, disabled, or not-yet-eligible
+policy inputs as ineligible instead of guessing from labels. It does not use or
+change `SAFE_CLOSED_INCIDENT_RETENTION` and does not add live mode-specific
+deletion. The status command reports deletion decision counts, retry
+categories, and runnable jobs. All commands produce JSON and must be run from a
+trusted local operator environment with the same metadata configuration as the
+server. They must not be exposed through public viewer routes or public
+dashboards.
 
 Public incident viewer routes must remain read-only. They should never expose
 deletion controls, deletion job status, tombstone details, retention policy, or
