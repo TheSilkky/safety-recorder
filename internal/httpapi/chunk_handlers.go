@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/open-proofline/server/internal/envelope/pq"
 	"github.com/open-proofline/server/internal/incidents"
 	"github.com/open-proofline/server/internal/storage"
 )
@@ -95,6 +96,9 @@ func (a *API) uploadChunk(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !a.validateChunkStream(w, r, incidentID, upload) {
+		return
+	}
+	if !a.validateChunkEnvelope(w, incidentID, upload) {
 		return
 	}
 	uploadLease, ok := a.acquireUploadCoordinationLease(w, r, incidentID, upload)
@@ -495,6 +499,28 @@ func (a *API) validateChunkStream(w http.ResponseWriter, r *http.Request, incide
 	}
 	if stream.MediaType != upload.mediaType {
 		writeError(w, http.StatusBadRequest, "stream_media_type_mismatch", "stream media_type does not match chunk media_type")
+		return false
+	}
+	return true
+}
+
+func (a *API) validateChunkEnvelope(w http.ResponseWriter, incidentID string, upload chunkUpload) bool {
+	file, err := os.Open(upload.temp.Path)
+	if err != nil {
+		a.internalError(w, "open upload envelope", err)
+		return false
+	}
+	defer file.Close()
+
+	_, err = pq.ValidatePayloadFrameHeader(file, upload.temp.ByteSize, pq.PayloadIdentity{
+		IncidentID:  incidentID,
+		StreamID:    upload.streamID,
+		MediaType:   upload.mediaType,
+		ChunkIndex:  upload.chunkIndex,
+		PayloadType: pq.PayloadTypeChunk,
+	})
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid_envelope", "uploaded chunk must use the accepted post-quantum envelope profile")
 		return false
 	}
 	return true

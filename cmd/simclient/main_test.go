@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/open-proofline/server/internal/envelope"
+	pqenv "github.com/open-proofline/server/internal/envelope/pq"
 )
 
 func TestParseByteSize(t *testing.T) {
@@ -222,7 +223,7 @@ func TestUploadDesktopStageRetriesAcceptedUploadAfterResponseLoss(t *testing.T) 
 	}
 	manifest := newDesktopManifest("inc_ambiguous", "str_ambiguous", "audio", desktopSourceGenerated)
 	startedAt := time.Date(2026, 5, 22, 10, 0, 0, 0, time.UTC)
-	if err := stage.stageChunk(&manifest, key, []byte("ambiguous response body"), startedAt, startedAt.Add(chunkDuration)); err != nil {
+	if err := stage.stageChunk(&manifest, newV1SimulatorEncryption(key), []byte("ambiguous response body"), startedAt, startedAt.Add(chunkDuration)); err != nil {
 		t.Fatalf("stageChunk returned error: %v", err)
 	}
 
@@ -516,6 +517,7 @@ func TestParseConfigBundleOutput(t *testing.T) {
 func TestParseConfigVerifyBundleDoesNotRequireAuth(t *testing.T) {
 	cfg, err := parseConfig([]string{
 		"--verify-bundle", "bundle.zip",
+		"--envelope", "v1",
 		"--key-file", "key.json",
 	})
 	if err != nil {
@@ -532,6 +534,7 @@ func TestParseConfigVerifyBundleDoesNotRequireAuth(t *testing.T) {
 func TestParseConfigVerifyBundleUsesStageKeyByDefault(t *testing.T) {
 	cfg, err := parseConfig([]string{
 		"--verify-bundle", "bundle.zip",
+		"--envelope", "v1",
 		"--stage-dir", "stage",
 	})
 	if err != nil {
@@ -554,6 +557,9 @@ func TestParseConfigEncryptionDefaults(t *testing.T) {
 	if !cfg.verifyBundleDecrypt {
 		t.Fatal("expected bundle decryption verification to default true")
 	}
+	if cfg.envelopeMode != envelopeModePQ {
+		t.Fatalf("envelopeMode = %q, want %q", cfg.envelopeMode, envelopeModePQ)
+	}
 	if cfg.keyFile != "" {
 		t.Fatalf("keyFile = %q, want empty", cfg.keyFile)
 	}
@@ -561,6 +567,7 @@ func TestParseConfigEncryptionDefaults(t *testing.T) {
 
 func TestParseConfigWrappedKeyOutputDefaultsContactKeyFile(t *testing.T) {
 	cfg, err := parseConfig(withAuthArgs(
+		"--envelope", "v1",
 		"--wrapped-key-output", filepath.Join("stage", "proofline-sim-wrapped-keys.json"),
 	))
 	if err != nil {
@@ -676,19 +683,19 @@ func TestParseConfigRejectsInvalidValues(t *testing.T) {
 		},
 		{
 			name: "verify bundle requires key source",
-			args: []string{"--verify-bundle", "bundle.zip"},
+			args: []string{"--verify-bundle", "bundle.zip", "--envelope", "v1"},
 		},
 		{
 			name: "verify bundle requires encrypted bundle",
-			args: []string{"--verify-bundle", "bundle.zip", "--key-file", "key.json", "--encrypt=false"},
+			args: []string{"--verify-bundle", "bundle.zip", "--envelope", "v1", "--key-file", "key.json", "--encrypt=false"},
 		},
 		{
 			name: "verify bundle is offline",
-			args: withAuthArgs("--verify-bundle", "bundle.zip", "--key-file", "key.json", "--download-bundle"),
+			args: withAuthArgs("--verify-bundle", "bundle.zip", "--envelope", "v1", "--key-file", "key.json", "--download-bundle"),
 		},
 		{
 			name: "wrapped key output requires encrypted upload",
-			args: withAuthArgs("--wrapped-key-output", "proofline-sim-wrapped-keys.json", "--encrypt=false"),
+			args: withAuthArgs("--wrapped-key-output", "proofline-sim-wrapped-keys.json", "--envelope", "v1", "--encrypt=false"),
 		},
 		{
 			name: "contact key file requires artifact",
@@ -1031,29 +1038,35 @@ func TestValidateWrappedKeyArtifactForStreamRejectsContactIDMismatch(t *testing.
 	}
 }
 
-func TestNewEncryptedChunkUploadCanDecryptEnvelope(t *testing.T) {
-	key, err := envelope.GenerateKey()
+func TestNewEncryptedChunkUploadUsesPQEnvelopeByDefault(t *testing.T) {
+	encryption, err := loadOrCreateSimulatorEncryption(config{encrypt: true, envelopeMode: envelopeModePQ})
 	if err != nil {
-		t.Fatalf("GenerateKey returned error: %v", err)
+		t.Fatalf("loadOrCreateSimulatorEncryption returned error: %v", err)
 	}
 	startedAt := time.Date(2026, 5, 22, 10, 0, 0, 0, time.UTC)
-	upload, err := newEncryptedChunkUpload(key, "incident-test", "stream-test", 1, "audio", 16, startedAt)
+	upload, err := newEncryptedChunkUpload(encryption, "incident-test", "stream-test", 1, "audio", 16, startedAt)
 	if err != nil {
 		t.Fatalf("newEncryptedChunkUpload returned error: %v", err)
 	}
 	if len(upload.body) <= 16 {
 		t.Fatalf("expected encrypted envelope to be larger than plaintext, got %d bytes", len(upload.body))
 	}
-	header, err := envelope.ParseHeader(upload.body)
+	meta, err := pqenv.ValidatePayloadFrameHeader(bytes.NewReader(upload.body), int64(len(upload.body)), pqenv.PayloadIdentity{
+		IncidentID:  upload.incidentID,
+		StreamID:    upload.streamID,
+		MediaType:   upload.mediaType,
+		ChunkIndex:  upload.chunkIndex,
+		PayloadType: pqenv.PayloadTypeChunk,
+	})
 	if err != nil {
-		t.Fatalf("ParseHeader returned error: %v", err)
+		t.Fatalf("ValidatePayloadFrameHeader returned error: %v", err)
 	}
-	if header.KeyID != key.KeyID {
-		t.Fatalf("header key id = %q, want %q", header.KeyID, key.KeyID)
+	if meta.Scheme != pqenv.SchemeID || meta.SuiteID != pqenv.SuiteID {
+		t.Fatalf("unexpected PQ metadata: %+v", meta)
 	}
-	plaintext, err := envelope.DecryptChunk(key, chunkContext(upload.incidentID, upload.streamID, upload.mediaType, upload.chunkIndex), upload.body)
+	plaintext, err := encryption.decryptChunk(upload.incidentID, upload.streamID, upload.mediaType, upload.chunkIndex, upload.body)
 	if err != nil {
-		t.Fatalf("DecryptChunk returned error: %v", err)
+		t.Fatalf("decryptChunk returned error: %v", err)
 	}
 	if len(plaintext) != 16 {
 		t.Fatalf("decrypted plaintext length = %d, want 16", len(plaintext))
@@ -1074,7 +1087,8 @@ func TestDesktopStageChunkCreatesEncryptedDurableUpload(t *testing.T) {
 	}
 	manifest := newDesktopManifest("inc_stage", "str_stage", "audio", desktopSourceFiles)
 	startedAt := time.Date(2026, 5, 22, 10, 0, 0, 0, time.UTC)
-	if err := stage.stageChunk(&manifest, key, []byte("encoded media bytes"), startedAt, startedAt.Add(chunkDuration)); err != nil {
+	encryption := newV1SimulatorEncryption(key)
+	if err := stage.stageChunk(&manifest, encryption, []byte("encoded media bytes"), startedAt, startedAt.Add(chunkDuration)); err != nil {
 		t.Fatalf("stageChunk returned error: %v", err)
 	}
 	if len(manifest.Chunks) != 1 {
@@ -1147,7 +1161,7 @@ func TestUploadDesktopStageRetriesAndPersistsUploadState(t *testing.T) {
 	}
 	manifest := newDesktopManifest("inc_retry", "str_retry", "audio", desktopSourceGenerated)
 	startedAt := time.Date(2026, 5, 22, 10, 0, 0, 0, time.UTC)
-	if err := stage.stageChunk(&manifest, key, []byte("retry body"), startedAt, startedAt.Add(chunkDuration)); err != nil {
+	if err := stage.stageChunk(&manifest, newV1SimulatorEncryption(key), []byte("retry body"), startedAt, startedAt.Add(chunkDuration)); err != nil {
 		t.Fatalf("stageChunk returned error: %v", err)
 	}
 
@@ -1291,7 +1305,7 @@ func TestRunDesktopRecorderResumeVerifiesBundleWithManifestMediaType(t *testing.
 
 	startedAt := time.Date(2026, 5, 22, 10, 0, 0, 0, time.UTC)
 	manifest := newDesktopManifest("inc_video", "str_video", "video", desktopSourceFiles)
-	if err := stage.stageChunk(&manifest, key, []byte("encoded video segment"), startedAt, startedAt.Add(chunkDuration)); err != nil {
+	if err := stage.stageChunk(&manifest, newV1SimulatorEncryption(key), []byte("encoded video segment"), startedAt, startedAt.Add(chunkDuration)); err != nil {
 		t.Fatalf("stageChunk returned error: %v", err)
 	}
 	upload, err := stage.chunkUpload(manifest, manifest.Chunks[0])
@@ -1351,6 +1365,7 @@ func TestRunDesktopRecorderResumeVerifiesBundleWithManifestMediaType(t *testing.
 		completeStream:      true,
 		downloadBundle:      true,
 		encrypt:             true,
+		envelopeMode:        envelopeModeV1,
 		verifyBundleDecrypt: true,
 		desktopRecorder:     true,
 		desktopStageDir:     stage.dir,
@@ -1443,7 +1458,7 @@ func TestVerifyStreamBundleDecryption(t *testing.T) {
 		"chunks/audio_000002.enc": second,
 	})
 
-	verified, err := verifyStreamBundleDecryption(bundleBytes, key, incidentID, streamID, mediaType)
+	verified, err := verifyStreamBundleDecryption(bundleBytes, newV1SimulatorEncryption(key), incidentID, streamID, mediaType)
 	if err != nil {
 		t.Fatalf("verifyStreamBundleDecryption returned error: %v", err)
 	}
@@ -1486,6 +1501,7 @@ func TestRunVerifyBundle(t *testing.T) {
 	var out bytes.Buffer
 	if err := run(context.Background(), &out, []string{
 		"--verify-bundle", bundlePath,
+		"--envelope", "v1",
 		"--key-file", keyPath,
 	}); err != nil {
 		t.Fatalf("run returned error: %v", err)
@@ -1520,7 +1536,7 @@ func TestVerifyStreamBundleDecryptionRejectsWrongMetadata(t *testing.T) {
 		"chunks/audio_000001.enc": chunk,
 	})
 
-	if _, err := verifyStreamBundleDecryption(bundleBytes, key, "inc_changed", streamID, mediaType); err == nil {
+	if _, err := verifyStreamBundleDecryption(bundleBytes, newV1SimulatorEncryption(key), "inc_changed", streamID, mediaType); err == nil {
 		t.Fatal("verifyStreamBundleDecryption succeeded with wrong incident id")
 	}
 }

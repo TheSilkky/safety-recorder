@@ -4,8 +4,10 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"strconv"
 	"strings"
 
+	"github.com/open-proofline/server/internal/envelope/pq"
 	"github.com/open-proofline/server/internal/incidents"
 )
 
@@ -166,6 +168,18 @@ func createWrappedKeyRecordParams(w http.ResponseWriter, ownerAccountID, inciden
 	}
 	if !validPublicWrappingMetadata(params.PublicWrappingMetadata) {
 		writeError(w, http.StatusBadRequest, "invalid_public_wrapping_metadata", "public_wrapping_metadata is required, must be a JSON object, and must be 4096 bytes or less")
+		return incidents.CreateWrappedKeyRecordParams{}, false
+	}
+	if params.WrappingAlgorithm != pq.WrappingAlgorithm {
+		writeError(w, http.StatusBadRequest, "invalid_wrapping_algorithm", "wrapping_algorithm must use the accepted post-quantum profile")
+		return incidents.CreateWrappedKeyRecordParams{}, false
+	}
+	if params.WrappingAlgorithmVersion != strconv.Itoa(pq.WrappingAlgorithmVersion) {
+		writeError(w, http.StatusBadRequest, "invalid_wrapping_algorithm_version", "wrapping_algorithm_version must use the accepted post-quantum profile version")
+		return incidents.CreateWrappedKeyRecordParams{}, false
+	}
+	if err := pq.ValidateWrappingRecord(params.MediaKeyID, params.WrappedKeyCiphertext, params.PublicWrappingMetadata); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid_wrapped_key_profile", "wrapped-key metadata must use the accepted post-quantum profile")
 		return incidents.CreateWrappedKeyRecordParams{}, false
 	}
 	return params, true

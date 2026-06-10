@@ -125,7 +125,7 @@ Do not implement.
 
 Discuss:
 
-- AES-GCM compatibility with current simulator envelope
+- PQ default envelope and explicit v1 AES-GCM simulator compatibility limits
 - associated data requirements
 - nonce/header parsing
 - streaming limitations for large bundles

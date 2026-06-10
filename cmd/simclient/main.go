@@ -26,7 +26,7 @@ func run(ctx context.Context, out io.Writer, args []string) error {
 		return runDesktopRecorder(ctx, out, cfg)
 	}
 
-	encryptionKey, err := prepareEncryption(out, cfg)
+	encryption, err := prepareEncryption(out, cfg)
 	if err != nil {
 		return err
 	}
@@ -66,16 +66,18 @@ func run(ctx context.Context, out io.Writer, args []string) error {
 	}
 	fmt.Fprintf(out, "Stream: %s\n\n", streamID)
 
-	bundleVerificationKey := encryptionKey
+	bundleVerification := encryption
 	contactWrappedVerification := false
-	if wrappedKey, ok, err := prepareContactWrappedKey(out, cfg, incidentID, streamID, encryptionKey); err != nil {
-		return err
-	} else if ok {
-		bundleVerificationKey = wrappedKey
-		contactWrappedVerification = true
+	if encryption.mode == envelopeModeV1 {
+		if wrappedKey, ok, err := prepareContactWrappedKey(out, cfg, incidentID, streamID, encryption.v1Key); err != nil {
+			return err
+		} else if ok {
+			bundleVerification = newV1SimulatorEncryption(wrappedKey)
+			contactWrappedVerification = true
+		}
 	}
 
-	if err := uploadChunks(ctx, out, sim, cfg, incidentID, streamID, encryptionKey); err != nil {
+	if err := uploadChunks(ctx, out, sim, cfg, incidentID, streamID, encryption); err != nil {
 		return err
 	}
 
@@ -88,7 +90,7 @@ func run(ctx context.Context, out io.Writer, args []string) error {
 	}
 
 	if cfg.downloadBundle {
-		if err := downloadAndVerifyBundle(ctx, out, sim, cfg, token, incidentID, streamID, bundleVerificationKey, contactWrappedVerification); err != nil {
+		if err := downloadAndVerifyBundle(ctx, out, sim, cfg, token, incidentID, streamID, bundleVerification, contactWrappedVerification); err != nil {
 			return err
 		}
 	}

@@ -590,8 +590,9 @@ func TestLegacyIncidentTokenPathIsRedactedFromRequestLogs(t *testing.T) {
 func TestIncidentTokenCannotMutateIncidentChunkOrCheckinData(t *testing.T) {
 	app := newTestApp(t)
 	incidentID := createIncident(t, app, `{}`)
+	stream := createMediaStream(t, app, incidentID, incidents.MediaTypeAudio, "audio recording")
 	payload := []byte("encrypted audio data")
-	response, body := uploadChunk(t, app, incidentID, 1, "audio", payload, sha256Hex(payload))
+	response, body := uploadChunkWithStream(t, app, incidentID, stream.ID, 1, "audio", payload, sha256Hex(payload))
 	response.Body.Close()
 	if response.StatusCode != http.StatusCreated {
 		t.Fatalf("expected upload status 201, got %d: %s", response.StatusCode, body)
@@ -657,8 +658,9 @@ func TestIncidentViewerReadsDoNotMutateIncidentTokenRows(t *testing.T) {
 func TestIncidentViewDataReturnsExpectedReadOnlyJSON(t *testing.T) {
 	app := newTestApp(t)
 	incidentID := createIncident(t, app, `{"client_label":"iphone"}`)
+	stream := createMediaStream(t, app, incidentID, incidents.MediaTypeMetadata, "metadata")
 	payload := []byte("encrypted metadata")
-	response, body := uploadChunk(t, app, incidentID, 2, "metadata", payload, sha256Hex(payload))
+	response, body := uploadChunkWithStream(t, app, incidentID, stream.ID, 2, "metadata", payload, sha256Hex(payload))
 	response.Body.Close()
 	if response.StatusCode != http.StatusCreated {
 		t.Fatalf("expected upload status 201, got %d: %s", response.StatusCode, body)
@@ -769,6 +771,7 @@ func TestIncidentViewDataLatestChunkUsesReceivedTimeAcrossStreamScopedIndexes(t 
 	firstPayload := []byte("first stream encrypted audio")
 	firstLaterIndexPayload := []byte("first stream encrypted audio index two")
 	secondPayload := []byte("second stream encrypted audio")
+	secondPQPayload := testPQPayload(t, incidentID, secondStream.ID, 1, incidents.MediaTypeAudio, secondPayload)
 
 	response, body := uploadChunkWithStream(t, app, incidentID, firstStream.ID, 1, incidents.MediaTypeAudio, firstPayload, sha256Hex(firstPayload))
 	response.Body.Close()
@@ -812,7 +815,7 @@ func TestIncidentViewDataLatestChunkUsesReceivedTimeAcrossStreamScopedIndexes(t 
 	if latestAudio.ChunkIndex != 1 {
 		t.Fatalf("expected latest audio chunk to use later stream-local index 1, got %+v", latestAudio)
 	}
-	if latestAudio.ByteSize != int64(len(secondPayload)) || latestAudio.SHA256Hex != sha256Hex(secondPayload) {
+	if latestAudio.ByteSize != int64(len(secondPQPayload)) || latestAudio.SHA256Hex != sha256Hex(secondPQPayload) {
 		t.Fatalf("expected latest audio chunk to match second stream payload, got %+v", latestAudio)
 	}
 }

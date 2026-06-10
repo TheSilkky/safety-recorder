@@ -21,9 +21,11 @@ import (
 func TestUploadValidChunk(t *testing.T) {
 	app := newTestApp(t)
 	incidentID := createIncident(t, app, `{}`)
+	stream := createMediaStream(t, app, incidentID, incidents.MediaTypeAudio, "audio recording")
 
 	payload := []byte("encrypted audio data")
-	response, body := uploadChunk(t, app, incidentID, 1, "audio", payload, sha256Hex(payload))
+	expectedPayload := testPQPayload(t, incidentID, stream.ID, 1, "audio", payload)
+	response, body := uploadChunkWithStream(t, app, incidentID, stream.ID, 1, "audio", payload, sha256Hex(payload))
 	defer response.Body.Close()
 
 	if response.StatusCode != http.StatusCreated {
@@ -33,29 +35,30 @@ func TestUploadValidChunk(t *testing.T) {
 	if err := json.Unmarshal(body, &chunk); err != nil {
 		t.Fatalf("decode chunk: %v", err)
 	}
-	if chunk.MediaType != "audio" || chunk.ChunkIndex != 1 || chunk.ByteSize != int64(len(payload)) {
+	if chunk.MediaType != "audio" || chunk.StreamID != stream.ID || chunk.ChunkIndex != 1 || chunk.ByteSize != int64(len(expectedPayload)) {
 		t.Fatalf("unexpected chunk response: %+v", chunk)
 	}
 
-	storedPath := filepath.Join(app.dataDir, "incidents", incidentID, "audio_000001.enc")
+	storedPath := filepath.Join(app.dataDir, "incidents", incidentID, "streams", stream.ID, "audio_000001.enc")
 	stored, err := os.ReadFile(storedPath)
 	if err != nil {
 		t.Fatalf("read stored chunk: %v", err)
 	}
-	if !bytes.Equal(stored, payload) {
+	if !bytes.Equal(stored, expectedPayload) {
 		t.Fatalf("stored payload mismatch")
 	}
+	assertPQPayloadFrame(t, stored, incidentID, stream.ID, 1, "audio")
 
-	response, body = get(t, app, "/v1/incidents/"+incidentID+"/chunks/audio/1")
+	completeMediaStream(t, app, incidentID, stream.ID, 1)
+	response, body = get(t, app, "/v1/incidents/"+incidentID+"/streams/"+stream.ID+"/download")
 	defer response.Body.Close()
 	if response.StatusCode != http.StatusOK {
-		t.Fatalf("expected chunk bytes status 200, got %d: %s", response.StatusCode, body)
+		t.Fatalf("expected stream bundle status 200, got %d: %s", response.StatusCode, body)
 	}
-	assertNoSniff(t, response)
-	assertNoStore(t, response)
+	assertBundleHeaders(t, response)
 }
 
-func TestLegacyUnstreamedChunkIndexZeroIsAccepted(t *testing.T) {
+func TestLegacyUnstreamedChunkIndexZeroIsRejectedByPQDefault(t *testing.T) {
 	app := newTestApp(t)
 	incidentID := createIncident(t, app, `{}`)
 	payload := []byte("legacy encrypted audio data")
@@ -63,43 +66,40 @@ func TestLegacyUnstreamedChunkIndexZeroIsAccepted(t *testing.T) {
 	response, body := uploadChunk(t, app, incidentID, 0, "audio", payload, sha256Hex(payload))
 	defer response.Body.Close()
 
-	if response.StatusCode != http.StatusCreated {
-		t.Fatalf("expected legacy zero-index upload status 201, got %d: %s", response.StatusCode, body)
+	if response.StatusCode != http.StatusBadRequest {
+		t.Fatalf("expected legacy zero-index upload status 400, got %d: %s", response.StatusCode, body)
 	}
-	var chunk incidents.Chunk
-	if err := json.Unmarshal(body, &chunk); err != nil {
-		t.Fatalf("decode chunk: %v", err)
-	}
-	if chunk.StreamID != "" || chunk.ChunkIndex != 0 {
-		t.Fatalf("unexpected legacy chunk response: %+v", chunk)
-	}
+	assertErrorCode(t, body, "invalid_envelope")
+	assertNoStoredFile(t, app, incidentID, "audio_000000.enc")
 }
 
 func TestRejectDuplicateChunkIndex(t *testing.T) {
 	app := newTestApp(t)
 	incidentID := createIncident(t, app, `{}`)
+	stream := createMediaStream(t, app, incidentID, incidents.MediaTypeAudio, "audio recording")
 	payload := []byte("encrypted audio data")
 	duplicatePayload := []byte("different encrypted audio data")
+	expectedPayload := testPQPayload(t, incidentID, stream.ID, 1, incidents.MediaTypeAudio, payload)
 
-	response, body := uploadChunk(t, app, incidentID, 1, "audio", payload, sha256Hex(payload))
+	response, body := uploadChunkWithStream(t, app, incidentID, stream.ID, 1, "audio", payload, sha256Hex(payload))
 	response.Body.Close()
 	if response.StatusCode != http.StatusCreated {
 		t.Fatalf("expected first upload status 201, got %d: %s", response.StatusCode, body)
 	}
 
-	response, body = uploadChunk(t, app, incidentID, 1, "audio", duplicatePayload, sha256Hex(duplicatePayload))
+	response, body = uploadChunkWithStream(t, app, incidentID, stream.ID, 1, "audio", duplicatePayload, sha256Hex(duplicatePayload))
 	defer response.Body.Close()
 	if response.StatusCode != http.StatusConflict {
 		t.Fatalf("expected duplicate status 409, got %d: %s", response.StatusCode, body)
 	}
 	assertErrorCode(t, body, "duplicate_chunk")
 
-	storedPath := filepath.Join(app.dataDir, "incidents", incidentID, "audio_000001.enc")
+	storedPath := filepath.Join(app.dataDir, "incidents", incidentID, "streams", stream.ID, "audio_000001.enc")
 	stored, err := os.ReadFile(storedPath)
 	if err != nil {
 		t.Fatalf("read stored chunk: %v", err)
 	}
-	if !bytes.Equal(stored, payload) {
+	if !bytes.Equal(stored, expectedPayload) {
 		t.Fatalf("duplicate upload overwrote stored payload")
 	}
 	assertTempDirEmpty(t, app)
@@ -110,6 +110,7 @@ func TestUploadIdempotencyKeyEquivalentRetryReturnsSuccess(t *testing.T) {
 	incidentID := createIncident(t, app, `{}`)
 	stream := createMediaStream(t, app, incidentID, incidents.MediaTypeAudio, "audio recording")
 	payload := []byte("encrypted stream audio data")
+	expectedPayload := testPQPayload(t, incidentID, stream.ID, 1, incidents.MediaTypeAudio, payload)
 	key := "chunk-upload-key-1"
 
 	response, body := uploadChunkWithIdempotencyKey(t, app, incidentID, stream.ID, 1, incidents.MediaTypeAudio, payload, sha256Hex(payload), "chunk.enc", key)
@@ -143,7 +144,7 @@ func TestUploadIdempotencyKeyEquivalentRetryReturnsSuccess(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read stored chunk: %v", err)
 	}
-	if !bytes.Equal(stored, payload) {
+	if !bytes.Equal(stored, expectedPayload) {
 		t.Fatalf("idempotent retry changed stored payload")
 	}
 
@@ -170,16 +171,17 @@ func TestUploadIdempotencyKeyReuseWithDifferentInputsConflicts(t *testing.T) {
 	var logs bytes.Buffer
 	app := newTestAppWithMaxUploadBytesAndLogger(t, 1024*1024, slog.New(slog.NewTextHandler(&logs, nil)))
 	incidentID := createIncident(t, app, `{}`)
+	stream := createMediaStream(t, app, incidentID, incidents.MediaTypeAudio, "audio recording")
 	payload := []byte("encrypted audio data")
 	key := "raw-idempotency-key-secret"
 
-	response, body := uploadChunkWithIdempotencyKey(t, app, incidentID, "", 1, incidents.MediaTypeAudio, payload, sha256Hex(payload), "chunk.enc", key)
+	response, body := uploadChunkWithIdempotencyKey(t, app, incidentID, stream.ID, 1, incidents.MediaTypeAudio, payload, sha256Hex(payload), "chunk.enc", key)
 	response.Body.Close()
 	if response.StatusCode != http.StatusCreated {
 		t.Fatalf("expected first upload status 201, got %d: %s", response.StatusCode, body)
 	}
 
-	response, body = uploadChunkWithIdempotencyKey(t, app, incidentID, "", 1, incidents.MediaTypeAudio, payload, sha256Hex(payload), "other-name.enc", key)
+	response, body = uploadChunkWithIdempotencyKey(t, app, incidentID, stream.ID, 1, incidents.MediaTypeAudio, payload, sha256Hex(payload), "other-name.enc", key)
 	defer response.Body.Close()
 	if response.StatusCode != http.StatusConflict {
 		t.Fatalf("expected idempotency conflict status 409, got %d: %s", response.StatusCode, body)
@@ -198,14 +200,15 @@ func TestUploadIdempotencyKeyReuseWithDifferentInputsConflicts(t *testing.T) {
 func TestDuplicateChunkWithoutIdempotencyKeyKeepsExistingBehavior(t *testing.T) {
 	app := newTestApp(t)
 	incidentID := createIncident(t, app, `{}`)
+	stream := createMediaStream(t, app, incidentID, incidents.MediaTypeAudio, "audio recording")
 	payload := []byte("encrypted audio data")
 
-	response, body := uploadChunk(t, app, incidentID, 1, incidents.MediaTypeAudio, payload, sha256Hex(payload))
+	response, body := uploadChunkWithStream(t, app, incidentID, stream.ID, 1, incidents.MediaTypeAudio, payload, sha256Hex(payload))
 	response.Body.Close()
 	if response.StatusCode != http.StatusCreated {
 		t.Fatalf("expected first upload status 201, got %d: %s", response.StatusCode, body)
 	}
-	response, body = uploadChunk(t, app, incidentID, 1, incidents.MediaTypeAudio, payload, sha256Hex(payload))
+	response, body = uploadChunkWithStream(t, app, incidentID, stream.ID, 1, incidents.MediaTypeAudio, payload, sha256Hex(payload))
 	defer response.Body.Close()
 	if response.StatusCode != http.StatusConflict {
 		t.Fatalf("expected duplicate status 409, got %d: %s", response.StatusCode, body)
@@ -347,7 +350,8 @@ func TestReconcileStreamedDuplicateMatched(t *testing.T) {
 		t.Fatalf("decode chunk: %v", err)
 	}
 
-	response, body = reconcileChunk(t, app, incidentID, reconcileChunkRequest(stream.ID, 1, incidents.MediaTypeAudio, payload, "chunk.enc"))
+	expectedPayload := testPQPayload(t, incidentID, stream.ID, 1, incidents.MediaTypeAudio, payload)
+	response, body = reconcileChunk(t, app, incidentID, reconcileChunkRequest(stream.ID, 1, incidents.MediaTypeAudio, expectedPayload, "chunk.enc"))
 	defer response.Body.Close()
 	if response.StatusCode != http.StatusOK {
 		t.Fatalf("expected reconciliation status 200, got %d: %s", response.StatusCode, body)
@@ -360,7 +364,7 @@ func TestReconcileStreamedDuplicateMatched(t *testing.T) {
 	if result.Reconciliation.ChunkID != chunk.ID || result.Reconciliation.Identity.StreamID != stream.ID {
 		t.Fatalf("unexpected reconciliation response: %+v", result.Reconciliation)
 	}
-	if result.Reconciliation.ByteSize != int64(len(payload)) || result.Reconciliation.SHA256Hex != sha256Hex(payload) {
+	if result.Reconciliation.ByteSize != int64(len(expectedPayload)) || result.Reconciliation.SHA256Hex != sha256Hex(expectedPayload) {
 		t.Fatalf("unexpected matched fingerprint: %+v", result.Reconciliation)
 	}
 	for _, disallowed := range []string{"stored_path", chunk.StoredPath, "original_filename", "chunk.enc"} {
@@ -387,7 +391,8 @@ func TestReconcileStreamedDuplicateConflictOmitsStoredValues(t *testing.T) {
 		t.Fatalf("decode chunk: %v", err)
 	}
 
-	response, body = reconcileChunk(t, app, incidentID, reconcileChunkRequest(stream.ID, 1, incidents.MediaTypeAudio, expectedPayload, "expected-name.enc"))
+	expectedPQPayload := testPQPayload(t, incidentID, stream.ID, 1, incidents.MediaTypeAudio, expectedPayload)
+	response, body = reconcileChunk(t, app, incidentID, reconcileChunkRequest(stream.ID, 1, incidents.MediaTypeAudio, expectedPQPayload, "expected-name.enc"))
 	defer response.Body.Close()
 	if response.StatusCode != http.StatusConflict {
 		t.Fatalf("expected reconciliation conflict status 409, got %d: %s", response.StatusCode, body)
@@ -405,7 +410,7 @@ func TestReconcileStreamedDuplicateConflictOmitsStoredValues(t *testing.T) {
 		"stored-name.enc",
 		"expected-name.enc",
 		sha256Hex(storedPayload),
-		sha256Hex(expectedPayload),
+		sha256Hex(expectedPQPayload),
 		string(storedPayload),
 		string(expectedPayload),
 		app.dataDir,
@@ -416,39 +421,24 @@ func TestReconcileStreamedDuplicateConflictOmitsStoredValues(t *testing.T) {
 	}
 }
 
-func TestReconcileLegacyDuplicateMatchedAndConflict(t *testing.T) {
+func TestReconcileLegacyDuplicateIsNotCreatedByPQDefault(t *testing.T) {
 	app := newTestApp(t)
 	incidentID := createIncident(t, app, `{}`)
 	storedPayload := []byte("legacy encrypted audio data")
-	expectedPayload := []byte("different legacy encrypted audio data")
 
 	response, body := uploadChunk(t, app, incidentID, 0, incidents.MediaTypeAudio, storedPayload, sha256Hex(storedPayload))
 	response.Body.Close()
-	if response.StatusCode != http.StatusCreated {
-		t.Fatalf("expected upload status 201, got %d: %s", response.StatusCode, body)
+	if response.StatusCode != http.StatusBadRequest {
+		t.Fatalf("expected legacy upload status 400, got %d: %s", response.StatusCode, body)
 	}
+	assertErrorCode(t, body, "invalid_envelope")
 
 	response, body = reconcileChunk(t, app, incidentID, reconcileChunkRequest("", 0, incidents.MediaTypeAudio, storedPayload, "chunk.enc"))
-	response.Body.Close()
-	if response.StatusCode != http.StatusOK {
-		t.Fatalf("expected legacy reconciliation status 200, got %d: %s", response.StatusCode, body)
-	}
-	result := decodeReconciliationResponse(t, body)
-	if result.Reconciliation.Status != "matched" || result.Reconciliation.Identity.StreamID != "" || result.Reconciliation.Identity.ChunkIndex != 0 {
-		t.Fatalf("unexpected legacy matched response: %+v", result.Reconciliation)
-	}
-
-	response, body = reconcileChunk(t, app, incidentID, reconcileChunkRequest("", 0, incidents.MediaTypeAudio, expectedPayload, "chunk.enc"))
 	defer response.Body.Close()
-	if response.StatusCode != http.StatusConflict {
-		t.Fatalf("expected legacy reconciliation conflict status 409, got %d: %s", response.StatusCode, body)
+	if response.StatusCode != http.StatusNotFound {
+		t.Fatalf("expected legacy reconciliation status 404, got %d: %s", response.StatusCode, body)
 	}
-	assertErrorCode(t, body, "duplicate_chunk_conflict")
-	result = decodeReconciliationResponse(t, body)
-	wantFields := []string{"byte_size", "sha256_hex"}
-	if !stringSlicesEqual(result.Reconciliation.MismatchedFields, wantFields) {
-		t.Fatalf("mismatched_fields = %#v, want %#v", result.Reconciliation.MismatchedFields, wantFields)
-	}
+	assertErrorCode(t, body, "chunk_not_found")
 }
 
 func TestReconcileChunkNotFound(t *testing.T) {
@@ -468,8 +458,9 @@ func TestReconcileDuplicateAfterClosedIncidentAndTerminalStreams(t *testing.T) {
 	app := newTestApp(t)
 
 	closedIncidentID := createIncident(t, app, `{}`)
+	closedStream := createMediaStream(t, app, closedIncidentID, incidents.MediaTypeAudio, "closed audio")
 	legacyPayload := []byte("closed incident encrypted data")
-	response, body := uploadChunk(t, app, closedIncidentID, 1, incidents.MediaTypeAudio, legacyPayload, sha256Hex(legacyPayload))
+	response, body := uploadChunkWithStream(t, app, closedIncidentID, closedStream.ID, 1, incidents.MediaTypeAudio, legacyPayload, sha256Hex(legacyPayload))
 	response.Body.Close()
 	if response.StatusCode != http.StatusCreated {
 		t.Fatalf("expected closed-incident setup upload status 201, got %d: %s", response.StatusCode, body)
@@ -479,7 +470,8 @@ func TestReconcileDuplicateAfterClosedIncidentAndTerminalStreams(t *testing.T) {
 	if response.StatusCode != http.StatusOK {
 		t.Fatalf("expected close status 200, got %d: %s", response.StatusCode, body)
 	}
-	response, body = reconcileChunk(t, app, closedIncidentID, reconcileChunkRequest("", 1, incidents.MediaTypeAudio, legacyPayload, "chunk.enc"))
+	closedPQPayload := testPQPayload(t, closedIncidentID, closedStream.ID, 1, incidents.MediaTypeAudio, legacyPayload)
+	response, body = reconcileChunk(t, app, closedIncidentID, reconcileChunkRequest(closedStream.ID, 1, incidents.MediaTypeAudio, closedPQPayload, "chunk.enc"))
 	response.Body.Close()
 	if response.StatusCode != http.StatusOK {
 		t.Fatalf("expected closed-incident reconciliation status 200, got %d: %s", response.StatusCode, body)
@@ -488,7 +480,8 @@ func TestReconcileDuplicateAfterClosedIncidentAndTerminalStreams(t *testing.T) {
 	completedIncidentID, completedStream := createIncidentStreamWithChunks(t, app, 1)
 	completeMediaStream(t, app, completedIncidentID, completedStream.ID, 1)
 	completedPayload := []byte("encrypted audio data 1")
-	response, body = reconcileChunk(t, app, completedIncidentID, reconcileChunkRequest(completedStream.ID, 1, incidents.MediaTypeAudio, completedPayload, "chunk.enc"))
+	completedPQPayload := testPQPayload(t, completedIncidentID, completedStream.ID, 1, incidents.MediaTypeAudio, completedPayload)
+	response, body = reconcileChunk(t, app, completedIncidentID, reconcileChunkRequest(completedStream.ID, 1, incidents.MediaTypeAudio, completedPQPayload, "chunk.enc"))
 	response.Body.Close()
 	if response.StatusCode != http.StatusOK {
 		t.Fatalf("expected completed-stream reconciliation status 200, got %d: %s", response.StatusCode, body)
@@ -507,7 +500,8 @@ func TestReconcileDuplicateAfterClosedIncidentAndTerminalStreams(t *testing.T) {
 	if response.StatusCode != http.StatusOK {
 		t.Fatalf("expected fail stream status 200, got %d: %s", response.StatusCode, body)
 	}
-	response, body = reconcileChunk(t, app, failedIncidentID, reconcileChunkRequest(failedStream.ID, 1, incidents.MediaTypeAudio, failedPayload, "chunk.enc"))
+	failedPQPayload := testPQPayload(t, failedIncidentID, failedStream.ID, 1, incidents.MediaTypeAudio, failedPayload)
+	response, body = reconcileChunk(t, app, failedIncidentID, reconcileChunkRequest(failedStream.ID, 1, incidents.MediaTypeAudio, failedPQPayload, "chunk.enc"))
 	defer response.Body.Close()
 	if response.StatusCode != http.StatusOK {
 		t.Fatalf("expected failed-stream reconciliation status 200, got %d: %s", response.StatusCode, body)
@@ -549,9 +543,10 @@ func TestRejectUploadTooLargeRemovesTempFile(t *testing.T) {
 func TestHugeConfiguredUploadLimitDoesNotOverflowRequestLimit(t *testing.T) {
 	app := newTestAppWithMaxUploadBytes(t, int64(1<<63-1))
 	incidentID := createIncident(t, app, `{}`)
+	stream := createMediaStream(t, app, incidentID, incidents.MediaTypeAudio, "audio recording")
 	payload := []byte("encrypted audio data")
 
-	response, body := uploadChunk(t, app, incidentID, 1, "audio", payload, sha256Hex(payload))
+	response, body := uploadChunkWithStream(t, app, incidentID, stream.ID, 1, "audio", payload, sha256Hex(payload))
 	defer response.Body.Close()
 
 	if response.StatusCode != http.StatusCreated {

@@ -7,8 +7,6 @@ import (
 	"os"
 	"path/filepath"
 	"time"
-
-	"github.com/open-proofline/server/internal/envelope"
 )
 
 func runDesktopRecorder(ctx context.Context, out io.Writer, cfg config) error {
@@ -19,7 +17,7 @@ func runDesktopRecorder(ctx context.Context, out io.Writer, cfg config) error {
 	if err != nil {
 		return err
 	}
-	key, err := prepareEncryption(out, cfg)
+	encryption, err := prepareEncryption(out, cfg)
 	if err != nil {
 		return err
 	}
@@ -37,20 +35,22 @@ func runDesktopRecorder(ctx context.Context, out io.Writer, cfg config) error {
 	}
 	sim.sessionToken = sessionToken
 
-	manifest, err := prepareDesktopStage(ctx, out, sim, cfg, stage, key)
+	manifest, err := prepareDesktopStage(ctx, out, sim, cfg, stage, encryption)
 	if err != nil {
 		if failErr := failIncompleteDesktopStream(ctx, out, sim, cfg, manifest); failErr != nil {
 			return failErr
 		}
 		return err
 	}
-	bundleVerificationKey := key
+	bundleVerification := encryption
 	contactWrappedVerification := false
-	if wrappedKey, ok, err := prepareContactWrappedKey(out, cfg, manifest.IncidentID, manifest.StreamID, key); err != nil {
-		return err
-	} else if ok {
-		bundleVerificationKey = wrappedKey
-		contactWrappedVerification = true
+	if encryption.mode == envelopeModeV1 {
+		if wrappedKey, ok, err := prepareContactWrappedKey(out, cfg, manifest.IncidentID, manifest.StreamID, encryption.v1Key); err != nil {
+			return err
+		} else if ok {
+			bundleVerification = newV1SimulatorEncryption(wrappedKey)
+			contactWrappedVerification = true
+		}
 	}
 	if cfg.desktopStageOnly {
 		fmt.Fprintln(out, "Upload skipped.")
@@ -80,7 +80,7 @@ func runDesktopRecorder(ctx context.Context, out io.Writer, cfg config) error {
 		}
 		bundleCfg := cfg
 		bundleCfg.mediaType = manifest.MediaType
-		if err := downloadAndVerifyBundle(ctx, out, sim, bundleCfg, token, manifest.IncidentID, manifest.StreamID, bundleVerificationKey, contactWrappedVerification); err != nil {
+		if err := downloadAndVerifyBundle(ctx, out, sim, bundleCfg, token, manifest.IncidentID, manifest.StreamID, bundleVerification, contactWrappedVerification); err != nil {
 			return err
 		}
 	}
@@ -96,7 +96,7 @@ func runDesktopRecorder(ctx context.Context, out io.Writer, cfg config) error {
 	return nil
 }
 
-func prepareDesktopStage(ctx context.Context, out io.Writer, sim client, cfg config, stage *desktopStage, key envelope.Key) (desktopStageManifest, error) {
+func prepareDesktopStage(ctx context.Context, out io.Writer, sim client, cfg config, stage *desktopStage, encryption simulatorEncryption) (desktopStageManifest, error) {
 	if cfg.desktopResume {
 		manifest, err := stage.loadManifest()
 		if err != nil {
@@ -135,14 +135,14 @@ func prepareDesktopStage(ctx context.Context, out io.Writer, sim client, cfg con
 	}
 	switch cfg.desktopSource {
 	case desktopSourceGenerated:
-		err = stageGeneratedChunks(stage, &manifest, key, cfg)
+		err = stageGeneratedChunks(stage, &manifest, encryption, cfg)
 	case desktopSourceFiles:
-		err = stageInputFiles(stage, &manifest, key, cfg)
+		err = stageInputFiles(stage, &manifest, encryption, cfg)
 	case desktopSourceFFmpeg:
 		if cfg.desktopStageOnly {
-			err = stageFFmpegSegments(ctx, stage, &manifest, key, cfg)
+			err = stageFFmpegSegments(ctx, stage, &manifest, encryption, cfg)
 		} else {
-			err = stageAndUploadFFmpegSegments(ctx, out, sim, cfg, stage, &manifest, key)
+			err = stageAndUploadFFmpegSegments(ctx, out, sim, cfg, stage, &manifest, encryption)
 		}
 	default:
 		err = fmt.Errorf("unsupported desktop source")
@@ -165,7 +165,7 @@ func failIncompleteDesktopStream(ctx context.Context, out io.Writer, sim client,
 	return sim.failMediaStream(ctx, manifest.IncidentID, manifest.StreamID, "desktop recorder simulator could not upload a contiguous staged queue")
 }
 
-func stageGeneratedChunks(stage *desktopStage, manifest *desktopStageManifest, key envelope.Key, cfg config) error {
+func stageGeneratedChunks(stage *desktopStage, manifest *desktopStageManifest, encryption simulatorEncryption, cfg config) error {
 	if cfg.chunks <= 0 {
 		return fmt.Errorf("--desktop-source=generated requires --chunks greater than zero")
 	}
@@ -176,14 +176,14 @@ func stageGeneratedChunks(stage *desktopStage, manifest *desktopStageManifest, k
 			return err
 		}
 		chunkStartedAt := startedAt.Add(time.Duration(i-1) * chunkDuration)
-		if err := stage.stageChunk(manifest, key, body, chunkStartedAt, chunkStartedAt.Add(chunkDuration)); err != nil {
+		if err := stage.stageChunk(manifest, encryption, body, chunkStartedAt, chunkStartedAt.Add(chunkDuration)); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func stageInputFiles(stage *desktopStage, manifest *desktopStageManifest, key envelope.Key, cfg config) error {
+func stageInputFiles(stage *desktopStage, manifest *desktopStageManifest, encryption simulatorEncryption, cfg config) error {
 	startedAt := time.Now().UTC()
 	for i, inputFile := range cfg.desktopInputFiles {
 		body, err := os.ReadFile(inputFile)
@@ -194,7 +194,7 @@ func stageInputFiles(stage *desktopStage, manifest *desktopStageManifest, key en
 			return fmt.Errorf("input file is empty")
 		}
 		chunkStartedAt := startedAt.Add(time.Duration(i) * chunkDuration)
-		if err := stage.stageChunk(manifest, key, body, chunkStartedAt, chunkStartedAt.Add(chunkDuration)); err != nil {
+		if err := stage.stageChunk(manifest, encryption, body, chunkStartedAt, chunkStartedAt.Add(chunkDuration)); err != nil {
 			return err
 		}
 	}

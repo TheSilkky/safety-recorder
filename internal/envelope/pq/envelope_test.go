@@ -113,6 +113,111 @@ func TestDecryptRejectsAADMismatch(t *testing.T) {
 	}
 }
 
+func TestValidatePayloadFrameHeaderAcceptsMatchingIdentity(t *testing.T) {
+	recipient, _ := deterministicRecipient(t, "validate-payload", 1)
+	ctx := testPayloadContext()
+	env := deterministicEncrypt(t, []byte("plaintext"), ctx, []Recipient{recipient}, "validate-payload-vector")
+
+	meta, err := ValidatePayloadFrameHeader(bytes.NewReader(env.PayloadFrame), int64(len(env.PayloadFrame)), PayloadIdentity{
+		IncidentID:  ctx.IncidentID,
+		StreamID:    ctx.StreamID,
+		MediaType:   ctx.MediaType,
+		ChunkIndex:  ctx.ChunkIndex,
+		PayloadType: ctx.PayloadType,
+	})
+	if err != nil {
+		t.Fatalf("ValidatePayloadFrameHeader returned error: %v", err)
+	}
+	if meta.Scheme != SchemeID || meta.SuiteID != SuiteID || meta.EnvelopeID != ctx.EnvelopeID || meta.PayloadHeaderDigestB64U == "" {
+		t.Fatalf("unexpected payload metadata: %+v", meta)
+	}
+}
+
+func TestValidatePayloadFrameHeaderRejectsMismatchesAndDowngrades(t *testing.T) {
+	recipient, _ := deterministicRecipient(t, "validate-payload-reject", 1)
+	ctx := testPayloadContext()
+	env := deterministicEncrypt(t, []byte("plaintext"), ctx, []Recipient{recipient}, "validate-payload-reject-vector")
+	identity := PayloadIdentity{
+		IncidentID:  ctx.IncidentID,
+		StreamID:    ctx.StreamID,
+		MediaType:   ctx.MediaType,
+		ChunkIndex:  ctx.ChunkIndex,
+		PayloadType: ctx.PayloadType,
+	}
+
+	t.Run("identity mismatch", func(t *testing.T) {
+		mismatch := identity
+		mismatch.ChunkIndex++
+		if _, err := ValidatePayloadFrameHeader(bytes.NewReader(env.PayloadFrame), int64(len(env.PayloadFrame)), mismatch); err == nil {
+			t.Fatal("ValidatePayloadFrameHeader accepted mismatched identity")
+		}
+	})
+	t.Run("legacy magic", func(t *testing.T) {
+		legacy := append([]byte(nil), env.PayloadFrame...)
+		copy(legacy[:len(payloadMagic)], []byte("SRCENC1\n"))
+		if _, err := ValidatePayloadFrameHeader(bytes.NewReader(legacy), int64(len(legacy)), identity); err == nil {
+			t.Fatal("ValidatePayloadFrameHeader accepted legacy magic")
+		}
+	})
+	t.Run("missing ciphertext", func(t *testing.T) {
+		_, headerBytes, _, err := parsePayloadFrame(env.PayloadFrame)
+		if err != nil {
+			t.Fatalf("parsePayloadFrame returned error: %v", err)
+		}
+		truncated := append([]byte(payloadMagic), version)
+		truncated = binary.BigEndian.AppendUint32(truncated, uint32(len(headerBytes)))
+		truncated = append(truncated, headerBytes...)
+		if _, err := ValidatePayloadFrameHeader(bytes.NewReader(truncated), int64(len(truncated)), identity); err == nil {
+			t.Fatal("ValidatePayloadFrameHeader accepted missing ciphertext")
+		}
+	})
+}
+
+func TestValidateWrappingRecordAcceptsProfileMetadata(t *testing.T) {
+	recipient, _ := deterministicRecipient(t, "validate-wrap", 1)
+	ctx := testPayloadContext()
+	env := deterministicEncrypt(t, []byte("plaintext"), ctx, []Recipient{recipient}, "validate-wrap-vector")
+	record := env.Recipients[0]
+	metadata := marshalPublicMetadata(t, record.Metadata)
+	ciphertext := base64.RawURLEncoding.EncodeToString(record.WrappedKeyFrame)
+
+	if err := ValidateWrappingRecord(ctx.MediaKeyID, ciphertext, metadata); err != nil {
+		t.Fatalf("ValidateWrappingRecord returned error: %v", err)
+	}
+}
+
+func TestValidateWrappingRecordRejectsMalformedProfile(t *testing.T) {
+	recipient, _ := deterministicRecipient(t, "validate-wrap-reject", 1)
+	ctx := testPayloadContext()
+	env := deterministicEncrypt(t, []byte("plaintext"), ctx, []Recipient{recipient}, "validate-wrap-reject-vector")
+	record := env.Recipients[0]
+	ciphertext := base64.RawURLEncoding.EncodeToString(record.WrappedKeyFrame)
+
+	t.Run("unknown metadata field", func(t *testing.T) {
+		metadata := append(bytes.TrimSuffix(marshalPublicMetadata(t, record.Metadata), []byte("}")), []byte(`,"unexpected":"field"}`)...)
+		if err := ValidateWrappingRecord(ctx.MediaKeyID, ciphertext, metadata); err == nil {
+			t.Fatal("ValidateWrappingRecord accepted unknown metadata field")
+		}
+	})
+	t.Run("wrong media key", func(t *testing.T) {
+		if err := ValidateWrappingRecord("different-media-key", ciphertext, marshalPublicMetadata(t, record.Metadata)); err == nil {
+			t.Fatal("ValidateWrappingRecord accepted wrong media key")
+		}
+	})
+	t.Run("tampered kem digest", func(t *testing.T) {
+		tampered := record.Metadata
+		tampered.KEMCiphertextDigestB64U = base64.RawURLEncoding.EncodeToString(fixtureBytes("wrong kem digest", sha512.Size384))
+		if err := ValidateWrappingRecord(ctx.MediaKeyID, ciphertext, marshalPublicMetadata(t, tampered)); err == nil {
+			t.Fatal("ValidateWrappingRecord accepted wrong KEM digest")
+		}
+	})
+	t.Run("padded base64", func(t *testing.T) {
+		if err := ValidateWrappingRecord(ctx.MediaKeyID, ciphertext+"=", marshalPublicMetadata(t, record.Metadata)); err == nil {
+			t.Fatal("ValidateWrappingRecord accepted padded base64")
+		}
+	})
+}
+
 func TestDecryptRejectsMalformedSuiteIDs(t *testing.T) {
 	recipient, dk := deterministicRecipient(t, "suite", 1)
 	ctx := testPayloadContext()
@@ -397,4 +502,13 @@ func assertVectorDoesNotContainSecrets(t *testing.T, env Envelope, plaintext, de
 	if bytes.Contains(encoded, plaintextDigest[:]) {
 		t.Fatal("local vector contains plaintext digest bytes")
 	}
+}
+
+func marshalPublicMetadata(t *testing.T, meta PublicWrappingMetadata) []byte {
+	t.Helper()
+	body, err := json.Marshal(meta)
+	if err != nil {
+		t.Fatalf("marshal public metadata: %v", err)
+	}
+	return body
 }

@@ -186,8 +186,9 @@ func TestListAccountIncidentsReturnsOnlyOwnedPublicSafeMetadata(t *testing.T) {
 		t.Fatalf("create legacy incident: %v", err)
 	}
 
+	stream := createMediaStream(t, app, ownerIncidentID, incidents.MediaTypeMetadata, "metadata")
 	payload := []byte("encrypted metadata")
-	response, body := uploadChunk(t, app, ownerIncidentID, 2, "metadata", payload, sha256Hex(payload))
+	response, body := uploadChunkWithStream(t, app, ownerIncidentID, stream.ID, 2, "metadata", payload, sha256Hex(payload))
 	response.Body.Close()
 	if response.StatusCode != http.StatusCreated {
 		t.Fatalf("expected upload status 201, got %d: %s", response.StatusCode, body)
@@ -246,8 +247,9 @@ func TestGetAccountIncidentReturnsPublicSafeMetadata(t *testing.T) {
 		"escalation_policy":"none",
 		"sharing_state":"private"
 	}`)
+	stream := createMediaStream(t, app, incidentID, incidents.MediaTypeMetadata, "metadata")
 	payload := []byte("encrypted metadata")
-	response, body := uploadChunk(t, app, incidentID, 2, "metadata", payload, sha256Hex(payload))
+	response, body := uploadChunkWithStream(t, app, incidentID, stream.ID, 2, "metadata", payload, sha256Hex(payload))
 	response.Body.Close()
 	if response.StatusCode != http.StatusCreated {
 		t.Fatalf("expected upload status 201, got %d: %s", response.StatusCode, body)

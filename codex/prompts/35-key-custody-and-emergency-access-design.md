@@ -53,7 +53,9 @@ The current repository implementation is simulator/development only:
 - backend stores opaque encrypted chunk bytes
 - backend validates SHA-256 over ciphertext bytes
 - backend creates encrypted ZIP evidence bundles
-- simulator encrypts fake chunks with the documented v1 AES-256-GCM envelope
+- server upload validation and simulator defaults use the accepted PQ payload
+  envelope when the current branch implements it; the older v1 AES-256-GCM
+  envelope is explicit compatibility only
 - simulator can decrypt-verify downloaded bundles locally
 - backend can store grant-bound wrapped-key metadata for explicitly designed
   owner-scoped sharing flows

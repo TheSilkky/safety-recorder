@@ -31,11 +31,12 @@ Future client repositories are expected to record audio/video and supporting met
 
 Evidence bundles are ZIP files containing encrypted chunks and JSON manifests. They are not decrypted, playable, or merged media exports.
 
-The simulator encrypts generated chunks by default with the documented v1
-AES-256-GCM envelope, can stage local file or ffmpeg test segments in
-desktop-recorder mode, and verifies downloaded bundles locally. Keys remain
-client-side and are not uploaded to the backend. Future production key custody
-is expected to use a hybrid trusted-contact model; see
+The simulator encrypts generated chunks by default with the accepted
+post-quantum envelope (`ML-KEM-768 + HKDF-SHA384 + AES-256-GCM`), can stage
+local file or ffmpeg test segments in desktop-recorder mode, and verifies
+downloaded bundles locally when the run still has the local wrapping records.
+Keys remain client-side and are not uploaded to the backend. Future production
+key custody is expected to use a hybrid trusted-contact model; see
 [docs/key-custody.md](docs/key-custody.md).
 
 Planned production-cluster work is additive. SQLite metadata and local filesystem blob storage remain supported. Optional PostgreSQL metadata, S3-compatible object storage, and Valkey/Redis-compatible coordination are available only when explicitly configured. Complete-upload idempotency is implemented through metadata-backed upload-operation state, and Valkey can hold short-lived complete-upload leases and retry hints when configured. Resumable or partial-upload protocols remain future work. See [docs/production-cluster-scope.md](docs/production-cluster-scope.md).
@@ -120,7 +121,8 @@ public viewer changes, notifications, raw key storage, or key escrow.
   incidents or streams
 - Owner-scoped wrapped CEK/media-key metadata storage and private API delivery
   for active sharing grants
-- Documented client-side chunk encryption envelope
+- Accepted post-quantum client-side chunk envelope as the runtime upload
+  validation and simulator default
 - Media streams with `open`, `complete`, and `failed` states
 - Completed encrypted stream and incident ZIP evidence bundle downloads
 - Scoped viewer tokens with a default 24-hour expiry

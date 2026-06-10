@@ -1,6 +1,12 @@
 # Simulator
 
-The simulator CLI lives at `cmd/simclient`. It exercises the current Proofline ingest flow that a future recording client is expected to use. It logs in to the main `/v1` API with a local account session, then encrypts generated test bytes, local pre-recorded files, or optional ffmpeg test segments with the v1 client-side envelope before upload. Each intended chunk upload includes a stable `Idempotency-Key`, and the simulator verifies one equivalent replay without printing the raw key.
+The simulator CLI lives at `cmd/simclient`. It exercises the current Proofline
+ingest flow that a future recording client is expected to use. It logs in to
+the main `/v1` API with a local account session, then encrypts generated test
+bytes, local pre-recorded files, or optional ffmpeg test segments with the
+accepted post-quantum envelope before upload. Each intended chunk upload
+includes a stable `Idempotency-Key`, and the simulator verifies one equivalent
+replay without printing raw key material.
 
 The simulator covers generic incidents only. It does not set optional
 incident-mode metadata for emergency incidents, interaction records, safety
@@ -142,8 +148,15 @@ go run ./cmd/simclient \
   --desktop-recorder \
   --stage-dir /tmp/proofline-desktop-stage \
   --resume-staged \
-  --download-bundle
+  --download-bundle \
+  --verify-bundle-decryption=false
 ```
+
+PQ bundle decryption verification needs the local wrapping records produced
+during the same simulator process. After a process restart, staged PQ chunks can
+still be uploaded and bundled, but local decrypt verification should be disabled
+unless a future simulator task persists local wrapping records. The explicit
+`--envelope v1` compatibility path can still use offline key-file verification.
 
 ## Desktop File Input Flow
 
@@ -244,10 +257,12 @@ go run ./cmd/simclient \
 It requires encrypted uploads, refuses to overwrite an existing output file, and
 does not write decrypted chunks or playable media.
 
-To verify an existing encrypted stream bundle without uploading anything:
+Offline verification remains available for explicit v1 compatibility bundles.
+To verify an existing v1 encrypted stream bundle without uploading anything:
 
 ```bash
 go run ./cmd/simclient \
+  --envelope v1 \
   --verify-bundle /tmp/proofline-stream-bundle.zip \
   --key-file /tmp/proofline-sim.key.json
 ```
@@ -255,7 +270,10 @@ go run ./cmd/simclient \
 For desktop-recorder bundles, `--verify-bundle` may use `--stage-dir` instead of
 `--key-file`; it then reads the simulator key from that stage directory. Offline
 verification checks the bundle manifest, encrypted chunk hashes where present,
-and local decryption with the simulator key. It does not export plaintext.
+and local decryption with the simulator key. It does not export plaintext. PQ
+bundle ZIPs intentionally do not include wrapped-key records, so PQ bundle
+decryption verification is same-run only while the simulator still has local
+wrapping records.
 
 ## Contact-Wrapped Key Metadata
 
@@ -269,6 +287,7 @@ go run ./cmd/simclient \
   --chunks 5 \
   --interval 1s \
   --download-bundle \
+  --envelope v1 \
   --wrapped-key-output /tmp/proofline-sim-wrapped-keys.json
 ```
 
@@ -292,7 +311,9 @@ custody, backend decryption, browser decryption, key escrow, trusted-contact
 accounts, public product authentication, or bundle manifest key records. The
 server now has private authenticated metadata routes for contact public keys,
 sharing grants, and grant-bound wrapped-key records, but this simulator option
-does not call them or add raw key custody behavior.
+does not call them or add raw key custody behavior. It requires
+`--envelope v1`; the runtime default PQ path uses the accepted wrapped-key API
+profile instead of this age-based local artifact.
 
 ## Encryption
 
@@ -304,7 +325,9 @@ PROOFLINE_SIM_PASSWORD='replace-with-a-long-local-password' \
 go run ./cmd/simclient --chunks 5 --interval 1s --download-bundle
 ```
 
-The simulator prints a non-secret `key_id`, but it never prints the raw key or decrypted plaintext.
+The simulator prints a non-secret PQ recipient key ID by default, but it never
+prints the raw key, decapsulation seed, or decrypted plaintext. With
+`--envelope v1`, it prints the non-secret v1 `key_id`.
 
 To reuse a simulator key across runs:
 
@@ -326,6 +349,14 @@ To preserve the old raw fake chunk behavior:
 PROOFLINE_SIM_USERNAME=admin \
 PROOFLINE_SIM_PASSWORD='replace-with-a-long-local-password' \
 go run ./cmd/simclient --encrypt=false
+```
+
+To use the old v1 AES-GCM compatibility envelope explicitly:
+
+```bash
+PROOFLINE_SIM_USERNAME=admin \
+PROOFLINE_SIM_PASSWORD='replace-with-a-long-local-password' \
+go run ./cmd/simclient --envelope v1 --chunks 5 --interval 1s --download-bundle
 ```
 
 This is only for development compatibility. See [encryption.md](encryption.md) for the envelope and key file format.
@@ -405,6 +436,7 @@ attempts and durable metadata for accepted chunks.
 | `--bundle-output` | Write the downloaded encrypted stream bundle ZIP to a new local file. |
 | `--verify-bundle` | Verify an existing encrypted stream bundle ZIP without uploading. |
 | `--encrypt` | Encrypt simulated chunk bytes before upload. Defaults to `true`. |
+| `--envelope` | Encrypted chunk envelope profile. Defaults to `pq`; use `v1` only for compatibility. |
 | `--key-file` | Optional local simulator key file. |
 | `--wrapped-key-output` | Write a simulator-only contact-wrapped key metadata artifact. |
 | `--contact-key-file` | Optional local simulator trusted-contact private key file for wrapped-key metadata. |

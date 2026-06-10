@@ -10,6 +10,7 @@ import (
 	"crypto/sha512"
 	"encoding/base64"
 	"encoding/binary"
+	"encoding/json"
 	"fmt"
 	"io"
 	"strconv"
@@ -21,6 +22,8 @@ const (
 	SchemeID  = "proofline-pq-envelope-v1"
 	SuiteID   = "proofline-pq-mlkem768-hkdfsha384-aes256gcm-v1"
 	ProfileID = SuiteID
+
+	PayloadTypeChunk = "chunk"
 
 	WrappingAlgorithm        = "proofline-pq-mlkem768-hkdfsha384-aes256gcm"
 	WrappingAlgorithmVersion = 1
@@ -34,15 +37,16 @@ const (
 	wrappedKeyMagic = "PLPQWK1\n"
 	version         = 1
 
-	cekSize                 = 32
-	nonceSize               = 12
-	hkdfSaltSize            = 48
-	wrappedCEKSize          = cekSize + 16
-	maxHeaderLength         = 16 * 1024
-	MaxRecipientsPerCEK     = 16
-	recipientKeyIDPrefix    = "pqk1_"
-	maxCanonicalNameLength  = 1<<16 - 1
-	maxCanonicalValueLength = 1<<32 - 1
+	cekSize                     = 32
+	nonceSize                   = 12
+	hkdfSaltSize                = 48
+	wrappedCEKSize              = cekSize + 16
+	wrappedCEKTransportMaxBytes = 16384
+	maxHeaderLength             = 16 * 1024
+	MaxRecipientsPerCEK         = 16
+	recipientKeyIDPrefix        = "pqk1_"
+	maxCanonicalNameLength      = 1<<16 - 1
+	maxCanonicalValueLength     = 1<<32 - 1
 )
 
 var publicMetadataMandatory = []string{
@@ -71,6 +75,31 @@ type PayloadContext struct {
 	ChunkIndex  int
 	PayloadType string
 	MediaKeyID  string
+}
+
+// PayloadIdentity is the non-secret upload identity that the server can verify
+// from a payload frame without decrypting it.
+type PayloadIdentity struct {
+	IncidentID  string
+	StreamID    string
+	MediaType   string
+	ChunkIndex  int
+	PayloadType string
+}
+
+// PayloadMetadata is the non-secret metadata parsed from a payload frame.
+type PayloadMetadata struct {
+	Scheme                  string
+	SuiteID                 string
+	Digest                  string
+	EnvelopeID              string
+	IncidentID              string
+	StreamID                string
+	MediaType               string
+	ChunkIndex              int
+	PayloadType             string
+	PayloadAEAD             string
+	PayloadHeaderDigestB64U string
 }
 
 // Recipient describes one recipient public key that should receive a wrapped
@@ -261,6 +290,82 @@ func Decrypt(env Envelope, ctx PayloadContext, recipientKeyID string, dk *mlkem.
 	return nil, fmt.Errorf("recipient key not found")
 }
 
+// ValidatePayloadFrameHeader validates the non-secret payload frame header and
+// upload identity without decrypting the payload. It reads only the frame header
+// from reader and uses totalSize to prove ciphertext bytes are present.
+func ValidatePayloadFrameHeader(reader io.Reader, totalSize int64, identity PayloadIdentity) (PayloadMetadata, error) {
+	if err := validatePayloadIdentity(identity); err != nil {
+		return PayloadMetadata{}, err
+	}
+	prefixSize := len(payloadMagic) + 1 + 4
+	if totalSize < int64(prefixSize) {
+		return PayloadMetadata{}, fmt.Errorf("payload frame is truncated")
+	}
+	prefix := make([]byte, prefixSize)
+	if _, err := io.ReadFull(reader, prefix); err != nil {
+		return PayloadMetadata{}, fmt.Errorf("read payload frame header: %w", err)
+	}
+	if !bytes.HasPrefix(prefix, []byte(payloadMagic)) {
+		return PayloadMetadata{}, fmt.Errorf("invalid payload magic")
+	}
+	offset := len(payloadMagic)
+	if prefix[offset] != version {
+		return PayloadMetadata{}, fmt.Errorf("unsupported payload version")
+	}
+	offset++
+	headerLength := binary.BigEndian.Uint32(prefix[offset : offset+4])
+	if headerLength == 0 {
+		return PayloadMetadata{}, fmt.Errorf("payload header is missing")
+	}
+	if headerLength > maxHeaderLength {
+		return PayloadMetadata{}, fmt.Errorf("payload header exceeds %d bytes", maxHeaderLength)
+	}
+	headerEnd := int64(prefixSize) + int64(headerLength)
+	if totalSize < headerEnd {
+		return PayloadMetadata{}, fmt.Errorf("payload header is truncated")
+	}
+	if totalSize == headerEnd {
+		return PayloadMetadata{}, fmt.Errorf("payload ciphertext is missing")
+	}
+	headerBytes := make([]byte, int(headerLength))
+	if _, err := io.ReadFull(reader, headerBytes); err != nil {
+		return PayloadMetadata{}, fmt.Errorf("read payload header: %w", err)
+	}
+	header, err := decodePayloadHeader(headerBytes)
+	if err != nil {
+		return PayloadMetadata{}, err
+	}
+	if err := header.matchesIdentity(identity); err != nil {
+		return PayloadMetadata{}, err
+	}
+	return metadataFromPayloadHeader(header, headerBytes), nil
+}
+
+// ValidateWrappingRecord validates accepted-profile public wrapped-key
+// metadata and wrapped-key ciphertext transport without unwrapping the CEK.
+func ValidateWrappingRecord(mediaKeyID, wrappedKeyCiphertextB64U string, publicMetadataJSON []byte) error {
+	mediaKeyID = strings.TrimSpace(mediaKeyID)
+	if mediaKeyID == "" {
+		return fmt.Errorf("media key ID is required")
+	}
+	if err := rejectNewline("media_key_id", mediaKeyID); err != nil {
+		return err
+	}
+	frameBytes, err := decodeBase64URLString("wrapped_key_ciphertext", wrappedKeyCiphertextB64U, wrappedCEKTransportMaxBytes)
+	if err != nil {
+		return err
+	}
+	frame, err := parseWrappedKeyFrame(frameBytes)
+	if err != nil {
+		return err
+	}
+	meta, err := decodePublicWrappingMetadataJSON(publicMetadataJSON)
+	if err != nil {
+		return err
+	}
+	return validatePublicMetadataStandalone(meta, mediaKeyID, frame)
+}
+
 func encryptWithOptions(plaintext []byte, ctx PayloadContext, recipients []Recipient, opts encryptOptions) (Envelope, error) {
 	if err := validateContext(ctx); err != nil {
 		return Envelope{}, err
@@ -401,6 +506,27 @@ func encryptWithOptions(plaintext []byte, ctx PayloadContext, recipients []Recip
 	}, nil
 }
 
+func validatePayloadIdentity(identity PayloadIdentity) error {
+	required := map[string]string{
+		"incident_id":  identity.IncidentID,
+		"stream_id":    identity.StreamID,
+		"media_type":   identity.MediaType,
+		"payload_type": identity.PayloadType,
+	}
+	for name, value := range required {
+		if value == "" {
+			return fmt.Errorf("%s is required", name)
+		}
+		if err := rejectNewline(name, value); err != nil {
+			return err
+		}
+	}
+	if identity.ChunkIndex <= 0 {
+		return fmt.Errorf("chunk_index must be positive")
+	}
+	return nil
+}
+
 func normalizeRecipient(recipient Recipient) (Recipient, error) {
 	if recipient.KeyVersion <= 0 {
 		return Recipient{}, fmt.Errorf("recipient key version must be positive")
@@ -464,6 +590,33 @@ func (header payloadHeader) matchesContext(ctx PayloadContext) error {
 		return fmt.Errorf("payload context does not match authenticated header")
 	}
 	return nil
+}
+
+func (header payloadHeader) matchesIdentity(identity PayloadIdentity) error {
+	if header.IncidentID != identity.IncidentID ||
+		header.StreamID != identity.StreamID ||
+		header.MediaType != identity.MediaType ||
+		header.ChunkIndex != identity.ChunkIndex ||
+		header.PayloadType != identity.PayloadType {
+		return fmt.Errorf("payload identity does not match authenticated header")
+	}
+	return nil
+}
+
+func metadataFromPayloadHeader(header payloadHeader, headerBytes []byte) PayloadMetadata {
+	return PayloadMetadata{
+		Scheme:                  header.Scheme,
+		SuiteID:                 header.SuiteID,
+		Digest:                  header.Digest,
+		EnvelopeID:              header.EnvelopeID,
+		IncidentID:              header.IncidentID,
+		StreamID:                header.StreamID,
+		MediaType:               header.MediaType,
+		ChunkIndex:              header.ChunkIndex,
+		PayloadType:             header.PayloadType,
+		PayloadAEAD:             header.PayloadAEAD,
+		PayloadHeaderDigestB64U: base64.RawURLEncoding.EncodeToString(sha384(headerBytes)),
+	}
 }
 
 func validatePublicMetadata(meta PublicWrappingMetadata, ctx PayloadContext, header payloadHeader, payloadHeaderDigest []byte, frame wrappedKeyFrame) ([]byte, []byte, error) {
@@ -533,6 +686,76 @@ func validatePublicMetadata(meta PublicWrappingMetadata, ctx PayloadContext, hea
 		return nil, nil, fmt.Errorf("CEK-wrap AAD digest does not match")
 	}
 	return salt, wrapAAD, nil
+}
+
+func validatePublicMetadataStandalone(meta PublicWrappingMetadata, mediaKeyID string, frame wrappedKeyFrame) error {
+	if meta.Profile != ProfileID {
+		return fmt.Errorf("unsupported profile")
+	}
+	if meta.Scheme != SchemeID {
+		return fmt.Errorf("unsupported scheme")
+	}
+	if meta.SuiteID != SuiteID {
+		return fmt.Errorf("unsupported suite")
+	}
+	if meta.HKDFInfoID != HKDFInfoID {
+		return fmt.Errorf("unsupported HKDF info ID")
+	}
+	if err := validateMandatory(meta.Mandatory); err != nil {
+		return err
+	}
+	if err := validateRecipientKeyID(meta.RecipientKeyID); err != nil {
+		return err
+	}
+	if meta.RecipientKeyVersion <= 0 {
+		return fmt.Errorf("recipient key version must be positive")
+	}
+	if meta.RecipientRole == "" {
+		return fmt.Errorf("recipient role is required")
+	}
+	if err := rejectNewline("recipient_role", meta.RecipientRole); err != nil {
+		return err
+	}
+	if meta.MediaKeyID != mediaKeyID {
+		return fmt.Errorf("media key ID does not match request")
+	}
+	if meta.EnvelopeID == "" {
+		return fmt.Errorf("envelope ID is required")
+	}
+	if err := rejectNewline("envelope_id", meta.EnvelopeID); err != nil {
+		return err
+	}
+	if _, err := decodeBase64URL("payload_header_digest_b64u", meta.PayloadHeaderDigestB64U, sha512.Size384); err != nil {
+		return err
+	}
+	gotKEMDigest, err := decodeBase64URL("kem_ciphertext_digest_b64u", meta.KEMCiphertextDigestB64U, sha512.Size384)
+	if err != nil {
+		return err
+	}
+	if !bytes.Equal(gotKEMDigest, sha384(frame.KEMCiphertext)) {
+		return fmt.Errorf("KEM ciphertext digest does not match")
+	}
+	if _, err := decodeBase64URL("hkdf_salt_b64u", meta.HKDFSaltB64U, hkdfSaltSize); err != nil {
+		return err
+	}
+	if _, err := decodeBase64URL("cek_wrap_aad_digest_b64u", meta.CEKWrapAADDigestB64U, sha512.Size384); err != nil {
+		return err
+	}
+	return nil
+}
+
+func decodePublicWrappingMetadataJSON(raw []byte) (PublicWrappingMetadata, error) {
+	decoder := json.NewDecoder(bytes.NewReader(raw))
+	decoder.DisallowUnknownFields()
+	var meta PublicWrappingMetadata
+	if err := decoder.Decode(&meta); err != nil {
+		return PublicWrappingMetadata{}, fmt.Errorf("decode public wrapping metadata: %w", err)
+	}
+	var trailing struct{}
+	if err := decoder.Decode(&trailing); err != io.EOF {
+		return PublicWrappingMetadata{}, fmt.Errorf("public wrapping metadata has trailing values")
+	}
+	return meta, nil
 }
 
 func validateMandatory(fields []string) error {
@@ -956,6 +1179,29 @@ func decodeBase64URL(field, value string, expectedLength int) ([]byte, error) {
 	}
 	if expectedLength > 0 && len(decoded) != expectedLength {
 		return nil, fmt.Errorf("%s must decode to %d bytes", field, expectedLength)
+	}
+	return decoded, nil
+}
+
+func decodeBase64URLString(field, value string, maxLength int) ([]byte, error) {
+	if strings.TrimSpace(value) == "" {
+		return nil, fmt.Errorf("%s is required", field)
+	}
+	if strings.Contains(value, "=") {
+		return nil, fmt.Errorf("%s must use unpadded base64url", field)
+	}
+	decoded, err := base64.RawURLEncoding.DecodeString(value)
+	if err != nil {
+		return nil, fmt.Errorf("decode %s: %w", field, err)
+	}
+	if len(decoded) == 0 {
+		return nil, fmt.Errorf("%s is empty", field)
+	}
+	if maxLength > 0 && len(decoded) > maxLength {
+		return nil, fmt.Errorf("%s exceeds %d bytes", field, maxLength)
+	}
+	if base64.RawURLEncoding.EncodeToString(decoded) != value {
+		return nil, fmt.Errorf("%s is not canonical base64url", field)
 	}
 	return decoded, nil
 }
