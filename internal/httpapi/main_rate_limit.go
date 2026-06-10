@@ -151,6 +151,8 @@ func classifyMainAPIRateLimit(r *http.Request) (mainRateLimitClass, bool) {
 		if r.Method == http.MethodPost && len(segments) == 4 && segments[3] == "revoke" {
 			return mainRateLimitToken, true
 		}
+	case "relay":
+		return classifyMainAPIRelayRateLimit(r, segments)
 	case "sharing-grants":
 		return classifyMainAPIRecordRateLimit(r, segments)
 	case "wrapped-keys":
@@ -158,6 +160,20 @@ func classifyMainAPIRateLimit(r *http.Request) (mainRateLimitClass, bool) {
 	}
 
 	return "", false
+}
+
+func classifyMainAPIRelayRateLimit(r *http.Request, segments []string) (mainRateLimitClass, bool) {
+	if r.Method != http.MethodPost || len(segments) != 3 {
+		return "", false
+	}
+	switch segments[2] {
+	case "preflight":
+		return mainRateLimitStream, true
+	case "commit":
+		return mainRateLimitUpload, true
+	default:
+		return "", false
+	}
 }
 
 func classifyMainAPIAuthRateLimit(r *http.Request, segments []string) (mainRateLimitClass, bool) {

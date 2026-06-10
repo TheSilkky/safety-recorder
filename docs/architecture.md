@@ -8,8 +8,10 @@ encrypted chunks, a private `/admin` dashboard listener, and optional
 Valkey/Redis-compatible short-lived coordination when explicitly configured.
 The separate regional stream-ingress relay boundary currently has a
 `cmd/stream-ingress` health/readiness skeleton and core API issuance of
-configured short-lived relay upload capabilities for authorized open streams.
-Relay upload, core preflight, core commit, and fanout remain planned in
+configured short-lived relay upload capabilities for authorized open streams,
+plus service-authenticated core relay preflight and commit endpoints. Relay
+listener upload handling, relay-local staging, relay forwarding, fanout,
+metrics, and deployment automation remain planned in
 [regional-stream-ingress-relay.md](regional-stream-ingress-relay.md).
 
 This repository is the server/backend component only. In the current
@@ -210,13 +212,15 @@ The regional stream-ingress relay boundary is separate from the main API and
 private-admin listeners. The current `cmd/stream-ingress` command is only a
 health/readiness skeleton, not a durable evidence store and not a broad API
 gateway. The core API can issue a signed, expiring upload capability bound to
-one authorized open stream, but that capability does not upload bytes or prove
-durable evidence preservation. Later upload slices should expose only a narrow
-complete-chunk upload route family plus coarse health/readiness routes, stage
-ciphertext temporarily, and forward complete encrypted chunks to the core API.
-The core API remains responsible for account/session or future upload
-authorization, incident and stream state, idempotency decisions, duplicate
-reconciliation, final blob commits, and metadata.
+one authorized open stream and can accept service-authenticated relay
+preflight/commit calls for that bound stream context. The relay capability by
+itself does not upload bytes or prove durable evidence preservation. Later
+relay listener slices should expose only a narrow complete-chunk upload route
+family plus coarse health/readiness routes, stage ciphertext temporarily, and
+forward complete encrypted chunks to the core API. The core API remains
+responsible for account/session or future upload authorization, relay
+capability validation, incident and stream state, idempotency decisions,
+duplicate reconciliation, final blob commits, and metadata.
 
 The relay must not expose `/admin`, `/v1/admin/...`, public incident viewer
 routes, bundle downloads, deletion, retention, backup, restore, escrow,

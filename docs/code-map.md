@@ -60,9 +60,10 @@ contact key-sharing boundaries in
   coordination lease TTL, main API and public viewer rate limits, account
   registration and SMTP email settings, optional web-auth cookie/CORS/CSRF
   settings, optional WebAuthn RP/origin policy, relay capability issuance
-  settings, HTTP server timeouts, local account bootstrap secret, session TTL,
-  deletion worker interval, closed-incident retention window, token metadata
-  retention window, and tombstone retention window.
+  settings, relay-to-core service auth settings, HTTP server timeouts, local
+  account bootstrap secret, session TTL, deletion worker interval,
+  closed-incident retention window, token metadata retention window, and
+  tombstone retention window.
 - `internal/coordination`: defines the small optional coordination boundary, the default no-coordination backend, and the Valkey/Redis-compatible startup check, main API/public viewer rate-limit counter backend, and short-lived complete-upload lease backend.
 - `internal/db`: opens SQLite, enables foreign keys and WAL mode, applies embedded SQLite migrations, records `schema_migrations`, and runs named compatibility migrations.
 - `internal/email`: defines the outbound email sender boundary and the SMTP-backed verification email implementation. The backend has no stdout/file development mailer and does not send notification, recovery, billing, or trusted-contact emails.
@@ -74,7 +75,7 @@ contact key-sharing boundaries in
   client-side chunk envelope, associated data builder, and local simulator key
   file helpers.
 - `internal/auth`: normalizes local account usernames and email addresses, validates passwords, hashes passwords with bcrypt, hashes opaque session or verification tokens before storage, defines controlled second-factor recovery action/reason values, and maps WebAuthn user and credential records to the go-webauthn library types.
-- `internal/httpapi`: owns separate main and private-admin muxes, JSON responses, request logging, recovery, local account/session authentication, request validation, upload handling, stream state handlers, relay session capability issuance, trusted-contact relationship handlers, contact public-key handlers, sharing-grant handlers, wrapped-key handlers, incident deletion handlers, ZIP bundle streaming, app-level main API and public viewer rate limiting, private admin JSON API routes including second-factor recovery reset, the private admin web surface, the incident viewer, and the narrow metadata repository boundary consumed by handlers. Logging changes in this package should follow [logging-requirements.md](logging-requirements.md).
+- `internal/httpapi`: owns separate main and private-admin muxes, JSON responses, request logging, recovery, local account/session authentication, request validation, upload handling, stream state handlers, relay session capability issuance, service-authenticated core relay preflight/commit handlers, trusted-contact relationship handlers, contact public-key handlers, sharing-grant handlers, wrapped-key handlers, incident deletion handlers, ZIP bundle streaming, app-level main API and public viewer rate limiting, private admin JSON API routes including second-factor recovery reset, the private admin web surface, the incident viewer, and the narrow metadata repository boundary consumed by handlers. Logging changes in this package should follow [logging-requirements.md](logging-requirements.md).
 - `internal/relaycap`: signs and validates short-lived regional relay upload
   capability tokens with HMAC-SHA256, explicit expiry, role checks, relay
   session binding, and incident/stream binding. It does not implement relay
@@ -94,11 +95,12 @@ contact key-sharing boundaries in
 
 The implemented `cmd/stream-ingress` package is a skeleton only. The core API
 can issue configured short-lived relay upload capabilities for authorized open
-streams, but the regional stream-ingress relay upload path remains planned in
+streams and exposes service-authenticated relay preflight/commit handlers, but
+the regional stream-ingress relay listener upload path remains planned in
 [regional-stream-ingress-relay.md](regional-stream-ingress-relay.md). Later
-upload work should keep it a separate upload-only edge that stages ciphertext
-temporarily and lets the core API remain authoritative for authorization,
-idempotency, durable blob commits, and metadata.
+upload work should keep the relay listener a separate upload-only edge that
+stages ciphertext temporarily and lets the core API remain authoritative for
+authorization, idempotency, durable blob commits, and metadata.
 
 ## Main Request Flow
 

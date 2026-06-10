@@ -2,17 +2,23 @@
 
 ## Unreleased
 
+- Added service-authenticated core regional relay preflight and durable commit
+  endpoints, with relay-to-core token config, capability validation, stream and
+  quota checks, ciphertext hash/envelope validation on commit, route-limit
+  coverage, redaction tests, and docs preserving the boundary that the relay
+  listener upload edge, staging, fanout, metrics, and deployment automation
+  remain unimplemented.
+
 - Added backend-issued regional relay session capabilities for authorized open
   media streams, with HMAC-signed upload-role tokens, explicit expiry, bounded
   chunk limits, stream binding, route-limit coverage, config validation, tests,
-  and docs confirming that relay upload, core preflight/commit, staging,
-  fanout, metrics, and service identity remain unimplemented.
+  and docs confirming that relay listener upload, staging, fanout, metrics, and
+  deployment automation remain separately scoped.
 
 - Added a separate `cmd/stream-ingress` regional relay skeleton with private
   bind/readiness config, token-neutral health/readiness routes only, route
-  surface tests, and docs clarifying that relay upload, core commit, fanout,
-  metrics, service identity, storage, and production readiness remain
-  unimplemented.
+  surface tests, and docs clarifying that relay listener upload, fanout,
+  metrics, relay storage, and production readiness remain separately scoped.
 
 - Added a planning-only upload telemetry boundary that keeps client upload
   telemetry local before v1 preview and defines safe constraints for any future

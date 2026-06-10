@@ -95,6 +95,7 @@ func run(logger *slog.Logger, configFilePath string) error {
 		AccountRegistration:        accountRegistrationConfig(cfg.AccountRegistration),
 		SecondFactorEmailTTL:       cfg.SecondFactorEmailChallengeTTL,
 		RelayCapability:            relayCapabilityConfig(cfg.RelayCapability),
+		RelayService:               relayServiceConfig(cfg.RelayService),
 		EmailSender:                newEmailSender(cfg.Email),
 		MainRateLimit:              mainRateLimitConfig(cfg.MainAPIRateLimit),
 		MainRateLimiter:            newMainRateLimiter(cfg, coord),
@@ -200,6 +201,12 @@ func relayCapabilityConfig(cfg config.RelayCapabilityConfig) httpapi.RelayCapabi
 		Secret:    cfg.Secret,
 		TTL:       cfg.TTL,
 		MaxChunks: cfg.MaxChunks,
+	}
+}
+
+func relayServiceConfig(cfg config.RelayServiceConfig) httpapi.RelayServiceConfig {
+	return httpapi.RelayServiceConfig{
+		AuthToken: cfg.AuthToken,
 	}
 }
 

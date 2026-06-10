@@ -19,6 +19,7 @@ const (
 	defaultSecondFactorEmailChallengeTTL      = 10 * time.Minute
 	defaultRelayCapabilityTTL                 = 5 * time.Minute
 	defaultRelayCapabilityMaxChunks           = 64
+	minRelayServiceAuthTokenBytes             = 32
 	defaultWebAuthnEnabled                    = false
 	defaultWebAuthnRPDisplayName              = "Proofline"
 	defaultWebAuthnUserVerification           = "required"
@@ -95,6 +96,7 @@ type Config struct {
 	AccountRegistration           AccountRegistrationConfig
 	SecondFactorEmailChallengeTTL time.Duration
 	RelayCapability               RelayCapabilityConfig
+	RelayService                  RelayServiceConfig
 	Email                         EmailConfig
 	AuthBootstrapSecret           string
 	DeletionWorkerInterval        time.Duration
@@ -131,6 +133,12 @@ type RelayCapabilityConfig struct {
 	Secret    string
 	TTL       time.Duration
 	MaxChunks int
+}
+
+// RelayServiceConfig controls relay-to-core service authentication for narrow
+// core relay preflight/commit endpoints. Empty AuthToken disables the routes.
+type RelayServiceConfig struct {
+	AuthToken string
 }
 
 // SMTPConfig contains SMTP settings for verification email delivery.
@@ -339,6 +347,10 @@ func loadFromSource(source configSource) (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
+	relayService, err := relayServiceConfigFromSource(source)
+	if err != nil {
+		return Config{}, err
+	}
 	authBootstrapSecret, err := secretFromSource(source, "SAFE_AUTH_BOOTSTRAP_SECRET", "SAFE_AUTH_BOOTSTRAP_SECRET_FILE")
 	if err != nil {
 		return Config{}, err
@@ -418,6 +430,7 @@ func loadFromSource(source configSource) (Config, error) {
 		AccountRegistration:           accountRegistration,
 		SecondFactorEmailChallengeTTL: secondFactorEmailChallengeTTL,
 		RelayCapability:               relayCapability,
+		RelayService:                  relayService,
 		Email:                         email,
 		AuthBootstrapSecret:           authBootstrapSecret,
 		DeletionWorkerInterval:        deletionWorkerInterval,

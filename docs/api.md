@@ -1908,14 +1908,140 @@ issue implements the safe coarse-code boundary documented in
 [upload-telemetry-boundary.md](upload-telemetry-boundary.md).
 
 The current API can issue short-lived regional relay upload capabilities for
-authorized open streams. It does not implement regional stream-ingress upload
-routes, encrypted relay staging, or service-authenticated relay
-preflight/commit endpoints. A separate `cmd/stream-ingress` skeleton exposes
-only `/health/live` and `/health/ready`; the future relay upload design is
-documented in [regional-stream-ingress-relay.md](regional-stream-ingress-relay.md).
-Any implementation must keep the core API authoritative for authorization,
-idempotency, final blob commits, and metadata, and must not expose the full
-`/v1` control plane or admin routes through the relay.
+authorized open streams and exposes narrow service-authenticated core relay
+preflight/commit routes. It does not implement regional stream-ingress upload
+listener routes, relay-local encrypted staging, relay forwarding runtime,
+optimistic fanout, or relay metrics. A separate `cmd/stream-ingress` skeleton
+exposes only `/health/live` and `/health/ready`; the future relay upload design
+is documented in [regional-stream-ingress-relay.md](regional-stream-ingress-relay.md).
+Any relay implementation must keep the core API authoritative for
+authorization, idempotency, final blob commits, and metadata, and must not
+expose the full `/v1` control plane or admin routes through the relay.
+
+### `POST /v1/relay/preflight`
+
+Service-authenticated relay-to-core preflight route for cheap complete-chunk
+metadata checks before a future relay upload listener accepts a large body.
+This route is mounted on the main API mux, not on the public incident viewer,
+not on the private-admin listener, and not on `cmd/stream-ingress`.
+
+The trusted relay must send:
+
+```http
+X-Proofline-Relay-Service-Token: <relay-service-token>
+```
+
+The service token is configured with `SAFE_RELAY_SERVICE_AUTH_TOKEN` or
+`SAFE_RELAY_SERVICE_AUTH_TOKEN_FILE` and is separate from user bearer sessions,
+browser cookies, viewer tokens, incident tokens, and relay upload
+capabilities. The route also requires a signed relay upload capability issued
+by `POST /v1/incidents/{incident_id}/streams/{stream_id}/relay-session`.
+
+Request:
+
+```json
+{
+  "relay_session_id": "Lzhc7ZXZQD6bLztwBBqJ8A",
+  "capability": "proofline-relay-capability-v1...",
+  "incident_id": "inc_...",
+  "stream_id": "str_...",
+  "chunk_index": 1,
+  "media_type": "audio",
+  "started_at": "2026-06-11T10:00:00Z",
+  "ended_at": "2026-06-11T10:00:10Z",
+  "byte_size": 32768,
+  "sha256_hex": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+  "original_filename": "chunk-0001.pq"
+}
+```
+
+The core validates relay service auth, capability signature, expiry, `upload`
+role, relay session binding, incident binding, stream binding, capability byte
+and chunk limits, media type, incident state, stream state, duplicate chunk
+identity, configured upload byte limit, and account committed-blob quota.
+
+Response `200`:
+
+```json
+{
+  "relay_preflight": {
+    "status": "accepted",
+    "incident_id": "inc_...",
+    "stream_id": "str_...",
+    "chunk_index": 1,
+    "media_type": "audio",
+    "max_chunk_bytes": 52428800,
+    "max_chunks": 64
+  }
+}
+```
+
+Preflight success is a hint only. It does not stage bytes, reserve durable
+storage, insert metadata, create evidence, or guarantee a later commit.
+
+Common safe failures include `401 relay_service_auth_required`, `503
+relay_service_auth_not_configured`, `503 relay_capability_not_configured`,
+`401 relay_capability_invalid`, `401 relay_capability_expired`, `403
+relay_capability_wrong_role`, `403 relay_capability_wrong_binding`, `403
+relay_capability_limit_exceeded`, `409 duplicate_chunk`, `409 incident_closed`,
+`409 incident_deleting`, `409 stream_not_open`, `404 incident_not_found`, `404
+stream_not_found`, `413 upload_too_large`, and `507
+account_storage_quota_exceeded`.
+
+### `POST /v1/relay/commit`
+
+Service-authenticated relay-to-core durable commit route for a complete
+encrypted chunk. The route uses the same `X-Proofline-Relay-Service-Token`
+header and relay capability validation as preflight, then commits through the
+existing core storage and metadata path.
+
+Request is `multipart/form-data` with these fields:
+
+| Field | Meaning |
+|---|---|
+| `relay_session_id` | Relay session ID returned with the capability. |
+| `capability` | Signed relay upload capability. |
+| `incident_id` | Incident being uploaded to. |
+| `stream_id` | Target open media stream. |
+| `chunk_index` | Positive stream-local chunk index. |
+| `media_type` | `audio`, `video`, `location`, or `metadata`; must match the stream. |
+| `started_at` / `ended_at` | RFC3339 chunk time range. |
+| `byte_size` | Declared encrypted byte size. |
+| `sha256_hex` | Declared lowercase SHA-256 of encrypted bytes. |
+| `original_filename` | Optional metadata basename; not a storage path. |
+| `file` | Complete encrypted PQ payload frame bytes. |
+
+The core streams `file` through the existing temporary upload path, enforces
+`SAFE_MAX_UPLOAD_BYTES` and temp staging quota, verifies declared byte size,
+verifies computed SHA-256 against `sha256_hex`, validates the accepted PQ
+payload frame, applies the existing complete-upload coordination lease when
+configured, commits the encrypted blob to local or S3-compatible durable
+storage, and writes chunk metadata in SQLite or PostgreSQL.
+
+Response `201`:
+
+```json
+{
+  "relay_commit": {
+    "status": "committed",
+    "chunk_id": "chk_...",
+    "incident_id": "inc_...",
+    "stream_id": "str_...",
+    "chunk_index": 1,
+    "media_type": "audio",
+    "byte_size": 32768,
+    "sha256_hex": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+    "created_at": "2026-06-11T10:00:11Z"
+  }
+}
+```
+
+The response intentionally omits `stored_path`, staging paths, object keys,
+raw tokens, uploaded bytes, plaintext, raw keys, wrapped-key ciphertext, and
+private deployment details. Hash mismatches return `400 hash_mismatch` without
+committing metadata. Declared byte-size mismatches return `400
+byte_size_mismatch`. Existing direct authenticated chunk upload behavior is
+unchanged.
 
 ### `POST /v1/incidents/{incident_id}/chunks/reconcile`
 

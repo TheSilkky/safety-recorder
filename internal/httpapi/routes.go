@@ -11,6 +11,7 @@ func (a *API) mainRoutes() http.Handler {
 	a.registerMainTrustedContactDeliveryRoutes(mux)
 	a.registerMainIncidentRoutes(mux)
 	a.registerMainStreamRoutes(mux)
+	a.registerMainRelayRoutes(mux)
 	a.registerMainIncidentTokenRoutes(mux)
 	a.registerMainSharingGrantRoutes(mux)
 	a.registerMainWrappedKeyRoutes(mux)
@@ -134,6 +135,11 @@ func (a *API) registerMainStreamRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /v1/incidents/{incident_id}/streams/{stream_id}/complete", a.withPrivateAuth(a.completeMediaStream))
 	mux.HandleFunc("POST /v1/incidents/{incident_id}/streams/{stream_id}/fail", a.withPrivateAuth(a.failMediaStream))
 	mux.HandleFunc("GET /v1/incidents/{incident_id}/streams/{stream_id}/download", a.withPrivateAuth(a.downloadPrivateStreamBundle))
+}
+
+func (a *API) registerMainRelayRoutes(mux *http.ServeMux) {
+	mux.HandleFunc("POST /v1/relay/preflight", a.relayPreflight)
+	mux.HandleFunc("POST /v1/relay/commit", a.relayCommit)
 }
 
 func (a *API) registerMainIncidentTokenRoutes(mux *http.ServeMux) {

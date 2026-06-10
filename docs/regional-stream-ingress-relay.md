@@ -4,10 +4,12 @@ This document defines a future optional regional stream-ingress relay for
 complete encrypted chunk uploads. The current implementation has a separate
 `cmd/stream-ingress` service skeleton with token-neutral liveness/readiness
 routes and a core API route that can issue short-lived signed relay upload
-capabilities for authorized open streams. Relay upload, core preflight, core
-commit, fanout, metrics, deployment automation, schema, storage backends,
-decryption, key custody, web-client code, mobile-client code, protocol code,
-and public production readiness remain unimplemented.
+capabilities for authorized open streams, plus service-authenticated core
+preflight and commit endpoints for future relay-to-core calls. Relay listener
+upload handling, relay-local encrypted staging, optimistic fanout, metrics,
+deployment automation, relay storage backends, decryption, key custody,
+web-client code, mobile-client code, protocol code, and public production
+readiness remain unimplemented.
 
 ## Summary
 
@@ -52,6 +54,9 @@ separable from broader cluster work:
   changing main API behavior
 - backend-issued relay upload capabilities for authorized open media streams,
   disabled until a relay capability secret is configured
+- service-authenticated core relay preflight and durable commit endpoints,
+  disabled until a relay service auth token and relay capability secret are
+  configured
 
 Those features do not make `/v1` production-ready public infrastructure. The
 relay skeleton exposes only `/health/live` and `/health/ready`; it does not
@@ -61,11 +66,12 @@ private admin surfaces.
 Parent epic #202 is split into child implementation issues. Issue #289 added
 only the service boundary, config surface, route-surface tests, and
 implemented-versus-planned documentation. Issue #290 adds only backend-issued
-relay upload capabilities for authorized open streams. Later slices are
-expected to add, in order, narrow core relay preflight/commit routes, relay
-upload staging and forwarding, relay abuse controls, optional
-Valkey/Redis-compatible counters, service identity, deployment docs, and any
-explicitly scoped smoke validation.
+relay upload capabilities for authorized open streams. Issue #291 adds only
+the narrow service-authenticated core relay preflight/commit routes. Later
+slices are expected to add, in order, relay upload staging and forwarding,
+relay abuse controls, optional Valkey/Redis-compatible counters, production
+service-identity rotation guidance, deployment docs, and any explicitly scoped
+smoke validation.
 
 Future stream variant and supersession behavior is documented in
 [capture-stream-variants.md](capture-stream-variants.md). The relay may use
@@ -92,7 +98,9 @@ for backend confirmation and evidence preservation.
 
 ## Non-Goals
 
-- No relay upload implementation in this issue.
+- No relay listener upload, encrypted staging, relay forwarding, fanout,
+  metrics, deployment automation, or production service-identity rotation in
+  the current core API slices.
 - No public exposure of the full current `/v1` control plane.
 - No admin routes on the ingress service.
 - No broad API gateway behavior.
@@ -182,8 +190,59 @@ session ID, incident ID, and stream ID before accepting any future upload.
 Capabilities are bearer-like credentials and must not be logged, exposed in
 metrics, copied into public issues, used as limiter keys, or stored as durable
 evidence metadata. They are only a narrow authorization artifact for later
-relay slices; they do not implement relay upload, staging, core commit,
-fanout, metrics, service identity, or proof of durable evidence preservation.
+relay slices; they do not by themselves implement relay listener upload,
+staging, fanout, metrics, service identity, or proof of durable evidence
+preservation.
+
+## Core Relay Preflight And Commit Routes
+
+The current core API exposes two narrow relay-to-core routes on the main API
+mux:
+
+```http
+POST /v1/relay/preflight
+POST /v1/relay/commit
+```
+
+These routes are not mounted on `cmd/stream-ingress`, the public incident
+viewer, or the private-admin listener. They require
+`X-Proofline-Relay-Service-Token`, backed by `[relay_service].auth_token` or
+`[relay_service].auth_token_file`, and that relay-to-core service token is
+separate from user bearer sessions, browser cookies, viewer tokens, incident
+tokens, and relay upload capabilities. When relay service auth is unset, the
+routes fail closed with `503 relay_service_auth_not_configured`. Missing,
+duplicate, or invalid service tokens return `401 relay_service_auth_required`.
+
+Both routes validate the supplied relay session ID and relay capability against
+the expected `upload` role, incident ID, and stream ID. They also enforce
+capability expiry, max chunk bytes, max chunk count, and allowed media type
+limits before accepting the request as authorized for relay flow.
+
+`POST /v1/relay/preflight` accepts cheap JSON metadata for a complete encrypted
+chunk: relay session ID, capability, incident ID, stream ID, chunk index, media
+type, start/end timestamps, declared byte size, declared lowercase
+`sha256_hex`, and optional original filename. It checks the incident, stream
+state, stream media type, duplicate chunk identity, upload byte limit, and
+account committed-blob quota. A successful response is only an `accepted`
+preflight hint; it is not durable evidence and does not reserve storage.
+
+`POST /v1/relay/commit` accepts the same metadata in multipart form fields plus
+the encrypted `file` part. The core API stores the upload through the existing
+temporary upload path, verifies declared byte size, verifies the computed
+SHA-256 against `sha256_hex`, validates the accepted PQ payload frame, applies
+the existing complete-upload coordination lease when configured, commits the
+encrypted blob through the configured durable blob backend, and writes chunk
+metadata through the configured metadata backend. Commit responses return the
+server-generated chunk ID and safe ciphertext metadata only; they do not return
+`stored_path`, staging paths, object keys, raw tokens, request bodies, uploaded
+bytes, plaintext, raw keys, wrapped-key ciphertext, or private deployment
+details.
+
+These core routes preserve the existing direct authenticated chunk upload
+route. They do not implement a relay upload listener, relay-local staging,
+relay forwarding runtime, optimistic fanout, relay metrics, notifications,
+trusted-contact behavior, public admin behavior, backend decryption, raw key
+custody, or key escrow.
 
 ## Core API Boundary
 
@@ -302,7 +361,15 @@ network topology, or user safety context into logs or metrics.
 Ingress-to-core authentication is separate from user/device/upload
 authorization.
 
-Future options to evaluate:
+The current core preflight and commit routes use an early static service token
+for relay-to-core authentication. This is intentionally narrow: it authorizes
+only the core relay preflight/commit route set, requires separate relay upload
+capability validation for the requested stream context, and does not grant
+admin, deletion, bundle download, account management, key delivery, or broad
+`/v1` access. Production deployments still need explicit rotation and service
+identity review before treating the relay as a hardened public upload edge.
+
+Future options to evaluate for that production identity layer:
 
 | Option | Fit | Notes |
 |---|---|---|
@@ -310,10 +377,9 @@ Future options to evaluate:
 | Signed service credential or private-key assertion | Good for multiple relays with explicit service identities. | Requires clock-skew handling, key rotation, and replay controls. |
 | Static service token | Acceptable only as a simpler early option. | Requires tight scoping, rotation guidance, redacted logs, and secret handling warnings. |
 
-Whichever service identity is selected, the core API should authorize only a
-narrow ingress preflight and commit route set for that service identity. It
-must not grant admin, deletion, bundle download, account management, key
-delivery, or broad `/v1` access.
+Whichever stronger service identity is selected later, the core API should
+continue to authorize only a narrow ingress preflight and commit route set for
+that service identity.
 
 ## Failure Behavior
 
@@ -412,6 +478,7 @@ Split implementation into small issues:
 1. Add a `cmd/stream-ingress` skeleton with no upload behavior yet. Completed
    by #289.
 2. Add narrow core service-authenticated preflight and commit endpoints.
+   Completed by #291.
 3. Implement relay complete-chunk upload staging, hash verification, and core
    forwarding.
 4. Add relay anonymous pre-body limits, body/staging limits, and denial
@@ -438,11 +505,13 @@ Expected implementation tests:
 - local in-memory limiter works for single-node/dev
 - core-confirmed success is required before relay success
 
-## Validation For This Slice
+## Validation For The Current Core Slice
 
-The #289 skeleton slice changes Go and Markdown. Validation is:
+The #291 core preflight/commit slice changes Go and Markdown. Validation is:
 
-- route-surface tests that verify only health/readiness routes are mounted
+- route tests for service auth success/failure, relay capability validation,
+  preflight acceptance/rejection, durable commit acceptance/rejection, hash
+  mismatch, redaction, and preservation of direct authenticated upload
 - `gofmt -w ./cmd ./internal ./migrations`
 - `go test ./...`
 - `go vet ./...`

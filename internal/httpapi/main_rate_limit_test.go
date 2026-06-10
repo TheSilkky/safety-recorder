@@ -99,6 +99,8 @@ func TestMainAPIRateLimitGroupsRoutesWithSafeKeys(t *testing.T) {
 		{http.MethodPost, "/v1/wrapped-keys/wrapped_secret/revoke", ":incident_write:", 15},
 		{http.MethodPost, "/v1/incidents/inc_secret/chunks", ":upload:", 16},
 		{http.MethodPost, "/v1/incidents/inc_secret/chunks/reconcile", ":reconcile:", 17},
+		{http.MethodPost, "/v1/relay/preflight", ":stream:", 18},
+		{http.MethodPost, "/v1/relay/commit", ":upload:", 16},
 		{http.MethodPost, "/v1/incidents/inc_secret/streams", ":stream:", 18},
 		{http.MethodGet, "/v1/incidents/inc_secret/streams", ":stream:", 18},
 		{http.MethodGet, "/v1/incidents/inc_secret/streams/str_secret", ":stream:", 18},

@@ -141,7 +141,8 @@ escrow.
 - Separate `cmd/stream-ingress` regional relay skeleton with only
   token-neutral liveness/readiness routes and no upload or fanout behavior,
   plus main-API issuance of configured short-lived relay upload capabilities
-  for authorized open streams
+  for authorized open streams and service-authenticated core relay
+  preflight/commit endpoints
 - Authenticated duplicate chunk reconciliation for comparing accepted metadata with
   an expected chunk fingerprint
 - Optional incident-mode, capture-profile, escalation-policy, and sharing-state
@@ -193,8 +194,9 @@ escrow.
   model beyond the current concrete media stream upload lanes
 - No implemented resumable or partial upload protocol; current Valkey upload
   leases are short-lived complete-upload hints, not durable evidence truth
-- No implemented regional relay upload, core relay preflight or commit,
-  encrypted staging, optimistic fanout, metrics endpoint, or service identity
+- No implemented regional relay upload listener, encrypted relay staging,
+  optimistic fanout, metrics endpoint, relay forwarding runtime, or production
+  service-identity rotation beyond the early static relay-to-core token
 - No implemented live or partial stream chunk access before stream completion
 - No backend/browser decryption, raw key handling, server escrow, break-glass
   key access, or playable media export
