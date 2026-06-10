@@ -1,9 +1,16 @@
 # Pure Post-Quantum Encryption Envelope
 
-Status: v1 preview requirement, design and implementation plan only until
-runtime work lands. This document does not change the current runtime encryption
-envelope, backend storage behavior, viewer behavior, or trusted-contact access
-model.
+Status: v1 preview requirement with an isolated test-only prototype. Runtime
+work has not landed. This document and the prototype do not change the current
+runtime encryption envelope, backend storage behavior, viewer behavior, bundle
+behavior, key custody, trusted-contact access model, or server defaults.
+
+The first Phase 2 prototype lives in `internal/envelope/pq`. It is not imported
+by API routes, storage backends, bundle manifests, viewer responses, simulator
+defaults, or deployment code. It exists for local conformance vectors,
+round-trip tests, malformed-input checks, and tamper tests only. It is not
+enough for v1 preview without a later fully implemented, documented, tested,
+runtime-default envelope.
 
 This document defines the required v1 preview pure post-quantum encryption
 envelope for Proofline evidence media and wrapped media-key metadata. The
@@ -862,9 +869,9 @@ Phase 1: accepted production profile.
 
 Phase 2: test-only implementation package.
 
-- Add a new package for the PQ envelope.
-- Implement in-memory round trips, canonical encoding, limits, vectors, and
-  tamper tests only.
+- Add a new isolated package for the PQ envelope.
+- Implement in-memory round trips, canonical encoding, limits, local vectors,
+  and tamper tests only.
 - Do not expose new API routes or bundle behavior yet.
 
 Phase 3: simulator prototype.

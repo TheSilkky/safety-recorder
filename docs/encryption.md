@@ -196,10 +196,12 @@ accepts `proofline-pq-mlkem768-hkdfsha384-aes256gcm-v1`, using
 `ML-KEM-768 + HKDF-SHA384 + AES-256-GCM` for recipient-key wrapping of CEKs and
 payload encryption. It defines the future wrapped-key API field values,
 metadata shape, canonical encoding, downgrade rejection, fail-closed behavior,
-and conformance-vector requirements. It is still documentation-only in the
-current runtime, but it must be implemented, documented, tested, and made
-default before server or web-client v1 preview use with real sensitive
-evidence.
+and conformance-vector requirements. The isolated `internal/envelope/pq`
+package now exercises that profile in local tests and vectors only. It does not
+change current runtime behavior, viewer behavior, storage behavior, bundle
+behavior, key custody, simulator defaults, or server defaults. The profile must
+still be fully implemented, documented, tested, and made default before server
+or web-client v1 preview use with real sensitive evidence.
 
 The simulator-only contact-wrapped key metadata prototype is implemented
 separately in
