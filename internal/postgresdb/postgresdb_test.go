@@ -233,6 +233,43 @@ func TestPostgresSchemaConstraints(t *testing.T) {
 		strings.Repeat("b", 64),
 		now,
 	)))
+	if _, err := conn.ExecContext(ctx, `
+		INSERT INTO accounts (id, username, password_hash, role, created_at, updated_at, password_changed_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+		"acct_default_2fa",
+		"default-2fa",
+		"hash",
+		auth.RoleUser,
+		now,
+		now,
+		now,
+	); err != nil {
+		t.Fatalf("insert default second-factor setup account: %v", err)
+	}
+	var state string
+	if err := conn.QueryRowContext(ctx, `
+		SELECT second_factor_setup_state
+		FROM accounts
+		WHERE id = $1`,
+		"acct_default_2fa",
+	).Scan(&state); err != nil {
+		t.Fatalf("read second-factor setup state: %v", err)
+	}
+	if state != auth.SecondFactorSetupStateNotRequired {
+		t.Fatalf("default second-factor setup state = %q, want not_required", state)
+	}
+	assertPostgresConstraint(t, execErr(conn.ExecContext(ctx, `
+		INSERT INTO accounts (id, username, password_hash, role, second_factor_setup_state, created_at, updated_at, password_changed_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+		"acct_bad_2fa",
+		"bad-2fa",
+		"hash",
+		auth.RoleUser,
+		"bypassed",
+		now,
+		now,
+		now,
+	)))
 }
 
 func TestPostgresRepositoryPreservesCoreSemantics(t *testing.T) {
@@ -1313,12 +1350,25 @@ func TestPostgresRepositoryAccountRegistrationAndVerificationTokens(t *testing.T
 	}
 	repo := NewRepository(conn)
 
+	defaultAccount, err := repo.CreateAccount(ctx, auth.CreateAccountParams{
+		Username:     "default-setup-user",
+		PasswordHash: "hash",
+		Role:         auth.RoleUser,
+	})
+	if err != nil {
+		t.Fatalf("create default setup account: %v", err)
+	}
+	if defaultAccount.SecondFactorSetup != auth.SecondFactorSetupStateNotRequired {
+		t.Fatalf("default second-factor setup state = %q, want not_required", defaultAccount.SecondFactorSetup)
+	}
+
 	account, err := repo.CreateAccount(ctx, auth.CreateAccountParams{
-		Username:        "verify-user",
-		EmailNormalized: "Verify.User@Example.Invalid",
-		AccountState:    auth.AccountStatePendingEmailVerification,
-		PasswordHash:    "hash",
-		Role:            auth.RoleUser,
+		Username:          "verify-user",
+		EmailNormalized:   "Verify.User@Example.Invalid",
+		AccountState:      auth.AccountStatePendingEmailVerification,
+		SecondFactorSetup: auth.SecondFactorSetupStateSetupRequired,
+		PasswordHash:      "hash",
+		Role:              auth.RoleUser,
 	})
 	if err != nil {
 		t.Fatalf("create pending account: %v", err)
@@ -1328,6 +1378,9 @@ func TestPostgresRepositoryAccountRegistrationAndVerificationTokens(t *testing.T
 	}
 	if account.AccountState != auth.AccountStatePendingEmailVerification {
 		t.Fatalf("account state = %q", account.AccountState)
+	}
+	if account.SecondFactorSetup != auth.SecondFactorSetupStateSetupRequired {
+		t.Fatalf("account second-factor setup = %q, want setup_required", account.SecondFactorSetup)
 	}
 	if _, err := repo.CreateAccount(ctx, auth.CreateAccountParams{
 		Username:        "verify-other",
@@ -1359,6 +1412,9 @@ func TestPostgresRepositoryAccountRegistrationAndVerificationTokens(t *testing.T
 	}
 	if verified.AccountState != auth.AccountStateActive {
 		t.Fatalf("verified account state = %q, want active", verified.AccountState)
+	}
+	if verified.SecondFactorSetup != auth.SecondFactorSetupStateSetupRequired {
+		t.Fatalf("verified second-factor setup = %q, want setup_required", verified.SecondFactorSetup)
 	}
 	if verified.EmailVerifiedAt == nil {
 		t.Fatal("verified account missing email_verified_at")

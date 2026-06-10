@@ -194,7 +194,7 @@ prefer neutral user-facing language like `Interaction record`.
 | Trusted contacts | Owner-scoped metadata for contact public keys, grants, and wrapped keys. | Account-based trusted-contact invite/accept, grant-scoped review, wrapped-key delivery, and client-side decrypt UX. |
 | Device sharing | Not implemented. | Each device should have its own key material. Existing trusted devices or a recovery flow should approve new devices, then rewrap relevant CEKs to the new device recipient key. |
 | Regional relay | Planning-only. | Optional upload-only, temporary, ciphertext-only relay subordinate to the core API. |
-| Public registration | Disabled by default; open mode requires SMTP verification; paid mode fails closed. | Explicit preview deployments may enable open registration with email verification, rate limits, deployment controls, and account-scoped committed blob quota. |
+| Public registration and required setup | Disabled by default; open mode requires SMTP verification; paid mode fails closed. New admin-created and open-registration accounts carry a factor-neutral required setup state that blocks main product routes until completed. | Explicit preview deployments may enable open registration with email verification, rate limits, deployment controls, account-scoped committed blob quota, concrete second-factor setup, and a reviewed recovery policy. |
 | Billing | Future Stripe-hosted service boundary exists as planning context. | Payment providers, subscriptions, account plans, and hosted entitlements are out of default v1 preview scope unless separately scoped. |
 
 ## Server v1 Direction
@@ -523,6 +523,7 @@ deployment mode. It must not become the default.
 Open registration requires:
 
 - email verification before login
+- required second-factor setup before main product-route access
 - route-class rate limits
 - reviewed public web origin and credentialed CORS/CSRF behavior when browser
   cookies are used

@@ -18,6 +18,12 @@ const (
 	AccountStatePendingPayment           = "pending_payment"
 )
 
+const (
+	SecondFactorSetupStateNotRequired   = "not_required"
+	SecondFactorSetupStateSetupRequired = "setup_required"
+	SecondFactorSetupStateComplete      = "complete"
+)
+
 const VerificationPurposeEmail = "email_verification"
 
 var (
@@ -31,6 +37,7 @@ type Account struct {
 	EmailNormalized   string     `json:"-"`
 	EmailVerifiedAt   *time.Time `json:"-"`
 	AccountState      string     `json:"account_state"`
+	SecondFactorSetup string     `json:"second_factor_setup_state"`
 	PasswordHash      string     `json:"-"`
 	Role              string     `json:"role"`
 	CreatedAt         time.Time  `json:"created_at"`
@@ -48,12 +55,13 @@ type Session struct {
 }
 
 type CreateAccountParams struct {
-	Username        string
-	EmailNormalized string
-	EmailVerifiedAt *time.Time
-	AccountState    string
-	PasswordHash    string
-	Role            string
+	Username          string
+	EmailNormalized   string
+	EmailVerifiedAt   *time.Time
+	AccountState      string
+	SecondFactorSetup string
+	PasswordHash      string
+	Role              string
 }
 
 type AccountVerificationToken struct {
@@ -89,6 +97,27 @@ func ValidAccountState(state string) bool {
 	}
 }
 
+func ValidSecondFactorSetupState(state string) bool {
+	switch state {
+	case SecondFactorSetupStateNotRequired,
+		SecondFactorSetupStateSetupRequired,
+		SecondFactorSetupStateComplete:
+		return true
+	default:
+		return false
+	}
+}
+
 func CanAuthenticate(account Account) bool {
 	return account.AccountState == "" || account.AccountState == AccountStateActive
+}
+
+func RequiresSecondFactorSetup(account Account) bool {
+	return account.SecondFactorSetup == SecondFactorSetupStateSetupRequired
+}
+
+func CanAccessProductRoutes(account Account) bool {
+	return account.SecondFactorSetup == "" ||
+		account.SecondFactorSetup == SecondFactorSetupStateNotRequired ||
+		account.SecondFactorSetup == SecondFactorSetupStateComplete
 }

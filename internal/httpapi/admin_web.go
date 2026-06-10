@@ -327,9 +327,10 @@ func (a *API) createAdminWebBootstrapAccount(r *http.Request) (auth.Account, int
 		return auth.Account{}, http.StatusBadRequest, err.Error(), nil, false
 	}
 	account, err := a.repo.CreateAccount(r.Context(), auth.CreateAccountParams{
-		Username:     username,
-		PasswordHash: passwordHash,
-		Role:         auth.RoleAdmin,
+		Username:          username,
+		SecondFactorSetup: auth.SecondFactorSetupStateSetupRequired,
+		PasswordHash:      passwordHash,
+		Role:              auth.RoleAdmin,
 	})
 	if errors.Is(err, auth.ErrDuplicate) {
 		return auth.Account{}, http.StatusConflict, "Username is already in use.", nil, false

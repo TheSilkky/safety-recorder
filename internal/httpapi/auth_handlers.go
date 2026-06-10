@@ -17,6 +17,8 @@ type accountResponse struct {
 	Email             string     `json:"email,omitempty"`
 	EmailVerifiedAt   *time.Time `json:"email_verified_at,omitempty"`
 	AccountState      string     `json:"account_state"`
+	SecondFactorSetup string     `json:"second_factor_setup_state"`
+	RequiresSetup     bool       `json:"second_factor_setup_required"`
 	Role              string     `json:"role"`
 	CreatedAt         time.Time  `json:"created_at"`
 	UpdatedAt         time.Time  `json:"updated_at"`
@@ -241,9 +243,10 @@ func (a *API) createAccountFromRequest(w http.ResponseWriter, r *http.Request, u
 		return auth.Account{}, false
 	}
 	account, err := a.repo.CreateAccount(r.Context(), auth.CreateAccountParams{
-		Username:     username,
-		PasswordHash: passwordHash,
-		Role:         role,
+		Username:          username,
+		SecondFactorSetup: auth.SecondFactorSetupStateSetupRequired,
+		PasswordHash:      passwordHash,
+		Role:              role,
 	})
 	if errors.Is(err, auth.ErrDuplicate) {
 		writeError(w, http.StatusConflict, "username_conflict", "username is already in use")
@@ -290,6 +293,8 @@ func makeAccountResponse(account auth.Account) accountResponse {
 		Email:             account.EmailNormalized,
 		EmailVerifiedAt:   account.EmailVerifiedAt,
 		AccountState:      account.AccountState,
+		SecondFactorSetup: account.SecondFactorSetup,
+		RequiresSetup:     auth.RequiresSecondFactorSetup(account),
 		Role:              account.Role,
 		CreatedAt:         account.CreatedAt,
 		UpdatedAt:         account.UpdatedAt,
