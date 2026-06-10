@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Made the accepted post-quantum envelope the v1 preview runtime upload
+  default: chunk uploads now fail closed unless the public PQ payload frame
+  matches the request identity, wrapped-key records validate the accepted PQ
+  profile, bundle manifests identify the PQ scheme/suite without key material,
+  and the simulator defaults to PQ encrypted uploads while preserving the old
+  v1 envelope only behind explicit compatibility flags.
 - Reset the current v1 compatibility chunk envelope, associated-data prefix,
   default SQLite filename, container user, and local/container config examples
   to Proofline-named identifiers. Old `safety-recorder` envelope identifiers

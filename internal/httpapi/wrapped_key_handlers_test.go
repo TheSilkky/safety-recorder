@@ -2,12 +2,15 @@ package httpapi_test
 
 import (
 	"bytes"
+	"encoding/base64"
 	"encoding/json"
 	"net/http"
+	"strconv"
 	"strings"
 	"testing"
 
 	"github.com/open-proofline/server/internal/auth"
+	"github.com/open-proofline/server/internal/envelope/pq"
 	"github.com/open-proofline/server/internal/incidents"
 )
 
@@ -19,8 +22,8 @@ func TestWrappedKeyRoutesAreGrantScoped(t *testing.T) {
 	stream := createMediaStreamWithToken(t, app, ownerToken, incidentID, incidents.MediaTypeAudio, "owner audio")
 	contactKey := createContactPublicKeyWithToken(t, app, ownerToken, `{
 		"display_label":"Trusted contact",
-		"wrapping_algorithm":"age-v1-x25519",
-		"public_key":"age1wrappedpublickey",
+		"wrapping_algorithm":"`+pq.WrappingAlgorithm+`",
+		"public_key":"pq-test-wrapped-public-key",
 		"public_key_fingerprint":"fingerprint-wrapped",
 		"key_state":"active"
 	}`)
@@ -29,7 +32,7 @@ func TestWrappedKeyRoutesAreGrantScoped(t *testing.T) {
 		"contact_id":"`+contactKey.ContactID+`"
 	}`)
 
-	wrappedKey := createWrappedKeyWithToken(t, app, ownerToken, incidentID, wrappedKeyRequestBody(stream.ID, grant.ID, "media-key-1"))
+	wrappedKey := createWrappedKeyWithToken(t, app, ownerToken, incidentID, wrappedKeyRequestBody(t, stream.ID, grant.ID, "media-key-1"))
 	if wrappedKey.GrantID != grant.ID || wrappedKey.StreamID != stream.ID || wrappedKey.ContactPublicKeyID != contactKey.ID {
 		t.Fatalf("unexpected wrapped key: %+v", wrappedKey)
 	}
@@ -39,7 +42,7 @@ func TestWrappedKeyRoutesAreGrantScoped(t *testing.T) {
 	if response.StatusCode != http.StatusOK {
 		t.Fatalf("expected owner list wrapped keys status 200, got %d: %s", response.StatusCode, body)
 	}
-	if !bytes.Contains(body, []byte(wrappedKey.ID)) || !bytes.Contains(body, []byte("wrapped-ciphertext")) {
+	if !bytes.Contains(body, []byte(wrappedKey.ID)) || !bytes.Contains(body, []byte("media-key-1")) {
 		t.Fatalf("owner wrapped key list missing created record: %s", body)
 	}
 
@@ -49,7 +52,7 @@ func TestWrappedKeyRoutesAreGrantScoped(t *testing.T) {
 		t.Fatalf("expected other account wrapped key status 404, got %d: %s", response.StatusCode, body)
 	}
 
-	response, body = requestWithAuth(t, app.privateHandler, http.MethodPost, "/v1/incidents/"+incidentID+"/wrapped-keys", "application/json", bytes.NewBufferString(wrappedKeyRequestBody(stream.ID, grant.ID, "media-key-2")), app.authToken)
+	response, body = requestWithAuth(t, app.privateHandler, http.MethodPost, "/v1/incidents/"+incidentID+"/wrapped-keys", "application/json", bytes.NewBufferString(wrappedKeyRequestBody(t, stream.ID, grant.ID, "media-key-2")), app.authToken)
 	response.Body.Close()
 	if response.StatusCode != http.StatusForbidden {
 		t.Fatalf("expected admin non-owner wrapped key status 403, got %d: %s", response.StatusCode, body)
@@ -67,7 +70,7 @@ func TestWrappedKeyRoutesAreGrantScoped(t *testing.T) {
 		t.Fatalf("expected revoked grant to stop wrapped key delivery, got %d: %s", response.StatusCode, body)
 	}
 
-	response, body = request(t, app.publicHandler, http.MethodPost, "/v1/incidents/"+incidentID+"/wrapped-keys", "application/json", bytes.NewBufferString(wrappedKeyRequestBody(stream.ID, grant.ID, "media-key-3")))
+	response, body = request(t, app.publicHandler, http.MethodPost, "/v1/incidents/"+incidentID+"/wrapped-keys", "application/json", bytes.NewBufferString(wrappedKeyRequestBody(t, stream.ID, grant.ID, "media-key-3")))
 	response.Body.Close()
 	if response.StatusCode != http.StatusNotFound {
 		t.Fatalf("expected public handler wrapped key status 404, got %d: %s", response.StatusCode, body)
@@ -104,8 +107,8 @@ func TestWrappedKeyRoutesRequireCiphertextGrant(t *testing.T) {
 	incidentID := createIncidentWithToken(t, app, ownerToken)
 	contactKey := createContactPublicKeyWithToken(t, app, ownerToken, `{
 		"display_label":"Trusted contact",
-		"wrapping_algorithm":"age-v1-x25519",
-		"public_key":"age1metadatapublickey",
+		"wrapping_algorithm":"`+pq.WrappingAlgorithm+`",
+		"public_key":"pq-test-metadata-public-key",
 		"public_key_fingerprint":"fingerprint-metadata",
 		"key_state":"active"
 	}`)
@@ -114,7 +117,7 @@ func TestWrappedKeyRoutesRequireCiphertextGrant(t *testing.T) {
 		"data_class":"metadata"
 	}`)
 
-	response, body := requestWithAuth(t, app.privateHandler, http.MethodPost, "/v1/incidents/"+incidentID+"/wrapped-keys", "application/json", bytes.NewBufferString(wrappedKeyRequestBody("", grant.ID, "media-key-metadata")), ownerToken)
+	response, body := requestWithAuth(t, app.privateHandler, http.MethodPost, "/v1/incidents/"+incidentID+"/wrapped-keys", "application/json", bytes.NewBufferString(wrappedKeyRequestBody(t, "", grant.ID, "media-key-metadata")), ownerToken)
 	response.Body.Close()
 	if response.StatusCode != http.StatusConflict {
 		t.Fatalf("expected metadata-only grant wrapped key status 409, got %d: %s", response.StatusCode, body)
@@ -128,8 +131,8 @@ func TestWrappedKeyRoutesRejectSecretMetadataKeys(t *testing.T) {
 	incidentID := createIncidentWithToken(t, app, ownerToken)
 	contactKey := createContactPublicKeyWithToken(t, app, ownerToken, `{
 		"display_label":"Trusted contact",
-		"wrapping_algorithm":"age-v1-x25519",
-		"public_key":"age1secretmetadata",
+		"wrapping_algorithm":"`+pq.WrappingAlgorithm+`",
+		"public_key":"pq-test-secret-metadata",
 		"public_key_fingerprint":"fingerprint-secret-metadata",
 		"key_state":"active"
 	}`)
@@ -140,11 +143,11 @@ func TestWrappedKeyRoutesRejectSecretMetadataKeys(t *testing.T) {
 	body := `{
 		"grant_id":"` + grant.ID + `",
 		"media_key_id":"media-key-secret-metadata",
-		"wrapping_algorithm":"age-v1-x25519",
+		"wrapping_algorithm":"` + pq.WrappingAlgorithm + `",
 		"wrapping_algorithm_version":"1",
 		"wrapped_key_ciphertext":"wrapped-ciphertext",
 		"public_wrapping_metadata":{
-			"profile":"age-v1-x25519",
+			"profile":"` + pq.ProfileID + `",
 			"recipient":{"raw_media_key":null}
 		}
 	}`
@@ -159,16 +162,40 @@ func TestWrappedKeyRoutesRejectSecretMetadataKeys(t *testing.T) {
 	}
 }
 
-func wrappedKeyRequestBody(streamID, grantID, mediaKeyID string) string {
+func wrappedKeyRequestBody(t *testing.T, streamID, grantID, mediaKeyID string) string {
+	t.Helper()
+
+	recipient, _, err := pq.GenerateRecipientKey(1)
+	if err != nil {
+		t.Fatalf("GenerateRecipientKey returned error: %v", err)
+	}
+	ctxStreamID := streamID
+	if ctxStreamID == "" {
+		ctxStreamID = "streamless-wrapped-key-test"
+	}
+	env, err := pq.Encrypt([]byte("wrapped-key test payload"), pq.PayloadContext{
+		EnvelopeID:  "env_wrapped_key_" + mediaKeyID,
+		IncidentID:  "inc_wrapped_key_test",
+		StreamID:    ctxStreamID,
+		MediaType:   incidents.MediaTypeAudio,
+		ChunkIndex:  1,
+		PayloadType: pq.PayloadTypeChunk,
+		MediaKeyID:  mediaKeyID,
+	}, []pq.Recipient{recipient})
+	if err != nil {
+		t.Fatalf("pq.Encrypt returned error: %v", err)
+	}
+	metadata, err := json.Marshal(env.Recipients[0].Metadata)
+	if err != nil {
+		t.Fatalf("marshal public wrapping metadata: %v", err)
+	}
 	body := map[string]any{
 		"grant_id":                   grantID,
 		"media_key_id":               mediaKeyID,
-		"wrapping_algorithm":         "age-v1-x25519",
-		"wrapping_algorithm_version": "1",
-		"wrapped_key_ciphertext":     "wrapped-ciphertext",
-		"public_wrapping_metadata": map[string]string{
-			"profile": "age-v1-x25519",
-		},
+		"wrapping_algorithm":         pq.WrappingAlgorithm,
+		"wrapping_algorithm_version": strconv.Itoa(pq.WrappingAlgorithmVersion),
+		"wrapped_key_ciphertext":     base64.RawURLEncoding.EncodeToString(env.Recipients[0].WrappedKeyFrame),
+		"public_wrapping_metadata":   json.RawMessage(metadata),
 	}
 	if streamID != "" {
 		body["stream_id"] = streamID

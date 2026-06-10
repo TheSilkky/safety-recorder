@@ -132,7 +132,8 @@ metadata, grant-bound wrapped-key metadata, and encrypted evidence bundles.
 - Uploaded bytes are committed only after hash verification.
 - Final local chunk storage uses no-overwrite hard links. Optional S3-compatible storage uses conditional no-overwrite final object writes.
 - The simulator encrypts generated test bytes, local pre-recorded files, or
-  optional ffmpeg test segments using the documented v1 AES-256-GCM envelope.
+  optional ffmpeg test segments using the accepted PQ envelope by default. The
+  old v1 AES-GCM envelope remains explicit compatibility mode only.
 - Encryption keys remain client-side; they are not uploaded, stored in SQLite, or added to evidence bundles.
 - SQLite and optional PostgreSQL metadata enforce media type, chunk index, byte size, SHA-256 shape, foreign keys, and unique chunk identity.
 - Upload-operation metadata stores hashed idempotency keys, normalized chunk
@@ -321,9 +322,10 @@ The current backend does not implement incident-mode-specific controls yet, so f
   delivery path is SMTP-backed registration email verification when open
   registration is explicitly enabled.
 - Viewer links are bearer tokens and must be shared carefully.
-- No implemented production durable-recipient-key plus CEK envelope, key
-  recovery, Keychain storage, trusted-contact account access, browser
-  decryption, break-glass key access, or playable export. The future key custody
+- No implemented production key recovery, Keychain storage, trusted-contact
+  account access, browser decryption, break-glass key access, or playable
+  export. The current backend validates accepted PQ envelope metadata and stores
+  encrypted wrapped-key records without raw key custody. The future key custody
   and emergency access design is documented in
   [key-custody.md](key-custody.md), contact key-sharing and wrapped-key grants
   are described in [contact-key-sharing-grants.md](contact-key-sharing-grants.md),

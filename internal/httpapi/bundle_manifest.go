@@ -3,7 +3,7 @@ package httpapi
 import (
 	"time"
 
-	"github.com/open-proofline/server/internal/envelope"
+	"github.com/open-proofline/server/internal/envelope/pq"
 	"github.com/open-proofline/server/internal/incidents"
 )
 
@@ -30,6 +30,8 @@ type streamBundleManifest struct {
 type bundleEncryptionHint struct {
 	Expected       string `json:"expected"`
 	Scheme         string `json:"scheme"`
+	SuiteID        string `json:"suite_id"`
+	Profile        string `json:"profile"`
 	ServerDecrypts bool   `json:"server_decrypts"`
 }
 
@@ -104,7 +106,9 @@ func makeIncidentBundleManifest(detail incidents.IncidentDetail, bundles []strea
 func clientSideEncryptionHint() bundleEncryptionHint {
 	return bundleEncryptionHint{
 		Expected:       "client-side",
-		Scheme:         envelope.SchemeV1,
+		Scheme:         pq.SchemeID,
+		SuiteID:        pq.SuiteID,
+		Profile:        pq.ProfileID,
 		ServerDecrypts: false,
 	}
 }

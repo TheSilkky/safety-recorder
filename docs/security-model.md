@@ -113,13 +113,18 @@ Viewer URLs contain bearer tokens and should be treated as secrets. Reverse prox
 - Final chunk storage happens only after hash verification.
 - Stored chunks are immutable and never overwritten.
 - Local storage commits use no-overwrite hard links. Optional S3-compatible storage commits final objects with conditional no-overwrite writes.
-- Streamed uploads require positive chunk indexes, while legacy unstreamed uploads may still use index `0`.
+- Streamed uploads require positive chunk indexes. New uploads must pass the
+  accepted PQ payload-frame validation for the stream-bound identity; legacy
+  unstreamed upload attempts fail closed under the v1 preview default.
 - `original_filename` is optional client-supplied display metadata. The server
   strips it to a basename and may return it in authenticated chunk metadata,
   token-scoped public incident viewer summaries, and bundle manifests. Future
   clients should omit it by default or use a generic basename unless preserving
   filename context is an explicit user or protocol decision.
-- The simulator can wrap chunks in the documented v1 AES-256-GCM client-side encryption envelope before upload. Desktop-recorder mode can stage encrypted chunks locally and retry complete encrypted uploads without adding server-visible partial upload state.
+- The simulator wraps chunks in the accepted PQ client-side envelope by default.
+  Desktop-recorder mode can stage encrypted chunks locally and retry complete
+  encrypted uploads without adding server-visible partial upload state. The old
+  v1 AES-GCM envelope remains an explicit simulator compatibility mode.
 - The backend validates and stores ciphertext bytes only; it does not store encryption keys or decrypt chunk contents.
 - SQLite and optional PostgreSQL metadata enforce media type, chunk index, byte size, SHA-256 shape, foreign keys, and unique chunk identity.
 - Complete chunk uploads can include an `Idempotency-Key` header. The backend
@@ -184,13 +189,14 @@ Viewer URLs contain bearer tokens and should be treated as secrets. Reverse prox
   New grants require an active contact public key owned by the same account and
   can be scoped to an incident or one stream. Wrapped-key records require an
   active, unexpired grant that authorizes ciphertext access and an active
-  contact public key. In the future key model, those wrapped-key records connect
-  recipient public-key versions to CEKs scoped to incidents, streams, or bounded
-  chunk groups; current `media_key_id` fields remain compatibility identifiers
-  for that CEK. These routes do not store or return recipient private keys, raw
-  CEKs, raw media keys, plaintext, browser fragment secrets, request bodies,
-  uploaded bytes, stored paths, staging paths, object keys, or private
-  deployment details.
+  contact public key. Wrapped-key record creation validates the accepted PQ
+  wrapping profile and public metadata without unwrapping CEKs. In the future
+  key model, those wrapped-key records connect recipient public-key versions to
+  CEKs scoped to incidents, streams, or bounded chunk groups; current
+  `media_key_id` fields remain compatibility identifiers for that CEK. These
+  routes do not store or return recipient private keys, raw CEKs, raw media
+  keys, plaintext, browser fragment secrets, request bodies, uploaded bytes,
+  stored paths, staging paths, object keys, or private deployment details.
 
 Optional S3-compatible storage preserves ciphertext-only behavior for committed
 encrypted chunks. It uses server-controlled object keys, does not expose object
@@ -373,9 +379,10 @@ Normal file or object removal is not treated as guaranteed secure erasure. Deplo
   backend decryption, payment-gated registration, password recovery, or public
   account portal behavior
 - No implemented production client key storage, browser decryption, server-assisted break-glass key access, or emergency-contact key access model; the future designs are documented in [key-custody.md](key-custody.md), [contact-key-sharing-grants.md](contact-key-sharing-grants.md), [browser-decryption.md](browser-decryption.md), and [break-glass-key-access.md](break-glass-key-access.md)
-- No implemented production durable-recipient-key plus CEK envelope; current
-  wrapped-key metadata routes store encrypted key metadata only and do not
-  introduce recipient private-key custody, raw CEK storage, or decryption
+- No implemented production trusted-contact account delivery, browser
+  decryption, or client key-custody UX. Current wrapped-key metadata routes
+  validate and store encrypted PQ key metadata only and do not introduce
+  recipient private-key custody, raw CEK storage, or decryption
 - No implemented live or partial stream access beyond current read-only stream
   metadata summaries and completed encrypted bundle downloads; the future
   boundary is documented in

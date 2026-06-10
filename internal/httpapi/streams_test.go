@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/open-proofline/server/internal/envelope"
+	pqenv "github.com/open-proofline/server/internal/envelope/pq"
 	"github.com/open-proofline/server/internal/incidents"
 )
 
@@ -49,6 +49,7 @@ func TestUploadChunkWithValidStreamID(t *testing.T) {
 	incidentID := createIncident(t, app, `{}`)
 	stream := createMediaStream(t, app, incidentID, incidents.MediaTypeAudio, "audio")
 	payload := []byte("encrypted audio data")
+	expectedPayload := testPQPayload(t, incidentID, stream.ID, 1, "audio", payload)
 
 	response, body := uploadChunkWithStream(t, app, incidentID, stream.ID, 1, "audio", payload, sha256Hex(payload))
 	defer response.Body.Close()
@@ -71,9 +72,10 @@ func TestUploadChunkWithValidStreamID(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read stored stream chunk: %v", err)
 	}
-	if !bytes.Equal(stored, payload) {
+	if !bytes.Equal(stored, expectedPayload) {
 		t.Fatal("stored stream payload mismatch")
 	}
+	assertPQPayloadFrame(t, stored, incidentID, stream.ID, 1, "audio")
 }
 
 func TestTwoSameMediaStreamsAllowOverlappingChunkIndexes(t *testing.T) {
@@ -85,6 +87,8 @@ func TestTwoSameMediaStreamsAllowOverlappingChunkIndexes(t *testing.T) {
 	secondPayload := []byte("second encrypted audio data")
 	duplicatePayload := []byte("duplicate first stream chunk")
 	legacyPayload := []byte("legacy encrypted audio data")
+	firstPQPayload := testPQPayload(t, incidentID, firstStream.ID, 1, "audio", firstPayload)
+	secondPQPayload := testPQPayload(t, incidentID, secondStream.ID, 1, "audio", secondPayload)
 
 	response, body := uploadChunkWithStream(t, app, incidentID, firstStream.ID, 1, "audio", firstPayload, sha256Hex(firstPayload))
 	response.Body.Close()
@@ -104,9 +108,10 @@ func TestTwoSameMediaStreamsAllowOverlappingChunkIndexes(t *testing.T) {
 	}
 	response, body = uploadChunk(t, app, incidentID, 1, "audio", legacyPayload, sha256Hex(legacyPayload))
 	response.Body.Close()
-	if response.StatusCode != http.StatusCreated {
-		t.Fatalf("expected legacy upload status 201, got %d: %s", response.StatusCode, body)
+	if response.StatusCode != http.StatusBadRequest {
+		t.Fatalf("expected legacy upload status 400, got %d: %s", response.StatusCode, body)
 	}
+	assertErrorCode(t, body, "invalid_envelope")
 
 	completeMediaStream(t, app, incidentID, firstStream.ID, 1)
 	completeMediaStream(t, app, incidentID, secondStream.ID, 1)
@@ -117,7 +122,7 @@ func TestTwoSameMediaStreamsAllowOverlappingChunkIndexes(t *testing.T) {
 		t.Fatalf("expected first stream bundle status 200, got %d: %s", response.StatusCode, body)
 	}
 	firstEntries := readZipEntries(t, body)
-	if !bytes.Equal(firstEntries["chunks/audio_000001.enc"], firstPayload) {
+	if !bytes.Equal(firstEntries["chunks/audio_000001.enc"], firstPQPayload) {
 		t.Fatal("first stream bundle used wrong overlapping chunk")
 	}
 
@@ -127,18 +132,16 @@ func TestTwoSameMediaStreamsAllowOverlappingChunkIndexes(t *testing.T) {
 		t.Fatalf("expected second stream bundle status 200, got %d: %s", response.StatusCode, body)
 	}
 	secondEntries := readZipEntries(t, body)
-	if !bytes.Equal(secondEntries["chunks/audio_000001.enc"], secondPayload) {
+	if !bytes.Equal(secondEntries["chunks/audio_000001.enc"], secondPQPayload) {
 		t.Fatal("second stream bundle used wrong overlapping chunk")
 	}
 
 	response, body = get(t, app, "/v1/incidents/"+incidentID+"/chunks/audio/1")
 	response.Body.Close()
-	if response.StatusCode != http.StatusOK {
-		t.Fatalf("expected legacy chunk read status 200, got %d: %s", response.StatusCode, body)
+	if response.StatusCode != http.StatusNotFound {
+		t.Fatalf("expected legacy chunk read status 404, got %d: %s", response.StatusCode, body)
 	}
-	if !bytes.Equal(body, legacyPayload) {
-		t.Fatal("legacy chunk read returned streamed chunk bytes")
-	}
+	assertErrorCode(t, body, "chunk_not_found")
 }
 
 func TestRejectStreamedChunkIndexZero(t *testing.T) {
@@ -356,20 +359,24 @@ func TestEncryptedEnvelopeChunkRoundTripsThroughOpaqueBackendBundle(t *testing.T
 	app := newTestApp(t)
 	incidentID := createIncident(t, app, `{}`)
 	stream := createMediaStream(t, app, incidentID, incidents.MediaTypeAudio, "audio recording")
-	key, err := envelope.GenerateKey()
+	recipient, dk, err := pqenv.GenerateRecipientKey(1)
 	if err != nil {
-		t.Fatalf("generate key: %v", err)
+		t.Fatalf("generate recipient key: %v", err)
 	}
-	ctx := envelope.ChunkContext{
-		IncidentID: incidentID,
-		StreamID:   stream.ID,
-		MediaType:  incidents.MediaTypeAudio,
-		ChunkIndex: 1,
+	ctx := pqenv.PayloadContext{
+		EnvelopeID:  "env_test_bundle",
+		IncidentID:  incidentID,
+		StreamID:    stream.ID,
+		MediaType:   incidents.MediaTypeAudio,
+		ChunkIndex:  1,
+		PayloadType: pqenv.PayloadTypeChunk,
+		MediaKeyID:  "media-key-test-bundle",
 	}
-	payload, err := envelope.EncryptChunk(key, ctx, []byte("plaintext stays client-side"))
+	env, err := pqenv.Encrypt([]byte("plaintext stays client-side"), ctx, []pqenv.Recipient{recipient})
 	if err != nil {
 		t.Fatalf("encrypt chunk: %v", err)
 	}
+	payload := env.PayloadFrame
 
 	response, body := uploadChunkWithStream(t, app, incidentID, stream.ID, 1, incidents.MediaTypeAudio, payload, sha256Hex(payload))
 	response.Body.Close()
@@ -388,7 +395,10 @@ func TestEncryptedEnvelopeChunkRoundTripsThroughOpaqueBackendBundle(t *testing.T
 	if !bytes.Equal(bundledChunk, payload) {
 		t.Fatal("backend changed encrypted envelope bytes")
 	}
-	plaintext, err := envelope.DecryptChunk(key, ctx, bundledChunk)
+	plaintext, err := pqenv.Decrypt(pqenv.Envelope{
+		PayloadFrame: bundledChunk,
+		Recipients:   env.Recipients,
+	}, ctx, recipient.KeyID, dk)
 	if err != nil {
 		t.Fatalf("decrypt bundled chunk: %v", err)
 	}
@@ -400,17 +410,23 @@ func TestEncryptedEnvelopeChunkRoundTripsThroughOpaqueBackendBundle(t *testing.T
 		Encryption struct {
 			Expected       string `json:"expected"`
 			Scheme         string `json:"scheme"`
+			SuiteID        string `json:"suite_id"`
+			Profile        string `json:"profile"`
 			ServerDecrypts bool   `json:"server_decrypts"`
 		} `json:"encryption"`
 	}
 	if err := json.Unmarshal(entries["manifest.json"], &manifest); err != nil {
 		t.Fatalf("decode manifest: %v", err)
 	}
-	if manifest.Encryption.Expected != "client-side" || manifest.Encryption.Scheme != envelope.SchemeV1 || manifest.Encryption.ServerDecrypts {
+	if manifest.Encryption.Expected != "client-side" ||
+		manifest.Encryption.Scheme != pqenv.SchemeID ||
+		manifest.Encryption.SuiteID != pqenv.SuiteID ||
+		manifest.Encryption.Profile != pqenv.ProfileID ||
+		manifest.Encryption.ServerDecrypts {
 		t.Fatalf("unexpected encryption hint: %+v", manifest.Encryption)
 	}
 
-	rawKeyB64 := base64.RawURLEncoding.EncodeToString(key.Key)
+	rawKeyB64 := base64.RawURLEncoding.EncodeToString(dk.Bytes())
 	for name, entry := range entries {
 		if strings.Contains(name, "wrapped") || strings.Contains(name, "key") {
 			t.Fatalf("bundle included key-related entry %q", name)

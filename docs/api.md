@@ -2,7 +2,12 @@
 
 This is the current backend-only HTTP surface for Proofline. The API binary starts a main API/viewer listener and a private-admin listener on one or more configured bind addresses. Main `/v1` routes require local account authentication except for login and the disabled-by-default registration/email-verification routes, and they use app-level route-class rate limits. Existing `/v1/admin/...` JSON routes require an admin account and are mounted only on the private-admin listener. The private-admin listener also serves the `/admin` dashboard route tree. Incident viewer routes are token-gated, read-only, and mounted on the main listener. Planned web, iOS, and Android clients are not part of this repository yet.
 
-Media bundle downloads are encrypted chunk bundles. The backend does not decrypt, merge, or produce playable media. The simulator's current encrypted uploads use the envelope documented in [encryption.md](encryption.md), but the API treats uploaded bytes as opaque ciphertext.
+Media bundle downloads are encrypted chunk bundles. The backend does not
+decrypt, merge, or produce playable media. Current encrypted uploads use the
+accepted post-quantum payload envelope documented in
+[encryption.md](encryption.md) and [post-quantum-envelope.md](post-quantum-envelope.md);
+the API validates public envelope metadata but still treats payload bytes as
+opaque ciphertext.
 
 The current API stores incidents owned by local accounts. Incidents are generic
 by default and may include optional `incident_mode`, `capture_profile`,
@@ -370,11 +375,12 @@ Contact key states are:
 New sharing grants require an `active` contact public key. The API can register
 a new contact by omitting `contact_id`, or rotate an existing contact by
 providing an account-owned `contact_id`; rotated keys receive the next version.
-The examples below use the current simulator-development `age-v1-x25519`
-profile. The accepted v1 preview production profile is documented in
+Contact public-key routes store owner-scoped public-key metadata. The accepted
+v1 preview wrapped-key profile is documented in
 [post-quantum-envelope.md](post-quantum-envelope.md) and uses
-`proofline-pq-mlkem768-hkdfsha384-aes256gcm-v1`; current routes store metadata
-and do not yet perform production PQ cryptographic validation.
+`proofline-pq-mlkem768-hkdfsha384-aes256gcm-v1`. The contact-key route does not
+prove possession of a recipient private key by itself; wrapped-key record
+creation validates the accepted PQ wrapping profile.
 
 ### `POST /v1/contact-public-keys`
 
@@ -386,8 +392,8 @@ Request:
 ```json
 {
   "display_label": "Trusted contact",
-  "wrapping_algorithm": "age-v1-x25519",
-  "public_key": "age1...",
+  "wrapping_algorithm": "proofline-pq-mlkem768-hkdfsha384-aes256gcm",
+  "public_key": "base64url-or-profile-encoded-public-key",
   "public_key_fingerprint": "fingerprint-...",
   "key_state": "pending_verification"
 }
@@ -403,8 +409,8 @@ Response `201`:
     "contact_id": "ctc_...",
     "version": 1,
     "display_label": "Trusted contact",
-    "wrapping_algorithm": "age-v1-x25519",
-    "public_key": "age1...",
+    "wrapping_algorithm": "proofline-pq-mlkem768-hkdfsha384-aes256gcm",
+    "public_key": "base64url-or-profile-encoded-public-key",
     "public_key_fingerprint": "fingerprint-...",
     "key_state": "pending_verification",
     "created_at": "2026-06-01T10:00:00Z",
@@ -548,18 +554,16 @@ Bundle manifests remain key-free. The current public incident viewer does not
 deliver wrapped keys, and public viewer bundle downloads keep their existing
 ciphertext-only behavior.
 
-The examples below use the current simulator-development `age-v1-x25519`
-profile. Future v1 preview runtime-default wrapped-key records should use the
-accepted post-quantum profile in [post-quantum-envelope.md](post-quantum-envelope.md)
-with these field values:
+Wrapped-key records must use the accepted post-quantum profile in
+[post-quantum-envelope.md](post-quantum-envelope.md) with these field values:
 
 ```text
 wrapping_algorithm = proofline-pq-mlkem768-hkdfsha384-aes256gcm
 wrapping_algorithm_version = 1
 ```
 
-The current API is a metadata storage and delivery boundary, not a runtime PQ
-profile validator.
+The API validates the accepted public metadata and wrapped-key frame shape
+without unwrapping CEKs or decrypting media.
 
 ### `POST /v1/incidents/{incident_id}/wrapped-keys`
 
@@ -576,11 +580,13 @@ Request:
   "stream_id": "str_...",
   "grant_id": "sgr_...",
   "media_key_id": "media-key-2026-06-01-audio",
-  "wrapping_algorithm": "age-v1-x25519",
+  "wrapping_algorithm": "proofline-pq-mlkem768-hkdfsha384-aes256gcm",
   "wrapping_algorithm_version": "1",
-  "wrapped_key_ciphertext": "base64url-or-profile-encoded-ciphertext",
+  "wrapped_key_ciphertext": "base64url-no-padding-PLPQWK1-frame",
   "public_wrapping_metadata": {
-    "profile": "age-v1-x25519"
+    "profile": "proofline-pq-mlkem768-hkdfsha384-aes256gcm-v1",
+    "scheme": "proofline-pq-envelope-v1",
+    "suite_id": "proofline-pq-mlkem768-hkdfsha384-aes256gcm-v1"
   }
 }
 ```
@@ -600,11 +606,13 @@ Response `201`:
     "contact_public_key_id": "cpk_...",
     "contact_public_key_version": 1,
     "media_key_id": "media-key-2026-06-01-audio",
-    "wrapping_algorithm": "age-v1-x25519",
+    "wrapping_algorithm": "proofline-pq-mlkem768-hkdfsha384-aes256gcm",
     "wrapping_algorithm_version": "1",
-    "wrapped_key_ciphertext": "base64url-or-profile-encoded-ciphertext",
+    "wrapped_key_ciphertext": "base64url-no-padding-PLPQWK1-frame",
     "public_wrapping_metadata": {
-      "profile": "age-v1-x25519"
+      "profile": "proofline-pq-mlkem768-hkdfsha384-aes256gcm-v1",
+      "scheme": "proofline-pq-envelope-v1",
+      "suite_id": "proofline-pq-mlkem768-hkdfsha384-aes256gcm-v1"
     },
     "wrapped_key_state": "active",
     "created_at": "2026-06-01T10:00:00Z",
@@ -617,7 +625,9 @@ Missing incidents, streams, active grants, or active contact public keys return
 `404 wrapped_key_dependency_not_found`. Metadata-only grants return
 `409 wrapped_key_grant_not_authorized`. Reusing the same owner, incident,
 stream scope, grant, `media_key_id`, and contact public key returns
-`409 wrapped_key_duplicate`.
+`409 wrapped_key_duplicate`. Unsupported wrapping algorithms, malformed
+wrapped-key frames, malformed public wrapping metadata, or profile mismatches
+return `400` with a generic profile-validation error.
 
 ### `GET /v1/incidents/{incident_id}/wrapped-keys`
 
@@ -930,8 +940,8 @@ Optional header:
 Fields:
 
 - `file`: encrypted chunk bytes
-- `stream_id`: optional media stream ID for new clients
-- `chunk_index`: non-negative integer for legacy unstreamed uploads; positive integer when `stream_id` is provided
+- `stream_id`: media stream ID
+- `chunk_index`: positive stream-local integer
 - `media_type`: `audio`, `video`, `location`, or `metadata`
 - `started_at`: RFC3339 timestamp
 - `ended_at`: RFC3339 timestamp, not before `started_at`
@@ -959,11 +969,16 @@ Response `201`:
 
 When `stream_id` is provided, the stream must exist, belong to the same incident, be open, and have the same `media_type` as the uploaded chunk. Streamed chunks must use indexes starting at `1`; `chunk_index <= 0` returns `400 invalid_chunk_index`. Uploads to completed or failed streams return `409 stream_not_open`.
 
-New clients should create a media stream and upload chunks with `stream_id`. `stream_id` remains optional for backwards compatibility with existing chunks and clients. Legacy unstreamed chunks may use `chunk_index = 0`; they are still stored and listed, but they are not included in completed-stream bundle downloads.
+Clients must create a media stream and upload chunks with `stream_id`. Legacy
+unstreamed chunk rows may still be read where they already exist, but new
+uploads without a valid PQ payload frame and stream-bound identity fail closed.
 
-Streamed chunk identity is `(incident_id, stream_id, chunk_index)`, so each stream can use normal stream-local chunk numbering. Legacy unstreamed chunk identity remains `(incident_id, media_type, chunk_index)` for chunks without `stream_id`.
+Streamed chunk identity is `(incident_id, stream_id, chunk_index)`, so each
+stream can use normal stream-local chunk numbering.
 
-Duplicate streamed `(incident_id, stream_id, chunk_index)` uploads and duplicate legacy `(incident_id, media_type, chunk_index)` uploads without an idempotency key return `409 duplicate_chunk`. Hash mismatches return `400 hash_mismatch` and do not commit a final file.
+Duplicate streamed `(incident_id, stream_id, chunk_index)` uploads without an
+idempotency key return `409 duplicate_chunk`. Hash mismatches return
+`400 hash_mismatch` and do not commit a final file.
 
 When `Idempotency-Key` is supplied, the server hashes the key and stores durable
 upload-operation state in the configured metadata backend. The key is bound to
@@ -1012,7 +1027,10 @@ upload-operation rows, and blob no-overwrite behavior remain final truth.
 
 The repository rechecks incident and stream state when chunk metadata is inserted. If an upload races with incident close or stream completion, the final metadata insert is rejected and the committed blob path is removed.
 
-For clients using the v1 encryption envelope, `sha256_hex` is the SHA-256 of the complete uploaded envelope bytes, not the plaintext.
+For clients using the PQ envelope, `sha256_hex` is the SHA-256 of the complete
+uploaded `PLPQENC1` payload frame bytes, not the plaintext. Missing, legacy,
+downgraded, or mismatched envelope frames fail closed with
+`400 invalid_envelope`.
 
 `original_filename` is metadata, not a storage path. The server trims the value,
 normalizes slash and backslash separators to a basename, falls back to the
@@ -1073,9 +1091,8 @@ Request:
 
 For streamed chunks, `stream_id` is required and identity is
 `(incident_id, stream_id, chunk_index)`. `media_type` remains required and must
-match the stream media type. For legacy unstreamed chunks, omit `stream_id`;
-identity is `(incident_id, media_type, chunk_index)`, and `chunk_index = 0`
-remains valid for compatibility.
+match the stream media type. Legacy unstreamed chunks are not accepted by the
+current PQ upload default.
 
 The comparison fingerprint is:
 
@@ -1154,7 +1171,7 @@ HTTP coverage in `internal/httpapi/uploads_test.go` includes:
 
 - matched streamed duplicate reconciliation
 - conflicting streamed duplicate reconciliation
-- matched and conflicting legacy unstreamed reconciliation
+- fail-closed behavior for legacy unstreamed upload attempts
 - omission of `stored_path` and stored conflicting values from reconciliation
   responses
 - read-only reconciliation after stream completion, stream failure, or incident
@@ -1167,7 +1184,11 @@ account incident list/detail surface.
 
 ### `GET /v1/incidents/{incident_id}/chunks/{media_type}/{chunk_index}`
 
-Returns encrypted bytes for a legacy unstreamed chunk as `application/octet-stream`. This route is private/dev-only and is not used by the incident viewer. Streamed chunks are read through completed stream bundle downloads rather than this legacy media/index route.
+Returns encrypted bytes for an existing legacy unstreamed chunk as
+`application/octet-stream`. This route is private/dev-only and is not used by
+the incident viewer. New uploads should be stream-scoped PQ payload frames.
+Streamed chunks are read through completed stream bundle downloads rather than
+this legacy media/index route.
 
 ## Media Streams
 

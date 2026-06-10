@@ -1,16 +1,19 @@
 # Pure Post-Quantum Encryption Envelope
 
-Status: v1 preview requirement with an isolated test-only prototype. Runtime
-work has not landed. This document and the prototype do not change the current
-runtime encryption envelope, backend storage behavior, viewer behavior, bundle
-behavior, key custody, trusted-contact access model, or server defaults.
+Status: v1 preview runtime default for server-side upload validation,
+wrapped-key profile validation, bundle manifest profile hints, and the Go
+simulator reference flow. The implementation keeps the backend ciphertext-only:
+API routes validate public envelope metadata and accepted frame shapes but do
+not decrypt evidence, store raw CEKs, store ML-KEM shared secrets, store
+recipient decapsulation keys, or expose browser/backend decryption.
 
-The first Phase 2 prototype lives in `internal/envelope/pq`. It is not imported
-by API routes, storage backends, bundle manifests, viewer responses, simulator
-defaults, or deployment code. It exists for local conformance vectors,
-round-trip tests, malformed-input checks, and tamper tests only. It is not
-enough for v1 preview without a later fully implemented, documented, tested,
-runtime-default envelope.
+The first runtime implementation lives in `internal/envelope/pq`. API upload
+routes validate payload frame headers from staged bytes before committing a
+chunk. Wrapped-key creation validates the accepted public metadata and
+wrapped-key frame transport before storing a record. Bundle manifests identify
+the PQ profile while remaining key-free. The simulator defaults to PQ encrypted
+uploads and retains the older v1 AES-GCM envelope only behind explicit
+development compatibility flags.
 
 This document defines the required v1 preview pure post-quantum encryption
 envelope for Proofline evidence media and wrapped media-key metadata. The
@@ -36,13 +39,13 @@ date that real evidence may be uploaded. It is pure post-quantum in the key
 establishment layer: it does not depend on X25519, P-256, RSA, or another
 classical public-key algorithm for confidentiality.
 
-## Relationship To The Current v1 Envelope
+## Relationship To The Compatibility v1 Envelope
 
-The current simulator and backend reference flow use the documented v1
-AES-256-GCM chunk envelope. That envelope encrypts chunks with a client-held
-symmetric key and binds incident ID, stream ID, media type, and chunk index as
-associated data. The backend stores opaque encrypted bytes and validates hashes
-over ciphertext rather than decrypting media.
+The older documented v1 AES-256-GCM chunk envelope encrypts chunks with a
+client-held symmetric key and binds incident ID, stream ID, media type, and
+chunk index as associated data. It remains available only for explicit
+simulator/test compatibility, for example with `--envelope v1`. It is not the
+v1 preview runtime default.
 
 This envelope keeps the same backend posture:
 
@@ -54,10 +57,8 @@ This envelope keeps the same backend posture:
 - bundle and viewer flows must remain explicit about whether key-wrapping
   metadata is present and who can use it
 
-The post-quantum envelope must be fully implemented, documented, tested, and
-made the default before v1 preview. It is not a transparent in-place replacement
-for `proofline-chunk-encryption-v1`; it should be introduced as an explicit new
-scheme with compatibility tests and migration notes. The older
+The post-quantum envelope is an explicit new scheme rather than a transparent
+in-place replacement for `proofline-chunk-encryption-v1`. The older
 `safety-recorder-chunk-encryption-v1` identifier is a pre-reset legacy value and
 should remain only in explicit fail-closed tests or historical documentation.
 Compatibility or simulator envelopes may remain for development, migration, or
@@ -193,17 +194,16 @@ The implementation must reject unknown mandatory schemes, unknown suite IDs,
 unknown KEM identifiers, unknown KDF identifiers, unknown AEAD identifiers, and
 unknown digest identifiers. It must not silently fall back to older algorithms.
 
-Current server wrapped-key metadata routes are generic storage and delivery
-routes. The first production PQ runtime implementation must use these values in
-the existing fields:
+Server wrapped-key metadata creation validates these accepted values in the
+existing fields:
 
 ```text
 wrapping_algorithm = proofline-pq-mlkem768-hkdfsha384-aes256gcm
 wrapping_algorithm_version = 1
 ```
 
-The older `age-v1-x25519` value remains a simulator-development profile only.
-It must not be advertised as the v1 preview default.
+The older `age-v1-x25519` value remains a simulator-development artifact format
+only and is not accepted by the wrapped-key API runtime default.
 
 ## Key Encoding And Key IDs
 
@@ -853,7 +853,8 @@ size constants, and test-vector guidance.
 
 ## Open Questions
 
-- Should PQ envelopes be chunk-scoped, stream-scoped, or both?
+- Should a future suite add stream-scoped or bounded chunk-group CEKs beyond the
+  current chunk-scoped runtime payload frames?
 - Should a separate immutable export format bind an embedded wrapping-record
   manifest into payload AAD, or should all wrapping records remain bound only to
   the payload header digest?
@@ -864,34 +865,43 @@ size constants, and test-vector guidance.
 
 ## Proposed Implementation Phases
 
-Phase 1: accepted production profile.
+Phase 1: accepted production profile. Complete.
 
 - Define the accepted production wrapping profile in this document.
 - Link it from encryption, key-custody, contact-sharing, and simulator
   documentation.
-- Keep existing runtime behavior unchanged.
 
-Phase 2: test-only implementation package.
+Phase 2: implementation package. Complete for the accepted v1 preview runtime
+default.
 
-- Add a new isolated package for the PQ envelope.
+- Add a package for the PQ envelope.
 - Implement in-memory round trips, canonical encoding, limits, local vectors,
-  and tamper tests only.
-- Do not expose new API routes or bundle behavior yet.
+  tamper tests, public payload-header validation, and public wrapped-key
+  metadata validation.
 
-Phase 3: simulator prototype.
+Phase 3: simulator reference flow. Complete for default encrypted uploads and
+same-run bundle verification.
 
-- Add opt-in simulator support for PQ envelopes.
+- Make simulator uploads use PQ envelopes by default.
 - Generate local ML-KEM recipient keys for development only.
-- Produce local test vectors and encrypted bundles.
+- Keep the v1 AES-GCM envelope behind explicit compatibility flags.
 
-Phase 4: API and storage integration.
+Phase 4: API and storage integration. Complete for upload validation,
+wrapped-key profile validation, and bundle manifest hints.
 
 - Map PQ wrapped-key records onto the existing authenticated wrapped-key
-  metadata routes.
+  metadata create route.
 - Keep bundle manifests key-free unless a separate grant-scoped manifest design
   is accepted.
-- Add schema/API changes only if the accepted profile cannot fit the existing
+- Avoid schema changes because the accepted profile fits the existing wrapped-key
   fields and limits.
+
+Remaining future work:
+
+- Production client key storage and trusted-contact UX.
+- Browser/client-side decryption in separate client repositories.
+- Cross-repository protocol conformance tests.
+- Any future grant-scoped wrapping-record manifest design.
 
 Phase 5: production client planning.
 

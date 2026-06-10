@@ -9,13 +9,11 @@ import (
 	"path/filepath"
 	"strconv"
 	"time"
-
-	"github.com/open-proofline/server/internal/envelope"
 )
 
 const ffmpegPollInterval = 250 * time.Millisecond
 
-func stageFFmpegSegments(ctx context.Context, stage *desktopStage, manifest *desktopStageManifest, key envelope.Key, cfg config) error {
+func stageFFmpegSegments(ctx context.Context, stage *desktopStage, manifest *desktopStageManifest, encryption simulatorEncryption, cfg config) error {
 	if err := resetScratchDir(stage.scratchDir); err != nil {
 		return err
 	}
@@ -43,7 +41,7 @@ func stageFFmpegSegments(ctx context.Context, stage *desktopStage, manifest *des
 			return fmt.Errorf("ffmpeg produced an empty segment")
 		}
 		chunkStartedAt := startedAt.Add(time.Duration(i) * cfg.ffmpegSegmentTime)
-		if err := stage.stageChunk(manifest, key, body, chunkStartedAt, chunkStartedAt.Add(cfg.ffmpegSegmentTime)); err != nil {
+		if err := stage.stageChunk(manifest, encryption, body, chunkStartedAt, chunkStartedAt.Add(cfg.ffmpegSegmentTime)); err != nil {
 			return err
 		}
 		if err := os.Remove(file); err != nil {
@@ -53,7 +51,7 @@ func stageFFmpegSegments(ctx context.Context, stage *desktopStage, manifest *des
 	return nil
 }
 
-func stageAndUploadFFmpegSegments(ctx context.Context, out io.Writer, sim client, cfg config, stage *desktopStage, manifest *desktopStageManifest, key envelope.Key) error {
+func stageAndUploadFFmpegSegments(ctx context.Context, out io.Writer, sim client, cfg config, stage *desktopStage, manifest *desktopStageManifest, encryption simulatorEncryption) error {
 	if err := resetScratchDir(stage.scratchDir); err != nil {
 		return err
 	}
@@ -80,7 +78,7 @@ func stageAndUploadFFmpegSegments(ctx context.Context, out io.Writer, sim client
 			if err != nil {
 				return fmt.Errorf("ffmpeg segment capture failed")
 			}
-			if err := stageAvailableFFmpegSegments(ctx, out, sim, cfg, stage, manifest, key, startedAt, processed, true); err != nil {
+			if err := stageAvailableFFmpegSegments(ctx, out, sim, cfg, stage, manifest, encryption, startedAt, processed, true); err != nil {
 				return err
 			}
 			if len(manifest.Chunks) == 0 {
@@ -88,7 +86,7 @@ func stageAndUploadFFmpegSegments(ctx context.Context, out io.Writer, sim client
 			}
 			return nil
 		case <-ticker.C:
-			if err := stageAvailableFFmpegSegments(ctx, out, sim, cfg, stage, manifest, key, startedAt, processed, false); err != nil {
+			if err := stageAvailableFFmpegSegments(ctx, out, sim, cfg, stage, manifest, encryption, startedAt, processed, false); err != nil {
 				cancel()
 				<-done
 				return err
@@ -101,7 +99,7 @@ func stageAndUploadFFmpegSegments(ctx context.Context, out io.Writer, sim client
 	}
 }
 
-func stageAvailableFFmpegSegments(ctx context.Context, out io.Writer, sim client, cfg config, stage *desktopStage, manifest *desktopStageManifest, key envelope.Key, captureStartedAt time.Time, processed map[string]struct{}, final bool) error {
+func stageAvailableFFmpegSegments(ctx context.Context, out io.Writer, sim client, cfg config, stage *desktopStage, manifest *desktopStageManifest, encryption simulatorEncryption, captureStartedAt time.Time, processed map[string]struct{}, final bool) error {
 	files, err := sortedScratchFiles(stage.scratchDir)
 	if err != nil {
 		return err
@@ -117,7 +115,7 @@ func stageAvailableFFmpegSegments(ctx context.Context, out io.Writer, sim client
 			continue
 		}
 		chunkOffset := len(manifest.Chunks)
-		if err := stageFFmpegSegmentFile(stage, manifest, key, cfg, captureStartedAt, file); err != nil {
+		if err := stageFFmpegSegmentFile(stage, manifest, encryption, cfg, captureStartedAt, file); err != nil {
 			return err
 		}
 		processed[file] = struct{}{}
@@ -128,7 +126,7 @@ func stageAvailableFFmpegSegments(ctx context.Context, out io.Writer, sim client
 	return nil
 }
 
-func stageFFmpegSegmentFile(stage *desktopStage, manifest *desktopStageManifest, key envelope.Key, cfg config, captureStartedAt time.Time, file string) error {
+func stageFFmpegSegmentFile(stage *desktopStage, manifest *desktopStageManifest, encryption simulatorEncryption, cfg config, captureStartedAt time.Time, file string) error {
 	body, err := os.ReadFile(file)
 	if err != nil {
 		return safePathError("read ffmpeg segment", err)
@@ -137,7 +135,7 @@ func stageFFmpegSegmentFile(stage *desktopStage, manifest *desktopStageManifest,
 		return fmt.Errorf("ffmpeg produced an empty segment")
 	}
 	chunkStartedAt := captureStartedAt.Add(time.Duration(len(manifest.Chunks)) * cfg.ffmpegSegmentTime)
-	if err := stage.stageChunk(manifest, key, body, chunkStartedAt, chunkStartedAt.Add(cfg.ffmpegSegmentTime)); err != nil {
+	if err := stage.stageChunk(manifest, encryption, body, chunkStartedAt, chunkStartedAt.Add(cfg.ffmpegSegmentTime)); err != nil {
 		return err
 	}
 	if err := os.Remove(file); err != nil {

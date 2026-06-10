@@ -26,6 +26,7 @@ type config struct {
 	bundleOutput          string
 	verifyBundlePath      string
 	encrypt               bool
+	envelopeMode          string
 	keyFile               string
 	wrappedKeyOutput      string
 	contactKeyFile        string
@@ -78,6 +79,7 @@ func parseConfig(args []string) (config, error) {
 	fs.StringVar(&cfg.bundleOutput, "bundle-output", "", "Write the downloaded encrypted stream bundle ZIP to this path")
 	fs.StringVar(&cfg.verifyBundlePath, "verify-bundle", "", "Verify an existing encrypted stream bundle ZIP and exit")
 	fs.BoolVar(&cfg.encrypt, "encrypt", true, "Encrypt simulated chunk bytes before upload")
+	fs.StringVar(&cfg.envelopeMode, "envelope", envelopeModePQ, "Encrypted chunk envelope profile: pq or v1")
 	fs.StringVar(&cfg.keyFile, "key-file", "", "Optional simulator encryption key file")
 	fs.StringVar(&cfg.wrappedKeyOutput, "wrapped-key-output", "", "Write simulator-only contact-wrapped key metadata artifact to this path")
 	fs.StringVar(&cfg.contactKeyFile, "contact-key-file", "", "Local simulator trusted-contact private key file for wrapped-key metadata")
@@ -131,6 +133,15 @@ func parseConfig(args []string) (config, error) {
 	if !offlineBundleVerify && cfg.password == "" {
 		return config{}, fmt.Errorf("--password or PROOFLINE_SIM_PASSWORD is required")
 	}
+	cfg.envelopeMode = strings.ToLower(strings.TrimSpace(cfg.envelopeMode))
+	if cfg.envelopeMode == "" {
+		cfg.envelopeMode = envelopeModePQ
+	}
+	switch cfg.envelopeMode {
+	case envelopeModePQ, envelopeModeV1:
+	default:
+		return config{}, fmt.Errorf("--envelope must be pq or v1")
+	}
 	chunkSize, err := parseByteSize(chunkSizeRaw)
 	if err != nil {
 		return config{}, fmt.Errorf("--chunk-size: %w", err)
@@ -178,6 +189,9 @@ func parseConfig(args []string) (config, error) {
 	if offlineBundleVerify {
 		if !cfg.encrypt {
 			return config{}, fmt.Errorf("--verify-bundle requires --encrypt=true")
+		}
+		if cfg.envelopeMode != envelopeModeV1 {
+			return config{}, fmt.Errorf("--verify-bundle currently requires --envelope v1")
 		}
 		if cfg.keyFile == "" {
 			return config{}, fmt.Errorf("--verify-bundle requires --key-file or --stage-dir")
@@ -231,6 +245,9 @@ func applyWrappedKeyDefaults(cfg *config, offlineBundleVerify bool) error {
 	}
 	if !cfg.encrypt {
 		return fmt.Errorf("--wrapped-key-output requires --encrypt=true")
+	}
+	if cfg.envelopeMode != envelopeModeV1 {
+		return fmt.Errorf("--wrapped-key-output requires --envelope v1")
 	}
 	if strings.TrimSpace(cfg.contactKeyFile) == "" {
 		cfg.contactKeyFile = filepath.Join(filepath.Dir(cfg.wrappedKeyOutput), defaultContactKeyFileName)

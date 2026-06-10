@@ -171,7 +171,7 @@ When project scope, architecture, security posture, or workflow changes, update 
 | New API routes or listener exposure | Review `AGENTS.md`, `docs/api.md`, security/threat docs, and relevant review prompts. |
 | Private `/v1` exposure or authentication model changes | Review `AGENTS.md`, `docs/deployment.md`, `docs/security-model.md`, `docs/threat-model.md`, and every reusable prompt that references private/public route separation. |
 | Logging behavior, startup/config error logs, request logs, or worker/operator logs | Review `docs/logging-requirements.md`, `docs/security-model.md`, `docs/threat-model.md`, and relevant review prompts. |
-| Encryption envelope changes | Update `docs/encryption.md`, `60-simulator-maintenance.md`, `30-security-review.md`, and Deep Research review scope. |
+| Encryption envelope changes | Update `docs/encryption.md`, `docs/post-quantum-envelope.md`, `docs/simulator.md`, `60-simulator-maintenance.md`, `30-security-review.md`, and Deep Research review scope. |
 | Key custody, browser decryption, break-glass, or dead-man-switch design changes | Use or update the key-custody prompts and update threat model, security model, encryption docs, incident-mode docs, and operational guidance. |
 | Bundle, storage, schema, or manifest changes | Update API docs, code-map docs, simulator docs/prompts, and Deep Research scope. |
 | CI/CD, Docker, GHCR, or release workflow changes | Update release/development docs and release/report prompts. |

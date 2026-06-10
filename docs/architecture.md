@@ -35,9 +35,10 @@ package, production recording client, production client key storage, key
 sharing, browser/client-side decryption, server-assisted break-glass key access,
 notification system, trusted-contact account model, future public product API,
 future separately bound private admin API, OAuth/JWT identity integration, or
-playable media export. The Go simulator can produce the documented v1
-client-side encryption envelope and local desktop-recorder test segments for
-development and test flows only. Future key custody and emergency access design
+playable media export. The Go simulator defaults to the accepted PQ payload
+envelope for development and test flows, can use the older v1 AES-GCM envelope
+only through explicit compatibility flags, and can produce local
+desktop-recorder test segments. Future key custody and emergency access design
 is documented in [key-custody.md](key-custody.md),
 [browser-decryption.md](browser-decryption.md), and
 [break-glass-key-access.md](break-glass-key-access.md).

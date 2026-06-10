@@ -5,34 +5,39 @@ import (
 	"fmt"
 	"io"
 	"time"
-
-	"github.com/open-proofline/server/internal/envelope"
 )
 
-func prepareEncryption(out io.Writer, cfg config) (envelope.Key, error) {
+func prepareEncryption(out io.Writer, cfg config) (simulatorEncryption, error) {
 	if !cfg.encrypt {
 		fmt.Fprintln(out, "Encryption: disabled. Uploading raw fake chunk bytes for development compatibility only.")
 		fmt.Fprintln(out)
-		return envelope.Key{}, nil
+		return simulatorEncryption{enabled: false}, nil
 	}
 
-	encryptionKey, err := loadOrCreateSimulatorKey(cfg.keyFile)
+	encryption, err := loadOrCreateSimulatorEncryption(cfg)
 	if err != nil {
-		return envelope.Key{}, err
+		return simulatorEncryption{}, err
 	}
 	fmt.Fprintln(out, "Encryption: enabled")
-	fmt.Fprintf(out, "Key ID: %s\n", encryptionKey.KeyID)
+	switch encryption.mode {
+	case envelopeModePQ:
+		fmt.Fprintln(out, "Envelope: post-quantum")
+		fmt.Fprintf(out, "Recipient key ID: %s\n", encryption.pqRecipient.KeyID)
+	case envelopeModeV1:
+		fmt.Fprintln(out, "Envelope: v1 compatibility")
+		fmt.Fprintf(out, "Key ID: %s\n", encryption.v1Key.KeyID)
+	}
 	if cfg.keyFile != "" {
 		fmt.Fprintln(out, "Key file configured; path omitted from output.")
 	}
 	fmt.Fprintln(out)
-	return encryptionKey, nil
+	return encryption, nil
 }
 
-func uploadChunks(ctx context.Context, out io.Writer, sim client, cfg config, incidentID, streamID string, key envelope.Key) error {
+func uploadChunks(ctx context.Context, out io.Writer, sim client, cfg config, incidentID, streamID string, encryption simulatorEncryption) error {
 	startedAt := time.Now().UTC()
 	for i := 1; i <= cfg.chunks; i++ {
-		chunk, err := createUploadChunk(cfg, key, incidentID, streamID, i, startedAt)
+		chunk, err := createUploadChunk(cfg, encryption, incidentID, streamID, i, startedAt)
 		if err != nil {
 			return err
 		}
@@ -52,9 +57,9 @@ func uploadChunks(ctx context.Context, out io.Writer, sim client, cfg config, in
 	return nil
 }
 
-func createUploadChunk(cfg config, key envelope.Key, incidentID, streamID string, chunkIndex int, startedAt time.Time) (chunkUpload, error) {
+func createUploadChunk(cfg config, encryption simulatorEncryption, incidentID, streamID string, chunkIndex int, startedAt time.Time) (chunkUpload, error) {
 	if cfg.encrypt {
-		return newEncryptedChunkUpload(key, incidentID, streamID, chunkIndex, cfg.mediaType, cfg.chunkSize, startedAt)
+		return newEncryptedChunkUpload(encryption, incidentID, streamID, chunkIndex, cfg.mediaType, cfg.chunkSize, startedAt)
 	}
 	return newChunkUpload(incidentID, streamID, chunkIndex, cfg.mediaType, cfg.chunkSize, startedAt)
 }
@@ -96,7 +101,7 @@ func verifyFirstChunkIdempotentReplay(ctx context.Context, out io.Writer, sim cl
 	return nil
 }
 
-func downloadAndVerifyBundle(ctx context.Context, out io.Writer, sim client, cfg config, token, incidentID, streamID string, key envelope.Key, contactWrapped bool) error {
+func downloadAndVerifyBundle(ctx context.Context, out io.Writer, sim client, cfg config, token, incidentID, streamID string, encryption simulatorEncryption, contactWrapped bool) error {
 	fmt.Fprintln(out, "Testing incident stream bundle download...")
 	bundleBytes, err := sim.downloadStreamBundle(ctx, token, streamID)
 	if err != nil {
@@ -104,7 +109,7 @@ func downloadAndVerifyBundle(ctx context.Context, out io.Writer, sim client, cfg
 	}
 	fmt.Fprintln(out, "Downloaded bundle.")
 	if cfg.encrypt && cfg.verifyBundleDecrypt {
-		verified, err := verifyStreamBundleDecryption(bundleBytes, key, incidentID, streamID, cfg.mediaType)
+		verified, err := verifyStreamBundleDecryption(bundleBytes, encryption, incidentID, streamID, cfg.mediaType)
 		if err != nil {
 			return err
 		}

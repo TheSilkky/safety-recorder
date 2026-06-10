@@ -1,30 +1,66 @@
 # Encryption
 
-Proofline currently stores opaque encrypted chunk bytes. This document describes the first client-side chunk encryption envelope used by the Go simulator and tests.
+Proofline stores opaque encrypted chunk bytes. The current v1 preview runtime
+default is the accepted post-quantum payload envelope implemented in
+`internal/envelope/pq` and documented in
+[post-quantum-envelope.md](post-quantum-envelope.md). The older AES-256-GCM
+chunk envelope remains documented here as an explicit simulator/test
+compatibility profile only.
 
 This milestone does not add backend decryption. The server still validates SHA-256 over uploaded ciphertext bytes, stores those bytes in the configured blob backend, and emits encrypted ZIP evidence bundles.
 
+## Runtime Default
+
+The accepted default profile is:
+
+```text
+Scheme: proofline-pq-envelope-v1
+Suite: proofline-pq-mlkem768-hkdfsha384-aes256gcm-v1
+Payload envelope magic: PLPQENC1
+Wrapped-key ciphertext magic: PLPQWK1
+```
+
+For uploads, the server validates the public PQ payload frame header against
+the authenticated request identity before committing the chunk. It checks the
+scheme, suite, digest, AEAD identifier, stream ID, media type, chunk index,
+payload type, and that ciphertext bytes exist. It does not decrypt media, store
+raw CEKs, store ML-KEM shared secrets, or store recipient decapsulation keys.
+Missing, downgraded, legacy, or malformed envelope headers fail closed.
+
+Wrapped-key record creation validates the accepted PQ wrapping algorithm,
+version, public wrapping metadata, and base64url-wrapped-key frame shape without
+unwrapping the CEK. Bundle manifests identify the PQ scheme, suite, and profile
+and continue to omit raw keys, wrapped-key ciphertext, private deployment
+details, stored paths, and object keys.
+
 ## Naming
 
-The current compatibility envelope uses Proofline-named identifiers. Earlier
+The explicit compatibility envelope uses Proofline-named identifiers. Earlier
 experimental `safety-recorder` envelope identifiers are not accepted by the
 current parser except in explicit negative tests that prove fail-closed
 behavior.
 
 ## Threat Model
 
-The v1 envelope protects chunk plaintext from the backend, SQLite, configured blob storage, and evidence bundle readers who do not have the client-held key. It does not protect metadata that is already sent to the backend, such as incident ID, stream ID, media type, chunk index, timestamps, byte size, and ciphertext hashes.
+The default PQ envelope protects chunk plaintext from the backend, SQLite,
+configured blob storage, and evidence bundle readers who do not have the
+client-held recipient key material plus wrapping records. It does not protect
+metadata that is already sent to the backend, such as incident ID, stream ID,
+media type, chunk index, timestamps, byte size, and ciphertext hashes.
 
 The simulator key handling in this repository is for development and test use
-only. In future-design terminology, the current simulator key is a development
-CEK rather than a long-term private-key identity for an incident. Future
-production client key storage, sharing, recovery, trusted-contact access,
-account-owner access, and incident-mode sharing are out of scope for the current
+only. Its default PQ key file stores local ML-KEM decapsulation seed material;
+the compatibility v1 key file stores a local development CEK. Future production
+client key storage, sharing, recovery, trusted-contact access, account-owner
+access, and incident-mode sharing are out of scope for the current
 implementation and are designed separately in [key-custody.md](key-custody.md),
 [incident-modes.md](incident-modes.md), and
 [v1-access-control.md](v1-access-control.md).
 
-## Scheme v1
+## Compatibility Scheme v1
+
+Use this only with explicit simulator compatibility flags such as
+`--envelope v1`. It is not the v1 preview runtime default.
 
 | Field | Value |
 |---|---|
@@ -103,9 +139,31 @@ The implementation rejects malformed magic, truncated envelopes, oversized heade
 
 Nonce and key values use URL-safe base64 without padding.
 
-## Simulator Key File
+## Simulator Key Files
 
-The simulator can load or create a local development key file:
+By default, the simulator can load or create a local PQ development key file:
+
+```json
+{
+  "version": 1,
+  "scheme": "proofline-pq-envelope-v1",
+  "suite_id": "proofline-pq-mlkem768-hkdfsha384-aes256gcm-v1",
+  "recipient_key_id": "pqk1_...",
+  "recipient_key_version": 1,
+  "recipient_role": "trusted_contact",
+  "encapsulation_key_b64u": "base64url-no-padding-1184-byte-public-key",
+  "decapsulation_seed_b64u": "base64url-no-padding-64-byte-secret-seed",
+  "created_at": "2026-06-10T00:00:00Z"
+}
+```
+
+`recipient_key_id` is non-secret. `decapsulation_seed_b64u` is secret. Do not
+upload this file, add it to evidence bundles, commit it to git, paste it into
+logs, or place it in public documentation examples. The simulator writes key
+files with `0600` permissions where practical.
+
+With `--envelope v1`, the simulator can instead load or create the legacy
+compatibility key file:
 
 ```json
 {
@@ -117,7 +175,7 @@ The simulator can load or create a local development key file:
 }
 ```
 
-`key_id` is non-secret. `key_b64` is secret. Do not upload this file, add it to evidence bundles, commit it to git, or paste it into logs. The simulator writes key files with `0600` permissions where practical.
+`key_id` is non-secret. `key_b64` is secret.
 
 ## Simulator Usage
 
@@ -129,9 +187,10 @@ PROOFLINE_SIM_PASSWORD='replace-with-a-long-local-password' \
 go run ./cmd/simclient --chunks 5 --interval 1s --download-bundle
 ```
 
-Expected output includes the non-secret key ID, encrypted chunk uploads, bundle
-download, and local decrypt verification. The simulator does not print raw
-keys, plaintext, key-file paths, or token-bearing viewer URLs.
+Expected output includes the non-secret recipient key ID, encrypted chunk
+uploads, bundle download, and local decrypt verification for the same run. The
+simulator does not print raw keys, plaintext, key-file paths, or token-bearing
+viewer URLs.
 
 To persist a simulator key locally:
 
@@ -169,11 +228,16 @@ PROOFLINE_SIM_PASSWORD='replace-with-a-long-local-password' \
 go run ./cmd/simclient --download-bundle --verify-bundle-decryption=false
 ```
 
+Offline `--verify-bundle` remains available only for explicit
+`--envelope v1` compatibility bundles because PQ bundle ZIPs intentionally do
+not include the wrapped-key records needed for standalone decryption.
+
 ## What The Backend Sees
 
 The backend sees opaque uploaded bytes and client-provided metadata. It stores
-ciphertext and validates SHA-256 over the ciphertext envelope. Private
-owner-authenticated routes can store grant-bound wrapped-key records as
+ciphertext and validates SHA-256 over the ciphertext envelope. It also validates
+the non-secret PQ payload header and accepted-profile wrapped-key metadata.
+Private owner-authenticated routes can store grant-bound wrapped-key records as
 encrypted metadata, but the backend does not parse raw CEKs or media keys,
 store raw keys in SQLite, upload raw keys, decrypt chunks, or expose public
 decryption endpoints.
@@ -195,18 +259,10 @@ context bindings or source-timeline metadata. That must not be inferred from
 the current envelope; it is a separate design tracked in
 [capture-stream-variants.md](capture-stream-variants.md).
 
-The required v1 preview pure post-quantum envelope profile is designed
-separately in [post-quantum-envelope.md](post-quantum-envelope.md). That design
-accepts `proofline-pq-mlkem768-hkdfsha384-aes256gcm-v1`, using
-`ML-KEM-768 + HKDF-SHA384 + AES-256-GCM` for recipient-key wrapping of CEKs and
-payload encryption. It defines the future wrapped-key API field values,
-metadata shape, canonical encoding, downgrade rejection, fail-closed behavior,
-and conformance-vector requirements. The isolated `internal/envelope/pq`
-package now exercises that profile in local tests and vectors only. It does not
-change current runtime behavior, viewer behavior, storage behavior, bundle
-behavior, key custody, simulator defaults, or server defaults. The profile must
-still be fully implemented, documented, tested, and made default before server
-or web-client v1 preview use with real sensitive evidence.
+The pure post-quantum envelope profile is the current server/simulator runtime
+default for v1 preview upload validation and reference flows. Future work still
+includes production client key storage, trusted-contact account delivery,
+browser decryption, and cross-repository protocol conformance tests.
 
 The simulator-only contact-wrapped key metadata prototype is implemented
 separately in
