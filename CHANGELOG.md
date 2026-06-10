@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Strengthened backup and restore drill docs for deletion state, tombstones,
+  restored deleted incidents, private restore reconciliation,
+  sharing-grant/wrapped-key consistency, and public viewer fail-closed
+  validation without adding backup automation or production-readiness claims.
 - Added a disabled-by-default local `operator mode-retention-preview` scaffold
   that groups closed active incidents by explicit mode-aware policy class for
   private dry runs, reports missing or ineligible policy inputs instead of

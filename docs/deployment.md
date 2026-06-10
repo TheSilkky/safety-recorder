@@ -718,6 +718,9 @@ Before exposing the public incident viewer:
 - [ ] Restore testing confirms SQLite or PostgreSQL metadata and encrypted
       local blobs or S3 objects can be restored together without exposing `/v1`
       publicly.
+- [ ] Restore testing validates deletion-pending, deleting, deletion-failed,
+      deleted, and tombstone-pruned incidents privately, including public
+      viewer fail-closed behavior and sharing-grant/wrapped-key consistency.
 - [ ] Monitoring and timeout settings cover public viewer errors, storage or
       database failures, and long encrypted ZIP downloads without logging raw
       tokens, request bodies, uploaded bytes, raw idempotency keys, plaintext,

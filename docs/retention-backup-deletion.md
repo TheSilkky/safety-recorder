@@ -156,6 +156,17 @@ A restore test should:
 4. Verify completed stream or incident bundle downloads can be generated.
 5. Confirm generated manifests match expected stream and chunk metadata.
 6. Confirm missing blobs or database/blob mismatches fail closed rather than producing partial evidence.
+7. Validate deletion state in private only: active incidents should remain
+   readable, deletion-pending/deleting/deletion-failed incidents should expose
+   only private status, deleted incidents should contain only minimal tombstone
+   fields, and tombstone-pruned incident IDs should no longer be treated as
+   active evidence.
+8. Confirm public viewer routes fail closed for deleting, deleted,
+   tombstone-pruned, expired/revoked-token, and metadata/blob-mismatch cases
+   without revealing deletion state, incident mode, stored paths, object keys,
+   grant metadata, wrapped-key metadata, or private deployment details.
+9. Confirm incident-scoped sharing-grant and wrapped-key rows are consistent
+   with restored incidents and are pruned when incident deletion has completed.
 
 The restore target must preserve the main/private-admin listener split. Do not
 use a restore drill as a reason to expose `/v1` publicly.

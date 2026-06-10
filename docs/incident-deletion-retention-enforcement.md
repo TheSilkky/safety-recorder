@@ -371,13 +371,20 @@ Restore drills should verify both sides of the lifecycle:
 - a restored active incident can still reconstruct completed encrypted bundles
 - a restored deleted incident remains deleted or is clearly marked as a
   tombstone
+- deletion-pending, deleting, and deletion-failed incidents remain private
+  operator/admin concerns and do not become public viewer-visible state
+- incident-scoped sharing grants and wrapped-key rows are present for active
+  restored incidents when expected and pruned after completed incident deletion
 - restoring from an older backup may resurrect data that was deleted after the
   backup was taken, unless backup expiry or key retirement prevents it
-- public viewer routes still fail closed for deleted incidents after restore
+- public viewer routes still fail closed for deleting, deleted,
+  tombstone-pruned, expired/revoked-token, or blob-mismatched incidents after
+  restore
 
 If a restore reintroduces an incident that was deleted in live state, the
 operator must have a documented reconciliation process. That process is
-deployment-specific and should not rely on public routes.
+deployment-specific, must stay in private operator notes, and should not rely
+on public routes, public issue text, or public screenshots.
 
 ## Remaining Future Implementation Tasks
 
@@ -414,11 +421,8 @@ Test tasks:
 
 - keep optional S3-compatible deletion smoke coverage current as deletion,
   retention, and blob-store behavior changes
-- test failed stream retention and deletion with the parent incident
 - test backup and restore documentation examples where practical
 
 Documentation tasks:
 
-- update deployment and backup runbooks for live deletion, backup expiry, and
-  restore reconciliation
 - document that normal deletion is not guaranteed secure erasure
