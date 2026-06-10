@@ -33,6 +33,7 @@ type Options struct {
 	SessionTTL                 time.Duration
 	BootstrapSecret            string
 	WebAuth                    WebAuthConfig
+	WebAuthn                   WebAuthnConfig
 	AccountRegistration        AccountRegistrationConfig
 	SecondFactorEmailTTL       time.Duration
 	EmailSender                email.Sender
@@ -87,6 +88,17 @@ type WebAuthConfig struct {
 	CSRFHeaderName        string
 }
 
+// WebAuthnConfig configures optional WebAuthn passkey/security-key
+// second-factor support for the main API route tree.
+type WebAuthnConfig struct {
+	Enabled          bool
+	RPID             string
+	RPDisplayName    string
+	AllowedOrigins   []string
+	UserVerification string
+	ChallengeTTL     time.Duration
+}
+
 // AccountRegistrationConfig controls unauthenticated account registration.
 type AccountRegistrationConfig struct {
 	Mode                 string
@@ -120,6 +132,7 @@ type API struct {
 	sessionTTL                 time.Duration
 	bootstrapSecret            string
 	webAuth                    WebAuthConfig
+	webAuthn                   WebAuthnConfig
 	accountRegistration        AccountRegistrationConfig
 	secondFactorEmailTTL       time.Duration
 	emailSender                email.Sender
@@ -212,6 +225,16 @@ func newAPI(repo MetadataRepository, store storage.BlobStore, opts Options) *API
 	if webAuth.CSRFHeaderName == "" {
 		webAuth.CSRFHeaderName = "X-CSRF-Token"
 	}
+	webAuthn := opts.WebAuthn
+	if webAuthn.RPDisplayName == "" {
+		webAuthn.RPDisplayName = "Proofline"
+	}
+	if webAuthn.UserVerification == "" {
+		webAuthn.UserVerification = "required"
+	}
+	if webAuthn.ChallengeTTL <= 0 {
+		webAuthn.ChallengeTTL = 5 * time.Minute
+	}
 	accountRegistration := opts.AccountRegistration
 	if accountRegistration.Mode == "" {
 		accountRegistration.Mode = AccountRegistrationDisabled
@@ -233,6 +256,7 @@ func newAPI(repo MetadataRepository, store storage.BlobStore, opts Options) *API
 		sessionTTL:                 sessionTTL,
 		bootstrapSecret:            opts.BootstrapSecret,
 		webAuth:                    webAuth,
+		webAuthn:                   webAuthn,
 		accountRegistration:        accountRegistration,
 		secondFactorEmailTTL:       secondFactorEmailTTL,
 		emailSender:                opts.EmailSender,

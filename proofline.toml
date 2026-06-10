@@ -75,6 +75,14 @@ session_cookie_secure = true
 session_cookie_samesite = "lax"
 csrf_header_name = "X-CSRF-Token"
 
+[webauthn]
+enabled = false
+rp_id = ""
+rp_display_name = "Proofline"
+allowed_origins = []
+user_verification = "required"
+challenge_ttl = "5m"
+
 [retention]
 default_incident_token_ttl = "24h"
 closed_incident_retention = "0"

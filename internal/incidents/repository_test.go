@@ -1,11 +1,13 @@
 package incidents_test
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -354,6 +356,167 @@ func TestTOTPSecondFactorsCompleteSetupAndSessionVerification(t *testing.T) {
 	}
 	if lookedUp.SecondFactorVerifiedAt == nil || lookedUp.SecondFactorMethod != auth.SecondFactorTypeTOTP {
 		t.Fatalf("lookup lost session second-factor fields: %+v", lookedUp)
+	}
+}
+
+func TestWebAuthnSecondFactorsCompleteSetupChallengesAndSessionVerification(t *testing.T) {
+	ctx := context.Background()
+	repo := newRepository(t, ctx)
+
+	account, err := repo.CreateAccount(ctx, auth.CreateAccountParams{
+		Username:          "webauthn-factor-user",
+		SecondFactorSetup: auth.SecondFactorSetupStateSetupRequired,
+		PasswordHash:      "hash",
+		Role:              auth.RoleUser,
+	})
+	if err != nil {
+		t.Fatalf("create account: %v", err)
+	}
+	session, rawToken, err := repo.CreateSession(ctx, account.ID, time.Now().UTC().Add(time.Hour))
+	if err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+
+	webauthnUser, err := repo.GetOrCreateWebAuthnUser(ctx, account.ID, "example.org")
+	if err != nil {
+		t.Fatalf("create WebAuthn user: %v", err)
+	}
+	if len(webauthnUser.UserHandle) != auth.WebAuthnUserHandleBytes {
+		t.Fatalf("WebAuthn user handle length = %d, want %d", len(webauthnUser.UserHandle), auth.WebAuthnUserHandleBytes)
+	}
+	sameUser, err := repo.GetOrCreateWebAuthnUser(ctx, account.ID, "example.org")
+	if err != nil {
+		t.Fatalf("get existing WebAuthn user: %v", err)
+	}
+	if !bytes.Equal(sameUser.UserHandle, webauthnUser.UserHandle) {
+		t.Fatal("WebAuthn user handle was not stable")
+	}
+
+	firstChallenge, err := repo.CreateWebAuthnChallenge(ctx, auth.CreateWebAuthnChallengeParams{
+		AccountID:       account.ID,
+		SessionID:       session.ID,
+		RPID:            "example.org",
+		ChallengeType:   auth.SecondFactorChallengeTypeWebAuthnRegistration,
+		SessionDataJSON: []byte(`{"challenge":"first"}`),
+		ExpiresAt:       time.Now().UTC().Add(time.Minute),
+	})
+	if err != nil {
+		t.Fatalf("create first WebAuthn challenge: %v", err)
+	}
+	secondChallenge, err := repo.CreateWebAuthnChallenge(ctx, auth.CreateWebAuthnChallengeParams{
+		AccountID:       account.ID,
+		SessionID:       session.ID,
+		RPID:            "example.org",
+		ChallengeType:   auth.SecondFactorChallengeTypeWebAuthnRegistration,
+		SessionDataJSON: []byte(`{"challenge":"second"}`),
+		ExpiresAt:       time.Now().UTC().Add(time.Minute),
+	})
+	if err != nil {
+		t.Fatalf("create second WebAuthn challenge: %v", err)
+	}
+	if firstChallenge.ID == secondChallenge.ID {
+		t.Fatal("WebAuthn challenge IDs should be unique")
+	}
+	if _, err := repo.ConsumeWebAuthnChallenge(ctx, account.ID, session.ID, "wrong.example", auth.SecondFactorChallengeTypeWebAuthnRegistration, time.Now().UTC()); !errors.Is(err, auth.ErrNotFound) {
+		t.Fatalf("mismatched RP WebAuthn challenge error = %v, want ErrNotFound", err)
+	}
+	consumed, err := repo.ConsumeWebAuthnChallenge(ctx, account.ID, session.ID, "example.org", auth.SecondFactorChallengeTypeWebAuthnRegistration, time.Now().UTC())
+	if err != nil {
+		t.Fatalf("consume WebAuthn challenge: %v", err)
+	}
+	if consumed.ID != secondChallenge.ID || !bytes.Equal(consumed.SessionDataJSON, []byte(`{"challenge":"second"}`)) || consumed.ConsumedAt == nil {
+		t.Fatalf("unexpected consumed WebAuthn challenge: %+v", consumed)
+	}
+	if _, err := repo.ConsumeWebAuthnChallenge(ctx, account.ID, session.ID, "example.org", auth.SecondFactorChallengeTypeWebAuthnRegistration, time.Now().UTC()); !errors.Is(err, auth.ErrNotFound) {
+		t.Fatalf("reused WebAuthn challenge error = %v, want ErrNotFound", err)
+	}
+
+	credentialID := []byte("credential-id")
+	created, updatedAccount, err := repo.CreateWebAuthnCredential(ctx, auth.CreateWebAuthnCredentialParams{
+		AccountID:         account.ID,
+		RPID:              "example.org",
+		CredentialID:      credentialID,
+		PublicKey:         []byte("credential-public-key"),
+		AttestationType:   "none",
+		AttestationFormat: "none",
+		Transports:        []string{"usb", "internal"},
+		AAGUID:            []byte("aaguid"),
+		SignCount:         4,
+		Attachment:        "cross-platform",
+		UserPresent:       true,
+		UserVerified:      true,
+		BackupEligible:    true,
+		BackupState:       false,
+		VerifiedAt:        time.Now().UTC(),
+	})
+	if err != nil {
+		t.Fatalf("create WebAuthn credential: %v", err)
+	}
+	if created.ID == "" || !bytes.Equal(created.CredentialID, credentialID) {
+		t.Fatalf("unexpected WebAuthn credential: %+v", created)
+	}
+	if updatedAccount.SecondFactorSetup != auth.SecondFactorSetupStateComplete {
+		t.Fatalf("account setup state = %q, want complete", updatedAccount.SecondFactorSetup)
+	}
+	hasCredential, err := repo.HasActiveWebAuthnCredential(ctx, account.ID)
+	if err != nil {
+		t.Fatalf("check active WebAuthn credential: %v", err)
+	}
+	if !hasCredential {
+		t.Fatal("active WebAuthn credential was not detected")
+	}
+	credentials, err := repo.ListWebAuthnCredentials(ctx, account.ID, "example.org")
+	if err != nil {
+		t.Fatalf("list WebAuthn credentials: %v", err)
+	}
+	if len(credentials) != 1 || !reflect.DeepEqual(credentials[0].Transports, []string{"usb", "internal"}) {
+		t.Fatalf("unexpected WebAuthn credentials: %+v", credentials)
+	}
+	if _, _, err := repo.CreateWebAuthnCredential(ctx, auth.CreateWebAuthnCredentialParams{
+		AccountID:         account.ID,
+		RPID:              "example.org",
+		CredentialID:      credentialID,
+		PublicKey:         []byte("credential-public-key"),
+		AttestationType:   "none",
+		AttestationFormat: "none",
+		VerifiedAt:        time.Now().UTC(),
+	}); !errors.Is(err, auth.ErrDuplicate) {
+		t.Fatalf("duplicate WebAuthn credential error = %v, want ErrDuplicate", err)
+	}
+
+	usedAt := time.Now().UTC()
+	used, err := repo.UpdateWebAuthnCredentialAfterAssertion(ctx, auth.UpdateWebAuthnCredentialParams{
+		ID:             created.ID,
+		AccountID:      account.ID,
+		RPID:           "example.org",
+		SignCount:      5,
+		CloneWarning:   true,
+		UserPresent:    true,
+		UserVerified:   true,
+		BackupEligible: true,
+		BackupState:    true,
+		VerifiedAt:     usedAt,
+	})
+	if err != nil {
+		t.Fatalf("update WebAuthn credential: %v", err)
+	}
+	if used.SignCount != 5 || !used.CloneWarning || !used.BackupState || used.LastUsedAt == nil {
+		t.Fatalf("unexpected used WebAuthn credential: %+v", used)
+	}
+
+	verifiedSession, err := repo.MarkSessionSecondFactorVerified(ctx, session.ID, created.ID, auth.SecondFactorTypeWebAuthn, time.Now().UTC())
+	if err != nil {
+		t.Fatalf("mark session WebAuthn verified: %v", err)
+	}
+	if verifiedSession.SecondFactorVerifiedAt == nil || verifiedSession.SecondFactorFactorID != created.ID || verifiedSession.SecondFactorMethod != auth.SecondFactorTypeWebAuthn {
+		t.Fatalf("unexpected verified WebAuthn session: %+v", verifiedSession)
+	}
+	lookedUp, err := repo.LookupSession(ctx, rawToken)
+	if err != nil {
+		t.Fatalf("lookup verified WebAuthn session: %v", err)
+	}
+	if lookedUp.SecondFactorVerifiedAt == nil || lookedUp.SecondFactorMethod != auth.SecondFactorTypeWebAuthn {
+		t.Fatalf("lookup lost WebAuthn session second-factor fields: %+v", lookedUp)
 	}
 }
 

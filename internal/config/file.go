@@ -29,6 +29,7 @@ type configFile struct {
 	AccountRegistration configFileAccountRegistration `toml:"account_registration"`
 	Email               configFileEmail               `toml:"email"`
 	WebAuth             configFileWebAuth             `toml:"web_auth"`
+	WebAuthn            configFileWebAuthn            `toml:"webauthn"`
 	Retention           configFileRetention           `toml:"retention"`
 	RateLimits          configFileRateLimits          `toml:"rate_limits"`
 	HTTP                configFileHTTP                `toml:"http"`
@@ -122,6 +123,15 @@ type configFileWebAuth struct {
 	SessionCookieSecure   *bool     `toml:"session_cookie_secure"`
 	SessionCookieSameSite *string   `toml:"session_cookie_samesite"`
 	CSRFHeaderName        *string   `toml:"csrf_header_name"`
+}
+
+type configFileWebAuthn struct {
+	Enabled          *bool     `toml:"enabled"`
+	RPID             *string   `toml:"rp_id"`
+	RPDisplayName    *string   `toml:"rp_display_name"`
+	AllowedOrigins   *[]string `toml:"allowed_origins"`
+	UserVerification *string   `toml:"user_verification"`
+	ChallengeTTL     *string   `toml:"challenge_ttl"`
 }
 
 type configFileRetention struct {
@@ -315,6 +325,13 @@ func (file configFile) toValues() (map[string]string, error) {
 	setBool(values, "SAFE_WEB_SESSION_COOKIE_SECURE", file.WebAuth.SessionCookieSecure)
 	setString(values, "SAFE_WEB_SESSION_COOKIE_SAMESITE", file.WebAuth.SessionCookieSameSite)
 	setString(values, "SAFE_WEB_CSRF_HEADER_NAME", file.WebAuth.CSRFHeaderName)
+
+	setBool(values, "SAFE_WEBAUTHN_ENABLED", file.WebAuthn.Enabled)
+	setString(values, "SAFE_WEBAUTHN_RP_ID", file.WebAuthn.RPID)
+	setString(values, "SAFE_WEBAUTHN_RP_DISPLAY_NAME", file.WebAuthn.RPDisplayName)
+	setStringList(values, "SAFE_WEBAUTHN_ALLOWED_ORIGINS", file.WebAuthn.AllowedOrigins)
+	setString(values, "SAFE_WEBAUTHN_USER_VERIFICATION", file.WebAuthn.UserVerification)
+	setString(values, "SAFE_WEBAUTHN_CHALLENGE_TTL", file.WebAuthn.ChallengeTTL)
 
 	setString(values, "SAFE_DEFAULT_INCIDENT_TOKEN_TTL", file.Retention.DefaultIncidentTokenTTL)
 	setString(values, "SAFE_CLOSED_INCIDENT_RETENTION", file.Retention.ClosedIncidentRetention)

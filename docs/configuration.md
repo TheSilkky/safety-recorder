@@ -128,6 +128,12 @@ values for the same field. Within TOML, set either the direct secret key or the
 | `[web_auth].session_cookie_secure` | `SAFE_WEB_SESSION_COOKIE_SECURE` |
 | `[web_auth].session_cookie_samesite` | `SAFE_WEB_SESSION_COOKIE_SAMESITE` |
 | `[web_auth].csrf_header_name` | `SAFE_WEB_CSRF_HEADER_NAME` |
+| `[webauthn].enabled` | `SAFE_WEBAUTHN_ENABLED` |
+| `[webauthn].rp_id` | `SAFE_WEBAUTHN_RP_ID` |
+| `[webauthn].rp_display_name` | `SAFE_WEBAUTHN_RP_DISPLAY_NAME` |
+| `[webauthn].allowed_origins` | `SAFE_WEBAUTHN_ALLOWED_ORIGINS` |
+| `[webauthn].user_verification` | `SAFE_WEBAUTHN_USER_VERIFICATION` |
+| `[webauthn].challenge_ttl` | `SAFE_WEBAUTHN_CHALLENGE_TTL` |
 | `[retention].default_incident_token_ttl` | `SAFE_DEFAULT_INCIDENT_TOKEN_TTL` |
 | `[retention].closed_incident_retention` | `SAFE_CLOSED_INCIDENT_RETENTION` |
 | `[retention].token_metadata_retention` | `SAFE_TOKEN_METADATA_RETENTION` |
@@ -227,6 +233,12 @@ values for the same field. Within TOML, set either the direct secret key or the
 | `SAFE_WEB_SESSION_COOKIE_SECURE` | `true` | Sets the browser session cookie `Secure` attribute. `false` is accepted only with local loopback web origins. |
 | `SAFE_WEB_SESSION_COOKIE_SAMESITE` | `lax` | Browser session cookie SameSite policy. Supported values are `lax` and `strict`. |
 | `SAFE_WEB_CSRF_HEADER_NAME` | `X-CSRF-Token` | Header required on unsafe browser-cookie-authenticated requests. |
+| `SAFE_WEBAUTHN_ENABLED` | `false` | Enables WebAuthn/FIDO2 passkey and roaming security-key second-factor setup and session verification. Startup fails closed when enabled without an RP ID and exact allowed origins. |
+| `SAFE_WEBAUTHN_RP_ID` | unset | WebAuthn relying-party ID. Required when WebAuthn is enabled. Must be a valid host-style RP ID, not a URL. |
+| `SAFE_WEBAUTHN_RP_DISPLAY_NAME` | `Proofline` | Display name sent in WebAuthn creation options. Must be non-empty. |
+| `SAFE_WEBAUTHN_ALLOWED_ORIGINS` | unset | Comma-separated exact WebAuthn origins. Required when WebAuthn is enabled. Wildcards are rejected; non-local origins must use HTTPS. |
+| `SAFE_WEBAUTHN_USER_VERIFICATION` | `required` | User-verification policy sent to WebAuthn ceremonies. Supported values are `required`, `preferred`, and `discouraged`; production deployments should keep `required` unless explicitly reviewed. |
+| `SAFE_WEBAUTHN_CHALLENGE_TTL` | `5m` | Lifetime for single-use WebAuthn registration and assertion challenges. Must be positive. |
 | `SAFE_DELETION_WORKER_INTERVAL` | `1m` | Background deletion maintenance interval. Set to `0` to disable the automatic scheduler while keeping deletion decisions durable for a later run. |
 | `SAFE_CLOSED_INCIDENT_RETENTION` | `0` | Retention window for closed incidents. `0` disables automatic retention deletion; positive Go durations delete closed incidents older than the window. |
 | `SAFE_TOKEN_METADATA_RETENTION` | `0` | Audit window for pruning expired or revoked viewer-token metadata. `0` disables token metadata pruning. |
@@ -237,7 +249,7 @@ values for the same field. Within TOML, set either the direct secret key or the
 | `SAFE_MAIN_API_RATE_LIMIT_WINDOW` | `1m` | Fixed-window duration for app-level main API limits. |
 | `SAFE_MAIN_API_RATE_LIMIT_AUTH` | `30` | Main API bearer login/logout and browser cookie login/logout/CSRF requests allowed per window per hashed socket peer. Set to `0` to disable this route-class limit. |
 | `SAFE_MAIN_API_RATE_LIMIT_AUTH_REGISTER` | `10` | Public registration requests allowed per window per hashed socket peer. Set to `0` to disable this route-class limit. |
-| `SAFE_MAIN_API_RATE_LIMIT_AUTH_EMAIL_VERIFY` | `30` | Registration email verification, email second-factor challenge/verify, and TOTP enroll/confirm/verify requests allowed per window per hashed socket peer. Set to `0` to disable this route-class limit. |
+| `SAFE_MAIN_API_RATE_LIMIT_AUTH_EMAIL_VERIFY` | `30` | Registration email verification, email second-factor challenge/verify, TOTP enroll/confirm/verify, and WebAuthn register/verify start/finish requests allowed per window per hashed socket peer. Set to `0` to disable this route-class limit. |
 | `SAFE_MAIN_API_RATE_LIMIT_BOOTSTRAP` | `5` | Compatibility setting for the legacy JSON bootstrap route class. The current first-admin bootstrap flow is the private `/admin/bootstrap` form. |
 | `SAFE_MAIN_API_RATE_LIMIT_ACCOUNT` | `120` | Account self-service, owner account/device recipient-key metadata, trusted-contact relationship metadata, and owner contact public-key metadata requests allowed per window per hashed socket peer. Set to `0` to disable this route-class limit. |
 | `SAFE_MAIN_API_RATE_LIMIT_INCIDENT_READ` | `300` | Incident metadata, sharing-grant metadata, and wrapped-key metadata read requests allowed per window per hashed socket peer. Set to `0` to disable this route-class limit. |
@@ -661,14 +673,32 @@ created with `second_factor_setup_state=setup_required`; existing migrated
 accounts default to `not_required` for preview compatibility. Password login
 and browser-cookie login can create a primary-authenticated session for an
 active setup-incomplete account, but main product routes fail closed until
-email challenge or TOTP second-factor setup verifies the account and marks the
-account `complete`. Email challenge uses the configured SMTP sender, stores
-only challenge-code hashes, and remains distinct from registration email
+email challenge, TOTP, or WebAuthn second-factor setup verifies the account and
+marks the account `complete`. Email challenge uses the configured SMTP sender,
+stores only challenge-code hashes, and remains distinct from registration email
 verification. TOTP setup uses fixed six-digit SHA-1 codes with 30-second time
 steps and one adjacent step of clock skew on either side; active TOTP factors
-require each new session to verify TOTP before product-route access. There is
-no `SAFE_*` setting in this foundation to choose WebAuthn, passkeys, recovery
-codes, or lost-factor behavior.
+require each new session to verify TOTP before product-route access. WebAuthn
+is disabled by default and must be explicitly configured with a valid RP ID,
+exact allowed origins, and reviewed user-verification policy before passkey or
+roaming security-key setup routes become available. WebAuthn origins are exact
+matches, wildcards are rejected, non-local origins must use HTTPS, and local
+plain-HTTP origins are accepted only for explicit localhost or loopback
+development. WebAuthn stores public credential material, sign counters,
+transports, attachment and backup flags, plus single-use expiring challenge
+session data. It does not add recovery codes or lost-factor behavior.
+
+Example WebAuthn configuration:
+
+```toml
+[webauthn]
+enabled = true
+rp_id = "app.example.invalid"
+rp_display_name = "Proofline"
+allowed_origins = ["https://app.example.invalid"]
+user_verification = "required"
+challenge_ttl = "5m"
+```
 
 `SAFE_ACCOUNT_REGISTRATION_MODE=paid` is accepted only as a future
 hosted-service placeholder. `POST /v1/auth/register` returns

@@ -27,6 +27,7 @@ const (
 const (
 	SecondFactorTypeEmailChallenge = "email_challenge"
 	SecondFactorTypeTOTP           = "totp"
+	SecondFactorTypeWebAuthn       = "webauthn"
 )
 
 const (
@@ -35,7 +36,9 @@ const (
 )
 
 const (
-	SecondFactorChallengeTypeEmailSetup = "email_setup"
+	SecondFactorChallengeTypeEmailSetup           = "email_setup"
+	SecondFactorChallengeTypeWebAuthnRegistration = "webauthn_registration"
+	SecondFactorChallengeTypeWebAuthnAssertion    = "webauthn_assertion"
 )
 
 const VerificationPurposeEmail = "email_verification"
@@ -139,6 +142,90 @@ type CreateTOTPSecondFactorEnrollmentParams struct {
 	Algorithm     string
 }
 
+type WebAuthnUser struct {
+	AccountID  string
+	RPID       string
+	UserHandle []byte
+	CreatedAt  time.Time
+	UpdatedAt  time.Time
+}
+
+type WebAuthnCredential struct {
+	ID                string
+	AccountID         string
+	RPID              string
+	CredentialID      []byte
+	PublicKey         []byte
+	AttestationType   string
+	AttestationFormat string
+	Transports        []string
+	AAGUID            []byte
+	SignCount         uint32
+	CloneWarning      bool
+	Attachment        string
+	UserPresent       bool
+	UserVerified      bool
+	BackupEligible    bool
+	BackupState       bool
+	CreatedAt         time.Time
+	UpdatedAt         time.Time
+	VerifiedAt        *time.Time
+	LastUsedAt        *time.Time
+}
+
+type WebAuthnChallenge struct {
+	ID              string
+	AccountID       string
+	SessionID       string
+	RPID            string
+	ChallengeType   string
+	SessionDataJSON []byte
+	CreatedAt       time.Time
+	ExpiresAt       time.Time
+	ConsumedAt      *time.Time
+}
+
+type CreateWebAuthnChallengeParams struct {
+	AccountID       string
+	SessionID       string
+	RPID            string
+	ChallengeType   string
+	SessionDataJSON []byte
+	ExpiresAt       time.Time
+}
+
+type CreateWebAuthnCredentialParams struct {
+	AccountID         string
+	RPID              string
+	CredentialID      []byte
+	PublicKey         []byte
+	AttestationType   string
+	AttestationFormat string
+	Transports        []string
+	AAGUID            []byte
+	SignCount         uint32
+	CloneWarning      bool
+	Attachment        string
+	UserPresent       bool
+	UserVerified      bool
+	BackupEligible    bool
+	BackupState       bool
+	VerifiedAt        time.Time
+}
+
+type UpdateWebAuthnCredentialParams struct {
+	ID             string
+	AccountID      string
+	RPID           string
+	SignCount      uint32
+	CloneWarning   bool
+	UserPresent    bool
+	UserVerified   bool
+	BackupEligible bool
+	BackupState    bool
+	VerifiedAt     time.Time
+}
+
 func ValidRole(role string) bool {
 	return role == RoleUser || role == RoleAdmin
 }
@@ -179,7 +266,7 @@ func ValidSecondFactorState(state string) bool {
 
 func ValidSecondFactorMethod(method string) bool {
 	switch method {
-	case SecondFactorTypeTOTP:
+	case SecondFactorTypeTOTP, SecondFactorTypeWebAuthn:
 		return true
 	default:
 		return false

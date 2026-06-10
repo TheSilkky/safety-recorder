@@ -101,6 +101,10 @@ Allowed when `SAFE_WEB_AUTH_ENABLED=true` and the origin is explicitly listed in
 - `POST /v1/account/second-factor/totp/enroll`
 - `POST /v1/account/second-factor/totp/confirm`
 - `POST /v1/account/second-factor/totp/verify`
+- `POST /v1/account/second-factor/webauthn/register/start`
+- `POST /v1/account/second-factor/webauthn/register/finish`
+- `POST /v1/account/second-factor/webauthn/verify/start`
+- `POST /v1/account/second-factor/webauthn/verify/finish`
 - `POST /v1/account/password`
 
 The web client must call credentialed requests with:
@@ -113,11 +117,14 @@ Unsafe cookie-authenticated requests must include the CSRF header returned by
 `GET /v1/auth/web/csrf`. Bearer-authenticated API clients keep bearer behavior
 and do not require CSRF. Requests that send both bearer and browser-cookie
 credentials are rejected by the server and should be treated as a client bug.
-Email and TOTP second-factor setup routes are available to setup-incomplete
-sessions. Active TOTP accounts can use only the TOTP verify route before
-product-route access. Raw email challenge codes are delivered only by email.
-TOTP seeds and `otpauth_url` values are returned only by enrollment. Raw
-challenge codes, TOTP codes, TOTP seeds, and `otpauth_url` values must not be
+Email, TOTP, and WebAuthn second-factor setup routes are available to
+setup-incomplete sessions. Active TOTP and WebAuthn accounts can use only the
+matching verification routes before product-route access. Raw email challenge
+codes are delivered only by email. TOTP seeds and `otpauth_url` values are
+returned only by enrollment. WebAuthn challenge values, client data JSON, and
+credential bytes must not be logged or persisted outside the browser ceremony
+and server challenge/credential stores. Raw challenge codes, TOTP codes, TOTP
+seeds, `otpauth_url` values, and WebAuthn ceremony material must not be
 persisted in browser storage, logs, analytics, URLs, or support artifacts.
 
 ### Registration And Email Verification
@@ -322,8 +329,9 @@ They must not include:
 - full GPS/location context, speed, heading, route history, notes, or user
   safety narratives
 - SMTP credentials, email verification token values, second-factor challenge
-  code values, TOTP code values, TOTP seeds, `otpauth_url` values, recipient
-  email addresses, or raw provider errors that quote private endpoints
+  code values, TOTP code values, TOTP seeds, `otpauth_url` values, WebAuthn
+  challenge values, client data JSON, credential bytes, recipient email
+  addresses, or raw provider errors that quote private endpoints
 
 Use route classes, safe counts, controlled status fields, and low-cardinality
 error categories instead.

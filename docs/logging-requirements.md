@@ -15,10 +15,11 @@ Proofline Server logs must be structured, low-cardinality, and safe by default.
 Logs should identify the component, operation, stage, route class, and stable
 error category where that information is useful and safe. Logs must not include
 raw request data, uploaded bytes, plaintext, raw keys, raw tokens,
-Authorization headers, TOTP codes, TOTP seeds, `otpauth_url` values, object
-keys, stored paths, private filesystem paths, database DSNs, SMTP credentials,
-secret file paths, secret file contents, wrapped-key ciphertext, private
-deployment details, or user safety data.
+Authorization headers, TOTP codes, TOTP seeds, `otpauth_url` values, WebAuthn
+challenge values, client data JSON, credential bytes, object keys, stored
+paths, private filesystem paths, database DSNs, SMTP credentials, secret file
+paths, secret file contents, wrapped-key ciphertext, private deployment
+details, or user safety data.
 
 Raw `err.Error()` is forbidden by default in startup, request, upload, storage,
 token, key, auth, object-store, email, and user-safety paths. A log may include
@@ -32,7 +33,8 @@ code proves the raw error type cannot contain sensitive data.
 - Keep log field values low-cardinality and safe for metrics backends.
 - Preserve the current redaction posture for tokens, paths, object keys,
   request bodies, uploaded bytes, plaintext, raw keys, TOTP credential
-  material, wrapped-key ciphertext, and private deployment details.
+  material, WebAuthn ceremony material, wrapped-key ciphertext, and private
+  deployment details.
 - Give future code reviews a concrete checklist for logging changes.
 - Require tests when code changes alter logging behavior.
 
@@ -40,8 +42,8 @@ code proves the raw error type cannot contain sensitive data.
 
 - No third-party logging dependency.
 - No broad request-body logging.
-- No uploaded byte, plaintext, media, key, token, TOTP credential material, or
-  wrapped-key logging.
+- No uploaded byte, plaintext, media, key, token, TOTP credential material,
+  WebAuthn ceremony material, or wrapped-key logging.
 - No path, object-key, private endpoint, DSN, or secret-file-path logging.
 - No public production-readiness claim.
 - No observability backend, metrics system, tracing system, log shipper, or
@@ -166,6 +168,8 @@ Request logs must not include:
 - cookies or session identifiers
 - raw viewer, incident, session, verification, CSRF, or idempotency tokens
 - TOTP codes, TOTP seeds, or `otpauth_url` values
+- WebAuthn challenge values, client data JSON, credential bytes, or request
+  bodies from WebAuthn ceremony routes
 - usernames, emails, notes, original filenames, location values, or user safety
   narratives
 - full GPS, speed, heading, route history, or location freshness values
@@ -244,6 +248,8 @@ Auth and token logs:
 - never log raw session tokens, viewer tokens, incident tokens, verification
   tokens, CSRF tokens, idempotency keys, bearer tokens, or cookies
 - never log TOTP codes, TOTP seeds, or `otpauth_url` values
+- never log WebAuthn challenge values, client data JSON, credential bytes, or
+  raw WebAuthn ceremony request bodies
 - do not log password input, password hashes, reset material, verification
   credentials, or browser fragment secrets
 - use collapsed categories for invalid, expired, or revoked public-link tokens
@@ -362,6 +368,9 @@ Never log:
 - TOTP codes
 - TOTP seeds
 - `otpauth_url` values
+- WebAuthn challenge values
+- WebAuthn client data JSON
+- WebAuthn credential bytes
 - Authorization headers
 - cookies
 - request bodies

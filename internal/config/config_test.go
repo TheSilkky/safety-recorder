@@ -326,6 +326,90 @@ func TestLoadWebAuthRejectsUnsafeConfig(t *testing.T) {
 	}
 }
 
+func TestLoadDefaultWebAuthnConfig(t *testing.T) {
+	cfg := loadConfigForTest(t, nil)
+
+	if cfg.WebAuthn.Enabled {
+		t.Fatal("WebAuthn should default to disabled")
+	}
+	if cfg.WebAuthn.RPID != "" {
+		t.Fatalf("WebAuthn RP ID = %q, want empty", cfg.WebAuthn.RPID)
+	}
+	if cfg.WebAuthn.RPDisplayName != "Proofline" {
+		t.Fatalf("WebAuthn RP display name = %q, want Proofline", cfg.WebAuthn.RPDisplayName)
+	}
+	if len(cfg.WebAuthn.AllowedOrigins) != 0 {
+		t.Fatalf("WebAuthn origins = %v, want empty", cfg.WebAuthn.AllowedOrigins)
+	}
+	if cfg.WebAuthn.UserVerification != "required" {
+		t.Fatalf("WebAuthn user verification = %q, want required", cfg.WebAuthn.UserVerification)
+	}
+	if cfg.WebAuthn.ChallengeTTL != 5*time.Minute {
+		t.Fatalf("WebAuthn challenge ttl = %s, want 5m", cfg.WebAuthn.ChallengeTTL)
+	}
+}
+
+func TestLoadWebAuthnConfigFromEnv(t *testing.T) {
+	cfg := loadConfigForTest(t, map[string]string{
+		"SAFE_WEBAUTHN_ENABLED":           "true",
+		"SAFE_WEBAUTHN_RP_ID":             "app.example.invalid",
+		"SAFE_WEBAUTHN_RP_DISPLAY_NAME":   "Proofline Test",
+		"SAFE_WEBAUTHN_ALLOWED_ORIGINS":   "https://app.example.invalid, http://127.0.0.1:5173/",
+		"SAFE_WEBAUTHN_USER_VERIFICATION": "preferred",
+		"SAFE_WEBAUTHN_CHALLENGE_TTL":     "2m",
+	})
+
+	if !cfg.WebAuthn.Enabled {
+		t.Fatal("WebAuthn was not enabled")
+	}
+	if cfg.WebAuthn.RPID != "app.example.invalid" || cfg.WebAuthn.RPDisplayName != "Proofline Test" {
+		t.Fatalf("WebAuthn RP = id %q display %q", cfg.WebAuthn.RPID, cfg.WebAuthn.RPDisplayName)
+	}
+	wantOrigins := []string{"https://app.example.invalid", "http://127.0.0.1:5173"}
+	if !reflect.DeepEqual(cfg.WebAuthn.AllowedOrigins, wantOrigins) {
+		t.Fatalf("WebAuthn origins = %v, want %v", cfg.WebAuthn.AllowedOrigins, wantOrigins)
+	}
+	if cfg.WebAuthn.UserVerification != "preferred" || cfg.WebAuthn.ChallengeTTL != 2*time.Minute {
+		t.Fatalf("WebAuthn policy = uv %q ttl %s", cfg.WebAuthn.UserVerification, cfg.WebAuthn.ChallengeTTL)
+	}
+}
+
+func TestLoadWebAuthnRejectsUnsafeConfig(t *testing.T) {
+	tests := map[string]map[string]string{
+		"enabled missing rp": {
+			"SAFE_WEBAUTHN_ENABLED":         "true",
+			"SAFE_WEBAUTHN_ALLOWED_ORIGINS": "https://app.example.invalid",
+		},
+		"enabled missing origins": {
+			"SAFE_WEBAUTHN_ENABLED": "true",
+			"SAFE_WEBAUTHN_RP_ID":   "app.example.invalid",
+		},
+		"invalid rp id": {
+			"SAFE_WEBAUTHN_RP_ID": "https://app.example.invalid",
+		},
+		"wildcard origin": {
+			"SAFE_WEBAUTHN_ALLOWED_ORIGINS": "https://*.example.invalid",
+		},
+		"insecure public origin": {
+			"SAFE_WEBAUTHN_ALLOWED_ORIGINS": "http://app.example.invalid",
+		},
+		"invalid user verification": {
+			"SAFE_WEBAUTHN_USER_VERIFICATION": "always",
+		},
+		"invalid challenge ttl": {
+			"SAFE_WEBAUTHN_CHALLENGE_TTL": "0",
+		},
+	}
+
+	for name, env := range tests {
+		t.Run(name, func(t *testing.T) {
+			if _, err := loadConfigForTestErr(t, env); err == nil {
+				t.Fatal("expected WebAuthn config error")
+			}
+		})
+	}
+}
+
 func TestLoadDefaultDeletionRetentionConfig(t *testing.T) {
 	cfg := loadConfigForTest(t, nil)
 
@@ -519,6 +603,14 @@ temp_upload_staging_quota_bytes = "512MB"
 session_ttl = "6h"
 second_factor_email_challenge_ttl = "7m"
 
+[webauthn]
+enabled = true
+rp_id = "app.example.invalid"
+rp_display_name = "Proofline Preview"
+allowed_origins = ["https://app.example.invalid"]
+user_verification = "required"
+challenge_ttl = "4m"
+
 [retention]
 default_incident_token_ttl = "12h"
 
@@ -547,6 +639,12 @@ read_timeout = "45s"
 	}
 	if cfg.SessionTTL != 6*time.Hour || cfg.DefaultIncidentTokenTTL != 12*time.Hour || cfg.SecondFactorEmailChallengeTTL != 7*time.Minute {
 		t.Fatalf("durations = session %s token %s second factor %s", cfg.SessionTTL, cfg.DefaultIncidentTokenTTL, cfg.SecondFactorEmailChallengeTTL)
+	}
+	if !cfg.WebAuthn.Enabled || cfg.WebAuthn.RPID != "app.example.invalid" || cfg.WebAuthn.RPDisplayName != "Proofline Preview" {
+		t.Fatalf("WebAuthn TOML config = %+v", cfg.WebAuthn)
+	}
+	if !reflect.DeepEqual(cfg.WebAuthn.AllowedOrigins, []string{"https://app.example.invalid"}) || cfg.WebAuthn.ChallengeTTL != 4*time.Minute {
+		t.Fatalf("WebAuthn TOML policy = %+v", cfg.WebAuthn)
 	}
 	if cfg.MainAPIRateLimit.AuthRegisterLimit != 14 {
 		t.Fatalf("auth register limit = %d, want 14", cfg.MainAPIRateLimit.AuthRegisterLimit)
@@ -1893,6 +1991,12 @@ func loadConfigWithOptionsForTestErr(t *testing.T, opts LoadOptions, env map[str
 		"SAFE_WEB_SESSION_COOKIE_SECURE",
 		"SAFE_WEB_SESSION_COOKIE_SAMESITE",
 		"SAFE_WEB_CSRF_HEADER_NAME",
+		"SAFE_WEBAUTHN_ENABLED",
+		"SAFE_WEBAUTHN_RP_ID",
+		"SAFE_WEBAUTHN_RP_DISPLAY_NAME",
+		"SAFE_WEBAUTHN_ALLOWED_ORIGINS",
+		"SAFE_WEBAUTHN_USER_VERIFICATION",
+		"SAFE_WEBAUTHN_CHALLENGE_TTL",
 		"SAFE_MAIN_READ_HEADER_TIMEOUT",
 		"SAFE_MAIN_READ_TIMEOUT",
 		"SAFE_MAIN_WRITE_TIMEOUT",
