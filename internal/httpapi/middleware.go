@@ -175,6 +175,9 @@ func redactedAdminAPIPath(method string, segments []string) string {
 		if len(segments) == 5 && segments[4] == "password" {
 			return method + " /v1/admin/accounts/{account_id}/password"
 		}
+		if len(segments) == 7 && segments[4] == "second-factor" && segments[5] == "recovery" && segments[6] == "reset" {
+			return method + " /v1/admin/accounts/{account_id}/second-factor/recovery/reset"
+		}
 		if len(segments) == 6 && segments[4] == "sessions" && segments[5] == "revoke" {
 			return method + " /v1/admin/accounts/{account_id}/sessions/revoke"
 		}

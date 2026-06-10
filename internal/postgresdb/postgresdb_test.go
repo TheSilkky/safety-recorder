@@ -50,6 +50,7 @@ func TestPostgresMigrateCreatesSchemaAndRejectsChecksumMismatch(t *testing.T) {
 	assertPostgresTable(t, ctx, conn, "account_webauthn_users")
 	assertPostgresTable(t, ctx, conn, "account_webauthn_credentials")
 	assertPostgresTable(t, ctx, conn, "account_webauthn_challenges")
+	assertPostgresTable(t, ctx, conn, "account_recovery_events")
 
 	if err := Migrate(ctx, conn); err != nil {
 		t.Fatalf("second Migrate: %v", err)

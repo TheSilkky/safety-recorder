@@ -168,9 +168,13 @@ second-factor setup verifies a single-use challenge code, TOTP setup verifies a
 TOTP code, or WebAuthn setup verifies a configured RP/origin ceremony and marks
 the account `complete`; existing migrated accounts default to `not_required`
 for preview compatibility. WebAuthn remains disabled until `[webauthn]` is
-explicitly configured with an RP ID and exact allowed origins. Do not claim a
-deployment has complete required 2FA until the selected factor set and an
-approved recovery policy have been implemented and reviewed.
+explicitly configured with an RP ID and exact allowed origins. Private-admin
+assisted second-factor reset is available for lost-factor recovery and must
+stay on the private-admin listener; it removes enrolled factors, marks setup
+required, revokes target sessions, and records controlled audit metadata
+without changing key custody or decrypting evidence. Do not claim a deployment
+has complete required 2FA until the selected factor set, recovery operations,
+and deployment-specific admin procedures have been reviewed.
 
 TOML open-registration shape:
 

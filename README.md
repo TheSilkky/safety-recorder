@@ -8,7 +8,7 @@
 [![Security Policy](https://img.shields.io/badge/security-policy-blue.svg)](SECURITY.md)
 [![GHCR](https://img.shields.io/static/v1?label=GHCR&message=ghcr.io%2Fopen-proofline%2Fserver&color=blue&logo=github)](https://github.com/orgs/open-proofline/packages/container/package/server)
 
-Proofline Server is the experimental Go server backend for encrypted incident capture. It receives already-encrypted recording chunks through authenticated main `/v1` routes, stores metadata in SQLite by default or optional PostgreSQL, keeps encrypted blobs on local disk by default or in optional S3-compatible object storage, enforces default local staging and account-scoped committed blob quotas, serves a private admin dashboard under `/admin`, uses optional Valkey/Redis-compatible coordination for startup checks, route-class counters, and short-lived complete-upload leases when explicitly configured, supports optional browser cookie sessions for a future web client, supports disabled-by-default configurable account registration with SMTP-backed email verification for open self-hosted registration, supports email challenge, TOTP, and disabled-by-default WebAuthn/FIDO2 passkey or roaming security-key second-factor setup for account gating, and exposes a token-scoped read-only viewer for incident review.
+Proofline Server is the experimental Go server backend for encrypted incident capture. It receives already-encrypted recording chunks through authenticated main `/v1` routes, stores metadata in SQLite by default or optional PostgreSQL, keeps encrypted blobs on local disk by default or in optional S3-compatible object storage, enforces default local staging and account-scoped committed blob quotas, serves a private admin dashboard under `/admin`, uses optional Valkey/Redis-compatible coordination for startup checks, route-class counters, and short-lived complete-upload leases when explicitly configured, supports optional browser cookie sessions for a future web client, supports disabled-by-default configurable account registration with SMTP-backed email verification for open self-hosted registration, supports email challenge, TOTP, and disabled-by-default WebAuthn/FIDO2 passkey or roaming security-key second-factor setup for account gating, supports private-admin assisted second-factor reset for lost-factor recovery, and exposes a token-scoped read-only viewer for incident review.
 
 > Repository role: this repository is the server/backend component only. In the multi-repo layout it is `open-proofline/server`, not the full Proofline product suite.
 >
@@ -115,7 +115,10 @@ escrow.
   disabled until an RP ID and exact allowed origins are configured, stores
   public credential material and single-use expiring challenge sessions, and can
   verify active passkey or roaming security-key factors for bearer and browser
-  sessions. Recovery flows remain future work.
+  sessions. Private-admin assisted second-factor recovery can reset enrolled
+  email, TOTP, and WebAuthn factors with controlled reason codes, audit
+  metadata, setup-required state, and target-session revocation. It is not
+  self-service recovery and does not change key custody or decrypt evidence.
 - Opaque server-side sessions with expiry and revocation
 - Optional main `/v1` browser cookie-session login/logout, session recovery,
   CSRF protection for cookie-authenticated unsafe requests, and credentialed
@@ -189,7 +192,7 @@ escrow.
 - No implemented live or partial stream chunk access before stream completion
 - No backend/browser decryption, raw key handling, server escrow, break-glass
   key access, or playable media export
-- No lost-factor recovery, password recovery, payment processing,
+- No self-service lost-factor recovery, password recovery, payment processing,
   subscriptions, checkout sessions, billing webhooks, OAuth, or JWT
 - No push notifications, SMS, or Messenger integration
 - No public account portal or public admin dashboard

@@ -103,6 +103,15 @@ func TestSafeLogPathRedactsMainAPIPathsWithoutMuxPattern(t *testing.T) {
 			},
 		},
 		{
+			name:   "admin account recovery reset",
+			method: http.MethodPost,
+			target: "/v1/admin/accounts/acct_secret/second-factor/recovery/reset",
+			want:   "POST /v1/admin/accounts/{account_id}/second-factor/recovery/reset",
+			disallowed: []string{
+				"acct_secret",
+			},
+		},
+		{
 			name:   "admin incident deletion",
 			method: http.MethodGet,
 			target: "/v1/admin/incidents/inc_secret/deletion",

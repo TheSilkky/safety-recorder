@@ -191,9 +191,18 @@ product routes return:
 }
 ```
 
-Recovery and lost-factor flows are not implemented. WebAuthn routes remain
-unavailable with `503 webauthn_unavailable` until `[webauthn]` is explicitly
-enabled with an RP ID and exact allowed origins.
+Lost-factor recovery is private-admin assisted only. There is no self-service
+recovery code, password recovery, email reset link, public recovery portal, or
+factor bypass. A private-admin reset can remove enrolled email, TOTP, and
+WebAuthn factors for a local account, mark second-factor setup required again,
+revoke that account's active sessions, and write controlled audit metadata.
+It does not alter account/device recipient keys, trusted-contact keys,
+sharing grants, wrapped CEK/media-key records, incidents, blobs, key custody,
+or decryption behavior. Lost account/device recipient keys remain managed by
+the existing account recipient-key lost/revoke/replace routes after the account
+is recovered. WebAuthn routes remain unavailable with
+`503 webauthn_unavailable` until `[webauthn]` is explicitly enabled with an RP
+ID and exact allowed origins.
 
 ### `POST /v1/account/second-factor/email/challenge`
 
@@ -776,13 +785,37 @@ an admin account session:
 - `GET /v1/admin/accounts`
 - `POST /v1/admin/accounts`
 - `POST /v1/admin/accounts/{account_id}/password`
+- `POST /v1/admin/accounts/{account_id}/second-factor/recovery/reset`
 - `POST /v1/admin/accounts/{account_id}/sessions/revoke`
 - `GET /v1/admin/incidents/unowned`
 - `GET /v1/admin/incidents/{incident_id}/deletion`
 - `POST /v1/admin/incidents/{incident_id}/deletion`
 - `POST /v1/admin/incidents/{incident_id}/reassignment`
 
-`POST /v1/admin/accounts` accepts `username`, `password`, and `role`, where `role` is `user` or `admin`. Admin password reset and explicit session revocation revoke all sessions for the selected account.
+`POST /v1/admin/accounts` accepts `username`, `password`, and `role`, where
+`role` is `user` or `admin`. Admin password reset and explicit session
+revocation revoke all sessions for the selected account.
+
+`POST /v1/admin/accounts/{account_id}/second-factor/recovery/reset` accepts a
+controlled `reason` value:
+
+- `lost_email_access`
+- `lost_totp_device`
+- `lost_webauthn_credential`
+- `lost_all_factors`
+- `admin_created_setup`
+- `operator_review`
+
+The route removes enrolled email, TOTP, and WebAuthn factors and pending
+second-factor challenges for the selected account, sets
+`second_factor_setup_state` back to `setup_required`, revokes active sessions
+for that account, and records an `account_recovery_events` audit row with
+controlled counts. It does not accept free-text notes and does not return or
+log raw challenge codes, TOTP seeds, WebAuthn challenge material, session
+tokens, request bodies, key material, wrapped-key ciphertext, stored paths, or
+private deployment details. It does not change password hashes, account/device
+recipient keys, contact keys, sharing grants, wrapped-key records, incident
+metadata, encrypted blobs, key custody, or decryption behavior.
 
 These routes share the private-admin listener boundary with the `/admin`
 dashboard but keep JSON bearer or browser-cookie session authentication and

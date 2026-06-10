@@ -43,6 +43,17 @@ const (
 
 const VerificationPurposeEmail = "email_verification"
 
+const AccountRecoveryActionSecondFactorReset = "second_factor_recovery_reset"
+
+const (
+	AccountRecoveryReasonLostEmailAccess        = "lost_email_access"
+	AccountRecoveryReasonLostTOTPDevice         = "lost_totp_device"
+	AccountRecoveryReasonLostWebAuthnCredential = "lost_webauthn_credential"
+	AccountRecoveryReasonLostAllFactors         = "lost_all_factors"
+	AccountRecoveryReasonAdminCreatedSetup      = "admin_created_setup"
+	AccountRecoveryReasonOperatorReview         = "operator_review"
+)
+
 var (
 	ErrDuplicate = errors.New("duplicate auth row")
 	ErrNotFound  = errors.New("auth row not found")
@@ -226,6 +237,27 @@ type UpdateWebAuthnCredentialParams struct {
 	VerifiedAt     time.Time
 }
 
+type AccountRecoveryEvent struct {
+	ID                             string
+	AccountID                      string
+	AdminAccountID                 string
+	Action                         string
+	Reason                         string
+	PreviousSecondFactorSetupState string
+	NewSecondFactorSetupState      string
+	SessionsRevoked                int64
+	EmailFactorsRemoved            int64
+	TOTPFactorsRemoved             int64
+	WebAuthnCredentialsRemoved     int64
+	CreatedAt                      time.Time
+}
+
+type ResetAccountSecondFactorRecoveryParams struct {
+	AccountID      string
+	AdminAccountID string
+	Reason         string
+}
+
 func ValidRole(role string) bool {
 	return role == RoleUser || role == RoleAdmin
 }
@@ -267,6 +299,20 @@ func ValidSecondFactorState(state string) bool {
 func ValidSecondFactorMethod(method string) bool {
 	switch method {
 	case SecondFactorTypeTOTP, SecondFactorTypeWebAuthn:
+		return true
+	default:
+		return false
+	}
+}
+
+func ValidAccountRecoveryReason(reason string) bool {
+	switch reason {
+	case AccountRecoveryReasonLostEmailAccess,
+		AccountRecoveryReasonLostTOTPDevice,
+		AccountRecoveryReasonLostWebAuthnCredential,
+		AccountRecoveryReasonLostAllFactors,
+		AccountRecoveryReasonAdminCreatedSetup,
+		AccountRecoveryReasonOperatorReview:
 		return true
 	default:
 		return false
