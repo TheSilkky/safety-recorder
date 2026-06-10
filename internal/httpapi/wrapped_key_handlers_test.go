@@ -2,12 +2,14 @@ package httpapi_test
 
 import (
 	"bytes"
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"net/http"
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/open-proofline/server/internal/auth"
 	"github.com/open-proofline/server/internal/envelope/pq"
@@ -162,6 +164,171 @@ func TestWrappedKeyRoutesRejectSecretMetadataKeys(t *testing.T) {
 	}
 }
 
+func TestTrustedContactWrappedKeyRoutesAreRelationshipAndGrantScoped(t *testing.T) {
+	app := newTestApp(t)
+	fixture := newTrustedContactWrappedKeyRouteFixture(t, app, "active")
+
+	assertTrustedContactWrappedKeyVisible(t, app, fixture.recipientToken, fixture.incidentID, fixture.wrappedKey)
+	assertTrustedContactWrappedKeyHidden(t, app, fixture.otherToken, fixture.incidentID, fixture.wrappedKey.ID)
+	assertTrustedContactWrappedKeyHidden(t, app, fixture.ownerToken, fixture.incidentID, fixture.wrappedKey.ID)
+
+	response, body := request(t, app.publicHandler, http.MethodGet, "/v1/trusted-contact/incidents/"+fixture.incidentID+"/wrapped-keys", "", nil)
+	response.Body.Close()
+	if response.StatusCode != http.StatusNotFound {
+		t.Fatalf("expected public trusted-contact route status 404, got %d: %s", response.StatusCode, body)
+	}
+
+	viewerToken := createIncidentTokenWithAuth(t, app, fixture.ownerToken, fixture.incidentID, "viewer")
+	response, body = request(t, app.publicHandler, http.MethodGet, "/i/"+viewerToken.Token+"/data", "", nil)
+	response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("expected public viewer data status 200, got %d: %s", response.StatusCode, body)
+	}
+	for _, disallowed := range []string{fixture.wrappedKey.ID, fixture.wrappedKey.WrappedKeyCiphertext, "wrapped_key_ciphertext", "public_wrapping_metadata"} {
+		if strings.Contains(string(body), disallowed) {
+			t.Fatalf("public viewer data exposed trusted-contact wrapped-key field %q: %s", disallowed, body)
+		}
+	}
+}
+
+func TestTrustedContactWrappedKeyRoutesFilterInactiveAuthorization(t *testing.T) {
+	cases := []struct {
+		name   string
+		mutate func(t *testing.T, app *testApp, fixture trustedContactWrappedKeyRouteFixture)
+	}{
+		{
+			name: "revoked relationship",
+			mutate: func(t *testing.T, app *testApp, fixture trustedContactWrappedKeyRouteFixture) {
+				t.Helper()
+				response, body := requestWithAuth(t, app.privateHandler, http.MethodPost, "/v1/trusted-contact-relationships/"+fixture.relationship.ID+"/revoke", "application/json", bytes.NewBufferString(`{}`), fixture.ownerToken)
+				response.Body.Close()
+				if response.StatusCode != http.StatusOK {
+					t.Fatalf("expected revoke relationship status 200, got %d: %s", response.StatusCode, body)
+				}
+			},
+		},
+		{
+			name: "revoked grant",
+			mutate: func(t *testing.T, app *testApp, fixture trustedContactWrappedKeyRouteFixture) {
+				t.Helper()
+				response, body := requestWithAuth(t, app.privateHandler, http.MethodPost, "/v1/sharing-grants/"+fixture.grant.ID+"/revoke", "application/json", bytes.NewBufferString(`{}`), fixture.ownerToken)
+				response.Body.Close()
+				if response.StatusCode != http.StatusOK {
+					t.Fatalf("expected revoke sharing grant status 200, got %d: %s", response.StatusCode, body)
+				}
+			},
+		},
+		{
+			name: "expired grant",
+			mutate: func(t *testing.T, app *testApp, fixture trustedContactWrappedKeyRouteFixture) {
+				t.Helper()
+				_, err := app.db.ExecContext(context.Background(), `
+					UPDATE sharing_grants
+					SET expires_at = ?
+					WHERE id = ?`,
+					time.Now().UTC().Add(-time.Hour).Format(time.RFC3339Nano),
+					fixture.grant.ID,
+				)
+				if err != nil {
+					t.Fatalf("expire sharing grant: %v", err)
+				}
+			},
+		},
+		{
+			name: "revoked contact key",
+			mutate: func(t *testing.T, app *testApp, fixture trustedContactWrappedKeyRouteFixture) {
+				t.Helper()
+				response, body := requestWithAuth(t, app.privateHandler, http.MethodPost, "/v1/contact-public-keys/"+fixture.contactKey.ID+"/revoke", "application/json", bytes.NewBufferString(`{}`), fixture.ownerToken)
+				response.Body.Close()
+				if response.StatusCode != http.StatusOK {
+					t.Fatalf("expected revoke contact key status 200, got %d: %s", response.StatusCode, body)
+				}
+			},
+		},
+		{
+			name: "lost contact key",
+			mutate: func(t *testing.T, app *testApp, fixture trustedContactWrappedKeyRouteFixture) {
+				t.Helper()
+				response, body := requestWithAuth(t, app.privateHandler, http.MethodPost, "/v1/contact-public-keys/"+fixture.contactKey.ID+"/lost", "application/json", bytes.NewBufferString(`{}`), fixture.ownerToken)
+				response.Body.Close()
+				if response.StatusCode != http.StatusOK {
+					t.Fatalf("expected lost contact key status 200, got %d: %s", response.StatusCode, body)
+				}
+			},
+		},
+		{
+			name: "replaced contact key",
+			mutate: func(t *testing.T, app *testApp, fixture trustedContactWrappedKeyRouteFixture) {
+				t.Helper()
+				response, body := requestWithAuth(t, app.privateHandler, http.MethodPost, "/v1/contact-public-keys/"+fixture.contactKey.ID+"/replace", "application/json", bytes.NewBufferString(`{
+					"display_label":"Replacement contact key",
+					"wrapping_algorithm":"`+pq.WrappingAlgorithm+`",
+					"public_key":"pq-test-replaced-trusted-contact-public-key-`+fixture.publicKeySuffix+`",
+					"public_key_fingerprint":"fingerprint-replaced-trusted-contact-`+fixture.publicKeySuffix+`",
+					"key_state":"active"
+				}`), fixture.ownerToken)
+				response.Body.Close()
+				if response.StatusCode != http.StatusCreated {
+					t.Fatalf("expected replace contact key status 201, got %d: %s", response.StatusCode, body)
+				}
+			},
+		},
+		{
+			name: "revoked wrapped key",
+			mutate: func(t *testing.T, app *testApp, fixture trustedContactWrappedKeyRouteFixture) {
+				t.Helper()
+				response, body := requestWithAuth(t, app.privateHandler, http.MethodPost, "/v1/wrapped-keys/"+fixture.wrappedKey.ID+"/revoke", "application/json", bytes.NewBufferString(`{}`), fixture.ownerToken)
+				response.Body.Close()
+				if response.StatusCode != http.StatusOK {
+					t.Fatalf("expected revoke wrapped key status 200, got %d: %s", response.StatusCode, body)
+				}
+			},
+		},
+		{
+			name: "rotated wrapped key",
+			mutate: func(t *testing.T, app *testApp, fixture trustedContactWrappedKeyRouteFixture) {
+				t.Helper()
+				_, err := app.db.ExecContext(context.Background(), `
+					UPDATE wrapped_key_records
+					SET wrapped_key_state = ?, rotated_at = ?
+					WHERE id = ?`,
+					incidents.WrappedKeyStateRotated,
+					time.Now().UTC().Format(time.RFC3339Nano),
+					fixture.wrappedKey.ID,
+				)
+				if err != nil {
+					t.Fatalf("rotate wrapped key: %v", err)
+				}
+			},
+		},
+		{
+			name: "unbound contact key",
+			mutate: func(t *testing.T, app *testApp, fixture trustedContactWrappedKeyRouteFixture) {
+				t.Helper()
+				_, err := app.db.ExecContext(context.Background(), `
+					UPDATE contact_public_keys
+					SET recipient_account_id = NULL
+					WHERE id = ?`,
+					fixture.contactKey.ID,
+				)
+				if err != nil {
+					t.Fatalf("unbind contact key recipient: %v", err)
+				}
+			},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			app := newTestApp(t)
+			fixture := newTrustedContactWrappedKeyRouteFixture(t, app, strings.ReplaceAll(tc.name, " ", "-"))
+			assertTrustedContactWrappedKeyVisible(t, app, fixture.recipientToken, fixture.incidentID, fixture.wrappedKey)
+			tc.mutate(t, app, fixture)
+			assertTrustedContactWrappedKeyHidden(t, app, fixture.recipientToken, fixture.incidentID, fixture.wrappedKey.ID)
+		})
+	}
+}
+
 func wrappedKeyRequestBody(t *testing.T, streamID, grantID, mediaKeyID string) string {
 	t.Helper()
 
@@ -205,6 +372,137 @@ func wrappedKeyRequestBody(t *testing.T, streamID, grantID, mediaKeyID string) s
 		panic(err)
 	}
 	return string(encoded)
+}
+
+type trustedContactWrappedKeyRouteFixture struct {
+	ownerToken      string
+	recipientToken  string
+	otherToken      string
+	incidentID      string
+	stream          incidents.MediaStream
+	relationship    incidents.TrustedContactRelationship
+	contactKey      incidents.ContactPublicKey
+	grant           incidents.SharingGrant
+	wrappedKey      incidents.WrappedKeyRecord
+	recipientID     string
+	wrappedKeyBody  string
+	publicKeySuffix string
+}
+
+func newTrustedContactWrappedKeyRouteFixture(t *testing.T, app *testApp, suffix string) trustedContactWrappedKeyRouteFixture {
+	t.Helper()
+	cleanSuffix := strings.ReplaceAll(suffix, "_", "-")
+	ownerToken := createAccountAndLogin(t, app, "trusted-wrapped-owner-"+cleanSuffix, "owner-password", auth.RoleUser)
+	recipientToken := createAccountAndLogin(t, app, "trusted-wrapped-recipient-"+cleanSuffix, "recipient-password", auth.RoleUser)
+	otherToken := createAccountAndLogin(t, app, "trusted-wrapped-other-"+cleanSuffix, "other-password", auth.RoleUser)
+	recipientID := accountIDForToken(t, app, recipientToken)
+	incidentID := createIncidentWithToken(t, app, ownerToken)
+	stream := createMediaStreamWithToken(t, app, ownerToken, incidentID, incidents.MediaTypeAudio, "trusted audio")
+	relationship := createTrustedContactRelationshipWithToken(t, app, ownerToken, trustedContactRelationshipBody(map[string]string{
+		"recipient_account_id": recipientID,
+		"display_label":        "Trusted contact " + cleanSuffix,
+	}))
+	response, body := requestWithAuth(t, app.privateHandler, http.MethodPost, "/v1/trusted-contact-relationships/"+relationship.ID+"/accept", "application/json", bytes.NewBufferString(`{}`), recipientToken)
+	response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("expected accept trusted contact relationship status 200, got %d: %s", response.StatusCode, body)
+	}
+	contactKey := createContactPublicKeyWithToken(t, app, ownerToken, `{
+		"recipient_account_id":"`+recipientID+`",
+		"display_label":"Trusted contact key `+cleanSuffix+`",
+		"wrapping_algorithm":"`+pq.WrappingAlgorithm+`",
+		"public_key":"pq-test-trusted-contact-public-key-`+cleanSuffix+`",
+		"public_key_fingerprint":"fingerprint-trusted-contact-`+cleanSuffix+`",
+		"key_state":"active"
+	}`)
+	if contactKey.RecipientAccountID != recipientID {
+		t.Fatalf("contact key recipient = %q, want %q", contactKey.RecipientAccountID, recipientID)
+	}
+	grant := createSharingGrantWithToken(t, app, ownerToken, incidentID, `{
+		"stream_id":"`+stream.ID+`",
+		"contact_id":"`+contactKey.ContactID+`"
+	}`)
+	wrappedBody := wrappedKeyRequestBody(t, stream.ID, grant.ID, "media-key-trusted-"+cleanSuffix)
+	wrappedKey := createWrappedKeyWithToken(t, app, ownerToken, incidentID, wrappedBody)
+	return trustedContactWrappedKeyRouteFixture{
+		ownerToken:      ownerToken,
+		recipientToken:  recipientToken,
+		otherToken:      otherToken,
+		incidentID:      incidentID,
+		stream:          stream,
+		relationship:    relationship,
+		contactKey:      contactKey,
+		grant:           grant,
+		wrappedKey:      wrappedKey,
+		recipientID:     recipientID,
+		wrappedKeyBody:  wrappedBody,
+		publicKeySuffix: cleanSuffix,
+	}
+}
+
+func assertTrustedContactWrappedKeyVisible(t *testing.T, app *testApp, token, incidentID string, wrappedKey incidents.WrappedKeyRecord) {
+	t.Helper()
+	response, body := requestWithAuth(t, app.privateHandler, http.MethodGet, "/v1/trusted-contact/incidents/"+incidentID+"/wrapped-keys", "", nil, token)
+	response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("expected trusted-contact wrapped key list status 200, got %d: %s", response.StatusCode, body)
+	}
+	var listed struct {
+		WrappedKeys []incidents.WrappedKeyRecord `json:"wrapped_keys"`
+	}
+	if err := json.Unmarshal(body, &listed); err != nil {
+		t.Fatalf("decode trusted-contact wrapped key list: %v", err)
+	}
+	if len(listed.WrappedKeys) != 1 || listed.WrappedKeys[0].ID != wrappedKey.ID {
+		t.Fatalf("unexpected trusted-contact wrapped key list: %+v", listed.WrappedKeys)
+	}
+	if !bytes.Contains(body, []byte(wrappedKey.WrappedKeyCiphertext)) {
+		t.Fatalf("trusted-contact list omitted wrapped ciphertext: %s", body)
+	}
+	for _, disallowed := range []string{"raw_media_key", "contact_private_key", "private_key", "plaintext"} {
+		if strings.Contains(string(body), disallowed) {
+			t.Fatalf("trusted-contact response exposed disallowed key %q: %s", disallowed, body)
+		}
+	}
+
+	response, body = requestWithAuth(t, app.privateHandler, http.MethodGet, "/v1/trusted-contact/wrapped-keys/"+wrappedKey.ID, "", nil, token)
+	response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("expected trusted-contact wrapped key get status 200, got %d: %s", response.StatusCode, body)
+	}
+	var got struct {
+		WrappedKey incidents.WrappedKeyRecord `json:"wrapped_key"`
+	}
+	if err := json.Unmarshal(body, &got); err != nil {
+		t.Fatalf("decode trusted-contact wrapped key get: %v", err)
+	}
+	if got.WrappedKey.ID != wrappedKey.ID || got.WrappedKey.WrappedKeyCiphertext == "" {
+		t.Fatalf("unexpected trusted-contact wrapped key get: %+v", got.WrappedKey)
+	}
+}
+
+func assertTrustedContactWrappedKeyHidden(t *testing.T, app *testApp, token, incidentID, wrappedKeyID string) {
+	t.Helper()
+	response, body := requestWithAuth(t, app.privateHandler, http.MethodGet, "/v1/trusted-contact/incidents/"+incidentID+"/wrapped-keys", "", nil, token)
+	response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("expected hidden trusted-contact wrapped key list status 200, got %d: %s", response.StatusCode, body)
+	}
+	var listed struct {
+		WrappedKeys []incidents.WrappedKeyRecord `json:"wrapped_keys"`
+	}
+	if err := json.Unmarshal(body, &listed); err != nil {
+		t.Fatalf("decode hidden trusted-contact wrapped key list: %v", err)
+	}
+	if len(listed.WrappedKeys) != 0 || bytes.Contains(body, []byte(wrappedKeyID)) {
+		t.Fatalf("hidden trusted-contact list exposed wrapped key %q: %s", wrappedKeyID, body)
+	}
+
+	response, body = requestWithAuth(t, app.privateHandler, http.MethodGet, "/v1/trusted-contact/wrapped-keys/"+wrappedKeyID, "", nil, token)
+	response.Body.Close()
+	if response.StatusCode != http.StatusNotFound {
+		t.Fatalf("expected hidden trusted-contact wrapped key get status 404, got %d: %s", response.StatusCode, body)
+	}
 }
 
 func createWrappedKeyWithToken(t *testing.T, app *testApp, token, incidentID, body string) incidents.WrappedKeyRecord {

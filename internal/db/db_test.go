@@ -126,7 +126,7 @@ func TestMigrateAddsContactKeyAndSharingGrantSchema(t *testing.T) {
 			t.Fatalf("expected %s table", tableName)
 		}
 	}
-	for _, columnName := range []string{"owner_account_id", "contact_id", "version", "public_key", "public_key_fingerprint", "key_state"} {
+	for _, columnName := range []string{"owner_account_id", "contact_id", "recipient_account_id", "version", "public_key", "public_key_fingerprint", "key_state"} {
 		if !hasColumn(t, ctx, conn, "contact_public_keys", columnName) {
 			t.Fatalf("expected contact_public_keys.%s column", columnName)
 		}

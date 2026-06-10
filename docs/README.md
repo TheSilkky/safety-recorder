@@ -140,8 +140,10 @@ relationships, register or replace trusted-contact public-key metadata, mark
 contact keys lost or revoked, and manage incident/stream-scoped sharing grants
 for their own incidents. Those routes can
 store and deliver wrapped CEK/media-key metadata through private API responses
-when an active grant authorizes ciphertext access. Relationship records do not
-add trusted-contact wrapped-key delivery, browser or backend decryption, public
+when an active grant authorizes ciphertext access. Signed-in accepted trusted
+contacts can read wrapped-key records only when the relationship,
+recipient-bound contact key, grant, and wrapped-key record are active.
+Relationship records alone do not add browser or backend decryption, public
 viewer changes, notifications, raw key storage, or key escrow.
 
 The future Stripe subscription billing design for Official Proofline hosted

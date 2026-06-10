@@ -325,6 +325,7 @@ func scanIncidentToken(s scanner) (incidents.IncidentToken, error) {
 func scanContactPublicKey(s scanner) (incidents.ContactPublicKey, error) {
 	var contactKey incidents.ContactPublicKey
 	var displayLabel sql.NullString
+	var recipientAccountID sql.NullString
 	var revokedAt sql.NullTime
 	var replacedAt sql.NullTime
 	var lostAt sql.NullTime
@@ -333,6 +334,7 @@ func scanContactPublicKey(s scanner) (incidents.ContactPublicKey, error) {
 		&contactKey.ID,
 		&contactKey.OwnerAccountID,
 		&contactKey.ContactID,
+		&recipientAccountID,
 		&contactKey.Version,
 		&displayLabel,
 		&contactKey.WrappingAlgorithm,
@@ -352,6 +354,9 @@ func scanContactPublicKey(s scanner) (incidents.ContactPublicKey, error) {
 	contactKey.UpdatedAt = contactKey.UpdatedAt.UTC()
 	if displayLabel.Valid {
 		contactKey.DisplayLabel = displayLabel.String
+	}
+	if recipientAccountID.Valid {
+		contactKey.RecipientAccountID = recipientAccountID.String
 	}
 	contactKey.RevokedAt = nullableDBTime(revokedAt)
 	contactKey.ReplacedAt = nullableDBTime(replacedAt)

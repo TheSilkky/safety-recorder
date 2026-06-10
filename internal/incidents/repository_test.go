@@ -764,6 +764,148 @@ func TestWrappedKeyRecords(t *testing.T) {
 	)
 }
 
+func TestTrustedContactWrappedKeyRecordsRequireAcceptedRelationshipAndBoundKey(t *testing.T) {
+	ctx := context.Background()
+	repo := newRepository(t, ctx)
+	owner, err := repo.CreateAccount(ctx, auth.CreateAccountParams{
+		Username:     "trusted-wrapped-owner",
+		PasswordHash: "hash",
+		Role:         auth.RoleUser,
+	})
+	if err != nil {
+		t.Fatalf("create owner account: %v", err)
+	}
+	recipient, err := repo.CreateAccount(ctx, auth.CreateAccountParams{
+		Username:     "trusted-wrapped-recipient",
+		PasswordHash: "hash",
+		Role:         auth.RoleUser,
+	})
+	if err != nil {
+		t.Fatalf("create recipient account: %v", err)
+	}
+	other, err := repo.CreateAccount(ctx, auth.CreateAccountParams{
+		Username:     "trusted-wrapped-other",
+		PasswordHash: "hash",
+		Role:         auth.RoleUser,
+	})
+	if err != nil {
+		t.Fatalf("create other account: %v", err)
+	}
+	incident, err := repo.CreateIncidentForAccount(ctx, owner.ID, incidents.CreateIncidentParams{})
+	if err != nil {
+		t.Fatalf("create owner incident: %v", err)
+	}
+	contactKey, err := repo.CreateContactPublicKey(ctx, incidents.CreateContactPublicKeyParams{
+		OwnerAccountID:       owner.ID,
+		RecipientAccountID:   recipient.ID,
+		DisplayLabel:         "recipient contact",
+		WrappingAlgorithm:    "age-v1-x25519",
+		PublicKey:            "age1trustedrecipient",
+		PublicKeyFingerprint: "fingerprint-trusted-recipient",
+		KeyState:             incidents.ContactKeyStateActive,
+	})
+	if err != nil {
+		t.Fatalf("create contact key: %v", err)
+	}
+	if contactKey.RecipientAccountID != recipient.ID {
+		t.Fatalf("contact key recipient = %q, want %q", contactKey.RecipientAccountID, recipient.ID)
+	}
+	grant, err := repo.CreateSharingGrant(ctx, incidents.CreateSharingGrantParams{
+		OwnerAccountID: owner.ID,
+		IncidentID:     incident.ID,
+		RecipientType:  incidents.SharingGrantRecipientTrustedContact,
+		ContactID:      contactKey.ContactID,
+		DataClass:      incidents.SharingGrantDataClassMetadataCiphertext,
+	})
+	if err != nil {
+		t.Fatalf("create sharing grant: %v", err)
+	}
+	record, err := repo.CreateWrappedKeyRecord(ctx, incidents.CreateWrappedKeyRecordParams{
+		OwnerAccountID:           owner.ID,
+		IncidentID:               incident.ID,
+		GrantID:                  grant.ID,
+		MediaKeyID:               "media-key-trusted",
+		WrappingAlgorithm:        "age-v1-x25519",
+		WrappingAlgorithmVersion: "1",
+		WrappedKeyCiphertext:     "wrapped-ciphertext-trusted",
+		PublicWrappingMetadata:   []byte(`{"profile":"age-v1-x25519"}`),
+	})
+	if err != nil {
+		t.Fatalf("create wrapped key: %v", err)
+	}
+	if records, err := repo.ListTrustedContactWrappedKeyRecords(ctx, recipient.ID, incident.ID); err != nil || len(records) != 0 {
+		t.Fatalf("trusted-contact wrapped keys before accepted relationship = %+v, err %v", records, err)
+	}
+	if _, err := repo.GetTrustedContactWrappedKeyRecord(ctx, recipient.ID, record.ID); !errors.Is(err, incidents.ErrNotFound) {
+		t.Fatalf("get before accepted relationship error = %v, want ErrNotFound", err)
+	}
+
+	relationship, err := repo.CreateTrustedContactRelationship(ctx, incidents.CreateTrustedContactRelationshipParams{
+		OwnerAccountID:     owner.ID,
+		RecipientAccountID: recipient.ID,
+		RelationshipRole:   incidents.TrustedContactRelationshipRoleTrustedContact,
+	})
+	if err != nil {
+		t.Fatalf("create trusted contact relationship: %v", err)
+	}
+	if _, err := repo.AcceptTrustedContactRelationship(ctx, recipient.ID, relationship.ID); err != nil {
+		t.Fatalf("accept trusted contact relationship: %v", err)
+	}
+	records, err := repo.ListTrustedContactWrappedKeyRecords(ctx, recipient.ID, incident.ID)
+	if err != nil {
+		t.Fatalf("list trusted-contact wrapped keys: %v", err)
+	}
+	if len(records) != 1 || records[0].ID != record.ID {
+		t.Fatalf("unexpected trusted-contact wrapped key records: %+v", records)
+	}
+	if _, err := repo.GetTrustedContactWrappedKeyRecord(ctx, recipient.ID, record.ID); err != nil {
+		t.Fatalf("get trusted-contact wrapped key: %v", err)
+	}
+	if records, err := repo.ListTrustedContactWrappedKeyRecords(ctx, other.ID, incident.ID); err != nil || len(records) != 0 {
+		t.Fatalf("unrelated trusted-contact wrapped keys = %+v, err %v", records, err)
+	}
+	if _, err := repo.GetTrustedContactWrappedKeyRecord(ctx, other.ID, record.ID); !errors.Is(err, incidents.ErrNotFound) {
+		t.Fatalf("unrelated get error = %v, want ErrNotFound", err)
+	}
+
+	if _, err := repo.RevokeTrustedContactRelationship(ctx, owner.ID, relationship.ID, owner.ID); err != nil {
+		t.Fatalf("revoke trusted contact relationship: %v", err)
+	}
+	if records, err := repo.ListTrustedContactWrappedKeyRecords(ctx, recipient.ID, incident.ID); err != nil || len(records) != 0 {
+		t.Fatalf("revoked relationship delivered wrapped keys = %+v, err %v", records, err)
+	}
+
+	secondRelationship, err := repo.CreateTrustedContactRelationship(ctx, incidents.CreateTrustedContactRelationshipParams{
+		OwnerAccountID:     owner.ID,
+		RecipientAccountID: recipient.ID,
+		RelationshipRole:   incidents.TrustedContactRelationshipRoleTrustedContact,
+	})
+	if err != nil {
+		t.Fatalf("create second trusted contact relationship: %v", err)
+	}
+	if _, err := repo.AcceptTrustedContactRelationship(ctx, recipient.ID, secondRelationship.ID); err != nil {
+		t.Fatalf("accept second trusted contact relationship: %v", err)
+	}
+	replacementKey, err := repo.ReplaceContactPublicKey(ctx, incidents.ReplaceContactPublicKeyParams{
+		OwnerAccountID:       owner.ID,
+		PublicKeyID:          contactKey.ID,
+		DisplayLabel:         "recipient replacement",
+		WrappingAlgorithm:    "age-v1-x25519",
+		PublicKey:            "age1trustedrecipientreplacement",
+		PublicKeyFingerprint: "fingerprint-trusted-recipient-replacement",
+		KeyState:             incidents.ContactKeyStateActive,
+	})
+	if err != nil {
+		t.Fatalf("replace contact public key: %v", err)
+	}
+	if replacementKey.RecipientAccountID != recipient.ID {
+		t.Fatalf("replacement recipient = %q, want %q", replacementKey.RecipientAccountID, recipient.ID)
+	}
+	if records, err := repo.ListTrustedContactWrappedKeyRecords(ctx, recipient.ID, incident.ID); err != nil || len(records) != 0 {
+		t.Fatalf("replaced contact key delivered old wrapped keys = %+v, err %v", records, err)
+	}
+}
+
 func TestIncidentDeletionPrunesSharingAndWrappedKeyMetadata(t *testing.T) {
 	ctx := context.Background()
 	repo := newRepository(t, ctx)

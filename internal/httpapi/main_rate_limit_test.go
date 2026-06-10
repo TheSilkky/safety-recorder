@@ -70,6 +70,8 @@ func TestMainAPIRateLimitGroupsRoutesWithSafeKeys(t *testing.T) {
 		{http.MethodPost, "/v1/trusted-contact-relationships/relationship_secret/decline", ":account:", 13},
 		{http.MethodPost, "/v1/trusted-contact-relationships/relationship_secret/revoke", ":account:", 13},
 		{http.MethodPost, "/v1/trusted-contact-relationships/relationship_secret/replace", ":account:", 13},
+		{http.MethodGet, "/v1/trusted-contact/incidents/inc_secret/wrapped-keys", ":incident_read:", 14},
+		{http.MethodGet, "/v1/trusted-contact/wrapped-keys/wrapped_secret", ":incident_read:", 14},
 		{http.MethodGet, "/v1/incidents", ":incident_read:", 14},
 		{http.MethodGet, "/v1/incidents/inc_secret", ":incident_read:", 14},
 		{http.MethodGet, "/v1/incidents/inc_secret/deletion", ":incident_read:", 14},

@@ -8,6 +8,7 @@ func (a *API) mainRoutes() http.Handler {
 	a.registerMainContactRoutes(mux)
 	a.registerMainAccountRecipientKeyRoutes(mux)
 	a.registerMainTrustedContactRelationshipRoutes(mux)
+	a.registerMainTrustedContactDeliveryRoutes(mux)
 	a.registerMainIncidentRoutes(mux)
 	a.registerMainStreamRoutes(mux)
 	a.registerMainIncidentTokenRoutes(mux)
@@ -47,6 +48,11 @@ func (a *API) registerMainTrustedContactRelationshipRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /v1/trusted-contact-relationships/{relationship_id}/decline", a.withPrivateAuth(a.declineTrustedContactRelationship))
 	mux.HandleFunc("POST /v1/trusted-contact-relationships/{relationship_id}/revoke", a.withPrivateAuth(a.revokeTrustedContactRelationship))
 	mux.HandleFunc("POST /v1/trusted-contact-relationships/{relationship_id}/replace", a.withPrivateAuth(a.replaceTrustedContactRelationship))
+}
+
+func (a *API) registerMainTrustedContactDeliveryRoutes(mux *http.ServeMux) {
+	mux.HandleFunc("GET /v1/trusted-contact/incidents/{incident_id}/wrapped-keys", a.withPrivateAuth(a.listTrustedContactWrappedKeyRecords))
+	mux.HandleFunc("GET /v1/trusted-contact/wrapped-keys/{wrapped_key_id}", a.withPrivateAuth(a.getTrustedContactWrappedKeyRecord))
 }
 
 func (a *API) adminRoutes() http.Handler {

@@ -31,6 +31,7 @@ var forbiddenContactPublicKeyMaterialMarkers = []string{
 
 type createContactPublicKeyRequest struct {
 	ContactID            string `json:"contact_id"`
+	RecipientAccountID   string `json:"recipient_account_id"`
 	DisplayLabel         string `json:"display_label"`
 	WrappingAlgorithm    string `json:"wrapping_algorithm"`
 	PublicKey            string `json:"public_key"`
@@ -77,6 +78,10 @@ func (a *API) createContactPublicKey(w http.ResponseWriter, r *http.Request) {
 	contactKey, err := a.repo.CreateContactPublicKey(r.Context(), params)
 	if errors.Is(err, incidents.ErrNotFound) {
 		writeError(w, http.StatusNotFound, "contact_not_found", "contact was not found")
+		return
+	}
+	if errors.Is(err, incidents.ErrInvalidState) {
+		writeError(w, http.StatusConflict, "invalid_contact_recipient", "contact recipient account is not valid for this contact")
 		return
 	}
 	if err != nil {
@@ -328,6 +333,7 @@ func createContactPublicKeyParams(w http.ResponseWriter, ownerAccountID string, 
 	params := incidents.CreateContactPublicKeyParams{
 		OwnerAccountID:       ownerAccountID,
 		ContactID:            strings.TrimSpace(request.ContactID),
+		RecipientAccountID:   strings.TrimSpace(request.RecipientAccountID),
 		DisplayLabel:         strings.TrimSpace(request.DisplayLabel),
 		WrappingAlgorithm:    strings.TrimSpace(request.WrappingAlgorithm),
 		PublicKey:            strings.TrimSpace(request.PublicKey),

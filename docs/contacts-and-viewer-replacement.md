@@ -126,8 +126,10 @@ tokens remain no-account bearer links. Account sessions are the expected base
 for owner and future trusted-contact flows, but current account sessions do not
 create trusted-contact relationships by themselves. The backend now supports
 owner-created trusted-contact relationship invites that authenticated recipient
-accounts can accept or decline; those relationship records still do not grant
-incident reads, wrapped-key delivery, notifications, or decryption.
+accounts can accept or decline. Relationship records alone do not grant
+incident reads, notifications, or decryption, but accepted relationships can
+authorize signed-in trusted-contact wrapped-key reads only when the contact key,
+grant, and wrapped-key record filters also pass.
 
 Current authenticated owner-scoped metadata APIs exist for:
 
@@ -152,13 +154,16 @@ Current authenticated owner-scoped metadata APIs exist for:
   `POST/GET /v1/incidents/{incident_id}/wrapped-keys`,
   `GET /v1/wrapped-keys/{wrapped_key_id}`, and
   `POST /v1/wrapped-keys/{wrapped_key_id}/revoke`.
+- trusted-contact wrapped-key reads:
+  `GET /v1/trusted-contact/incidents/{incident_id}/wrapped-keys` and
+  `GET /v1/trusted-contact/wrapped-keys/{wrapped_key_id}`.
 
-These are metadata routes. They do not implement trusted-contact contact read
-access, trusted-contact wrapped-key delivery, notifications, browser
-decryption, backend decryption, public viewer changes, raw key storage, or key
-escrow. Current wrapped-key records can store encrypted media-key material and
-public wrapping metadata behind authenticated owner routes, but they must not
-contain raw media keys, contact private keys, plaintext, ML-KEM shared secrets,
+These are metadata routes. They do not implement trusted-contact incident read
+access, notifications, browser decryption, backend decryption, public viewer
+changes, raw key storage, or key escrow. Current wrapped-key records can store
+encrypted media-key material and public wrapping metadata behind authenticated
+owner and authorized trusted-contact routes, but they must not contain raw
+media keys, contact private keys, plaintext, ML-KEM shared secrets,
 decapsulation keys, browser fragment secrets, or server-decryptable material in
 the default path.
 
@@ -378,8 +383,11 @@ This may include, when separately implemented and authorized:
 - wrapped-key delivery; and
 - trusted-contact actions.
 
-All of this remains future-tense until implemented. Signed-in trusted-contact
-access must not be inferred from viewer-token access or incident-mode labels.
+Incident metadata/ciphertext reads, full trusted-contact viewer behavior,
+notifications, and trusted-contact actions remain future-tense until
+implemented. Signed-in trusted-contact wrapped-key reads exist only under the
+explicit relationship, recipient-key, grant, and wrapped-key filters; they must
+not be inferred from viewer-token access or incident-mode labels.
 
 ### 3. Dead-Man-Switch / Break-Glass Escalation
 

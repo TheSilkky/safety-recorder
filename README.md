@@ -83,10 +83,12 @@ trusted-contact relationships, register or replace trusted-contact public-key
 metadata, mark contact keys lost or revoked, and create or revoke
 incident/stream-scoped sharing grants for their own incidents. Those grants can
 authorize private API storage and delivery of contact-wrapped CEK/media-key
-metadata for owned incidents or streams.
-Relationship records do not add trusted-contact wrapped-key delivery, browser
-or backend decryption, public viewer changes, notifications, raw key storage,
-or key escrow.
+metadata for owned incidents or streams. Signed-in accepted trusted contacts
+can read only grant-scoped wrapped-key records whose owner relationship,
+recipient-bound contact key, grant, and wrapped-key record are all active.
+Relationship records alone do not add incident reads, browser or backend
+decryption, public viewer changes, notifications, raw key storage, or key
+escrow.
 
 ## What Works Today
 
@@ -129,6 +131,9 @@ or key escrow.
   incidents or streams
 - Owner-scoped wrapped CEK/media-key metadata storage and private API delivery
   for active sharing grants
+- Authenticated trusted-contact wrapped-key reads for accepted recipient
+  accounts when the relationship, recipient-bound contact key, grant, and
+  wrapped-key record are active
 - Accepted post-quantum client-side chunk envelope as the runtime upload
   validation and simulator default
 - Media streams with `open`, `complete`, and `failed` states
@@ -152,16 +157,16 @@ or key escrow.
 - No implemented web client or account portal
 - No protocol repository or shared conformance test suite
 - No production recording client implementation
-- No mode-driven access, notification, retention, trusted-contact wrapped-key
-  delivery, key-custody, or viewer behavior
+- No mode-driven incident access, notification, retention, key-custody, or
+  viewer behavior
 - No production client-side encryption implementation
 - No implemented capture stream group, stream-variant, or evidence-supersession
   model beyond the current concrete media stream upload lanes
 - No implemented resumable or partial upload protocol; current Valkey upload
   leases are short-lived complete-upload hints, not durable evidence truth
 - No implemented live or partial stream chunk access before stream completion
-- No trusted-contact wrapped-key delivery, backend/browser decryption, raw key
-  handling, server escrow, break-glass key access, or playable media export
+- No backend/browser decryption, raw key handling, server escrow, break-glass
+  key access, or playable media export
 - No payment processing, subscriptions, checkout sessions, billing webhooks,
   password recovery, OAuth, or JWT
 - No push notifications, SMS, or Messenger integration

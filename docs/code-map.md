@@ -186,8 +186,8 @@ Trusted-contact relationships are handled by
 `internal/httpapi/trusted_contact_relationship_handlers.go`. The handlers use
 the authenticated owner account for invite/revoke/replace actions and the
 authenticated recipient account for accept/decline actions. The records carry
-identity and lifecycle metadata only; they do not deliver wrapped keys,
-notifications, plaintext, or public viewer privileges.
+identity and lifecycle metadata only; they do not deliver wrapped keys by
+themselves, notifications, plaintext, or public viewer privileges.
 
 Contact public-key registration and lifecycle transitions are handled by
 `POST /v1/contact-public-keys`,
@@ -197,9 +197,11 @@ Contact public-key registration and lifecycle transitions are handled by
 `POST /v1/contact-public-keys/{public_key_id}/replace` in
 `internal/httpapi/sharing_handlers.go`. The handlers use the authenticated
 local account as the owner scope and store only public-key metadata through the
-configured metadata repository. They reject unknown JSON fields and do not
-accept contact private keys, raw media keys, wrapped media keys, plaintext, or
-browser fragment secrets.
+configured metadata repository. Optional `recipient_account_id` bindings
+connect contact public-key records to signed-in trusted-contact delivery
+authorization. They reject unknown JSON fields and do not accept contact
+private keys, raw media keys, wrapped media keys, plaintext, or browser
+fragment secrets.
 
 Sharing grants are handled by
 `POST /v1/incidents/{incident_id}/sharing-grants`, incident grant listing, and
@@ -212,14 +214,19 @@ evidence, or change public incident viewer behavior.
 
 Wrapped-key records are handled by
 `POST /v1/incidents/{incident_id}/wrapped-keys`, incident wrapped-key listing,
-and wrapped-key lookup/revocation routes. Creation is owner-only, checks that
-the incident is active, optionally checks stream ownership, requires an active
-grant for the same owner and incident, requires ciphertext access, and requires
-the bound contact public key to remain active. List and read responses are
-delivery-filtered so revoked or expired grants, inactive contact keys, and
-revoked or rotated wrapped-key records are omitted. These routes deliver
-encrypted wrapped-key metadata through authenticated API responses only; public
-viewer routes and bundle manifests remain key-free.
+wrapped-key lookup/revocation routes, plus read-only
+`GET /v1/trusted-contact/incidents/{incident_id}/wrapped-keys` and
+`GET /v1/trusted-contact/wrapped-keys/{wrapped_key_id}`. Creation is
+owner-only, checks that the incident is active, optionally checks stream
+ownership, requires an active grant for the same owner and incident, requires
+ciphertext access, and requires the bound contact public key to remain active.
+Owner list/read responses are owner scoped. Trusted-contact list/read responses
+require the authenticated recipient account to match a bound active contact
+key, active accepted relationship, active unexpired ciphertext grant, and
+active wrapped-key record. Delivery filters omit revoked or expired grants,
+inactive contact keys, and revoked or rotated wrapped-key records. These routes
+deliver encrypted wrapped-key metadata through authenticated API responses only;
+public viewer routes and bundle manifests remain key-free.
 
 Private sharing audit events are stored by the SQLite and PostgreSQL metadata
 repositories when contact-key, sharing-grant, wrapped-key, or deletion-pruning
@@ -358,11 +365,12 @@ Before broad public exposure, review route groups and add:
 
 The repository does not currently include the web client, iOS app, Android app,
 protocol repository, production local recording client, mode-driven access,
-escalation, retention, viewer behavior, trusted-contact wrapped-key delivery,
-wrapped-key delivery outside owner-authenticated private `/v1`, dead-man switch
-notifications, production client key storage, browser/client-side decryption,
-server-assisted break-glass key access, payment processing, subscriptions,
-checkout sessions, billing webhooks, password recovery, playable media export,
+escalation, retention, viewer behavior, trusted-contact incident delivery,
+wrapped-key delivery outside authenticated owner or trusted-contact private
+`/v1` routes, dead-man switch notifications, production client key storage,
+browser/client-side decryption, server-assisted break-glass key access, payment
+processing, subscriptions, checkout sessions, billing webhooks, password
+recovery, playable media export,
 push notifications, SMS, Messenger integration, OAuth, JWT, public account
 portal, or a public admin dashboard. The local
 desktop-recorder behavior in `cmd/simclient` is simulator/reference flow only.

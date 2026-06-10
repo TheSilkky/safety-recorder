@@ -23,11 +23,26 @@ func (r *Repository) CreateContactPublicKey(ctx context.Context, params CreateCo
 	contactID := params.ContactID
 	version := 1
 	if contactID == "" {
+		if err := requireContactPublicKeyRecipientTx(ctx, tx, params.OwnerAccountID, params.RecipientAccountID); err != nil {
+			return ContactPublicKey{}, err
+		}
 		contactID, err = newID("ctc")
 		if err != nil {
 			return ContactPublicKey{}, err
 		}
 	} else {
+		recipientAccountID, err := contactPublicKeyRecipientAccountIDTx(ctx, tx, params.OwnerAccountID, contactID)
+		if err != nil {
+			return ContactPublicKey{}, err
+		}
+		if params.RecipientAccountID == "" {
+			params.RecipientAccountID = recipientAccountID
+		} else if recipientAccountID != "" && params.RecipientAccountID != recipientAccountID {
+			return ContactPublicKey{}, ErrInvalidState
+		}
+		if err := requireContactPublicKeyRecipientTx(ctx, tx, params.OwnerAccountID, params.RecipientAccountID); err != nil {
+			return ContactPublicKey{}, err
+		}
 		if err := tx.QueryRowContext(ctx, `
 			SELECT COALESCE(MAX(version), 0) + 1
 			FROM contact_public_keys
@@ -196,6 +211,7 @@ func (r *Repository) ReplaceContactPublicKey(ctx context.Context, params Replace
 	replacement, err := newContactPublicKey(CreateContactPublicKeyParams{
 		OwnerAccountID:       params.OwnerAccountID,
 		ContactID:            current.ContactID,
+		RecipientAccountID:   current.RecipientAccountID,
 		DisplayLabel:         params.DisplayLabel,
 		WrappingAlgorithm:    params.WrappingAlgorithm,
 		PublicKey:            params.PublicKey,
@@ -564,7 +580,8 @@ func activeContactPublicKeyForGrant(ctx context.Context, tx *sql.Tx, params Crea
 
 func contactPublicKeySelect() string {
 	return `
-		SELECT id, owner_account_id, contact_id, version, display_label,
+		SELECT id, owner_account_id, contact_id, recipient_account_id,
+			version, display_label,
 			wrapping_algorithm, public_key, public_key_fingerprint, key_state,
 			created_at, updated_at, revoked_at, replaced_at, lost_at,
 			replaced_by_public_key_id
@@ -620,6 +637,7 @@ func newContactPublicKey(params CreateContactPublicKeyParams, contactID string, 
 		ID:                   id,
 		OwnerAccountID:       params.OwnerAccountID,
 		ContactID:            contactID,
+		RecipientAccountID:   params.RecipientAccountID,
 		Version:              version,
 		DisplayLabel:         params.DisplayLabel,
 		WrappingAlgorithm:    params.WrappingAlgorithm,
@@ -634,14 +652,16 @@ func newContactPublicKey(params CreateContactPublicKeyParams, contactID string, 
 func insertContactPublicKeyTx(ctx context.Context, tx *sql.Tx, contactKey ContactPublicKey) error {
 	_, err := tx.ExecContext(ctx, `
 		INSERT INTO contact_public_keys (
-			id, owner_account_id, contact_id, version, display_label,
+			id, owner_account_id, contact_id, recipient_account_id,
+			version, display_label,
 			wrapping_algorithm, public_key, public_key_fingerprint, key_state,
 			created_at, updated_at
 		)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		contactKey.ID,
 		contactKey.OwnerAccountID,
 		contactKey.ContactID,
+		nullableString(contactKey.RecipientAccountID),
 		contactKey.Version,
 		nullableString(contactKey.DisplayLabel),
 		contactKey.WrappingAlgorithm,
@@ -658,6 +678,39 @@ func insertContactPublicKeyTx(ctx context.Context, tx *sql.Tx, contactKey Contac
 		return fmt.Errorf("insert contact public key: %w", err)
 	}
 	return nil
+}
+
+func requireContactPublicKeyRecipientTx(ctx context.Context, tx *sql.Tx, ownerAccountID, recipientAccountID string) error {
+	if recipientAccountID == "" {
+		return nil
+	}
+	if ownerAccountID == recipientAccountID {
+		return ErrInvalidState
+	}
+	return requireActiveAccountForTrustedContactTx(ctx, tx, recipientAccountID)
+}
+
+func contactPublicKeyRecipientAccountIDTx(ctx context.Context, tx *sql.Tx, ownerAccountID, contactID string) (string, error) {
+	var recipientAccountID sql.NullString
+	err := tx.QueryRowContext(ctx, `
+		SELECT recipient_account_id
+		FROM contact_public_keys
+		WHERE owner_account_id = ? AND contact_id = ?
+		ORDER BY version DESC, created_at DESC, id DESC
+		LIMIT 1`,
+		ownerAccountID,
+		contactID,
+	).Scan(&recipientAccountID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", ErrNotFound
+	}
+	if err != nil {
+		return "", fmt.Errorf("read contact public key recipient account: %w", err)
+	}
+	if !recipientAccountID.Valid {
+		return "", nil
+	}
+	return recipientAccountID.String, nil
 }
 
 func getContactPublicKeyTx(ctx context.Context, tx *sql.Tx, ownerAccountID, publicKeyID string) (ContactPublicKey, error) {

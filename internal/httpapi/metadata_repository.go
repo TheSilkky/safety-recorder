@@ -101,6 +101,8 @@ type MetadataRepository interface {
 	CreateWrappedKeyRecord(ctx context.Context, params incidents.CreateWrappedKeyRecordParams) (incidents.WrappedKeyRecord, error)
 	ListWrappedKeyRecords(ctx context.Context, ownerAccountID, incidentID string) ([]incidents.WrappedKeyRecord, error)
 	GetWrappedKeyRecord(ctx context.Context, ownerAccountID, wrappedKeyID string) (incidents.WrappedKeyRecord, error)
+	ListTrustedContactWrappedKeyRecords(ctx context.Context, recipientAccountID, incidentID string) ([]incidents.WrappedKeyRecord, error)
+	GetTrustedContactWrappedKeyRecord(ctx context.Context, recipientAccountID, wrappedKeyID string) (incidents.WrappedKeyRecord, error)
 	RevokeWrappedKeyRecord(ctx context.Context, ownerAccountID, wrappedKeyID, revokedByAccountID string) (incidents.WrappedKeyRecord, error)
 }
 

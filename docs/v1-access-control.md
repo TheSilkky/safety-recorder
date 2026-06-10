@@ -10,10 +10,12 @@ contact public-key registration, sharing-grant metadata routes, and
 grant-bound wrapped-key record routes are implemented
 behind that same reviewed boundary. Owner-only `GET /v1/incidents` and
 `GET /v1/incidents/{incident_id}` return public-safe metadata for future
-web-client reads. OAuth, JWT, public account portals, trusted-contact
-wrapped-key delivery, notification delivery beyond registration email
-verification, browser decryption, key escrow, and server-side decryption are
-not implemented.
+web-client reads. Signed-in trusted-contact wrapped-key reads are implemented
+only for accepted relationships with a recipient-bound active contact key,
+active unexpired ciphertext grant, and active wrapped-key record. OAuth, JWT,
+public account portals, trusted-contact incident reads, notification delivery
+beyond registration email verification, browser decryption, key escrow, and
+server-side decryption are not implemented.
 
 ## Summary
 
@@ -89,14 +91,17 @@ logout, account password change, admin account creation, configurable
 registration modes with email verification for open self-registration, admin
 session revocation, owner-scoped trusted-contact relationship metadata,
 owner-scoped contact public-key metadata, owner-managed sharing grants,
-owner-managed wrapped-key records, and owner-only public-safe incident metadata
-list/detail reads. Contact public-key replacement and lost/revoked states are
-metadata-only lifecycle controls and do not rewrite old wrapped-key records or
-add backend decryption. Sharing-grant and wrapped-key management are deliberately
+owner-managed wrapped-key records, signed-in trusted-contact wrapped-key reads,
+and owner-only public-safe incident metadata list/detail reads. Contact
+public-key replacement and lost/revoked states are metadata-only lifecycle
+controls and do not rewrite old wrapped-key records or add backend decryption.
+Sharing-grant and wrapped-key management are deliberately
 stricter than ordinary incident reads: they require the authenticated account
 to own the incident, and an admin account cannot manage another account's
 grants or wrapped-key records through the product route set unless it is also
-the incident owner. Reverse-proxy rate
+the incident owner. Trusted-contact wrapped-key reads are read-only and require
+the authenticated recipient account to match the bound contact public key and an
+active accepted relationship. Reverse-proxy rate
 limiting, separate bind addresses, and private network placement are useful
 boundaries, but they are not a public authorization model.
 
@@ -306,9 +311,13 @@ and can be revoked while retaining minimal audit metadata. Contact public keys
 are versioned per contact; only active key versions can receive new grants.
 Replaced, revoked, and lost contact keys cannot be reactivated.
 Current wrapped-key delivery is owner-authenticated through private `/v1`
-routes. Revoked or expired grants, inactive contact public keys, and revoked or
-rotated wrapped-key records are filtered out of list and read responses. Public
-viewer tokens do not receive wrapped keys.
+routes and trusted-contact-authenticated through read-only
+`/v1/trusted-contact/...` wrapped-key routes. Trusted-contact reads require an
+accepted relationship, a contact public key bound to the authenticated
+recipient account, an active unexpired grant authorizing ciphertext access, and
+an active wrapped-key record. Revoked or expired grants, inactive contact
+public keys, and revoked or rotated wrapped-key records are filtered out of
+list and read responses. Public viewer tokens do not receive wrapped keys.
 
 ## Incident Mode Policy
 

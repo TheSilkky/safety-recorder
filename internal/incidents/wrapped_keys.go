@@ -164,6 +164,89 @@ func (r *Repository) GetWrappedKeyRecord(ctx context.Context, ownerAccountID, wr
 	return record, nil
 }
 
+// ListTrustedContactWrappedKeyRecords returns active wrapped-key records that
+// the authenticated recipient account may read through an accepted
+// trusted-contact relationship and active grant.
+func (r *Repository) ListTrustedContactWrappedKeyRecords(ctx context.Context, recipientAccountID, incidentID string) ([]WrappedKeyRecord, error) {
+	rows, err := r.db.QueryContext(ctx, wrappedKeyRecordSelect()+trustedContactWrappedKeyJoins()+`
+		WHERE w.incident_id = ?
+			AND i.deletion_state = ?
+			AND w.recipient_type = ?
+			AND sg.recipient_type = ?
+			AND sg.data_class IN (?, ?)
+			AND w.wrapped_key_state = ?
+			AND sg.grant_state = ?
+			AND (sg.expires_at IS NULL OR sg.expires_at > ?)
+			AND cpk.key_state = ?
+			AND cpk.recipient_account_id = ?
+			AND tcr.recipient_account_id = ?
+			AND tcr.relationship_role = ?
+			AND tcr.relationship_state = ?
+		ORDER BY w.created_at, w.id`,
+		incidentID,
+		IncidentDeletionStateActive,
+		SharingGrantRecipientTrustedContact,
+		SharingGrantRecipientTrustedContact,
+		SharingGrantDataClassCiphertext,
+		SharingGrantDataClassMetadataCiphertext,
+		WrappedKeyStateActive,
+		SharingGrantStateActive,
+		formatDBTime(time.Now().UTC()),
+		ContactKeyStateActive,
+		recipientAccountID,
+		recipientAccountID,
+		TrustedContactRelationshipRoleTrustedContact,
+		TrustedContactRelationshipStateActive,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("list trusted contact wrapped key records: %w", err)
+	}
+	defer rows.Close()
+	return scanWrappedKeyRecordRows(rows)
+}
+
+// GetTrustedContactWrappedKeyRecord returns one active wrapped-key record
+// authorized for the authenticated trusted-contact account.
+func (r *Repository) GetTrustedContactWrappedKeyRecord(ctx context.Context, recipientAccountID, wrappedKeyID string) (WrappedKeyRecord, error) {
+	row := r.db.QueryRowContext(ctx, wrappedKeyRecordSelect()+trustedContactWrappedKeyJoins()+`
+		WHERE w.id = ?
+			AND i.deletion_state = ?
+			AND w.recipient_type = ?
+			AND sg.recipient_type = ?
+			AND sg.data_class IN (?, ?)
+			AND w.wrapped_key_state = ?
+			AND sg.grant_state = ?
+			AND (sg.expires_at IS NULL OR sg.expires_at > ?)
+			AND cpk.key_state = ?
+			AND cpk.recipient_account_id = ?
+			AND tcr.recipient_account_id = ?
+			AND tcr.relationship_role = ?
+			AND tcr.relationship_state = ?`,
+		wrappedKeyID,
+		IncidentDeletionStateActive,
+		SharingGrantRecipientTrustedContact,
+		SharingGrantRecipientTrustedContact,
+		SharingGrantDataClassCiphertext,
+		SharingGrantDataClassMetadataCiphertext,
+		WrappedKeyStateActive,
+		SharingGrantStateActive,
+		formatDBTime(time.Now().UTC()),
+		ContactKeyStateActive,
+		recipientAccountID,
+		recipientAccountID,
+		TrustedContactRelationshipRoleTrustedContact,
+		TrustedContactRelationshipStateActive,
+	)
+	record, err := scanWrappedKeyRecord(row)
+	if errors.Is(err, sql.ErrNoRows) {
+		return WrappedKeyRecord{}, ErrNotFound
+	}
+	if err != nil {
+		return WrappedKeyRecord{}, fmt.Errorf("get trusted contact wrapped key record: %w", err)
+	}
+	return record, nil
+}
+
 // RevokeWrappedKeyRecord marks one owner-scoped wrapped-key record revoked.
 func (r *Repository) RevokeWrappedKeyRecord(ctx context.Context, ownerAccountID, wrappedKeyID, revokedByAccountID string) (WrappedKeyRecord, error) {
 	now := time.Now().UTC()
@@ -302,9 +385,21 @@ func activeWrappedKeyJoins() string {
 		JOIN sharing_grants sg
 			ON sg.id = w.grant_id
 			AND sg.owner_account_id = w.owner_account_id
+			AND sg.incident_id = w.incident_id
+			AND sg.contact_id = w.contact_id
+			AND sg.contact_public_key_id = w.contact_public_key_id
 		JOIN contact_public_keys cpk
 			ON cpk.id = w.contact_public_key_id
 			AND cpk.owner_account_id = w.owner_account_id `
+}
+
+func trustedContactWrappedKeyJoins() string {
+	return activeWrappedKeyJoins() + `
+		JOIN incidents i
+			ON i.id = w.incident_id
+			AND i.owner_account_id = w.owner_account_id
+		JOIN trusted_contact_relationships tcr
+			ON tcr.owner_account_id = w.owner_account_id `
 }
 
 func scanWrappedKeyRecordRows(rows *sql.Rows) ([]WrappedKeyRecord, error) {

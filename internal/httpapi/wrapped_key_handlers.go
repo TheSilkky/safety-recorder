@@ -114,6 +114,42 @@ func (a *API) getWrappedKeyRecord(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+func (a *API) listTrustedContactWrappedKeyRecords(w http.ResponseWriter, r *http.Request) {
+	principal, ok := principalFromContext(r.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "authentication_required", "authentication is required")
+		return
+	}
+	records, err := a.repo.ListTrustedContactWrappedKeyRecords(r.Context(), principal.Account.ID, r.PathValue("incident_id"))
+	if err != nil {
+		a.internalError(w, "list trusted contact wrapped key records", err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string][]incidents.WrappedKeyRecord{
+		"wrapped_keys": records,
+	})
+}
+
+func (a *API) getTrustedContactWrappedKeyRecord(w http.ResponseWriter, r *http.Request) {
+	principal, ok := principalFromContext(r.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "authentication_required", "authentication is required")
+		return
+	}
+	record, err := a.repo.GetTrustedContactWrappedKeyRecord(r.Context(), principal.Account.ID, r.PathValue("wrapped_key_id"))
+	if errors.Is(err, incidents.ErrNotFound) {
+		writeError(w, http.StatusNotFound, "wrapped_key_not_found", "wrapped key record was not found")
+		return
+	}
+	if err != nil {
+		a.internalError(w, "get trusted contact wrapped key record", err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]incidents.WrappedKeyRecord{
+		"wrapped_key": record,
+	})
+}
+
 func (a *API) revokeWrappedKeyRecord(w http.ResponseWriter, r *http.Request) {
 	principal, ok := principalFromContext(r.Context())
 	if !ok {
