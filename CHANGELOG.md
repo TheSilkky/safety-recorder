@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- Accepted the v1 preview production post-quantum wrapped-key profile, including
+  concrete suite identifiers, API field values, metadata shape, canonical
+  encoding constraints, recipient limits, fail-closed behavior, compatibility
+  notes, and conformance-vector requirements without changing runtime behavior.
+- Clarified the future key-custody design around explicit docs-only non-goals,
+  owner-device loss, device replacement, recipient-key rotation, recovery, and
+  fail-closed wrapped-key delivery without changing runtime behavior.
 - Added a v1 preview readiness checklist and release-gate guidance for v1
   preview, v1.0.0, and real-user evidence-upload readiness claims without
   changing runtime behavior or adding release automation.

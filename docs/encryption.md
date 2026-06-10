@@ -192,10 +192,14 @@ the current envelope; it is a separate design tracked in
 
 The required v1 preview pure post-quantum envelope profile is designed
 separately in [post-quantum-envelope.md](post-quantum-envelope.md). That design
-uses `ML-KEM-768 + HKDF-SHA384 + AES-256-GCM` for recipient-key wrapping of
-CEKs and payload encryption. It is still documentation-only in the current
-runtime, but it must be implemented, documented, tested, and made default
-before server or web-client v1 preview use with real sensitive evidence.
+accepts `proofline-pq-mlkem768-hkdfsha384-aes256gcm-v1`, using
+`ML-KEM-768 + HKDF-SHA384 + AES-256-GCM` for recipient-key wrapping of CEKs and
+payload encryption. It defines the future wrapped-key API field values,
+metadata shape, canonical encoding, downgrade rejection, fail-closed behavior,
+and conformance-vector requirements. It is still documentation-only in the
+current runtime, but it must be implemented, documented, tested, and made
+default before server or web-client v1 preview use with real sensitive
+evidence.
 
 The simulator-only contact-wrapped key metadata prototype is implemented
 separately in
