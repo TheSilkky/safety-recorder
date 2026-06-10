@@ -195,7 +195,9 @@ A future private queue-summary endpoint may be useful for telemetry or support,
 but it should be designed separately from resumable upload commit semantics.
 Such an endpoint should be metadata-only, should not accept local file paths,
 should not expose uploaded bytes or plaintext, and should not become public
-`/v1` authentication or a trusted-contact access model.
+`/v1` authentication or a trusted-contact access model. The current upload
+telemetry boundary keeps these signals client-local before v1 preview and is
+documented in [upload-telemetry-boundary.md](upload-telemetry-boundary.md).
 
 ## Size Limits And Expiry
 

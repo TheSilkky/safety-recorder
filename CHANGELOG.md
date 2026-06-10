@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Added a planning-only upload telemetry boundary that keeps client upload
+  telemetry local before v1 preview and defines safe constraints for any future
+  authenticated coarse-code telemetry endpoint.
+
 - Added an opt-in simulator duplicate reconciliation drill for accepted
   streamed chunks, with safe conflict-path validation and documentation.
 
