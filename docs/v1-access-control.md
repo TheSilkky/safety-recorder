@@ -5,13 +5,15 @@ authenticated main `/v1` control plane and the future direction for broader
 product access.
 Local username/password accounts, opaque server-side sessions, and
 disabled-by-default email-verified self-registration are implemented for the
-main `/v1` API. Account-owner contact public-key registration, sharing-grant
-metadata routes, and grant-bound wrapped-key record routes are implemented
+main `/v1` API. Account-owner trusted-contact relationship lifecycle,
+contact public-key registration, sharing-grant metadata routes, and
+grant-bound wrapped-key record routes are implemented
 behind that same reviewed boundary. Owner-only `GET /v1/incidents` and
 `GET /v1/incidents/{incident_id}` return public-safe metadata for future
-web-client reads. OAuth, JWT, public account portals, trusted-contact accounts,
-notification delivery beyond registration email verification, browser
-decryption, key escrow, and server-side decryption are not implemented.
+web-client reads. OAuth, JWT, public account portals, trusted-contact
+wrapped-key delivery, notification delivery beyond registration email
+verification, browser decryption, key escrow, and server-side decryption are
+not implemented.
 
 ## Summary
 
@@ -85,9 +87,10 @@ hashed session-token storage, bearer sessions, optional browser cookie sessions
 with CSRF checks for unsafe cookie-authenticated requests, session expiry,
 logout, account password change, admin account creation, configurable
 registration modes with email verification for open self-registration, admin
-session revocation, owner-scoped contact public-key metadata, owner-managed
-sharing grants, owner-managed wrapped-key records, and owner-only public-safe
-incident metadata list/detail reads. Sharing-grant and wrapped-key management are deliberately
+session revocation, owner-scoped trusted-contact relationship metadata,
+owner-scoped contact public-key metadata, owner-managed sharing grants,
+owner-managed wrapped-key records, and owner-only public-safe incident metadata
+list/detail reads. Sharing-grant and wrapped-key management are deliberately
 stricter than ordinary incident reads: they require the authenticated account
 to own the incident, and an admin account cannot manage another account's
 grants or wrapped-key records through the product route set unless it is also
@@ -258,12 +261,15 @@ perform an equivalent check before returning data.
 ## Grant And Token Lifecycle
 
 The current implementation separates durable account identity, public-link
-viewer tokens, contact public-key metadata, owner-scoped sharing grants, and
-grant-bound wrapped-key records. Grant records are authorization metadata: they
-do not contain raw keys or plaintext and do not create trusted-contact
-sessions. Wrapped-key records contain encrypted media-key material plus public
-wrapping metadata and are delivered only while the bound grant and contact key
-remain active.
+viewer tokens, trusted-contact relationship metadata, contact public-key
+metadata, owner-scoped sharing grants, and grant-bound wrapped-key records.
+Relationship records are identity and lifecycle metadata only: they do not
+contain raw keys, wrapped-key ciphertext, plaintext, or notification payloads,
+and a viewer-token holder does not become a trusted contact by opening a link.
+Grant records are authorization metadata: they do not contain raw keys or
+plaintext and do not create trusted-contact sessions. Wrapped-key records
+contain encrypted media-key material plus public wrapping metadata and are
+delivered only while the bound grant and contact key remain active.
 
 Current and expected grant types:
 

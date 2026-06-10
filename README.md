@@ -78,12 +78,14 @@ grant access, send notifications, change retention, change key custody, expose
 trusted-contact workflows, or change public viewer and bundle behavior. See
 [docs/incident-modes.md](docs/incident-modes.md).
 
-Authenticated account owners can also register trusted-contact public-key
-metadata and create or revoke incident/stream-scoped sharing grants for their
-own incidents. Those grants can authorize private API storage and delivery of
-contact-wrapped CEK/media-key metadata for owned incidents or streams. These
-records do not add trusted-contact accounts, browser or backend decryption,
-public viewer changes, notifications, raw key storage, or key escrow.
+Authenticated account owners can also invite local accounts into
+trusted-contact relationships, register trusted-contact public-key metadata,
+and create or revoke incident/stream-scoped sharing grants for their own
+incidents. Those grants can authorize private API storage and delivery of
+contact-wrapped CEK/media-key metadata for owned incidents or streams.
+Relationship records do not add trusted-contact wrapped-key delivery, browser
+or backend decryption, public viewer changes, notifications, raw key storage,
+or key escrow.
 
 ## What Works Today
 
@@ -119,6 +121,8 @@ public viewer changes, notifications, raw key storage, or key escrow.
   audit APIs with count-oriented candidate metadata and controlled reason codes
 - Owner-scoped account/device recipient-key metadata with active, replaced,
   revoked, and lost states for future wrapping eligibility
+- Account-to-account trusted-contact relationship invites with accept, decline,
+  revoke, and replace states
 - Owner-scoped contact public-key metadata and sharing-grant records for owned
   incidents or streams
 - Owner-scoped wrapped CEK/media-key metadata storage and private API delivery
@@ -146,15 +150,15 @@ public viewer changes, notifications, raw key storage, or key escrow.
 - No implemented web client or account portal
 - No protocol repository or shared conformance test suite
 - No production recording client implementation
-- No mode-driven access, notification, retention, trusted-contact account,
-  key-custody, or viewer behavior
+- No mode-driven access, notification, retention, trusted-contact wrapped-key
+  delivery, key-custody, or viewer behavior
 - No production client-side encryption implementation
 - No implemented capture stream group, stream-variant, or evidence-supersession
   model beyond the current concrete media stream upload lanes
 - No implemented resumable or partial upload protocol; current Valkey upload
   leases are short-lived complete-upload hints, not durable evidence truth
 - No implemented live or partial stream chunk access before stream completion
-- No trusted-contact account delivery, backend/browser decryption, raw key
+- No trusted-contact wrapped-key delivery, backend/browser decryption, raw key
   handling, server escrow, break-glass key access, or playable media export
 - No payment processing, subscriptions, checkout sessions, billing webhooks,
   password recovery, OAuth, or JWT

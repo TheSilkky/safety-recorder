@@ -7,6 +7,7 @@ func (a *API) mainRoutes() http.Handler {
 	a.registerMainAuthRoutes(mux)
 	a.registerMainContactRoutes(mux)
 	a.registerMainAccountRecipientKeyRoutes(mux)
+	a.registerMainTrustedContactRelationshipRoutes(mux)
 	a.registerMainIncidentRoutes(mux)
 	a.registerMainStreamRoutes(mux)
 	a.registerMainIncidentTokenRoutes(mux)
@@ -34,6 +35,16 @@ func (a *API) registerMainAccountRecipientKeyRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /v1/account-recipient-keys/{recipient_key_id}/revoke", a.withPrivateAuth(a.revokeAccountRecipientKey))
 	mux.HandleFunc("POST /v1/account-recipient-keys/{recipient_key_id}/lost", a.withPrivateAuth(a.markAccountRecipientKeyLost))
 	mux.HandleFunc("POST /v1/account-recipient-keys/{recipient_key_id}/replace", a.withPrivateAuth(a.replaceAccountRecipientKey))
+}
+
+func (a *API) registerMainTrustedContactRelationshipRoutes(mux *http.ServeMux) {
+	mux.HandleFunc("POST /v1/trusted-contact-relationships", a.withPrivateAuth(a.createTrustedContactRelationship))
+	mux.HandleFunc("GET /v1/trusted-contact-relationships", a.withPrivateAuth(a.listTrustedContactRelationships))
+	mux.HandleFunc("GET /v1/trusted-contact-relationships/{relationship_id}", a.withPrivateAuth(a.getTrustedContactRelationship))
+	mux.HandleFunc("POST /v1/trusted-contact-relationships/{relationship_id}/accept", a.withPrivateAuth(a.acceptTrustedContactRelationship))
+	mux.HandleFunc("POST /v1/trusted-contact-relationships/{relationship_id}/decline", a.withPrivateAuth(a.declineTrustedContactRelationship))
+	mux.HandleFunc("POST /v1/trusted-contact-relationships/{relationship_id}/revoke", a.withPrivateAuth(a.revokeTrustedContactRelationship))
+	mux.HandleFunc("POST /v1/trusted-contact-relationships/{relationship_id}/replace", a.withPrivateAuth(a.replaceTrustedContactRelationship))
 }
 
 func (a *API) adminRoutes() http.Handler {

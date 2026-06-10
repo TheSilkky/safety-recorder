@@ -420,6 +420,140 @@ func TestAccountRecipientKeys(t *testing.T) {
 	}
 }
 
+func TestTrustedContactRelationships(t *testing.T) {
+	ctx := context.Background()
+	repo := newRepository(t, ctx)
+	owner, err := repo.CreateAccount(ctx, auth.CreateAccountParams{
+		Username:     "relationship-owner",
+		PasswordHash: "hash",
+		Role:         auth.RoleUser,
+	})
+	if err != nil {
+		t.Fatalf("create owner account: %v", err)
+	}
+	recipient, err := repo.CreateAccount(ctx, auth.CreateAccountParams{
+		Username:     "relationship-recipient",
+		PasswordHash: "hash",
+		Role:         auth.RoleUser,
+	})
+	if err != nil {
+		t.Fatalf("create recipient account: %v", err)
+	}
+	other, err := repo.CreateAccount(ctx, auth.CreateAccountParams{
+		Username:     "relationship-other",
+		PasswordHash: "hash",
+		Role:         auth.RoleUser,
+	})
+	if err != nil {
+		t.Fatalf("create other account: %v", err)
+	}
+
+	relationship, err := repo.CreateTrustedContactRelationship(ctx, incidents.CreateTrustedContactRelationshipParams{
+		OwnerAccountID:     owner.ID,
+		RecipientAccountID: recipient.ID,
+		RelationshipRole:   incidents.TrustedContactRelationshipRoleTrustedContact,
+		DisplayLabel:       "emergency contact",
+	})
+	if err != nil {
+		t.Fatalf("create trusted contact relationship: %v", err)
+	}
+	if relationship.RelationshipState != incidents.TrustedContactRelationshipStatePendingInvite ||
+		relationship.RelationshipRole != incidents.TrustedContactRelationshipRoleTrustedContact ||
+		relationship.InvitedAt.IsZero() {
+		t.Fatalf("unexpected trusted contact relationship: %+v", relationship)
+	}
+	if _, err := repo.CreateTrustedContactRelationship(ctx, incidents.CreateTrustedContactRelationshipParams{
+		OwnerAccountID:     owner.ID,
+		RecipientAccountID: recipient.ID,
+		RelationshipRole:   incidents.TrustedContactRelationshipRoleTrustedContact,
+	}); !errors.Is(err, incidents.ErrDuplicate) {
+		t.Fatalf("duplicate open relationship error = %v, want ErrDuplicate", err)
+	}
+	if _, err := repo.AcceptTrustedContactRelationship(ctx, other.ID, relationship.ID); !errors.Is(err, incidents.ErrNotFound) {
+		t.Fatalf("other account accept error = %v, want ErrNotFound", err)
+	}
+	if _, err := repo.AcceptTrustedContactRelationship(ctx, owner.ID, relationship.ID); !errors.Is(err, incidents.ErrNotFound) {
+		t.Fatalf("owner account accept error = %v, want ErrNotFound", err)
+	}
+
+	accepted, err := repo.AcceptTrustedContactRelationship(ctx, recipient.ID, relationship.ID)
+	if err != nil {
+		t.Fatalf("accept trusted contact relationship: %v", err)
+	}
+	if accepted.RelationshipState != incidents.TrustedContactRelationshipStateActive || accepted.AcceptedAt == nil {
+		t.Fatalf("relationship was not accepted: %+v", accepted)
+	}
+	list, err := repo.ListTrustedContactRelationshipsForAccount(ctx, recipient.ID)
+	if err != nil {
+		t.Fatalf("list recipient relationships: %v", err)
+	}
+	if len(list) != 1 || list[0].ID != relationship.ID {
+		t.Fatalf("unexpected recipient relationship list: %+v", list)
+	}
+	if _, err := repo.GetTrustedContactRelationshipForAccount(ctx, other.ID, relationship.ID); !errors.Is(err, incidents.ErrNotFound) {
+		t.Fatalf("other account get relationship error = %v, want ErrNotFound", err)
+	}
+
+	replacement, err := repo.ReplaceTrustedContactRelationship(ctx, incidents.ReplaceTrustedContactRelationshipParams{
+		OwnerAccountID:     owner.ID,
+		RelationshipID:     relationship.ID,
+		RecipientAccountID: other.ID,
+		RelationshipRole:   incidents.TrustedContactRelationshipRoleTrustedContact,
+		DisplayLabel:       "replacement contact",
+	})
+	if err != nil {
+		t.Fatalf("replace trusted contact relationship: %v", err)
+	}
+	if replacement.RelationshipState != incidents.TrustedContactRelationshipStatePendingInvite || replacement.RecipientAccountID != other.ID {
+		t.Fatalf("unexpected replacement relationship: %+v", replacement)
+	}
+	oldRelationship, err := repo.GetTrustedContactRelationshipForAccount(ctx, owner.ID, relationship.ID)
+	if err != nil {
+		t.Fatalf("get old relationship: %v", err)
+	}
+	if oldRelationship.RelationshipState != incidents.TrustedContactRelationshipStateReplaced ||
+		oldRelationship.ReplacedAt == nil ||
+		oldRelationship.ReplacedByRelationshipID != replacement.ID {
+		t.Fatalf("old relationship was not replaced: %+v", oldRelationship)
+	}
+
+	declined, err := repo.DeclineTrustedContactRelationship(ctx, other.ID, replacement.ID)
+	if err != nil {
+		t.Fatalf("decline replacement relationship: %v", err)
+	}
+	if declined.RelationshipState != incidents.TrustedContactRelationshipStateDeclined || declined.DeclinedAt == nil {
+		t.Fatalf("relationship was not declined: %+v", declined)
+	}
+	if _, err := repo.AcceptTrustedContactRelationship(ctx, other.ID, replacement.ID); !errors.Is(err, incidents.ErrInvalidState) {
+		t.Fatalf("accept declined relationship error = %v, want ErrInvalidState", err)
+	}
+
+	revokedCandidate, err := repo.CreateTrustedContactRelationship(ctx, incidents.CreateTrustedContactRelationshipParams{
+		OwnerAccountID:     owner.ID,
+		RecipientAccountID: recipient.ID,
+		RelationshipRole:   incidents.TrustedContactRelationshipRoleTrustedContact,
+		DisplayLabel:       "new invite",
+	})
+	if err != nil {
+		t.Fatalf("create revoke candidate: %v", err)
+	}
+	revoked, err := repo.RevokeTrustedContactRelationship(ctx, owner.ID, revokedCandidate.ID, owner.ID)
+	if err != nil {
+		t.Fatalf("revoke trusted contact relationship: %v", err)
+	}
+	if revoked.RelationshipState != incidents.TrustedContactRelationshipStateRevoked ||
+		revoked.RevokedAt == nil ||
+		revoked.RevokedByAccountID != owner.ID {
+		t.Fatalf("relationship was not revoked: %+v", revoked)
+	}
+	if _, err := repo.ReplaceTrustedContactRelationship(ctx, incidents.ReplaceTrustedContactRelationshipParams{
+		OwnerAccountID: owner.ID,
+		RelationshipID: revoked.ID,
+	}); !errors.Is(err, incidents.ErrInvalidState) {
+		t.Fatalf("replace revoked relationship error = %v, want ErrInvalidState", err)
+	}
+}
+
 func TestWrappedKeyRecords(t *testing.T) {
 	ctx := context.Background()
 	repo := newRepository(t, ctx)

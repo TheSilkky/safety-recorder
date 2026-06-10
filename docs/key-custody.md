@@ -2,12 +2,13 @@
 
 This document defines the intended production key custody direction for
 Proofline. The current backend now includes account/device recipient public-key
-metadata, account-owner contact public-key metadata, sharing-grant metadata, and
+metadata, account-to-account trusted-contact relationship metadata,
+account-owner contact public-key metadata, sharing-grant metadata, and
 grant-bound wrapped-key record storage and delivery, but this document remains
 the security boundary for production custody. The current implementation does
-not add browser decryption, backend decryption, server escrow, trusted-contact
-accounts, account/device wrapped-key delivery, or production key custody
-behavior.
+not add browser decryption, backend decryption, server escrow,
+trusted-contact wrapped-key delivery, account/device wrapped-key delivery, or
+production key custody behavior.
 
 ## Summary
 
@@ -71,8 +72,9 @@ ciphertext-only by default.
   incident-mode, capture-profile, escalation-policy, or sharing-state metadata.
 - No playable media export.
 - No push, SMS, or Messenger delivery.
-- No new account-system implementation, trusted-contact accounts, or public
-  account portal.
+- No new account-system implementation beyond local account relationship
+  metadata, no trusted-contact wrapped-key delivery, and no public account
+  portal.
 
 ## Incident Mode Implications
 
@@ -461,16 +463,22 @@ approved together.
 ## API And Storage Changes
 
 The current API has owner-scoped account/device recipient-key registration,
-replacement, revocation, and lost-device state routes; owner-scoped contact
-public-key registration; sharing-grant metadata routes; and grant-bound
-wrapped-key record storage and delivery behind the authenticated main `/v1`
-boundary. Account/device recipient-key routes store public metadata only and do
-not yet deliver wrapped keys. The backend still has no trusted-contact account
-model, browser decryption, backend decryption, or server escrow path. Before iOS
-or production trusted-contact work starts, future design should define:
+replacement, revocation, and lost-device state routes; account-to-account
+trusted-contact relationship invite, accept, decline, revoke, and replacement
+routes; owner-scoped contact public-key registration; sharing-grant metadata
+routes; and grant-bound wrapped-key record storage and delivery behind the
+authenticated main `/v1` boundary. Account/device recipient-key routes store
+public metadata only and do not yet deliver wrapped keys. Trusted-contact
+relationship routes record identity and lifecycle state only; they do not
+deliver trusted-contact wrapped keys, plaintext, notifications, or emergency
+dispatch. The backend still has no browser decryption, backend decryption, or
+server escrow path. Before iOS or production trusted-contact work starts,
+future design should define:
 
 - account/device recipient-key verification, replacement, revocation, lost-key
   recovery, and future CEK rewrapping behavior
+- trusted-contact relationship verification, consent, replacement, privacy, and
+  UX rules
 - contact public-key registration, verification, replacement, and revocation
 - device identity and recovery-key enrollment
 - how clients choose, validate, and encode wrapping formats for server-stored

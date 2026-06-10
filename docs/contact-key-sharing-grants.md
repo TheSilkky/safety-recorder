@@ -2,12 +2,13 @@
 
 This document designs the contact key-sharing model for Proofline. The current
 backend implements the server metadata steps for this model: account owners can
-register trusted-contact public-key metadata, create or revoke
-incident/stream-scoped sharing grants, and store or revoke grant-bound
-wrapped-key records through authenticated private `/v1` routes. It does not add
-bundle wrapped-key fields, trusted-contact accounts, browser decryption,
-backend decryption, server escrow, public account workflows, notifications,
-client code, or production key custody behavior.
+create account-to-account trusted-contact relationship invites, register
+trusted-contact public-key metadata, create or revoke incident/stream-scoped
+sharing grants, and store or revoke grant-bound wrapped-key records through
+authenticated private `/v1` routes. It does not add bundle wrapped-key fields,
+trusted-contact wrapped-key delivery, browser decryption, backend decryption,
+server escrow, public account workflows, notifications, client code, or
+production key custody behavior.
 
 The design connects the long-term key custody direction in
 [key-custody.md](key-custody.md), the role and grant boundaries in
@@ -329,13 +330,16 @@ Implementation should stay split into narrow issues:
 4. Implemented: add owner-authenticated wrapped-key delivery through private
    API responses, with bundle manifests remaining key-free and tests proving
    unauthorized actors do not receive wrapped-key records.
-5. Future: add trusted-contact authentication and grant-scoped read routes only
+5. Implemented: add account-to-account trusted-contact relationship lifecycle
+   metadata for owner invite/revoke/replace and recipient accept/decline
+   without granting key delivery.
+6. Future: add trusted-contact authentication and grant-scoped read routes only
    after the public product API exposure model is explicitly reviewed.
-6. Future: optionally add grant-scoped bundle manifests only after a separate
+7. Future: optionally add grant-scoped bundle manifests only after a separate
    design and tests prove unauthorized actors do not receive wrapped-key records.
-7. Update simulator/client tooling to generate production-shaped wrapped-key
+8. Update simulator/client tooling to generate production-shaped wrapped-key
    records using a reviewed wrapping profile.
-8. Update deployment, security, threat-model, API, and retention docs before
+9. Update deployment, security, threat-model, API, and retention docs before
    any public-authenticated contact route is exposed.
 
 Each implementation issue must include tests for:

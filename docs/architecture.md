@@ -23,8 +23,8 @@ web-client reads, and has local username/password accounts with opaque
 server-side sessions for the main `/v1` API, private-admin JSON routes under
 `/v1/admin/...`, plus a private admin web surface under `/admin`.
 Mode-driven access, escalation, retention, sharing, key custody,
-trusted-contact accounts, notification delivery, and mobile/web clients are not
-implemented yet. Planned mode behavior, escalation, migration, and
+trusted-contact wrapped-key delivery, notification delivery, and mobile/web
+clients are not implemented yet. Planned mode behavior, escalation, migration, and
 viewer-wording boundaries are documented in [incident-modes.md](incident-modes.md),
 and current local session behavior plus future public product API, separately
 bound private admin API, role, and grant boundaries are documented in
@@ -33,7 +33,7 @@ bound private admin API, role, and grant boundaries are documented in
 The repository does not contain an iOS app, Android app, web client, protocol
 package, production recording client, production client key storage, key
 sharing, browser/client-side decryption, server-assisted break-glass key access,
-notification system, trusted-contact account model, future public product API,
+notification system, trusted-contact delivery model, future public product API,
 future separately bound private admin API, OAuth/JWT identity integration, or
 playable media export. The Go simulator defaults to the accepted PQ payload
 envelope for development and test flows, can use the older v1 AES-GCM envelope

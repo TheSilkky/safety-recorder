@@ -12,9 +12,10 @@ escalation-policy, and sharing-state metadata. Those fields are not behavior
 flags and do not grant access, send notifications, change retention, change key
 custody, expose trusted-contact workflows, or change public viewer and bundle
 behavior. The backend implements account/device recipient public-key metadata,
-account-owner contact public-key metadata, and owner-scoped sharing-grant records
-and wrapped-key records for owned incidents, but it does not yet implement
-trusted-contact accounts, account/device wrapped-key delivery, dead-man switch
+account-to-account trusted-contact relationship metadata, account-owner contact
+public-key metadata, and owner-scoped sharing-grant records and wrapped-key
+records for owned incidents, but it does not yet implement trusted-contact
+wrapped-key delivery, account/device wrapped-key delivery, dead-man switch
 notifications, mode-driven sharing, browser decryption, backend decryption, or
 public account-based product access beyond the narrow owner incident metadata
 list/detail read surface for the future web client.
@@ -22,13 +23,13 @@ list/detail read surface for the future web client.
 The `/v1` access-control direction is documented in
 [v1-access-control.md](v1-access-control.md). The current implementation covers
 local account sessions, owner-scoped incident access, owner-scoped account/device
-recipient-key metadata, contact public-key metadata, sharing-grant metadata, and
-wrapped-key metadata routes, admin account routes, route authentication, and
-route-class limits. It does not by itself approve broad public `/v1` routing as
-a product API. The implemented account incident list/detail routes are
-owner-only and public-safe, but uploads, chunk reads, bundle downloads,
-diagnostics, operator routes, write routes, and key-custody behavior still need
-separate review before public exposure.
+recipient-key metadata, trusted-contact relationship metadata, contact
+public-key metadata, sharing-grant metadata, and wrapped-key metadata routes,
+admin account routes, route authentication, and route-class limits. It does not
+by itself approve broad public `/v1` routing as a product API. The implemented
+account incident list/detail routes are owner-only and public-safe, but uploads,
+chunk reads, bundle downloads, diagnostics, operator routes, write routes, and
+key-custody behavior still need separate review before public exposure.
 Existing `/v1/admin/...` JSON routes are
 authenticated admin-only routes on the private-admin listener and must not be
 routed from public entry points. The current topology separates the main
@@ -142,8 +143,9 @@ Viewer URLs contain bearer tokens and should be treated as secrets. Reverse prox
   bodies, uploaded bytes, stored paths, object keys, plaintext, or raw keys.
 - Main API route-class rate limiting is enabled by default for authentication,
   public registration, email verification, bootstrap, account metadata,
-  account/device recipient-key metadata, contact-key metadata, incident
-  metadata, sharing-grant metadata, wrapped-key metadata, upload,
+  account/device recipient-key metadata, trusted-contact relationship metadata,
+  contact-key metadata, incident metadata, sharing-grant metadata,
+  wrapped-key metadata, upload,
   reconciliation, stream, token, and download classes. The legacy admin API
   limit setting is retained only as a documented compatibility setting because
   current `/v1/admin/...` JSON routes are on the private-admin listener. Limiter
@@ -183,10 +185,17 @@ Viewer URLs contain bearer tokens and should be treated as secrets. Reverse prox
   Reassignment changes only private owner-scoped access; public viewer routes,
   token hashes, bundles, deletion state, retention state, encrypted blobs, and
   key custody remain unchanged.
-- Account/device recipient-key, contact public-key, sharing-grant, and
-  wrapped-key routes are authenticated main `/v1` routes. Account/device
-  recipient-key and contact public-key records are scoped to the authenticated
-  account. Account/device recipient-key records store only public key material,
+- Account/device recipient-key, trusted-contact relationship, contact
+  public-key, sharing-grant, and wrapped-key routes are authenticated main
+  `/v1` routes. Account/device recipient-key, trusted-contact relationship, and
+  contact public-key records are scoped to the authenticated account.
+  Trusted-contact relationships record owner account, recipient account, role,
+  state, timestamps, and revocation or replacement metadata only. The owner can
+  create, revoke, or replace relationships; the recipient can accept or decline
+  an invite. A viewer-token holder does not become a trusted contact by opening
+  a link. Relationship state does not grant raw keys, wrapped keys, plaintext,
+  notification delivery, emergency dispatch, or public viewer privileges.
+  Account/device recipient-key records store only public key material,
   non-secret key IDs, scheme/suite identifiers, fingerprints, state,
   timestamps, and optional display labels. Revoked, replaced, and lost
   account/device keys are terminal for future wrapping eligibility; those state
@@ -386,11 +395,11 @@ Normal file or object removal is not treated as guaranteed secure erasure. Deplo
   in
   [regional-stream-ingress-relay.md](regional-stream-ingress-relay.md)
 - No implemented mode-driven access, escalation, retention, key-custody,
-  trusted-contact account, dead-man switch notification, browser decryption,
+  trusted-contact delivery, dead-man switch notification, browser decryption,
   backend decryption, payment-gated registration, password recovery, or public
   account portal behavior
 - No implemented production client key storage, browser decryption, server-assisted break-glass key access, or emergency-contact key access model; the future designs are documented in [key-custody.md](key-custody.md), [contact-key-sharing-grants.md](contact-key-sharing-grants.md), [browser-decryption.md](browser-decryption.md), and [break-glass-key-access.md](break-glass-key-access.md)
-- No implemented production trusted-contact account delivery, browser
+- No implemented production trusted-contact wrapped-key delivery, browser
   decryption, or client key-custody UX. Current wrapped-key metadata routes
   validate and store encrypted PQ key metadata only and do not introduce
   recipient private-key custody, raw CEK storage, or decryption

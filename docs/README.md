@@ -135,12 +135,13 @@ Legacy unowned incidents remain admin-only unless an admin uses the private
 reassignment workflow documented in
 [legacy-unowned-incident-reassignment.md](legacy-unowned-incident-reassignment.md).
 
-Authenticated account owners can register trusted-contact public-key metadata
-and manage incident/stream-scoped sharing grants for their own incidents. Those
-routes can store and deliver wrapped CEK/media-key metadata through private API
-responses when an active grant authorizes ciphertext access. They do not add
-trusted-contact accounts, browser or backend decryption, public viewer changes,
-notifications, raw key storage, or key escrow.
+Authenticated account owners can invite local accounts into trusted-contact
+relationships, register trusted-contact public-key metadata, and manage
+incident/stream-scoped sharing grants for their own incidents. Those routes can
+store and deliver wrapped CEK/media-key metadata through private API responses
+when an active grant authorizes ciphertext access. Relationship records do not
+add trusted-contact wrapped-key delivery, browser or backend decryption, public
+viewer changes, notifications, raw key storage, or key escrow.
 
 The future Stripe subscription billing design for Official Proofline hosted
 server access is documented in

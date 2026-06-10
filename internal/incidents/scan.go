@@ -500,6 +500,76 @@ func scanAccountRecipientKey(s scanner) (AccountRecipientKey, error) {
 	return key, nil
 }
 
+func scanTrustedContactRelationship(s scanner) (TrustedContactRelationship, error) {
+	var relationship TrustedContactRelationship
+	var displayLabel sql.NullString
+	var createdAt string
+	var updatedAt string
+	var invitedAt string
+	var acceptedAt sql.NullString
+	var declinedAt sql.NullString
+	var revokedAt sql.NullString
+	var revokedByAccountID sql.NullString
+	var replacedAt sql.NullString
+	var replacedByRelationshipID sql.NullString
+	if err := s.Scan(
+		&relationship.ID,
+		&relationship.OwnerAccountID,
+		&relationship.RecipientAccountID,
+		&relationship.RelationshipRole,
+		&relationship.RelationshipState,
+		&displayLabel,
+		&createdAt,
+		&updatedAt,
+		&invitedAt,
+		&acceptedAt,
+		&declinedAt,
+		&revokedAt,
+		&revokedByAccountID,
+		&replacedAt,
+		&replacedByRelationshipID,
+	); err != nil {
+		return TrustedContactRelationship{}, err
+	}
+	parsedCreatedAt, err := parseDBTime(createdAt)
+	if err != nil {
+		return TrustedContactRelationship{}, err
+	}
+	parsedUpdatedAt, err := parseDBTime(updatedAt)
+	if err != nil {
+		return TrustedContactRelationship{}, err
+	}
+	parsedInvitedAt, err := parseDBTime(invitedAt)
+	if err != nil {
+		return TrustedContactRelationship{}, err
+	}
+	relationship.CreatedAt = parsedCreatedAt
+	relationship.UpdatedAt = parsedUpdatedAt
+	relationship.InvitedAt = parsedInvitedAt
+	if displayLabel.Valid {
+		relationship.DisplayLabel = displayLabel.String
+	}
+	if relationship.AcceptedAt, err = nullableDBTime(acceptedAt); err != nil {
+		return TrustedContactRelationship{}, err
+	}
+	if relationship.DeclinedAt, err = nullableDBTime(declinedAt); err != nil {
+		return TrustedContactRelationship{}, err
+	}
+	if relationship.RevokedAt, err = nullableDBTime(revokedAt); err != nil {
+		return TrustedContactRelationship{}, err
+	}
+	if revokedByAccountID.Valid {
+		relationship.RevokedByAccountID = revokedByAccountID.String
+	}
+	if relationship.ReplacedAt, err = nullableDBTime(replacedAt); err != nil {
+		return TrustedContactRelationship{}, err
+	}
+	if replacedByRelationshipID.Valid {
+		relationship.ReplacedByRelationshipID = replacedByRelationshipID.String
+	}
+	return relationship, nil
+}
+
 func scanSharingGrant(s scanner) (SharingGrant, error) {
 	var grant SharingGrant
 	var streamID sql.NullString

@@ -657,6 +657,91 @@ func TestPostgresAccountRecipientKeys(t *testing.T) {
 	}
 }
 
+func TestPostgresTrustedContactRelationships(t *testing.T) {
+	ctx := context.Background()
+	conn := openPostgresTestDB(t, ctx)
+	if err := Migrate(ctx, conn); err != nil {
+		t.Fatalf("Migrate: %v", err)
+	}
+	repo := NewRepository(conn)
+	owner, err := repo.CreateAccount(ctx, auth.CreateAccountParams{
+		Username:     "postgres-relationship-owner",
+		PasswordHash: "hash",
+		Role:         auth.RoleUser,
+	})
+	if err != nil {
+		t.Fatalf("create owner account: %v", err)
+	}
+	recipient, err := repo.CreateAccount(ctx, auth.CreateAccountParams{
+		Username:     "postgres-relationship-recipient",
+		PasswordHash: "hash",
+		Role:         auth.RoleUser,
+	})
+	if err != nil {
+		t.Fatalf("create recipient account: %v", err)
+	}
+	other, err := repo.CreateAccount(ctx, auth.CreateAccountParams{
+		Username:     "postgres-relationship-other",
+		PasswordHash: "hash",
+		Role:         auth.RoleUser,
+	})
+	if err != nil {
+		t.Fatalf("create other account: %v", err)
+	}
+
+	relationship, err := repo.CreateTrustedContactRelationship(ctx, incidents.CreateTrustedContactRelationshipParams{
+		OwnerAccountID:     owner.ID,
+		RecipientAccountID: recipient.ID,
+		RelationshipRole:   incidents.TrustedContactRelationshipRoleTrustedContact,
+		DisplayLabel:       "postgres contact",
+	})
+	if err != nil {
+		t.Fatalf("create trusted contact relationship: %v", err)
+	}
+	if _, err := repo.CreateTrustedContactRelationship(ctx, incidents.CreateTrustedContactRelationshipParams{
+		OwnerAccountID:     owner.ID,
+		RecipientAccountID: recipient.ID,
+		RelationshipRole:   incidents.TrustedContactRelationshipRoleTrustedContact,
+	}); !errors.Is(err, incidents.ErrDuplicate) {
+		t.Fatalf("duplicate relationship error = %v, want ErrDuplicate", err)
+	}
+	accepted, err := repo.AcceptTrustedContactRelationship(ctx, recipient.ID, relationship.ID)
+	if err != nil {
+		t.Fatalf("accept relationship: %v", err)
+	}
+	if accepted.RelationshipState != incidents.TrustedContactRelationshipStateActive || accepted.AcceptedAt == nil {
+		t.Fatalf("relationship was not accepted: %+v", accepted)
+	}
+	replacement, err := repo.ReplaceTrustedContactRelationship(ctx, incidents.ReplaceTrustedContactRelationshipParams{
+		OwnerAccountID:     owner.ID,
+		RelationshipID:     relationship.ID,
+		RecipientAccountID: other.ID,
+		RelationshipRole:   incidents.TrustedContactRelationshipRoleTrustedContact,
+	})
+	if err != nil {
+		t.Fatalf("replace relationship: %v", err)
+	}
+	if replacement.RelationshipState != incidents.TrustedContactRelationshipStatePendingInvite || replacement.RecipientAccountID != other.ID {
+		t.Fatalf("unexpected replacement relationship: %+v", replacement)
+	}
+	oldRelationship, err := repo.GetTrustedContactRelationshipForAccount(ctx, owner.ID, relationship.ID)
+	if err != nil {
+		t.Fatalf("get old relationship: %v", err)
+	}
+	if oldRelationship.RelationshipState != incidents.TrustedContactRelationshipStateReplaced ||
+		oldRelationship.ReplacedAt == nil ||
+		oldRelationship.ReplacedByRelationshipID != replacement.ID {
+		t.Fatalf("old relationship was not replaced: %+v", oldRelationship)
+	}
+	revoked, err := repo.RevokeTrustedContactRelationship(ctx, owner.ID, replacement.ID, owner.ID)
+	if err != nil {
+		t.Fatalf("revoke replacement relationship: %v", err)
+	}
+	if revoked.RelationshipState != incidents.TrustedContactRelationshipStateRevoked || revoked.RevokedAt == nil {
+		t.Fatalf("relationship was not revoked: %+v", revoked)
+	}
+}
+
 func TestPostgresUploadOperationRaceAndBackendParity(t *testing.T) {
 	contracttest.RunUploadOperationRaceAndParity(t, func(t *testing.T, ctx context.Context) contracttest.Repository {
 		t.Helper()
