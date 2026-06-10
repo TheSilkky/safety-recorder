@@ -105,6 +105,38 @@ go run ./cmd/simclient --chunks 12 --interval 5s
 The simulator creates a read-only incident viewer token for the flow but omits
 token-bearing viewer URLs from output.
 
+## Duplicate Reconciliation Drill
+
+To verify the private duplicate chunk reconciliation path after an accepted
+streamed chunk:
+
+```bash
+PROOFLINE_SIM_USERNAME=admin \
+PROOFLINE_SIM_PASSWORD='replace-with-a-long-local-password' \
+go run ./cmd/simclient \
+  --chunks 3 \
+  --interval 1s \
+  --reconcile-duplicate
+```
+
+The drill uploads chunk 1, verifies the normal idempotent replay path, calls
+`POST /v1/incidents/{incident_id}/chunks/reconcile` with locally known
+ciphertext metadata, and then sends a deliberate metadata mismatch for the same
+chunk identity to confirm the safe `409 duplicate_chunk_conflict` response. It
+does not re-upload ciphertext during reconciliation and does not print raw
+session tokens, idempotency keys, request bodies, uploaded bytes, plaintext,
+raw keys, local staging paths, stored paths, object keys, or token-bearing
+viewer URLs.
+
+Recorder clients should use reconciliation after a `409 duplicate_chunk` or an
+uncertain restart state when local durable metadata can identify the intended
+stream ID, chunk index, media type, time range, ciphertext byte size,
+ciphertext SHA-256, and normalized original filename. A matched reconciliation
+confirms that the server already accepted the expected complete encrypted
+chunk. A conflict means the local queue and server evidence metadata disagree;
+the client must not overwrite server evidence and should preserve local
+diagnostics for operator review.
+
 ## Desktop Generated Staging Flow
 
 To stage generated encrypted chunks durably before upload:
@@ -384,11 +416,11 @@ with the same `Idempotency-Key`. If the server returns `200 OK` with
 without printing the raw idempotency key, uploaded bytes, local staging path, or
 session token.
 
-The simulator does not yet call the duplicate chunk reconciliation route. Future
-ambiguous-network and process-restart drills can use
-`POST /v1/incidents/{incident_id}/chunks/reconcile` to compare a local expected
-chunk fingerprint with accepted server metadata without re-uploading ciphertext.
-Broader simulator drills remain future work planned in
+The standard simulator can call the duplicate chunk reconciliation route with
+`--reconcile-duplicate` to compare a local expected chunk fingerprint with
+accepted server metadata without re-uploading ciphertext. Broader desktop
+recorder ambiguous-network and process-restart reconciliation drills remain
+future work planned in
 [cluster-safe-upload-semantics.md](cluster-safe-upload-semantics.md).
 
 ## Poor-Network Desktop Controls
@@ -443,6 +475,7 @@ attempts and durable metadata for accepted chunks.
 | `--wrapped-key-contact-id` | Local simulator trusted-contact ID for wrapped-key metadata. |
 | `--verify-bundle-decryption` | Locally decrypt downloaded bundles when encryption is enabled. |
 | `--simulate-failure-every` | Intentionally fail every Nth chunk hash before retrying. |
+| `--reconcile-duplicate` | Reconcile accepted chunk 1 metadata and verify a safe duplicate-conflict response in the standard simulator flow. |
 | `--close` | Close the incident when complete. |
 | `--desktop-recorder` | Enable durable desktop recorder simulator mode. |
 | `--stage-dir` | Local durable staging directory for desktop recorder mode. |

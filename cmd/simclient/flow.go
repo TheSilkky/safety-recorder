@@ -70,7 +70,7 @@ func uploadChunkWithOptionalHashFailure(ctx context.Context, out io.Writer, sim 
 		if err := sim.uploadChunk(ctx, chunk); err != nil {
 			return err
 		}
-		return verifyFirstChunkIdempotentReplay(ctx, out, sim, chunk, chunkIndex)
+		return verifyFirstChunkIdempotentReplay(ctx, out, sim, cfg, chunk, chunkIndex)
 	}
 
 	fmt.Fprintf(out, "Uploading %s%s chunk %d/%d with intentionally bad hash...\n", encryptionLogPrefix(cfg.encrypt), cfg.mediaType, chunkIndex, cfg.chunks)
@@ -86,10 +86,10 @@ func uploadChunkWithOptionalHashFailure(ctx context.Context, out io.Writer, sim 
 		return err
 	}
 	fmt.Fprintln(out, "Retry succeeded.")
-	return verifyFirstChunkIdempotentReplay(ctx, out, sim, chunk, chunkIndex)
+	return verifyFirstChunkIdempotentReplay(ctx, out, sim, cfg, chunk, chunkIndex)
 }
 
-func verifyFirstChunkIdempotentReplay(ctx context.Context, out io.Writer, sim client, chunk chunkUpload, chunkIndex int) error {
+func verifyFirstChunkIdempotentReplay(ctx context.Context, out io.Writer, sim client, cfg config, chunk chunkUpload, chunkIndex int) error {
 	if chunkIndex != 1 {
 		return nil
 	}
@@ -98,6 +98,28 @@ func verifyFirstChunkIdempotentReplay(ctx context.Context, out io.Writer, sim cl
 		return err
 	}
 	fmt.Fprintln(out, "Idempotent replay succeeded.")
+	if cfg.reconcileDuplicate {
+		if err := verifyDuplicateReconciliationDrill(ctx, out, sim, chunk); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func verifyDuplicateReconciliationDrill(ctx context.Context, out io.Writer, sim client, chunk chunkUpload) error {
+	fmt.Fprintln(out, "Reconciling accepted chunk metadata...")
+	if err := sim.expectChunkReconciliationMatch(ctx, chunk); err != nil {
+		return err
+	}
+	fmt.Fprintln(out, "Chunk reconciliation matched.")
+
+	fmt.Fprintln(out, "Verifying reconciliation conflict response...")
+	conflict := chunk
+	conflict.sha256Hex = badHashFor(chunk.sha256Hex)
+	if err := sim.expectChunkReconciliationConflict(ctx, conflict); err != nil {
+		return err
+	}
+	fmt.Fprintln(out, "Reconciliation conflict drill succeeded.")
 	return nil
 }
 

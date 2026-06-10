@@ -59,6 +59,31 @@ type mediaStream struct {
 	CompletedAt        *time.Time `json:"completed_at,omitempty"`
 }
 
+type chunkReconciliationResponse struct {
+	Error          *chunkReconciliationError `json:"error,omitempty"`
+	Reconciliation chunkReconciliationResult `json:"reconciliation"`
+}
+
+type chunkReconciliationError struct {
+	Code string `json:"code"`
+}
+
+type chunkReconciliationResult struct {
+	Status           string                      `json:"status"`
+	Identity         chunkReconciliationIdentity `json:"identity"`
+	ChunkID          string                      `json:"chunk_id,omitempty"`
+	ByteSize         *int64                      `json:"byte_size,omitempty"`
+	SHA256Hex        string                      `json:"sha256_hex,omitempty"`
+	MismatchedFields []string                    `json:"mismatched_fields,omitempty"`
+}
+
+type chunkReconciliationIdentity struct {
+	IncidentID string `json:"incident_id"`
+	StreamID   string `json:"stream_id,omitempty"`
+	ChunkIndex int    `json:"chunk_index"`
+	MediaType  string `json:"media_type"`
+}
+
 type apiErrorResponse struct {
 	Error struct {
 		Code    string `json:"code"`
@@ -249,6 +274,103 @@ func (c client) expectHashMismatch(ctx context.Context, upload chunkUpload) erro
 	return nil
 }
 
+func (c client) expectChunkReconciliationMatch(ctx context.Context, upload chunkUpload) error {
+	status, body, err := c.postChunkReconciliation(ctx, upload)
+	if err != nil {
+		return err
+	}
+	if status != http.StatusOK {
+		return fmt.Errorf("expected reconciliation match status %d, got %d: %s", http.StatusOK, status, safeErrorCode(body))
+	}
+	var response chunkReconciliationResponse
+	if err := json.Unmarshal(body, &response); err != nil {
+		return fmt.Errorf("decode reconciliation response: %w", err)
+	}
+	result := response.Reconciliation
+	if result.Status != "matched" {
+		return fmt.Errorf("expected reconciliation status matched, got %q", result.Status)
+	}
+	if !reconciliationIdentityMatches(result.Identity, upload) {
+		return fmt.Errorf("reconciliation identity did not match requested chunk")
+	}
+	if result.ByteSize == nil || *result.ByteSize != int64(len(upload.body)) {
+		return fmt.Errorf("reconciliation byte_size did not match requested chunk")
+	}
+	if result.SHA256Hex != upload.sha256Hex {
+		return fmt.Errorf("reconciliation sha256_hex did not match requested chunk")
+	}
+	if result.ChunkID == "" {
+		return fmt.Errorf("reconciliation response omitted chunk_id")
+	}
+	return nil
+}
+
+func (c client) expectChunkReconciliationConflict(ctx context.Context, upload chunkUpload) error {
+	status, body, err := c.postChunkReconciliation(ctx, upload)
+	if err != nil {
+		return err
+	}
+	if status != http.StatusConflict {
+		return fmt.Errorf("expected reconciliation conflict status %d, got %d: %s", http.StatusConflict, status, safeErrorCode(body))
+	}
+	var response chunkReconciliationResponse
+	if err := json.Unmarshal(body, &response); err != nil {
+		return fmt.Errorf("decode reconciliation conflict response: %w", err)
+	}
+	if response.Error == nil || response.Error.Code != "duplicate_chunk_conflict" {
+		return fmt.Errorf("expected duplicate_chunk_conflict, got %q", safeErrorCode(body))
+	}
+	if response.Reconciliation.Status != "conflict" {
+		return fmt.Errorf("expected reconciliation status conflict, got %q", response.Reconciliation.Status)
+	}
+	if !reconciliationIdentityMatches(response.Reconciliation.Identity, upload) {
+		return fmt.Errorf("reconciliation conflict identity did not match requested chunk")
+	}
+	if !containsString(response.Reconciliation.MismatchedFields, "sha256_hex") {
+		return fmt.Errorf("expected reconciliation conflict to include sha256_hex mismatch")
+	}
+	return nil
+}
+
+func (c client) postChunkReconciliation(ctx context.Context, upload chunkUpload) (int, []byte, error) {
+	byteSize := int64(len(upload.body))
+	payload := map[string]any{
+		"chunk_index":       upload.chunkIndex,
+		"media_type":        upload.mediaType,
+		"started_at":        upload.startedAt.Format(time.RFC3339Nano),
+		"ended_at":          upload.endedAt.Format(time.RFC3339Nano),
+		"byte_size":         byteSize,
+		"sha256_hex":        upload.sha256Hex,
+		"original_filename": upload.filename,
+	}
+	if upload.streamID != "" {
+		payload["stream_id"] = upload.streamID
+	}
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return 0, nil, err
+	}
+	path := "/v1/incidents/" + url.PathEscape(upload.incidentID) + "/chunks/reconcile"
+	request, err := http.NewRequestWithContext(ctx, http.MethodPost, joinURL(c.apiBase, path), bytes.NewReader(body))
+	if err != nil {
+		return 0, nil, err
+	}
+	request.Header.Set("Content-Type", "application/json")
+	c.authorize(request)
+
+	response, err := c.httpClient.Do(request)
+	if err != nil {
+		return 0, nil, err
+	}
+	defer response.Body.Close()
+
+	responseBody, err := io.ReadAll(io.LimitReader(response.Body, 64*1024))
+	if err != nil {
+		return response.StatusCode, nil, err
+	}
+	return response.StatusCode, responseBody, nil
+}
+
 func (c client) postJSON(ctx context.Context, path string, payload any, wantStatus int, target any) error {
 	body, err := json.Marshal(payload)
 	if err != nil {
@@ -387,4 +509,32 @@ func responseErrorSummary(body []byte) string {
 		return "empty response body"
 	}
 	return "response body omitted"
+}
+
+func safeErrorCode(body []byte) string {
+	var apiError apiErrorResponse
+	if err := json.Unmarshal(body, &apiError); err == nil && strings.TrimSpace(apiError.Error.Code) != "" {
+		return strings.TrimSpace(apiError.Error.Code)
+	}
+	var reconciliation chunkReconciliationResponse
+	if err := json.Unmarshal(body, &reconciliation); err == nil && reconciliation.Error != nil && strings.TrimSpace(reconciliation.Error.Code) != "" {
+		return strings.TrimSpace(reconciliation.Error.Code)
+	}
+	return "response body omitted"
+}
+
+func containsString(values []string, target string) bool {
+	for _, value := range values {
+		if value == target {
+			return true
+		}
+	}
+	return false
+}
+
+func reconciliationIdentityMatches(identity chunkReconciliationIdentity, upload chunkUpload) bool {
+	return identity.IncidentID == upload.incidentID &&
+		identity.StreamID == upload.streamID &&
+		identity.ChunkIndex == upload.chunkIndex &&
+		identity.MediaType == upload.mediaType
 }

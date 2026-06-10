@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Added an opt-in simulator duplicate reconciliation drill for accepted
+  streamed chunks, with safe conflict-path validation and documentation.
+
 - Strengthened backup and restore drill docs for deletion state, tombstones,
   restored deleted incidents, private restore reconciliation,
   sharing-grant/wrapped-key consistency, and public viewer fail-closed

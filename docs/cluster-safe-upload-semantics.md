@@ -130,6 +130,13 @@ identities. Equivalent retry success is only part of the idempotency-key path.
 The current implementation still requires a complete encrypted chunk retry; it
 does not resume an in-progress partial transfer.
 
+The simulator can exercise the separate duplicate reconciliation path with
+`go run ./cmd/simclient --reconcile-duplicate`. That drill compares locally
+known ciphertext metadata for an already accepted chunk against server metadata
+without uploading ciphertext again, then verifies the safe conflict response
+shape for a mismatched fingerprint. It remains a private authenticated query
+flow and does not make local upload queues server-authoritative evidence.
+
 ## Request Fingerprint
 
 The request fingerprint should include all client-controlled fields that become
