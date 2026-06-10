@@ -75,6 +75,15 @@ func TestSafeLogPathRedactsMainAPIPathsWithoutMuxPattern(t *testing.T) {
 			},
 		},
 		{
+			name:   "account recipient key replace",
+			method: http.MethodPost,
+			target: "/v1/account-recipient-keys/recipient_key_secret/replace",
+			want:   "POST /v1/account-recipient-keys/{recipient_key_id}/replace",
+			disallowed: []string{
+				"recipient_key_secret",
+			},
+		},
+		{
 			name:   "admin account password",
 			method: http.MethodPost,
 			target: "/v1/admin/accounts/acct_secret/password",

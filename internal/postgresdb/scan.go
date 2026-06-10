@@ -351,6 +351,49 @@ func scanContactPublicKey(s scanner) (incidents.ContactPublicKey, error) {
 	return contactKey, nil
 }
 
+func scanAccountRecipientKey(s scanner) (incidents.AccountRecipientKey, error) {
+	var key incidents.AccountRecipientKey
+	var displayLabel sql.NullString
+	var revokedAt sql.NullTime
+	var replacedAt sql.NullTime
+	var lostAt sql.NullTime
+	var replacedByRecipientKeyID sql.NullString
+	if err := s.Scan(
+		&key.ID,
+		&key.OwnerAccountID,
+		&key.RecipientID,
+		&key.RecipientType,
+		&key.KeyID,
+		&key.Version,
+		&displayLabel,
+		&key.Scheme,
+		&key.SuiteID,
+		&key.PublicKey,
+		&key.PublicKeyFingerprint,
+		&key.KeyState,
+		&key.CreatedAt,
+		&key.UpdatedAt,
+		&revokedAt,
+		&replacedAt,
+		&lostAt,
+		&replacedByRecipientKeyID,
+	); err != nil {
+		return incidents.AccountRecipientKey{}, err
+	}
+	key.CreatedAt = key.CreatedAt.UTC()
+	key.UpdatedAt = key.UpdatedAt.UTC()
+	if displayLabel.Valid {
+		key.DisplayLabel = displayLabel.String
+	}
+	key.RevokedAt = nullableDBTime(revokedAt)
+	key.ReplacedAt = nullableDBTime(replacedAt)
+	key.LostAt = nullableDBTime(lostAt)
+	if replacedByRecipientKeyID.Valid {
+		key.ReplacedByRecipientKeyID = replacedByRecipientKeyID.String
+	}
+	return key, nil
+}
+
 func scanSharingGrant(s scanner) (incidents.SharingGrant, error) {
 	var grant incidents.SharingGrant
 	var streamID sql.NullString

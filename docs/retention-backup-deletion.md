@@ -21,6 +21,8 @@ The current backend stores:
 
 - SQLite metadata at `SAFE_DB_PATH` by default, or PostgreSQL metadata when
   `SAFE_METADATA_BACKEND=postgresql`
+- account/device recipient public-key metadata, trusted-contact public-key
+  metadata, sharing grants, and wrapped-key records in the metadata backend
 - encrypted chunk blobs under `SAFE_DATA_DIR` for the local backend, or committed encrypted objects in the configured S3-compatible bucket for the S3 backend
 - temporary upload files under `SAFE_DATA_DIR/tmp`
 - on-demand encrypted ZIP bundle responses generated from completed streams
@@ -29,7 +31,9 @@ Optional Valkey/Redis-compatible coordination is not durable evidence storage
 and is not a backup source of truth. Any current or future coordination keys
 must be treated as short-lived operational state.
 
-The backend stores ciphertext only. It does not store raw media keys, decrypt chunks, produce playable media, or persist generated ZIP bundle files.
+The backend stores ciphertext and public or encrypted key-access metadata only.
+It does not store raw media keys, raw CEKs, recipient private keys, decrypt
+chunks, produce playable media, or persist generated ZIP bundle files.
 
 Incident mode metadata such as emergency incidents, interaction records, safety
 checks, and evidence notes may eventually need different retention defaults. The
@@ -68,6 +72,8 @@ the open-incident guard.
 | Media streams | Retain open, complete, and failed stream metadata with the incident until incident deletion. | Failed streams may still contain useful uploaded chunks and are deleted with the parent incident. |
 | Checkins | Retain checkin rows with the incident until incident deletion. | Checkins may contain location and device-status metadata, so deletion prunes them with the incident. |
 | Viewer token rows | Retain token-hash metadata with the incident until incident deletion, including expired and revoked tokens. | Raw tokens are returned only once and are not stored. Future pruning may remove expired or revoked token rows after an audit window. |
+| Account/device recipient-key rows | Retain account-owned public recipient-key metadata until an explicit future account/key cleanup or account deletion workflow removes it. | Revoked, replaced, and lost states stop future wrapping eligibility but do not delete historical public metadata by themselves. |
+| Contact public-key, sharing-grant, and wrapped-key rows | Retain with the owning account or incident until incident deletion or explicit future account/key cleanup removes them. | Wrapped-key rows are encrypted access-enabling metadata. They are pruned with incident deletion; contact and account/device public-key records remain account metadata unless an explicit account/key lifecycle removes them. |
 | Generated ZIP bundles | Do not retain on the server. | Stream and incident bundles are generated on demand as HTTP responses. Downloaded copies are outside backend control. |
 | Temporary upload files | Remove after successful commit or failed upload cleanup. | Orphaned temp files may exist after crashes and need a future cleanup policy. |
 
@@ -104,6 +110,13 @@ Back up at least:
 - SQLite sidecar files if copying a live database directly, including
   `<SAFE_DB_PATH>-wal` and `<SAFE_DB_PATH>-shm` when present
 - deployment configuration needed to restore backend selectors, bind addresses, data paths, upload limits, token TTL defaults, and reverse-proxy routing
+
+Metadata backups must include account/device recipient-key rows together with
+contact public-key rows, sharing grants, wrapped-key records, account rows, and
+incident rows. Restoring encrypted blobs without the matching key-access
+metadata can make future wrapped-key delivery or audit incomplete; restoring
+key-access metadata without matching encrypted blobs can leave otherwise valid
+metadata unable to reconstruct evidence bundles.
 
 Do not treat Valkey/Redis-compatible coordination data as a substitute for
 metadata or blob backups. Loss of coordination state must be recoverable through
@@ -176,6 +189,10 @@ Deletion behavior:
 - public incident viewer routes remain read-only and fail closed for deleting or deleted incidents
 - open incidents are rejected unless the request explicitly sets `allow_open: true`
 - deletion decisions retain only non-sensitive status fields, such as decision ID, incident ID, source, reason code, actor account ID, item count, timestamps, state, and error class
+- incident deletion prunes incident-scoped sharing-grant and wrapped-key rows
+  with the deleted incident, while account/device recipient-key and contact
+  public-key rows are account-level metadata and are not tombstoned by deleting
+  one incident
 
 Current deletion policy still distinguishes:
 
@@ -189,6 +206,9 @@ Current deletion policy still distinguishes:
 - applying different retention to emergency incidents, interaction records,
   safety checks, and evidence notes after incident-mode, capture-profile,
   escalation-policy, and sharing-state fields exist
+- account-level recipient-key and contact-key cleanup, account deletion, and
+  key tombstone retention after those account lifecycle workflows are explicitly
+  designed
 - retaining or pruning lower-quality stream variants only after the capture
   stream variant and supersession model proves equivalent backend-confirmed
   source-time coverage; see

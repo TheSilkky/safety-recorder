@@ -441,6 +441,65 @@ func scanContactPublicKey(s scanner) (ContactPublicKey, error) {
 	return contactKey, nil
 }
 
+func scanAccountRecipientKey(s scanner) (AccountRecipientKey, error) {
+	var key AccountRecipientKey
+	var displayLabel sql.NullString
+	var createdAt string
+	var updatedAt string
+	var revokedAt sql.NullString
+	var replacedAt sql.NullString
+	var lostAt sql.NullString
+	var replacedByRecipientKeyID sql.NullString
+	if err := s.Scan(
+		&key.ID,
+		&key.OwnerAccountID,
+		&key.RecipientID,
+		&key.RecipientType,
+		&key.KeyID,
+		&key.Version,
+		&displayLabel,
+		&key.Scheme,
+		&key.SuiteID,
+		&key.PublicKey,
+		&key.PublicKeyFingerprint,
+		&key.KeyState,
+		&createdAt,
+		&updatedAt,
+		&revokedAt,
+		&replacedAt,
+		&lostAt,
+		&replacedByRecipientKeyID,
+	); err != nil {
+		return AccountRecipientKey{}, err
+	}
+	parsedCreatedAt, err := parseDBTime(createdAt)
+	if err != nil {
+		return AccountRecipientKey{}, err
+	}
+	parsedUpdatedAt, err := parseDBTime(updatedAt)
+	if err != nil {
+		return AccountRecipientKey{}, err
+	}
+	key.CreatedAt = parsedCreatedAt
+	key.UpdatedAt = parsedUpdatedAt
+	if displayLabel.Valid {
+		key.DisplayLabel = displayLabel.String
+	}
+	if key.RevokedAt, err = nullableDBTime(revokedAt); err != nil {
+		return AccountRecipientKey{}, err
+	}
+	if key.ReplacedAt, err = nullableDBTime(replacedAt); err != nil {
+		return AccountRecipientKey{}, err
+	}
+	if key.LostAt, err = nullableDBTime(lostAt); err != nil {
+		return AccountRecipientKey{}, err
+	}
+	if replacedByRecipientKeyID.Valid {
+		key.ReplacedByRecipientKeyID = replacedByRecipientKeyID.String
+	}
+	return key, nil
+}
+
 func scanSharingGrant(s scanner) (SharingGrant, error) {
 	var grant SharingGrant
 	var streamID sql.NullString

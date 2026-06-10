@@ -11,22 +11,24 @@ generic by default and may include optional incident-mode, capture-profile,
 escalation-policy, and sharing-state metadata. Those fields are not behavior
 flags and do not grant access, send notifications, change retention, change key
 custody, expose trusted-contact workflows, or change public viewer and bundle
-behavior. The backend implements account-owner contact public-key metadata and
-owner-scoped sharing-grant records and wrapped-key records for owned incidents,
-but it does not yet implement trusted-contact accounts, dead-man switch
+behavior. The backend implements account/device recipient public-key metadata,
+account-owner contact public-key metadata, and owner-scoped sharing-grant records
+and wrapped-key records for owned incidents, but it does not yet implement
+trusted-contact accounts, account/device wrapped-key delivery, dead-man switch
 notifications, mode-driven sharing, browser decryption, backend decryption, or
 public account-based product access beyond the narrow owner incident metadata
 list/detail read surface for the future web client.
 
 The `/v1` access-control direction is documented in
 [v1-access-control.md](v1-access-control.md). The current implementation covers
-local account sessions, owner-scoped incident access, owner-scoped contact
-public-key, sharing-grant, and wrapped-key metadata routes, admin account
-routes, route authentication, and route-class limits. It does not by itself
-approve broad public `/v1` routing as a product API. The implemented account
-incident list/detail routes are owner-only and public-safe, but uploads, chunk
-reads, bundle downloads, diagnostics, operator routes, write routes, and
-key-custody behavior still need separate review before public exposure.
+local account sessions, owner-scoped incident access, owner-scoped account/device
+recipient-key metadata, contact public-key metadata, sharing-grant metadata, and
+wrapped-key metadata routes, admin account routes, route authentication, and
+route-class limits. It does not by itself approve broad public `/v1` routing as
+a product API. The implemented account incident list/detail routes are
+owner-only and public-safe, but uploads, chunk reads, bundle downloads,
+diagnostics, operator routes, write routes, and key-custody behavior still need
+separate review before public exposure.
 Existing `/v1/admin/...` JSON routes are
 authenticated admin-only routes on the private-admin listener and must not be
 routed from public entry points. The current topology separates the main
@@ -139,13 +141,14 @@ Viewer URLs contain bearer tokens and should be treated as secrets. Reverse prox
   keys and errors do not include raw tokens, raw idempotency keys, request
   bodies, uploaded bytes, stored paths, object keys, plaintext, or raw keys.
 - Main API route-class rate limiting is enabled by default for authentication,
-  public registration, email verification, bootstrap, account and contact-key
-  metadata, incident metadata, sharing-grant metadata, wrapped-key metadata,
-  upload, reconciliation, stream, token, and download classes. The legacy admin
-  API limit setting is retained only as a documented compatibility setting
-  because current `/v1/admin/...` JSON routes are on the private-admin
-  listener. Limiter keys use server-controlled class labels and a hash of the
-  socket peer identity. They do not include raw email addresses, raw usernames,
+  public registration, email verification, bootstrap, account metadata,
+  account/device recipient-key metadata, contact-key metadata, incident
+  metadata, sharing-grant metadata, wrapped-key metadata, upload,
+  reconciliation, stream, token, and download classes. The legacy admin API
+  limit setting is retained only as a documented compatibility setting because
+  current `/v1/admin/...` JSON routes are on the private-admin listener. Limiter
+  keys use server-controlled class labels and a hash of the socket peer
+  identity. They do not include raw email addresses, raw usernames,
   verification tokens, raw session tokens, Authorization headers, raw
   idempotency keys, request bodies, uploaded bytes, incident IDs, stored paths,
   object keys, plaintext, raw keys, wrapped-key ciphertext, or private
@@ -180,23 +183,31 @@ Viewer URLs contain bearer tokens and should be treated as secrets. Reverse prox
   Reassignment changes only private owner-scoped access; public viewer routes,
   token hashes, bundles, deletion state, retention state, encrypted blobs, and
   key custody remain unchanged.
-- Contact public-key, sharing-grant, and wrapped-key routes are authenticated
-  main `/v1` routes. Contact public-key records are scoped to the authenticated
-  account. Sharing-grant and wrapped-key creation, listing, lookup, and
-  revocation require the authenticated account to own the incident or record;
-  admins do not manage another account's sharing grants or wrapped-key records
-  through the product routes unless the admin account also owns that incident.
-  New grants require an active contact public key owned by the same account and
-  can be scoped to an incident or one stream. Wrapped-key records require an
-  active, unexpired grant that authorizes ciphertext access and an active
-  contact public key. Wrapped-key record creation validates the accepted PQ
-  wrapping profile and public metadata without unwrapping CEKs. In the future
-  key model, those wrapped-key records connect recipient public-key versions to
-  CEKs scoped to incidents, streams, or bounded chunk groups; current
-  `media_key_id` fields remain compatibility identifiers for that CEK. These
-  routes do not store or return recipient private keys, raw CEKs, raw media
-  keys, plaintext, browser fragment secrets, request bodies, uploaded bytes,
-  stored paths, staging paths, object keys, or private deployment details.
+- Account/device recipient-key, contact public-key, sharing-grant, and
+  wrapped-key routes are authenticated main `/v1` routes. Account/device
+  recipient-key and contact public-key records are scoped to the authenticated
+  account. Account/device recipient-key records store only public key material,
+  non-secret key IDs, scheme/suite identifiers, fingerprints, state,
+  timestamps, and optional display labels. Revoked, replaced, and lost
+  account/device keys are terminal for future wrapping eligibility; those state
+  changes do not delete ciphertext or revoke material already downloaded by a
+  future authorized client. Sharing-grant and wrapped-key creation, listing,
+  lookup, and revocation require the authenticated account to own the incident
+  or record; admins do not manage another account's sharing grants or
+  wrapped-key records through the product routes unless the admin account also
+  owns that incident. New grants require an active contact public key owned by
+  the same account and can be scoped to an incident or one stream. Current
+  wrapped-key records remain trusted-contact grant scoped and require an active,
+  unexpired grant that authorizes ciphertext access and an active contact
+  public key. Wrapped-key record creation validates the accepted PQ wrapping
+  profile and public metadata without unwrapping CEKs. In the future key model,
+  wrapped-key records connect recipient public-key versions to CEKs scoped to
+  incidents, streams, or bounded chunk groups; current `media_key_id` fields
+  remain compatibility identifiers for that CEK. These routes do not store or
+  return recipient private keys, raw CEKs, raw media keys, ML-KEM shared
+  secrets, derived KEKs, plaintext, decrypted caches, browser fragment secrets,
+  request bodies, uploaded bytes, stored paths, staging paths, object keys, or
+  private deployment details.
 
 Optional S3-compatible storage preserves ciphertext-only behavior for committed
 encrypted chunks. It uses server-controlled object keys, does not expose object

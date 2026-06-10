@@ -142,6 +142,8 @@ func redactedMainAPIPath(method, rawPath string) string {
 		if len(segments) == 3 && segments[2] == "password" {
 			return method + " /v1/account/password"
 		}
+	case "account-recipient-keys":
+		return redactedRecordPath(method, segments, "account-recipient-keys", "recipient_key_id")
 	case "contact-public-keys":
 		return redactedRecordPath(method, segments, "contact-public-keys", "public_key_id")
 	case "incidents":
@@ -213,8 +215,11 @@ func redactedRecordPath(method string, segments []string, base, idName string) s
 	if len(segments) == 3 {
 		return method + " /v1/" + base + "/{" + idName + "}"
 	}
-	if len(segments) == 4 && segments[3] == "revoke" {
-		return method + " /v1/" + base + "/{" + idName + "}/revoke"
+	if len(segments) == 4 {
+		switch segments[3] {
+		case "revoke", "lost", "replace":
+			return method + " /v1/" + base + "/{" + idName + "}/" + segments[3]
+		}
 	}
 	return method + " /v1/" + base + "/{route}"
 }

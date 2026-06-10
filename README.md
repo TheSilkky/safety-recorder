@@ -117,6 +117,8 @@ public viewer changes, notifications, raw key storage, or key escrow.
   IDs, wrapped keys, ciphertext, raw keys, plaintext, or user safety narrative
 - Private-admin legacy unowned incident review, reassignment, and keep-unowned
   audit APIs with count-oriented candidate metadata and controlled reason codes
+- Owner-scoped account/device recipient-key metadata with active, replaced,
+  revoked, and lost states for future wrapping eligibility
 - Owner-scoped contact public-key metadata and sharing-grant records for owned
   incidents or streams
 - Owner-scoped wrapped CEK/media-key metadata storage and private API delivery
@@ -375,8 +377,9 @@ Please see [SECURITY.md](SECURITY.md) for supported versions and vulnerability r
 - Mode-driven access, escalation, retention, sharing, viewer, and key-custody
   behavior after protocol and security design
 - Server-side support for trusted-contact dead-man switch workflows after access-control design
-- Production key custody, trusted-contact account access, grant-scoped contact
-  delivery, and browser/client-side decryption
+- Production key custody, account/device wrapped-key delivery, trusted-contact
+  account access, grant-scoped contact delivery, and browser/client-side
+  decryption
 - Optional break-glass/dead-man-switch key access
 - Playable media export
 - Reverse-proxy/TLS hardening for incident viewer exposure
