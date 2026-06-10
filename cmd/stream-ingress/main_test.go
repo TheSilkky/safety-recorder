@@ -120,11 +120,19 @@ func TestLoadConfigRejectsInvalidUploadSettingsSafely(t *testing.T) {
 }
 
 func TestHealthRoutesAndReadinessDoNotExposeRelayLabels(t *testing.T) {
-	handler := newHandler(streamIngressConfig{
-		RelayID: "relay-secret-label",
-		Region:  "private-region-label",
-		Ready:   true,
-	}, nil)
+	cfg := streamIngressConfig{
+		RelayID:              "relay-secret-label",
+		Region:               "private-region-label",
+		Ready:                true,
+		CoreBaseURL:          "http://127.0.0.1:8080",
+		CoreServiceAuthToken: testCoreServiceAuthToken,
+		DataDir:              t.TempDir(),
+	}
+	uploader, err := newRelayUploader(cfg, nil)
+	if err != nil {
+		t.Fatalf("newRelayUploader: %v", err)
+	}
+	handler := newHandler(cfg, uploader)
 
 	live := httptest.NewRecorder()
 	handler.ServeHTTP(live, httptest.NewRequest(http.MethodGet, "/health/live", nil))
@@ -146,8 +154,11 @@ func TestHealthRoutesAndReadinessDoNotExposeRelayLabels(t *testing.T) {
 	if err := json.Unmarshal(ready.Body.Bytes(), &decoded); err != nil {
 		t.Fatalf("decode readiness: %v", err)
 	}
-	if decoded["uploads"] != "unconfigured" {
-		t.Fatalf("readiness uploads = %v, want unconfigured", decoded["uploads"])
+	if decoded["uploads"] != "ready" || decoded["core"] != "configured" || decoded["temp_staging"] != "ok" {
+		t.Fatalf("readiness status fields = %v, want ready/configured/ok", decoded)
+	}
+	if decoded["status"] != "ready" {
+		t.Fatalf("readiness status = %v, want ready", decoded["status"])
 	}
 	if decoded["relay_identity_configured"] != true || decoded["region_configured"] != true {
 		t.Fatalf("readiness config booleans = %v", decoded)
@@ -165,6 +176,78 @@ func TestReadinessDefaultsToNotReady(t *testing.T) {
 	if !strings.Contains(recorder.Body.String(), `"status":"not_ready"`) {
 		t.Fatalf("/health/ready body = %s, want not_ready", recorder.Body.String())
 	}
+	var decoded map[string]any
+	if err := json.Unmarshal(recorder.Body.Bytes(), &decoded); err != nil {
+		t.Fatalf("decode readiness: %v", err)
+	}
+	if decoded["uploads"] != "unavailable" || decoded["core"] != "unconfigured" || decoded["temp_staging"] != "unavailable" {
+		t.Fatalf("readiness status fields = %v, want unavailable/unconfigured/unavailable", decoded)
+	}
+}
+
+func TestReadinessReportsCoreUnconfiguredWithSafeCategories(t *testing.T) {
+	cfg := streamIngressConfig{
+		Ready:   true,
+		DataDir: t.TempDir(),
+	}
+	uploader, err := newRelayUploader(cfg, nil)
+	if err != nil {
+		t.Fatalf("newRelayUploader: %v", err)
+	}
+	handler := newHandler(cfg, uploader)
+
+	recorder := httptest.NewRecorder()
+	handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/health/ready", nil))
+	if recorder.Code != http.StatusServiceUnavailable {
+		t.Fatalf("/health/ready status = %d, want 503", recorder.Code)
+	}
+	var decoded map[string]any
+	if err := json.Unmarshal(recorder.Body.Bytes(), &decoded); err != nil {
+		t.Fatalf("decode readiness: %v", err)
+	}
+	if decoded["status"] != "not_ready" || decoded["uploads"] != "core_unconfigured" ||
+		decoded["core"] != "unconfigured" || decoded["temp_staging"] != "ok" {
+		t.Fatalf("readiness status fields = %v, want not_ready/core_unconfigured/unconfigured/ok", decoded)
+	}
+	assertReadinessRedacted(t, recorder.Body.String(), cfg.CoreBaseURL, cfg.DataDir, testCoreServiceAuthToken)
+}
+
+func TestReadinessReportsTempStagingPressureSafely(t *testing.T) {
+	cfg := streamIngressConfig{
+		Ready:                 true,
+		CoreBaseURL:           "http://127.0.0.1:8080",
+		CoreServiceAuthToken:  testCoreServiceAuthToken,
+		DataDir:               t.TempDir(),
+		TempStagingQuotaBytes: 4,
+		MaxUploadBytes:        16,
+		CoreRequestTimeout:    time.Second,
+		MaxInFlightPerSession: 1,
+		MaxInFlightPerClient:  1,
+	}
+	uploader, err := newRelayUploader(cfg, nil)
+	if err != nil {
+		t.Fatalf("newRelayUploader: %v", err)
+	}
+	pressurePath := filepath.Join(cfg.DataDir, "tmp", "upload-private-pressure")
+	if err := os.WriteFile(pressurePath, []byte("full"), 0o600); err != nil {
+		t.Fatalf("write temp pressure file: %v", err)
+	}
+	handler := newHandler(cfg, uploader)
+
+	recorder := httptest.NewRecorder()
+	handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/health/ready", nil))
+	if recorder.Code != http.StatusServiceUnavailable {
+		t.Fatalf("/health/ready status = %d, want 503", recorder.Code)
+	}
+	var decoded map[string]any
+	if err := json.Unmarshal(recorder.Body.Bytes(), &decoded); err != nil {
+		t.Fatalf("decode readiness: %v", err)
+	}
+	if decoded["status"] != "not_ready" || decoded["uploads"] != "temp_staging_pressure" ||
+		decoded["core"] != "configured" || decoded["temp_staging"] != "pressure" {
+		t.Fatalf("readiness status fields = %v, want not_ready/temp_staging_pressure/configured/pressure", decoded)
+	}
+	assertReadinessRedacted(t, recorder.Body.String(), cfg.CoreBaseURL, cfg.DataDir, testCoreServiceAuthToken, pressurePath)
 }
 
 func TestStreamIngressRouteSurfaceIsMinimal(t *testing.T) {
@@ -204,6 +287,20 @@ func TestStreamIngressRouteSurfaceIsMinimal(t *testing.T) {
 		handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, path, nil))
 		if recorder.Code != http.StatusNotFound {
 			t.Fatalf("GET %s status = %d, want 404", path, recorder.Code)
+		}
+	}
+}
+
+func assertReadinessRedacted(t *testing.T, body string, disallowed ...string) {
+	t.Helper()
+	for _, value := range disallowed {
+		if value != "" && strings.Contains(body, value) {
+			t.Fatalf("readiness response exposed %q: %s", value, body)
+		}
+	}
+	for _, value := range []string{"stored_path", "object_key", "Authorization", "plaintext", "raw_key", "wrapped_key"} {
+		if strings.Contains(body, value) {
+			t.Fatalf("readiness response exposed %q: %s", value, body)
 		}
 	}
 }

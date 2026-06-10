@@ -250,18 +250,15 @@ func newHandler(cfg streamIngressConfig, uploader *relayUploader) http.Handler {
 			methodNotAllowed(w, http.MethodGet)
 			return
 		}
-		status := http.StatusServiceUnavailable
-		state := "not_ready"
-		if cfg.Ready {
-			status = http.StatusOK
-			state = "ready"
-		}
-		writeJSON(w, status, map[string]any{
+		ready := relayReadinessState(r.Context(), cfg, uploader)
+		writeJSON(w, ready.HTTPStatus, map[string]any{
 			"relay_identity_configured": cfg.RelayID != "",
 			"region_configured":         cfg.Region != "",
+			"core":                      ready.Core,
 			"service":                   "stream-ingress",
-			"status":                    state,
-			"uploads":                   uploadReadinessState(uploader),
+			"status":                    ready.Status,
+			"temp_staging":              ready.TempStaging,
+			"uploads":                   ready.Uploads,
 		})
 	})
 	mux.HandleFunc("/upload/complete-chunk", func(w http.ResponseWriter, r *http.Request) {
@@ -289,11 +286,58 @@ func newHandler(cfg streamIngressConfig, uploader *relayUploader) http.Handler {
 	return mux
 }
 
-func uploadReadinessState(uploader *relayUploader) string {
-	if uploader != nil && uploader.configured() {
-		return "configured"
+type relayReadiness struct {
+	HTTPStatus  int
+	Status      string
+	Core        string
+	TempStaging string
+	Uploads     string
+}
+
+func relayReadinessState(ctx context.Context, cfg streamIngressConfig, uploader *relayUploader) relayReadiness {
+	ready := relayReadiness{
+		HTTPStatus:  http.StatusServiceUnavailable,
+		Status:      "not_ready",
+		Core:        "unconfigured",
+		TempStaging: "unavailable",
+		Uploads:     "unavailable",
 	}
-	return "unconfigured"
+	if uploader == nil {
+		return ready
+	}
+
+	ready.TempStaging = uploader.tempStagingReadiness(ctx)
+	if uploader.configured() {
+		ready.Core = "configured"
+		ready.Uploads = "ready"
+	} else {
+		ready.Uploads = "core_unconfigured"
+	}
+	if ready.TempStaging == "pressure" {
+		ready.Uploads = "temp_staging_pressure"
+	}
+	if ready.TempStaging == "unavailable" {
+		ready.Uploads = "storage_unavailable"
+	}
+	if cfg.Ready && ready.Uploads == "ready" {
+		ready.HTTPStatus = http.StatusOK
+		ready.Status = "ready"
+	}
+	return ready
+}
+
+func (u *relayUploader) tempStagingReadiness(ctx context.Context) string {
+	if u == nil || u.store == nil {
+		return "unavailable"
+	}
+	usedBytes, quotaBytes, quotaConfigured, err := u.store.TempStagingUsage(ctx)
+	if err != nil {
+		return "unavailable"
+	}
+	if quotaConfigured && usedBytes >= quotaBytes {
+		return "pressure"
+	}
+	return "ok"
 }
 
 func methodNotAllowed(w http.ResponseWriter, allow string) {

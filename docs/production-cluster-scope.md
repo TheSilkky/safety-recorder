@@ -193,8 +193,10 @@ preflight/commit/fanout authorization endpoints, a configured complete-chunk
 upload route with temporary ciphertext staging, hash verification, and core
 forwarding, optimistic encrypted unconfirmed fanout, and bounded fanout
 confirmation, rejection, or terminal-failure state after the core commit
-outcome. Future slices may add relay Valkey counters, production service
-identity, and deployment hardening while the core API remains authoritative.
+outcome. Readiness reports only safe aggregate categories for upload readiness,
+core forwarding configuration, and temp-staging pressure. Future slices may add
+relay Valkey counters, production service identity, and deployment hardening
+while the core API remains authoritative.
 The full relay design is documented in
 [regional-stream-ingress-relay.md](regional-stream-ingress-relay.md).
 

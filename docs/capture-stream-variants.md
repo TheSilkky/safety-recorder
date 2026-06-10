@@ -277,9 +277,9 @@ Likely fanout direction:
 - core API confirmation remains required before chunks count as preserved
   evidence or before they can supersede another chunk
 
-Relay logs, limiter keys, metrics, and preflight metadata must not contain raw
-tokens, request bodies, uploaded bytes, stored paths, staging paths, object
-keys, raw keys, plaintext, or plaintext GPS/context.
+Relay logs, limiter keys, metrics, readiness output, and preflight metadata
+must not contain raw tokens, request bodies, uploaded bytes, stored paths,
+staging paths, object keys, raw keys, plaintext, or plaintext GPS/context.
 
 ## Bundle, Export, and Viewer Direction
 
