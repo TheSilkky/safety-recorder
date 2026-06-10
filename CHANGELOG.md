@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Added authenticated trusted-contact relationship lifecycle routes,
+  SQLite/PostgreSQL metadata parity, and docs for owner invites, recipient
+  accept/decline, owner revoke, and replacement without adding trusted-contact
+  wrapped-key delivery, notifications, backend/browser decryption, raw key
+  storage, or viewer-token promotion.
 - Added authenticated owner-scoped account/device recipient-key lifecycle routes,
   SQLite/PostgreSQL metadata parity, and docs for create/list/read/update,
   revoke, replace, and lost-device states without adding backend decryption,

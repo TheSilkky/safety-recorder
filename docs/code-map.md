@@ -7,9 +7,9 @@ or optional PostgreSQL, supports optional Valkey/Redis-compatible short-lived
 coordination, serves authenticated incident deletion and optional closed-incident
 retention workflows, and serves a scoped read-only incident viewer with
 encrypted evidence bundle downloads. It also stores owner-scoped account/device
-recipient public-key metadata, trusted-contact public-key metadata,
-incident/stream sharing-grant metadata, and grant-bound wrapped-key records
-without adding decryption.
+recipient public-key metadata, account-to-account trusted-contact relationship
+metadata, trusted-contact public-key metadata, incident/stream sharing-grant
+metadata, and grant-bound wrapped-key records without adding decryption.
 
 This repository is the server/backend component only. In the current
 `open-proofline` organisation it is `open-proofline/server`. Web-client,
@@ -21,8 +21,9 @@ incident-mode, capture-profile, escalation-policy, and sharing-state metadata on
 main incident create/read routes. The account incident list/detail routes return
 owner-only public-safe metadata for future web-client reads. Those mode fields
 do not drive access, notification, retention, sharing, viewer, or key-custody behavior.
-Account/device recipient-key, contact public-key, sharing-grant, and wrapped-key
-metadata is implemented separately behind authenticated `/v1` routes. Mode-driven behavior
+Account/device recipient-key, trusted-contact relationship, contact public-key,
+sharing-grant, and wrapped-key metadata is implemented separately behind
+authenticated `/v1` routes. Mode-driven behavior
 boundaries are documented in [incident-modes.md](incident-modes.md), with role
 and grant boundaries in [v1-access-control.md](v1-access-control.md) and
 contact key-sharing boundaries in
@@ -62,8 +63,8 @@ contact key-sharing boundaries in
   client-side chunk envelope, associated data builder, and local simulator key
   file helpers.
 - `internal/auth`: normalizes local account usernames and email addresses, validates passwords, hashes passwords with bcrypt, and hashes opaque session or verification tokens before storage.
-- `internal/httpapi`: owns separate main and private-admin muxes, JSON responses, request logging, recovery, local account/session authentication, request validation, upload handling, stream state handlers, contact public-key handlers, sharing-grant handlers, wrapped-key handlers, incident deletion handlers, ZIP bundle streaming, app-level main API and public viewer rate limiting, private admin JSON API routes, the private admin web surface, the incident viewer, and the narrow metadata repository boundary consumed by handlers. Logging changes in this package should follow [logging-requirements.md](logging-requirements.md).
-- `internal/incidents`: defines incident/stream/chunk/checkin/account/session/deletion/contact-key/sharing-grant/wrapped-key models and provides the SQLite metadata repository implementation, including deletion decisions, tombstones, retry item state, contact public-key records, sharing-grant records, wrapped-key records, and write guards for deleting incidents.
+- `internal/httpapi`: owns separate main and private-admin muxes, JSON responses, request logging, recovery, local account/session authentication, request validation, upload handling, stream state handlers, trusted-contact relationship handlers, contact public-key handlers, sharing-grant handlers, wrapped-key handlers, incident deletion handlers, ZIP bundle streaming, app-level main API and public viewer rate limiting, private admin JSON API routes, the private admin web surface, the incident viewer, and the narrow metadata repository boundary consumed by handlers. Logging changes in this package should follow [logging-requirements.md](logging-requirements.md).
+- `internal/incidents`: defines incident/stream/chunk/checkin/account/session/deletion/trusted-contact-relationship/contact-key/sharing-grant/wrapped-key models and provides the SQLite metadata repository implementation, including deletion decisions, tombstones, retry item state, trusted-contact relationship records, contact public-key records, sharing-grant records, wrapped-key records, and write guards for deleting incidents.
 - `internal/postgresdb`: opens optional PostgreSQL metadata connections, applies PostgreSQL migrations, and implements the metadata repository behavior with PostgreSQL transaction, row-locking, deletion, and constraint semantics.
 - `internal/retention`: runs the background deletion and optional closed-incident retention worker. It claims retryable deletion decisions, removes encrypted blobs through the storage boundary using stored paths snapshotted from metadata, records safe retry state, prunes sensitive child metadata after blob deletion, and logs only non-sensitive counts or error categories under the standard logging requirements.
 - `internal/storage`: defines the blob-store boundary used by HTTP handlers and provides local filesystem and optional S3-compatible implementations, including temp uploads, hashing while streaming, server-controlled stored paths, and immutable final commits.
@@ -174,6 +175,16 @@ future planning boundary for that model is documented in
 [capture-stream-variants.md](capture-stream-variants.md).
 
 Stream completion is handled by `internal/httpapi.completeMediaStream`. Before a stream moves from `open` to `complete`, the handler verifies that chunks `1..expected_chunk_count` exist contiguously for that stream and that each stored blob can be opened from the configured blob store. `internal/incidents.Repository.CompleteMediaStream` then revalidates the chunk rows in the completion transaction before committing the state change. Failed streams preserve uploaded chunks but are not offered as normal downloads.
+
+Trusted-contact relationships are handled by
+`POST/GET /v1/trusted-contact-relationships`,
+`GET /v1/trusted-contact-relationships/{relationship_id}`, and the
+`accept`, `decline`, `revoke`, and `replace` transition routes in
+`internal/httpapi/trusted_contact_relationship_handlers.go`. The handlers use
+the authenticated owner account for invite/revoke/replace actions and the
+authenticated recipient account for accept/decline actions. The records carry
+identity and lifecycle metadata only; they do not deliver wrapped keys,
+notifications, plaintext, or public viewer privileges.
 
 Contact public-key registration is handled by
 `POST /v1/contact-public-keys` and related routes in
@@ -295,7 +306,7 @@ This repository should stay focused on server/backend work:
 - encrypted blob storage
 - token-scoped incident viewer
 - account/device recipient-key metadata
-- contact public-key, sharing-grant, and wrapped-key metadata
+- trusted-contact relationship, contact public-key, sharing-grant, and wrapped-key metadata
 - backend deployment docs
 - backend security, retention, and threat-model docs
 - simulator/reference backend flow
@@ -332,8 +343,8 @@ Before broad public exposure, review route groups and add:
 
 The repository does not currently include the web client, iOS app, Android app,
 protocol repository, production local recording client, mode-driven access,
-escalation, retention, viewer behavior, trusted-contact accounts, wrapped-key
-delivery outside owner-authenticated private `/v1`, dead-man switch
+escalation, retention, viewer behavior, trusted-contact wrapped-key delivery,
+wrapped-key delivery outside owner-authenticated private `/v1`, dead-man switch
 notifications, production client key storage, browser/client-side decryption,
 server-assisted break-glass key access, payment processing, subscriptions,
 checkout sessions, billing webhooks, password recovery, playable media export,

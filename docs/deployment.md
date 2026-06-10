@@ -831,7 +831,7 @@ The Go app also applies route-class-aware limits to main API routes by default:
 | Bearer and browser login/logout/CSRF | 30 requests per 1 minute |
 | Public registration | 10 requests per 1 minute |
 | Email verification | 30 requests per 1 minute |
-| Account self-service and contact public-key metadata | 120 requests per 1 minute |
+| Account self-service, recipient-key, trusted-contact relationship, and contact public-key metadata | 120 requests per 1 minute |
 | Incident, sharing-grant, and wrapped-key metadata reads | 300 requests per 1 minute |
 | Incident, sharing-grant, and wrapped-key metadata writes | 120 requests per 1 minute |
 | Chunk uploads | 120 requests per 1 minute |

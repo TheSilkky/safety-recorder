@@ -19,13 +19,16 @@ implemented; deletion and closed-incident retention enforcement are documented
 in [retention-backup-deletion.md](retention-backup-deletion.md). Planned
 mode-driven behavior is documented in [incident-modes.md](incident-modes.md).
 Authenticated account-owner routes can store account/device recipient public-key
-metadata, trusted-contact public-key metadata, owner-scoped sharing-grant
-records, and wrapped CEK/media-key metadata for active trusted-contact grants.
-Trusted-contact accounts, account/device wrapped-key delivery, browser or
-backend decryption, notifications, raw key storage, and key escrow do not exist
-yet. The main API does include a narrow public-safe owner incident list/detail
-read surface for the future web client, but this does not make every `/v1`
-route group public-ready without route-level deployment review.
+metadata, trusted-contact relationship lifecycle metadata, trusted-contact
+public-key metadata, owner-scoped sharing-grant records, and wrapped
+CEK/media-key metadata for active trusted-contact grants. Trusted-contact
+relationship records do not grant keys, wrapped-key delivery, plaintext,
+notifications, emergency dispatch, or viewer-token privileges by themselves.
+Account/device wrapped-key delivery, trusted-contact wrapped-key delivery,
+browser or backend decryption, notifications, raw key storage, and key escrow
+do not exist yet. The main API does include a narrow public-safe owner incident
+list/detail read surface for the future web client, but this does not make
+every `/v1` route group public-ready without route-level deployment review.
 
 Future capture stream groups, stream variant roles, source-timeline identity,
 and evidence supersession are planning-only in
@@ -63,9 +66,9 @@ safe server-controlled keys based on route class and a hash of the socket peer
 identity. Login/logout, public registration, and email verification have
 separate authentication-related route classes. Existing main API limit classes
 also cover account metadata, account/device recipient-key metadata, contact-key
-metadata, incident metadata reads and writes, sharing-grant metadata,
-wrapped-key metadata, uploads, reconciliation, streams, incident tokens, and
-private encrypted downloads. Rate-limit keys do not
+metadata, trusted-contact relationship metadata, incident metadata reads and
+writes, sharing-grant metadata, wrapped-key metadata, uploads, reconciliation,
+streams, incident tokens, and private encrypted downloads. Rate-limit keys do not
 include raw email addresses, raw usernames, verification tokens, raw session
 tokens, Authorization headers, raw idempotency keys, request bodies, uploaded
 bytes, incident IDs, stored paths, object keys, plaintext, raw keys, wrapped-key
@@ -450,6 +453,113 @@ Marks one account-owned contact public key revoked. Revocation prevents the key
 from receiving new sharing grants or future wrapped-key records. It does not
 delete already accepted ciphertext, bundle contents, or any material a future
 authorized actor may already have downloaded.
+
+## Trusted Contact Relationships
+
+Trusted-contact relationship routes are mounted on the main API listener and
+require a valid local account session. They model the account-to-account
+relationship lifecycle needed before future trusted-contact access can be
+implemented. They are separate from public viewer tokens, contact public-key
+records, sharing grants, and wrapped-key records.
+
+A trusted-contact relationship records owner account, recipient account, role,
+state, timestamps, optional display label, and revocation or replacement
+metadata. It does not store contact private keys, raw CEKs, raw media keys,
+wrapped-key ciphertext, plaintext, browser fragment secrets, notification
+payloads, emergency-dispatch state, request bodies, uploaded bytes, stored
+paths, object keys, or private deployment details.
+
+Relationship states are:
+
+| State | Meaning |
+|---|---|
+| `pending_invite` | Owner invited the recipient account; the recipient has not accepted or declined. |
+| `active` | Recipient account accepted the relationship. |
+| `declined` | Recipient account declined the invite. |
+| `revoked` | Owner account revoked the relationship. |
+| `replaced` | Owner account replaced this relationship with a successor invite. |
+
+Only the owner account can create, revoke, or replace relationships. Only the
+recipient account can accept or decline an invite. Opening an incident viewer
+link does not create or accept a trusted-contact relationship, and a viewer
+token is not a `/v1` account credential.
+
+The only implemented relationship role is:
+
+| Role | Meaning |
+|---|---|
+| `trusted_contact` | General trusted-contact relationship metadata for future account-based access design. |
+
+### `POST /v1/trusted-contact-relationships`
+
+Creates a pending trusted-contact invite for another active local account. The
+owner must supply `recipient_account_id`; `relationship_role` defaults to
+`trusted_contact`.
+
+Request:
+
+```json
+{
+  "recipient_account_id": "acct_...",
+  "relationship_role": "trusted_contact",
+  "display_label": "Emergency contact"
+}
+```
+
+Response `201`:
+
+```json
+{
+  "trusted_contact_relationship": {
+    "relationship_id": "tcr_...",
+    "owner_account_id": "acct_owner...",
+    "recipient_account_id": "acct_contact...",
+    "relationship_role": "trusted_contact",
+    "relationship_state": "pending_invite",
+    "display_label": "Emergency contact",
+    "created_at": "2026-06-10T10:00:00Z",
+    "updated_at": "2026-06-10T10:00:00Z",
+    "invited_at": "2026-06-10T10:00:00Z"
+  }
+}
+```
+
+Duplicate open relationships for the same owner, recipient, and role return
+`409 trusted_contact_relationship_duplicate`.
+
+### `GET /v1/trusted-contact-relationships`
+
+Lists relationships where the authenticated account is the owner or recipient.
+
+### `GET /v1/trusted-contact-relationships/{relationship_id}`
+
+Returns one relationship visible to the authenticated owner or recipient.
+Unrelated accounts receive `404 trusted_contact_relationship_not_found`.
+
+### `POST /v1/trusted-contact-relationships/{relationship_id}/accept`
+
+Marks a pending invite active. Only the authenticated recipient account can use
+this route.
+
+### `POST /v1/trusted-contact-relationships/{relationship_id}/decline`
+
+Marks a pending invite declined. Only the authenticated recipient account can
+use this route.
+
+### `POST /v1/trusted-contact-relationships/{relationship_id}/revoke`
+
+Marks a pending or active relationship revoked and records the owner account as
+the revoking account. Only the owner account can use this route. Revocation
+does not delete contact public keys, sharing grants, wrapped-key records,
+encrypted chunks, bundle contents, or material already downloaded by a future
+authorized actor.
+
+### `POST /v1/trusted-contact-relationships/{relationship_id}/replace`
+
+Marks a pending or active relationship replaced and creates a successor
+`pending_invite` relationship. The replacement request may supply a new
+`recipient_account_id`, `relationship_role`, and `display_label`; omitted
+recipient and role values reuse the previous relationship values.
 
 ## Account And Device Recipient Keys
 

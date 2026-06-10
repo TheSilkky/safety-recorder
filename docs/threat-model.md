@@ -7,9 +7,10 @@ escalation-policy, and sharing-state metadata for emergency incidents,
 non-emergency interaction records, timed safety checks, and evidence notes. Those
 fields are metadata only. Current controls apply to local accounts, opaque
 sessions, generic or mode-labeled incidents, encrypted chunk uploads, checkins,
-viewer tokens, account/device recipient public-key metadata, contact public-key
-metadata, owner-scoped sharing-grant metadata, grant-bound wrapped-key metadata,
-and encrypted evidence bundles.
+viewer tokens, account/device recipient public-key metadata,
+trusted-contact relationship metadata, contact public-key metadata,
+owner-scoped sharing-grant metadata, grant-bound wrapped-key metadata, and
+encrypted evidence bundles.
 
 ## Assets
 
@@ -35,14 +36,17 @@ and encrypted evidence bundles.
   metadata stored with incidents. These fields are server-visible metadata but
   do not grant access, send notifications, change retention, change key custody,
   expose trusted-contact workflows, or change public viewer and bundle behavior.
-- Account/device recipient public-key metadata, trusted-contact public-key
-  metadata, owner-scoped sharing-grant records, and grant-bound wrapped-key
-  records in SQLite by default or optional PostgreSQL. Account/device
-  recipient-key records contain public key material, non-secret key IDs,
-  scheme/suite identifiers, fingerprints, state, timestamps, and optional
-  display labels. Wrapped-key records contain encrypted CEK/media-key material
-  and public wrapping metadata, which is access-enabling metadata. In the future
-  key model, long-term private keys belong to accounts, devices, and trusted
+- Account/device recipient public-key metadata, trusted-contact relationship
+  metadata, trusted-contact public-key metadata, owner-scoped sharing-grant
+  records, and grant-bound wrapped-key records in SQLite by default or optional
+  PostgreSQL. Account/device recipient-key records contain public key material,
+  non-secret key IDs, scheme/suite identifiers, fingerprints, state,
+  timestamps, and optional display labels. Trusted-contact relationship records
+  contain owner account, recipient account, role, state, timestamps, and
+  revocation or replacement metadata; they do not grant key access by
+  themselves. Wrapped-key records contain encrypted CEK/media-key material and
+  public wrapping metadata, which is access-enabling metadata. In the future key
+  model, long-term private keys belong to accounts, devices, and trusted
   contacts, while CEKs belong to incidents, streams, or bounded chunk groups.
   These records do not contain recipient private keys, raw CEKs, raw media keys,
   ML-KEM shared secrets, derived KEKs, plaintext, decrypted caches, browser
@@ -110,9 +114,10 @@ and encrypted evidence bundles.
   `/v1/auth/email/verify`. Authenticated product routes can create incidents,
   list/read public-safe owner incident metadata, create streams, upload chunks,
   complete/fail streams, close incidents, create viewer tokens, revoke tokens,
-  manage account/device recipient keys, manage account-owned contact public
-  keys, manage owner-scoped sharing grants, manage grant-bound wrapped-key
-  records, and read encrypted bytes.
+  manage account/device recipient keys, manage trusted-contact relationship
+  invites, manage account-owned contact public keys, manage owner-scoped
+  sharing grants, manage grant-bound wrapped-key records, and read encrypted
+  bytes.
 - Existing `/v1/admin/...` JSON routes require an admin account, are mounted on
   the private-admin server, and must not be routed from public entry points.
   This includes legacy unowned incident candidate review, reassignment, and
@@ -165,8 +170,9 @@ and encrypted evidence bundles.
   coordination failures return a retryable safe error.
 - Route-class rate limiting groups main API authentication, browser-cookie
   auth, public registration, email verification, account metadata,
-  account/device recipient-key metadata, contact-key metadata, incident
-  metadata, sharing-grant metadata, wrapped-key metadata, upload,
+  account/device recipient-key metadata, trusted-contact relationship metadata,
+  contact-key metadata, incident metadata, sharing-grant metadata,
+  wrapped-key metadata, upload,
   reconciliation, stream, token, and download requests by safe class labels and
   a hash of the socket peer identity. The legacy main-handler admin limit
   setting is retained only as a compatibility setting because current
@@ -201,15 +207,19 @@ and encrypted evidence bundles.
   admin-only unless an admin assigns one incident through the private
   reassignment workflow; see
   [legacy unowned incident reassignment](legacy-unowned-incident-reassignment.md).
-- Account/device recipient-key and contact public-key routes are scoped to the
-  authenticated account. Account/device recipient keys can be marked replaced,
-  revoked, or lost; those terminal states prevent future account/device
-  wrapping eligibility and cannot recover or claw back any future wrapped keys,
-  ciphertext, or plaintext already delivered before the state change. Current
-  sharing-grant and wrapped-key routes are owner-only: users and admins can
-  create, list, read, or revoke records only for incidents, grants, or
-  wrapped-key records owned by the authenticated account. New grants require an
-  active contact public key owned by the same account and can be scoped to an
+- Account/device recipient-key, trusted-contact relationship, and contact
+  public-key routes are scoped to the authenticated account. Trusted-contact
+  relationship routes let owners invite, revoke, or replace recipient accounts,
+  and let recipients accept or decline invites. They do not grant raw keys,
+  wrapped keys, plaintext, notification delivery, emergency dispatch, or public
+  viewer privileges by themselves. Account/device recipient keys can be marked
+  replaced, revoked, or lost; those terminal states prevent future
+  account/device wrapping eligibility and cannot recover or claw back any future
+  wrapped keys, ciphertext, or plaintext already delivered before the state
+  change. Current sharing-grant and wrapped-key routes are owner-only: users and
+  admins can create, list, read, or revoke records only for incidents, grants,
+  or wrapped-key records owned by the authenticated account. New grants require
+  an active contact public key owned by the same account and can be scoped to an
   incident or one stream. New wrapped-key records currently require an active,
   unexpired trusted-contact grant that authorizes ciphertext access and an
   active contact public key. The routes do not store or return recipient private
@@ -286,8 +296,8 @@ The current backend does not implement incident-mode-specific controls yet, so f
   is not a complete operator UI, and the local desktop-recorder behavior in
   `cmd/simclient` is simulator/reference flow only.
 - No mode-driven access, escalation, retention, key-custody, safety-check
-  timer, dead-man switch notification, browser decryption, backend decryption, or
-  trusted-contact account behavior.
+  timer, dead-man switch notification, browser decryption, backend decryption,
+  or trusted-contact delivery behavior.
 - No built-in TLS, IP allowlist, or general-purpose abuse-throttling system
   beyond main API and public viewer route-class rate limiting.
 - Optional PostgreSQL metadata does not change the main `/v1` deployment

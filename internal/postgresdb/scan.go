@@ -394,6 +394,53 @@ func scanAccountRecipientKey(s scanner) (incidents.AccountRecipientKey, error) {
 	return key, nil
 }
 
+func scanTrustedContactRelationship(s scanner) (incidents.TrustedContactRelationship, error) {
+	var relationship incidents.TrustedContactRelationship
+	var displayLabel sql.NullString
+	var acceptedAt sql.NullTime
+	var declinedAt sql.NullTime
+	var revokedAt sql.NullTime
+	var revokedByAccountID sql.NullString
+	var replacedAt sql.NullTime
+	var replacedByRelationshipID sql.NullString
+	if err := s.Scan(
+		&relationship.ID,
+		&relationship.OwnerAccountID,
+		&relationship.RecipientAccountID,
+		&relationship.RelationshipRole,
+		&relationship.RelationshipState,
+		&displayLabel,
+		&relationship.CreatedAt,
+		&relationship.UpdatedAt,
+		&relationship.InvitedAt,
+		&acceptedAt,
+		&declinedAt,
+		&revokedAt,
+		&revokedByAccountID,
+		&replacedAt,
+		&replacedByRelationshipID,
+	); err != nil {
+		return incidents.TrustedContactRelationship{}, err
+	}
+	relationship.CreatedAt = relationship.CreatedAt.UTC()
+	relationship.UpdatedAt = relationship.UpdatedAt.UTC()
+	relationship.InvitedAt = relationship.InvitedAt.UTC()
+	if displayLabel.Valid {
+		relationship.DisplayLabel = displayLabel.String
+	}
+	relationship.AcceptedAt = nullableDBTime(acceptedAt)
+	relationship.DeclinedAt = nullableDBTime(declinedAt)
+	relationship.RevokedAt = nullableDBTime(revokedAt)
+	if revokedByAccountID.Valid {
+		relationship.RevokedByAccountID = revokedByAccountID.String
+	}
+	relationship.ReplacedAt = nullableDBTime(replacedAt)
+	if replacedByRelationshipID.Valid {
+		relationship.ReplacedByRelationshipID = replacedByRelationshipID.String
+	}
+	return relationship, nil
+}
+
 func scanSharingGrant(s scanner) (incidents.SharingGrant, error) {
 	var grant incidents.SharingGrant
 	var streamID sql.NullString

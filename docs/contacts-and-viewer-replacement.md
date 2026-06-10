@@ -124,10 +124,20 @@ CSRF protection for unsafe browser requests.
 Browser cookie auth does not make viewer-token access account-based. Viewer
 tokens remain no-account bearer links. Account sessions are the expected base
 for owner and future trusted-contact flows, but current account sessions do not
-create trusted-contact relationships by themselves.
+create trusted-contact relationships by themselves. The backend now supports
+owner-created trusted-contact relationship invites that authenticated recipient
+accounts can accept or decline; those relationship records still do not grant
+incident reads, wrapped-key delivery, notifications, or decryption.
 
 Current authenticated owner-scoped metadata APIs exist for:
 
+- trusted-contact relationship metadata:
+  `POST/GET /v1/trusted-contact-relationships`,
+  `GET /v1/trusted-contact-relationships/{relationship_id}`,
+  `POST /v1/trusted-contact-relationships/{relationship_id}/accept`,
+  `POST /v1/trusted-contact-relationships/{relationship_id}/decline`,
+  `POST /v1/trusted-contact-relationships/{relationship_id}/revoke`, and
+  `POST /v1/trusted-contact-relationships/{relationship_id}/replace`;
 - contact public-key metadata:
   `POST/GET /v1/contact-public-keys`,
   `GET/PATCH /v1/contact-public-keys/{public_key_id}`, and
@@ -141,14 +151,14 @@ Current authenticated owner-scoped metadata APIs exist for:
   `GET /v1/wrapped-keys/{wrapped_key_id}`, and
   `POST /v1/wrapped-keys/{wrapped_key_id}/revoke`.
 
-These are owner metadata routes. They do not implement trusted-contact account
-acceptance, contact read access, notifications, browser decryption, backend
-decryption, public viewer changes, raw key storage, or key escrow. Current
-wrapped-key records can store encrypted media-key material and public wrapping
-metadata behind authenticated owner routes, but they must not contain raw media
-keys, contact private keys, plaintext, ML-KEM shared secrets, decapsulation
-keys, browser fragment secrets, or server-decryptable material in the default
-path.
+These are metadata routes. They do not implement trusted-contact contact read
+access, trusted-contact wrapped-key delivery, notifications, browser
+decryption, backend decryption, public viewer changes, raw key storage, or key
+escrow. Current wrapped-key records can store encrypted media-key material and
+public wrapping metadata behind authenticated owner routes, but they must not
+contain raw media keys, contact private keys, plaintext, ML-KEM shared secrets,
+decapsulation keys, browser fragment secrets, or server-decryptable material in
+the default path.
 
 ### Current Encryption And Post-Quantum Status
 
@@ -612,16 +622,16 @@ are not backlog drafts and they are not GitHub issues.
    key ID canonicalization tests, unknown-suite rejection tests.
 
 4. **End-user friendly trusted-contact invite/accept UX contract.**
-   Reasoning: very high. Type: design-only. Areas: server API docs,
-   web-client/mobile coordination docs, account lifecycle docs. Dependencies:
-   family 1. Non-goals: no notification delivery, no payment entitlement, no
-   manual public-key paste as primary UX. Sensitive data: invites and contact
-   identifiers are personal data. Validation: UX/security copy review and API
-   state-machine review.
+   Reasoning: very high. Type: API implemented, client UX still future. Areas:
+   server API docs, web-client/mobile coordination docs, account lifecycle docs.
+   Dependencies: family 1. Non-goals: no notification delivery, no payment
+   entitlement, no manual public-key paste as primary UX. Sensitive data:
+   invites and contact identifiers are personal data. Validation: UX/security
+   copy review and API state-machine review.
 
 5. **Automatic client-generated trusted-contact key lifecycle API support.**
    Reasoning: high. Type: API design then implementation. Areas: contact
-   public-key routes, future accepted-contact relationship routes, client docs.
+   public-key routes, accepted-contact relationship routes, client docs.
    Dependencies: families 3 and 4. Non-goals: no client private-key upload, no
    manual key creation flow. Sensitive data: public keys are non-secret but
    linkable metadata; private keys never leave clients. Validation: authz,
