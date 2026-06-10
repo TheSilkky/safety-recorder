@@ -23,7 +23,10 @@ owner-only public-safe metadata for future web-client reads. Those mode fields
 do not drive access, notification, retention, sharing, viewer, or key-custody behavior.
 Account/device recipient-key, trusted-contact relationship, contact public-key,
 sharing-grant, and wrapped-key metadata is implemented separately behind
-authenticated `/v1` routes. Mode-driven behavior
+authenticated `/v1` routes. Contact public-key lifecycle routes cover
+registration, active/pending verification state, replacement, revocation, and
+lost-key marking without storing private keys or decrypting wrapped records.
+Mode-driven behavior
 boundaries are documented in [incident-modes.md](incident-modes.md), with role
 and grant boundaries in [v1-access-control.md](v1-access-control.md) and
 contact key-sharing boundaries in
@@ -186,8 +189,12 @@ authenticated recipient account for accept/decline actions. The records carry
 identity and lifecycle metadata only; they do not deliver wrapped keys,
 notifications, plaintext, or public viewer privileges.
 
-Contact public-key registration is handled by
-`POST /v1/contact-public-keys` and related routes in
+Contact public-key registration and lifecycle transitions are handled by
+`POST /v1/contact-public-keys`,
+`GET/PATCH /v1/contact-public-keys/{public_key_id}`,
+`POST /v1/contact-public-keys/{public_key_id}/revoke`,
+`POST /v1/contact-public-keys/{public_key_id}/lost`, and
+`POST /v1/contact-public-keys/{public_key_id}/replace` in
 `internal/httpapi/sharing_handlers.go`. The handlers use the authenticated
 local account as the owner scope and store only public-key metadata through the
 configured metadata repository. They reject unknown JSON fields and do not

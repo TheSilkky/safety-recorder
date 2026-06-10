@@ -125,6 +125,117 @@ func TestSharingGrantRequiresActiveContactKey(t *testing.T) {
 	}
 }
 
+func TestContactPublicKeyLifecycleRoutes(t *testing.T) {
+	app := newTestApp(t)
+	ownerToken := createAccountAndLogin(t, app, "contact-lifecycle-owner", "owner-password", auth.RoleUser)
+	otherToken := createAccountAndLogin(t, app, "contact-lifecycle-other", "other-password", auth.RoleUser)
+	incidentID := createIncidentWithToken(t, app, ownerToken)
+	contactKey := createContactPublicKeyWithToken(t, app, ownerToken, `{
+		"display_label":"Lifecycle contact",
+		"wrapping_algorithm":"age-v1-x25519",
+		"public_key":"age1lifecycle",
+		"public_key_fingerprint":"fingerprint-lifecycle"
+	}`)
+	if contactKey.KeyState != incidents.ContactKeyStatePendingVerification {
+		t.Fatalf("default contact key state = %q, want pending_verification", contactKey.KeyState)
+	}
+
+	grantBody := `{"contact_id":"` + contactKey.ContactID + `"}`
+	response, body := requestWithAuth(t, app.privateHandler, http.MethodPost, "/v1/incidents/"+incidentID+"/sharing-grants", "application/json", bytes.NewBufferString(grantBody), ownerToken)
+	response.Body.Close()
+	if response.StatusCode != http.StatusNotFound {
+		t.Fatalf("expected pending key grant status 404, got %d: %s", response.StatusCode, body)
+	}
+
+	response, body = requestWithAuth(t, app.privateHandler, http.MethodPatch, "/v1/contact-public-keys/"+contactKey.ID, "application/json", bytes.NewBufferString(`{"key_state":"active"}`), ownerToken)
+	response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("expected activate contact key status 200, got %d: %s", response.StatusCode, body)
+	}
+	grant := createSharingGrantWithToken(t, app, ownerToken, incidentID, grantBody)
+	if grant.ContactPublicKeyID != contactKey.ID || grant.ContactPublicKeyVersion != 1 {
+		t.Fatalf("grant used contact key %q version %d, want %q version 1", grant.ContactPublicKeyID, grant.ContactPublicKeyVersion, contactKey.ID)
+	}
+
+	replacement := replaceContactPublicKeyWithToken(t, app, ownerToken, contactKey.ID, `{
+		"display_label":"Lifecycle contact replacement",
+		"wrapping_algorithm":"age-v1-x25519",
+		"public_key":"age1replacement",
+		"public_key_fingerprint":"fingerprint-replacement",
+		"key_state":"active"
+	}`)
+	if replacement.ContactID != contactKey.ContactID ||
+		replacement.Version != 2 ||
+		replacement.KeyState != incidents.ContactKeyStateActive {
+		t.Fatalf("unexpected replacement key: %+v", replacement)
+	}
+
+	response, body = requestWithAuth(t, app.privateHandler, http.MethodGet, "/v1/contact-public-keys/"+contactKey.ID, "", nil, ownerToken)
+	response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("expected original key get status 200, got %d: %s", response.StatusCode, body)
+	}
+	var original struct {
+		ContactPublicKey incidents.ContactPublicKey `json:"contact_public_key"`
+	}
+	if err := json.Unmarshal(body, &original); err != nil {
+		t.Fatalf("decode replaced contact key: %v", err)
+	}
+	if original.ContactPublicKey.KeyState != incidents.ContactKeyStateReplaced ||
+		original.ContactPublicKey.ReplacedAt == nil ||
+		original.ContactPublicKey.ReplacedByPublicKeyID != replacement.ID {
+		t.Fatalf("original key was not marked replaced: %+v", original.ContactPublicKey)
+	}
+
+	nextGrant := createSharingGrantWithToken(t, app, ownerToken, incidentID, grantBody)
+	if nextGrant.ContactPublicKeyID != replacement.ID || nextGrant.ContactPublicKeyVersion != 2 {
+		t.Fatalf("grant used key %q version %d, want replacement %q version 2", nextGrant.ContactPublicKeyID, nextGrant.ContactPublicKeyVersion, replacement.ID)
+	}
+
+	response, body = requestWithAuth(t, app.privateHandler, http.MethodPost, "/v1/contact-public-keys/"+contactKey.ID+"/replace", "application/json", bytes.NewBufferString(`{
+		"display_label":"invalid",
+		"wrapping_algorithm":"age-v1-x25519",
+		"public_key":"age1invalid",
+		"public_key_fingerprint":"fingerprint-invalid"
+	}`), ownerToken)
+	response.Body.Close()
+	if response.StatusCode != http.StatusConflict {
+		t.Fatalf("expected replaced key replace status 409, got %d: %s", response.StatusCode, body)
+	}
+
+	response, body = requestWithAuth(t, app.privateHandler, http.MethodPost, "/v1/contact-public-keys/"+replacement.ID+"/lost", "application/json", bytes.NewBufferString(`{}`), otherToken)
+	response.Body.Close()
+	if response.StatusCode != http.StatusNotFound {
+		t.Fatalf("expected other account lost status 404, got %d: %s", response.StatusCode, body)
+	}
+
+	response, body = requestWithAuth(t, app.privateHandler, http.MethodPost, "/v1/contact-public-keys/"+replacement.ID+"/lost", "application/json", bytes.NewBufferString(`{}`), ownerToken)
+	response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("expected lost contact key status 200, got %d: %s", response.StatusCode, body)
+	}
+	var lost struct {
+		ContactPublicKey incidents.ContactPublicKey `json:"contact_public_key"`
+	}
+	if err := json.Unmarshal(body, &lost); err != nil {
+		t.Fatalf("decode lost contact key: %v", err)
+	}
+	if lost.ContactPublicKey.KeyState != incidents.ContactKeyStateLost || lost.ContactPublicKey.LostAt == nil {
+		t.Fatalf("contact key was not marked lost: %+v", lost.ContactPublicKey)
+	}
+
+	response, body = requestWithAuth(t, app.privateHandler, http.MethodPost, "/v1/incidents/"+incidentID+"/sharing-grants", "application/json", bytes.NewBufferString(grantBody), ownerToken)
+	response.Body.Close()
+	if response.StatusCode != http.StatusNotFound {
+		t.Fatalf("expected lost key grant status 404, got %d: %s", response.StatusCode, body)
+	}
+	response, body = requestWithAuth(t, app.privateHandler, http.MethodPatch, "/v1/contact-public-keys/"+replacement.ID, "application/json", bytes.NewBufferString(`{"key_state":"active"}`), ownerToken)
+	response.Body.Close()
+	if response.StatusCode != http.StatusConflict {
+		t.Fatalf("expected lost key reactivation status 409, got %d: %s", response.StatusCode, body)
+	}
+}
+
 func TestContactPublicKeyRoutesRejectSecretFields(t *testing.T) {
 	app := newTestApp(t)
 	ownerToken := createAccountAndLogin(t, app, "secret-field-owner", "owner-password", auth.RoleUser)
@@ -145,6 +256,21 @@ func TestContactPublicKeyRoutesRejectSecretFields(t *testing.T) {
 		if strings.Contains(string(body), disallowed) {
 			t.Fatalf("error response exposed rejected secret field %q: %s", disallowed, body)
 		}
+	}
+
+	response, body = requestWithAuth(t, app.privateHandler, http.MethodPost, "/v1/contact-public-keys", "application/json", bytes.NewBufferString(`{
+		"display_label":"Bad contact",
+		"wrapping_algorithm":"age-v1-x25519",
+		"public_key":"-----BEGIN PRIVATE KEY-----",
+		"public_key_fingerprint":"fingerprint"
+	}`), ownerToken)
+	response.Body.Close()
+	if response.StatusCode != http.StatusBadRequest {
+		t.Fatalf("expected private-key marker status 400, got %d: %s", response.StatusCode, body)
+	}
+	assertErrorCode(t, body, "invalid_public_key")
+	if strings.Contains(string(body), "BEGIN PRIVATE KEY") {
+		t.Fatalf("error response exposed rejected public key material: %s", body)
 	}
 }
 
@@ -199,6 +325,22 @@ func createContactPublicKeyWithToken(t *testing.T, app *testApp, token, body str
 	}
 	if err := json.Unmarshal(responseBody, &created); err != nil {
 		t.Fatalf("decode contact public key: %v", err)
+	}
+	return created.ContactPublicKey
+}
+
+func replaceContactPublicKeyWithToken(t *testing.T, app *testApp, token, publicKeyID, body string) incidents.ContactPublicKey {
+	t.Helper()
+	response, responseBody := requestWithAuth(t, app.privateHandler, http.MethodPost, "/v1/contact-public-keys/"+publicKeyID+"/replace", "application/json", bytes.NewBufferString(body), token)
+	response.Body.Close()
+	if response.StatusCode != http.StatusCreated {
+		t.Fatalf("expected replace contact public key status 201, got %d: %s", response.StatusCode, responseBody)
+	}
+	var created struct {
+		ContactPublicKey incidents.ContactPublicKey `json:"contact_public_key"`
+	}
+	if err := json.Unmarshal(responseBody, &created); err != nil {
+		t.Fatalf("decode replacement contact public key: %v", err)
 	}
 	return created.ContactPublicKey
 }

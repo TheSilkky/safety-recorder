@@ -136,8 +136,9 @@ reassignment workflow documented in
 [legacy-unowned-incident-reassignment.md](legacy-unowned-incident-reassignment.md).
 
 Authenticated account owners can invite local accounts into trusted-contact
-relationships, register trusted-contact public-key metadata, and manage
-incident/stream-scoped sharing grants for their own incidents. Those routes can
+relationships, register or replace trusted-contact public-key metadata, mark
+contact keys lost or revoked, and manage incident/stream-scoped sharing grants
+for their own incidents. Those routes can
 store and deliver wrapped CEK/media-key metadata through private API responses
 when an active grant authorizes ciphertext access. Relationship records do not
 add trusted-contact wrapped-key delivery, browser or backend decryption, public

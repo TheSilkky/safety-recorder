@@ -90,7 +90,9 @@ registration modes with email verification for open self-registration, admin
 session revocation, owner-scoped trusted-contact relationship metadata,
 owner-scoped contact public-key metadata, owner-managed sharing grants,
 owner-managed wrapped-key records, and owner-only public-safe incident metadata
-list/detail reads. Sharing-grant and wrapped-key management are deliberately
+list/detail reads. Contact public-key replacement and lost/revoked states are
+metadata-only lifecycle controls and do not rewrite old wrapped-key records or
+add backend decryption. Sharing-grant and wrapped-key management are deliberately
 stricter than ordinary incident reads: they require the authenticated account
 to own the incident, and an admin account cannot manage another account's
 grants or wrapped-key records through the product route set unless it is also
@@ -302,7 +304,7 @@ viewer tokens indistinguishable to the public viewer.
 Current sharing grants can be scoped to an incident or one stream, can expire,
 and can be revoked while retaining minimal audit metadata. Contact public keys
 are versioned per contact; only active key versions can receive new grants.
-Revoked contact keys cannot be reactivated.
+Replaced, revoked, and lost contact keys cannot be reactivated.
 Current wrapped-key delivery is owner-authenticated through private `/v1`
 routes. Revoked or expired grants, inactive contact public keys, and revoked or
 rotated wrapped-key records are filtered out of list and read responses. Public

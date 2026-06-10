@@ -25,6 +25,8 @@ func (a *API) registerMainContactRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /v1/contact-public-keys/{public_key_id}", a.withPrivateAuth(a.getContactPublicKey))
 	mux.HandleFunc("PATCH /v1/contact-public-keys/{public_key_id}", a.withPrivateAuth(a.updateContactPublicKey))
 	mux.HandleFunc("POST /v1/contact-public-keys/{public_key_id}/revoke", a.withPrivateAuth(a.revokeContactPublicKey))
+	mux.HandleFunc("POST /v1/contact-public-keys/{public_key_id}/lost", a.withPrivateAuth(a.markContactPublicKeyLost))
+	mux.HandleFunc("POST /v1/contact-public-keys/{public_key_id}/replace", a.withPrivateAuth(a.replaceContactPublicKey))
 }
 
 func (a *API) registerMainAccountRecipientKeyRoutes(mux *http.ServeMux) {

@@ -220,9 +220,29 @@ func TestContactPublicKeysAndSharingGrants(t *testing.T) {
 	if secondKey.Version != 2 || secondKey.ContactID != firstKey.ContactID {
 		t.Fatalf("replacement key = %+v, want same contact version 2", secondKey)
 	}
+	replacedFirstKey, err := repo.GetContactPublicKey(ctx, owner.ID, firstKey.ID)
+	if err != nil {
+		t.Fatalf("get replaced first contact key: %v", err)
+	}
+	if replacedFirstKey.KeyState != incidents.ContactKeyStateReplaced ||
+		replacedFirstKey.ReplacedAt == nil ||
+		replacedFirstKey.ReplacedByPublicKeyID != secondKey.ID {
+		t.Fatalf("first contact key was not replaced: %+v", replacedFirstKey)
+	}
 
 	if _, err := repo.GetContactPublicKey(ctx, other.ID, firstKey.ID); !errors.Is(err, incidents.ErrNotFound) {
 		t.Fatalf("other account get contact key error = %v, want ErrNotFound", err)
+	}
+	if _, err := repo.CreateSharingGrant(ctx, incidents.CreateSharingGrantParams{
+		OwnerAccountID:     owner.ID,
+		IncidentID:         incident.ID,
+		StreamID:           stream.ID,
+		RecipientType:      incidents.SharingGrantRecipientTrustedContact,
+		ContactID:          firstKey.ContactID,
+		ContactPublicKeyID: firstKey.ID,
+		DataClass:          incidents.SharingGrantDataClassMetadataCiphertext,
+	}); !errors.Is(err, incidents.ErrNotFound) {
+		t.Fatalf("replaced key create grant error = %v, want ErrNotFound", err)
 	}
 	grant, err := repo.CreateSharingGrant(ctx, incidents.CreateSharingGrantParams{
 		OwnerAccountID: owner.ID,
@@ -269,6 +289,41 @@ func TestContactPublicKeysAndSharingGrants(t *testing.T) {
 		KeyState:       &active,
 	}); !errors.Is(err, incidents.ErrInvalidState) {
 		t.Fatalf("reactivate revoked key error = %v, want ErrInvalidState", err)
+	}
+
+	lostCandidate, err := repo.CreateContactPublicKey(ctx, incidents.CreateContactPublicKeyParams{
+		OwnerAccountID:       owner.ID,
+		DisplayLabel:         "lost contact",
+		WrappingAlgorithm:    "age-v1-x25519",
+		PublicKey:            "age1lost",
+		PublicKeyFingerprint: "fingerprint-lost",
+		KeyState:             incidents.ContactKeyStateActive,
+	})
+	if err != nil {
+		t.Fatalf("create lost candidate contact key: %v", err)
+	}
+	lostKey, err := repo.MarkContactPublicKeyLost(ctx, owner.ID, lostCandidate.ID)
+	if err != nil {
+		t.Fatalf("mark contact public key lost: %v", err)
+	}
+	if lostKey.KeyState != incidents.ContactKeyStateLost || lostKey.LostAt == nil {
+		t.Fatalf("contact key not marked lost: %+v", lostKey)
+	}
+	if _, err := repo.CreateSharingGrant(ctx, incidents.CreateSharingGrantParams{
+		OwnerAccountID: owner.ID,
+		IncidentID:     incident.ID,
+		RecipientType:  incidents.SharingGrantRecipientTrustedContact,
+		ContactID:      lostKey.ContactID,
+		DataClass:      incidents.SharingGrantDataClassMetadataCiphertext,
+	}); !errors.Is(err, incidents.ErrNotFound) {
+		t.Fatalf("lost key create grant error = %v, want ErrNotFound", err)
+	}
+	if _, err := repo.UpdateContactPublicKey(ctx, incidents.UpdateContactPublicKeyParams{
+		OwnerAccountID: owner.ID,
+		PublicKeyID:    lostKey.ID,
+		KeyState:       &active,
+	}); !errors.Is(err, incidents.ErrInvalidState) {
+		t.Fatalf("reactivate lost key error = %v, want ErrInvalidState", err)
 	}
 }
 
@@ -635,6 +690,42 @@ func TestWrappedKeyRecords(t *testing.T) {
 	}
 	if _, err := repo.GetWrappedKeyRecord(ctx, owner.ID, record.ID); err != nil {
 		t.Fatalf("get wrapped key: %v", err)
+	}
+
+	replacementKey, err := repo.ReplaceContactPublicKey(ctx, incidents.ReplaceContactPublicKeyParams{
+		OwnerAccountID:       owner.ID,
+		PublicKeyID:          contactKey.ID,
+		DisplayLabel:         "contact replacement",
+		WrappingAlgorithm:    "age-v1-x25519",
+		PublicKey:            "age1wrappedreplacement",
+		PublicKeyFingerprint: "fingerprint-wrapped-replacement",
+		KeyState:             incidents.ContactKeyStateActive,
+	})
+	if err != nil {
+		t.Fatalf("replace contact key: %v", err)
+	}
+	if replacementKey.Version != 2 || replacementKey.ContactID != contactKey.ContactID {
+		t.Fatalf("replacement contact key = %+v, want same contact version 2", replacementKey)
+	}
+	if _, err := repo.CreateWrappedKeyRecord(ctx, incidents.CreateWrappedKeyRecordParams{
+		OwnerAccountID:           owner.ID,
+		IncidentID:               incident.ID,
+		StreamID:                 stream.ID,
+		GrantID:                  grant.ID,
+		MediaKeyID:               "media-key-2",
+		WrappingAlgorithm:        "age-v1-x25519",
+		WrappingAlgorithmVersion: "1",
+		WrappedKeyCiphertext:     "wrapped-ciphertext-2",
+		PublicWrappingMetadata:   []byte(`{"profile":"age-v1-x25519"}`),
+	}); !errors.Is(err, incidents.ErrNotFound) {
+		t.Fatalf("replaced contact key create wrapped key error = %v, want ErrNotFound", err)
+	}
+	revokedRecord, err := repo.RevokeWrappedKeyRecord(ctx, owner.ID, record.ID, owner.ID)
+	if err != nil {
+		t.Fatalf("revoke wrapped key after contact key replacement: %v", err)
+	}
+	if revokedRecord.ContactPublicKeyID != contactKey.ID || revokedRecord.ContactPublicKeyVersion != contactKey.Version {
+		t.Fatalf("wrapped key binding mutated after replacement: %+v", revokedRecord)
 	}
 
 	if _, err := repo.RevokeSharingGrant(ctx, owner.ID, grant.ID, owner.ID); err != nil {

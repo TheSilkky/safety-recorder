@@ -543,6 +543,40 @@ func TestPostgresContactPublicKeysAndSharingGrants(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create contact public key: %v", err)
 	}
+	replacementKey, err := repo.ReplaceContactPublicKey(ctx, incidents.ReplaceContactPublicKeyParams{
+		OwnerAccountID:       owner.ID,
+		PublicKeyID:          contactKey.ID,
+		DisplayLabel:         "contact replacement",
+		WrappingAlgorithm:    "age-v1-x25519",
+		PublicKey:            "age1replacement",
+		PublicKeyFingerprint: "fingerprint-replacement",
+		KeyState:             incidents.ContactKeyStateActive,
+	})
+	if err != nil {
+		t.Fatalf("replace contact public key: %v", err)
+	}
+	if replacementKey.Version != 2 || replacementKey.ContactID != contactKey.ContactID {
+		t.Fatalf("replacement key = %+v, want same contact version 2", replacementKey)
+	}
+	replacedOriginal, err := repo.GetContactPublicKey(ctx, owner.ID, contactKey.ID)
+	if err != nil {
+		t.Fatalf("get replaced original contact key: %v", err)
+	}
+	if replacedOriginal.KeyState != incidents.ContactKeyStateReplaced ||
+		replacedOriginal.ReplacedAt == nil ||
+		replacedOriginal.ReplacedByPublicKeyID != replacementKey.ID {
+		t.Fatalf("original contact key was not replaced: %+v", replacedOriginal)
+	}
+	if _, err := repo.CreateSharingGrant(ctx, incidents.CreateSharingGrantParams{
+		OwnerAccountID:     owner.ID,
+		IncidentID:         incident.ID,
+		RecipientType:      incidents.SharingGrantRecipientTrustedContact,
+		ContactID:          contactKey.ContactID,
+		ContactPublicKeyID: contactKey.ID,
+		DataClass:          incidents.SharingGrantDataClassMetadataCiphertext,
+	}); !errors.Is(err, incidents.ErrNotFound) {
+		t.Fatalf("replaced contact key create grant error = %v, want ErrNotFound", err)
+	}
 	grant, err := repo.CreateSharingGrant(ctx, incidents.CreateSharingGrantParams{
 		OwnerAccountID: owner.ID,
 		IncidentID:     incident.ID,
@@ -553,7 +587,7 @@ func TestPostgresContactPublicKeysAndSharingGrants(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create sharing grant: %v", err)
 	}
-	if grant.ContactPublicKeyID != contactKey.ID || grant.ContactPublicKeyVersion != 1 {
+	if grant.ContactPublicKeyID != replacementKey.ID || grant.ContactPublicKeyVersion != 2 {
 		t.Fatalf("unexpected grant key binding: %+v", grant)
 	}
 	record, err := repo.CreateWrappedKeyRecord(ctx, incidents.CreateWrappedKeyRecordParams{
@@ -575,6 +609,33 @@ func TestPostgresContactPublicKeysAndSharingGrants(t *testing.T) {
 	}
 	if len(records) != 1 || records[0].ID != record.ID {
 		t.Fatalf("unexpected wrapped key records: %+v", records)
+	}
+	lostCandidate, err := repo.CreateContactPublicKey(ctx, incidents.CreateContactPublicKeyParams{
+		OwnerAccountID:       owner.ID,
+		DisplayLabel:         "lost contact",
+		WrappingAlgorithm:    "age-v1-x25519",
+		PublicKey:            "age1lost",
+		PublicKeyFingerprint: "fingerprint-lost",
+		KeyState:             incidents.ContactKeyStateActive,
+	})
+	if err != nil {
+		t.Fatalf("create lost contact key candidate: %v", err)
+	}
+	lostKey, err := repo.MarkContactPublicKeyLost(ctx, owner.ID, lostCandidate.ID)
+	if err != nil {
+		t.Fatalf("mark contact public key lost: %v", err)
+	}
+	if lostKey.KeyState != incidents.ContactKeyStateLost || lostKey.LostAt == nil {
+		t.Fatalf("contact key was not marked lost: %+v", lostKey)
+	}
+	if _, err := repo.CreateSharingGrant(ctx, incidents.CreateSharingGrantParams{
+		OwnerAccountID: owner.ID,
+		IncidentID:     incident.ID,
+		RecipientType:  incidents.SharingGrantRecipientTrustedContact,
+		ContactID:      lostKey.ContactID,
+		DataClass:      incidents.SharingGrantDataClassMetadataCiphertext,
+	}); !errors.Is(err, incidents.ErrNotFound) {
+		t.Fatalf("lost contact key create grant error = %v, want ErrNotFound", err)
 	}
 	if _, err := repo.RevokeSharingGrant(ctx, owner.ID, grant.ID, owner.ID); err != nil {
 		t.Fatalf("revoke sharing grant: %v", err)
