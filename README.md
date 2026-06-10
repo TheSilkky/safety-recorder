@@ -17,6 +17,10 @@ Proofline Server is the experimental Go server backend for encrypted incident ca
 ## Security Warning
 
 > This project is not production-ready public infrastructure. The main `/v1` API now requires local account sessions for product routes and uses app-level route-class rate limits, so it is no longer an unauthenticated control plane. Broad public exposure still needs route-by-route deployment review, TLS, edge abuse controls, browser credential review, logging review, proxy hardening, and operational testing. Configurable public self-registration is disabled by default; enabling open registration adds only email-verified account creation and does not by itself approve broad public `/v1` exposure. Optional browser cookie sessions add CSRF checks and configured credentialed CORS for future web-client use, but they also need reviewed deployment rules. Existing `/v1/admin/...` JSON routes are mounted only on the private-admin listener and remain authenticated admin-only routes. The private-admin listener also serves the `/admin` dashboard surface and must stay behind localhost, LAN, WireGuard, a firewall, or a strict reverse proxy. Separate bind addresses are a deployment boundary, not a complete security model.
+>
+> Public web-client deployments must follow the reviewed route, CORS, CSRF,
+> cookie, cache, edge, and logging boundary in
+> [docs/public-web-client-deployment-boundary.md](docs/public-web-client-deployment-boundary.md).
 
 ## What It Is
 
@@ -103,7 +107,9 @@ escrow.
 - Opaque server-side sessions with expiry and revocation
 - Optional main `/v1` browser cookie-session login/logout, session recovery,
   CSRF protection for cookie-authenticated unsafe requests, and credentialed
-  CORS for explicitly configured web origins
+  CORS for explicitly configured web origins, subject to the public web-client
+  deployment boundary in
+  [docs/public-web-client-deployment-boundary.md](docs/public-web-client-deployment-boundary.md)
 - Private admin-only HTML surface under `/admin` for bootstrap, login, local
   account listing, and password workflows
 - SQLite metadata and local disk encrypted blob storage by default

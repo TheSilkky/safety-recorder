@@ -31,6 +31,9 @@ or backend decryption, notifications, raw key storage, and key escrow do not
 exist yet. The main API does include a narrow public-safe owner incident
 list/detail read surface for the future web client, but this does not make
 every `/v1` route group public-ready without route-level deployment review.
+The public web-client route, CORS, CSRF, cookie, cache, edge, and logging
+boundary is documented in
+[public-web-client-deployment-boundary.md](public-web-client-deployment-boundary.md).
 
 Future capture stream groups, stream variant roles, source-timeline identity,
 and evidence supersession are planning-only in

@@ -19,6 +19,12 @@ authentication. The main API/public viewer listener split is documented in
 
 The current module and artifact names use the `open-proofline/server` repository namespace. The published GHCR image is `ghcr.io/open-proofline/server`, local examples use the `proofline-server` image name, and release binaries use `proofline-server-*` names. Current runtime protocol and default data-layout identifiers use Proofline names. Historical reports and archived prompts may still mention earlier `safety-recorder` identifiers.
 
+Public web-client deployments have an additional route, CORS, CSRF, cookie,
+cache, edge, and logging boundary documented in
+[public-web-client-deployment-boundary.md](public-web-client-deployment-boundary.md).
+That document separates metadata-only account portals, evidence capture/review
+previews, no-account viewer replacement, and browser decrypting viewers.
+
 ## Local Development
 
 From the repository root:
@@ -117,15 +123,18 @@ still block those admin JSON routes unless a future audited public-admin API is
 explicitly designed.
 
 The current web-client read surface is deliberately narrow. A public web edge
-may route account authentication, account self-service, and owner-only
+may route account authentication, account self-service, contact/key/grant
+metadata, signed-in trusted-contact wrapped-key metadata reads, and owner-only
 `GET /v1/incidents` plus `GET /v1/incidents/{incident_id}` after the deployment
 has reviewed authentication, CORS, CSRF, rate limits, TLS, and logging. Those
 incident reads return only public-safe metadata and hide cross-account or
-legacy unowned incidents. Do not treat this as approval to publish the whole
-main `/v1` tree: keep admin JSON routes on the private-admin listener and
-review uploads, chunk reads, bundle downloads, diagnostics, operator routes,
-raw error/debug endpoints, key custody, and any write routes separately before
-placing them on a public edge.
+legacy unowned incidents. Use
+[public-web-client-deployment-boundary.md](public-web-client-deployment-boundary.md)
+before widening into evidence capture/review routes. Do not treat this as
+approval to publish the whole main `/v1` tree: keep admin JSON routes on the
+private-admin listener and review uploads, chunk reads, bundle downloads,
+diagnostics, operator routes, raw error/debug endpoints, key custody, and any
+write routes separately before placing them on a public edge.
 
 Public self-registration is disabled by default. If a self-hosted deployment
 sets `[account_registration].mode = "open"` or uses the equivalent
