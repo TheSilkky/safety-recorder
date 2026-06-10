@@ -19,6 +19,7 @@ type relaySessionTestResponse struct {
 	RelaySession struct {
 		RelaySessionID    string    `json:"relay_session_id"`
 		Capability        string    `json:"capability"`
+		FanoutCapability  string    `json:"fanout_capability"`
 		Role              string    `json:"role"`
 		IncidentID        string    `json:"incident_id"`
 		StreamID          string    `json:"stream_id"`
@@ -72,6 +73,9 @@ func TestCreateRelaySessionIssuesBoundCapability(t *testing.T) {
 	if decoded.RelaySession.Role != relaycap.RoleUpload {
 		t.Fatalf("role = %q, want upload", decoded.RelaySession.Role)
 	}
+	if decoded.RelaySession.FanoutCapability == "" || decoded.RelaySession.FanoutCapability == decoded.RelaySession.Capability {
+		t.Fatalf("fanout capability was not issued separately")
+	}
 	if decoded.RelaySession.IncidentID != incidentID || decoded.RelaySession.StreamID != stream.ID {
 		t.Fatalf("binding = incident %q stream %q, want %q %q", decoded.RelaySession.IncidentID, decoded.RelaySession.StreamID, incidentID, stream.ID)
 	}
@@ -98,6 +102,19 @@ func TestCreateRelaySessionIssuesBoundCapability(t *testing.T) {
 	}
 	if capability.MaxChunkBytes != decoded.RelaySession.MaxChunkBytes || capability.MaxChunks != decoded.RelaySession.MaxChunks {
 		t.Fatalf("capability limits = bytes %d chunks %d, response = bytes %d chunks %d", capability.MaxChunkBytes, capability.MaxChunks, decoded.RelaySession.MaxChunkBytes, decoded.RelaySession.MaxChunks)
+	}
+	fanoutCapability, err := relaycap.Validate(secret, decoded.RelaySession.FanoutCapability, relaycap.ValidationContext{
+		Role:           relaycap.RoleFanout,
+		RelaySessionID: decoded.RelaySession.RelaySessionID,
+		IncidentID:     incidentID,
+		StreamID:       stream.ID,
+		Now:            time.Now().UTC(),
+	})
+	if err != nil {
+		t.Fatalf("validate fanout capability: %v", err)
+	}
+	if fanoutCapability.MaxChunkBytes != decoded.RelaySession.MaxChunkBytes || fanoutCapability.MaxChunks != decoded.RelaySession.MaxChunks {
+		t.Fatalf("fanout capability limits = bytes %d chunks %d, response = bytes %d chunks %d", fanoutCapability.MaxChunkBytes, fanoutCapability.MaxChunks, decoded.RelaySession.MaxChunkBytes, decoded.RelaySession.MaxChunks)
 	}
 }
 

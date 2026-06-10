@@ -8,11 +8,12 @@ encrypted chunks, a private `/admin` dashboard listener, and optional
 Valkey/Redis-compatible short-lived coordination when explicitly configured.
 The separate regional stream-ingress relay boundary currently has
 `cmd/stream-ingress` health/readiness routes, core API issuance of configured
-short-lived relay upload capabilities for authorized open streams,
-service-authenticated core relay preflight and commit endpoints, and relay
-complete-chunk upload handling with relay-local temporary ciphertext staging
-and core forwarding. Optimistic fanout, metrics, relay Valkey counters,
-production service-identity rotation, and deployment automation remain planned in
+short-lived relay upload and fanout capabilities for authorized open streams,
+service-authenticated core relay preflight, commit, and fanout authorization
+endpoints, relay complete-chunk upload handling with relay-local temporary
+ciphertext staging and core forwarding, and optimistic encrypted unconfirmed
+fanout. Backend confirmation/rejection propagation, replay, metrics, relay
+Valkey counters, production service-identity rotation, and deployment automation remain planned in
 [regional-stream-ingress-relay.md](regional-stream-ingress-relay.md).
 
 This repository is the server/backend component only. In the current
@@ -211,15 +212,18 @@ They are not decrypted, playable, or merged media exports.
 
 The regional stream-ingress relay boundary is separate from the main API and
 private-admin listeners. The current `cmd/stream-ingress` command exposes only
-coarse health/readiness routes and a narrow complete-chunk upload route; it is
-not a durable evidence store and not a broad API gateway. The core API can issue
-a signed, expiring upload capability bound to one authorized open stream and can
-accept service-authenticated relay preflight/commit calls for that bound stream
-context. The relay capability by itself does not prove durable evidence
-preservation. The relay command stages ciphertext temporarily, validates the
-declared hash, and forwards complete encrypted chunks to the core API. The core
-API remains responsible for account/session or future upload authorization,
-relay capability validation, incident and stream state, idempotency decisions,
+coarse health/readiness routes, a narrow complete-chunk upload route, and a
+narrow fanout subscription route; it is not a durable evidence store and not a
+broad API gateway. The core API can issue signed, expiring upload and fanout
+capabilities bound to one authorized open stream and can accept
+service-authenticated relay preflight/commit/fanout authorization calls for
+that bound stream context. A relay capability or unconfirmed fanout event by
+itself does not prove durable evidence preservation. The relay command stages
+ciphertext temporarily, validates the declared hash, forwards complete
+encrypted chunks to the core API, and can optimistically send encrypted
+`near_live_unconfirmed` SSE events to authorized subscribers. The core API
+remains responsible for account/session or future upload authorization, relay
+capability validation, incident and stream state, idempotency decisions,
 duplicate reconciliation, final blob commits, and metadata.
 
 The relay must not expose `/admin`, `/v1/admin/...`, public incident viewer

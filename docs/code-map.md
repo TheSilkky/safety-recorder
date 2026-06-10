@@ -78,12 +78,12 @@ contact key-sharing boundaries in
   client-side chunk envelope, associated data builder, and local simulator key
   file helpers.
 - `internal/auth`: normalizes local account usernames and email addresses, validates passwords, hashes passwords with bcrypt, hashes opaque session or verification tokens before storage, defines controlled second-factor recovery action/reason values, and maps WebAuthn user and credential records to the go-webauthn library types.
-- `internal/httpapi`: owns separate main and private-admin muxes, JSON responses, request logging, recovery, local account/session authentication, request validation, upload handling, stream state handlers, relay session capability issuance, service-authenticated core relay preflight/commit handlers, trusted-contact relationship handlers, contact public-key handlers, sharing-grant handlers, wrapped-key handlers, incident deletion handlers, ZIP bundle streaming, app-level main API and public viewer rate limiting, private admin JSON API routes including second-factor recovery reset, the private admin web surface, the incident viewer, and the narrow metadata repository boundary consumed by handlers. Logging changes in this package should follow [logging-requirements.md](logging-requirements.md).
+- `internal/httpapi`: owns separate main and private-admin muxes, JSON responses, request logging, recovery, local account/session authentication, request validation, upload handling, stream state handlers, relay session capability issuance, service-authenticated core relay preflight/commit/fanout authorization handlers, trusted-contact relationship handlers, contact public-key handlers, sharing-grant handlers, wrapped-key handlers, incident deletion handlers, ZIP bundle streaming, app-level main API and public viewer rate limiting, private admin JSON API routes including second-factor recovery reset, the private admin web surface, the incident viewer, and the narrow metadata repository boundary consumed by handlers. Logging changes in this package should follow [logging-requirements.md](logging-requirements.md).
 - `internal/relaycap`: signs and validates short-lived regional relay upload
-  capability tokens with HMAC-SHA256, explicit expiry, role checks, relay
-  session binding, and incident/stream binding. It does not implement relay
-  upload, staging, core commit, fanout, decryption, key custody, or service
-  identity.
+  and fanout capability tokens with HMAC-SHA256, explicit expiry, role checks,
+  relay session binding, and incident/stream binding. It does not implement
+  relay upload, staging, core commit, fanout transport, decryption, key custody,
+  or service identity.
 - `internal/incidents`: defines incident/stream/chunk/checkin/account/session/deletion/trusted-contact-relationship/contact-key/sharing-grant/wrapped-key/WebAuthn models and provides the SQLite metadata repository implementation, including deletion decisions, tombstones, retry item state, trusted-contact relationship records, contact public-key records, sharing-grant records, wrapped-key records, WebAuthn user/credential/challenge records, second-factor recovery audit events, and write guards for deleting incidents.
 - `internal/postgresdb`: opens optional PostgreSQL metadata connections, applies PostgreSQL migrations, and implements the metadata repository behavior, including second-factor recovery audit events, with PostgreSQL transaction, row-locking, deletion, and constraint semantics.
 - `internal/retention`: runs the background deletion and optional closed-incident retention worker. It claims retryable deletion decisions, removes encrypted blobs through the storage boundary using stored paths snapshotted from metadata, records safe retry state, prunes sensitive child metadata after blob deletion, and logs only non-sensitive counts or error categories under the standard logging requirements.
@@ -96,14 +96,16 @@ contact key-sharing boundaries in
   loading and fake secret-file mounts. These files are local release-smoke
   helpers, not production deployment manifests.
 
-The implemented `cmd/stream-ingress` package is an upload-only relay edge. The
-core API can issue configured short-lived relay upload capabilities for
-authorized open streams and exposes service-authenticated relay preflight/commit
-handlers. The relay listener can accept configured complete encrypted chunk
-uploads, stage ciphertext temporarily, verify declared hashes, and forward exact
-encrypted bytes to the core API. Later relay work should keep the relay listener
-separate and let the core API remain authoritative for authorization,
-idempotency, durable blob commits, and metadata.
+The implemented `cmd/stream-ingress` package is a temporary relay edge. The
+core API can issue configured short-lived relay upload and fanout capabilities
+for authorized open streams and exposes service-authenticated relay
+preflight/commit/fanout authorization handlers. The relay listener can accept
+configured complete encrypted chunk uploads, stage ciphertext temporarily,
+verify declared hashes, forward exact encrypted bytes to the core API, and send
+optimistic encrypted `near_live_unconfirmed` SSE events to authorized
+subscribers. Later relay work should keep the relay listener separate and let
+the core API remain authoritative for authorization, idempotency, durable blob
+commits, and metadata.
 
 ## Main Request Flow
 

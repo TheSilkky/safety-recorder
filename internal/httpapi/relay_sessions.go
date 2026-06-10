@@ -16,6 +16,7 @@ type relaySessionResponse struct {
 type relaySessionPayload struct {
 	RelaySessionID    string    `json:"relay_session_id"`
 	Capability        string    `json:"capability"`
+	FanoutCapability  string    `json:"fanout_capability"`
 	Role              string    `json:"role"`
 	IncidentID        string    `json:"incident_id"`
 	StreamID          string    `json:"stream_id"`
@@ -67,7 +68,7 @@ func (a *API) createRelaySession(w http.ResponseWriter, r *http.Request) {
 		a.internalError(w, "create relay session id", err)
 		return
 	}
-	capability := relaycap.Capability{
+	uploadCapability := relaycap.Capability{
 		Version:           relaycap.Version,
 		RelaySessionID:    sessionID,
 		Role:              relaycap.RoleUpload,
@@ -79,15 +80,23 @@ func (a *API) createRelaySession(w http.ResponseWriter, r *http.Request) {
 		MaxChunks:         a.relayCapability.MaxChunks,
 		AllowedMediaTypes: []string{stream.MediaType},
 	}
-	token, err := relaycap.Sign(secret, capability)
+	uploadToken, err := relaycap.Sign(secret, uploadCapability)
 	if err != nil {
 		a.internalError(w, "sign relay capability", err)
+		return
+	}
+	fanoutCapability := uploadCapability
+	fanoutCapability.Role = relaycap.RoleFanout
+	fanoutToken, err := relaycap.Sign(secret, fanoutCapability)
+	if err != nil {
+		a.internalError(w, "sign relay fanout capability", err)
 		return
 	}
 
 	writeJSON(w, http.StatusCreated, relaySessionResponse{RelaySession: relaySessionPayload{
 		RelaySessionID:    sessionID,
-		Capability:        token,
+		Capability:        uploadToken,
+		FanoutCapability:  fanoutToken,
 		Role:              relaycap.RoleUpload,
 		IncidentID:        incidentID,
 		StreamID:          stream.ID,

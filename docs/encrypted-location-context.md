@@ -40,7 +40,7 @@ integration, live tracking, or relay fanout.
   so swaps, replays, and mismatched context fail closed.
 - Keep the no-account token viewer minimal and truthful.
 - Keep signed-in trusted-contact access separate from token-only access.
-- Keep relay and operational systems upload-only, ciphertext-only, and
+- Keep relay and operational systems ciphertext-only, temporary, and
   location-blind by default.
 - Define validation expectations before runtime implementation.
 
@@ -222,11 +222,12 @@ Class C must not include:
 - private endpoint details
 - user safety narratives
 
-The future regional relay must remain upload-only, temporary, ciphertext-only,
-and subordinate to the core API. Relay logs, metrics, traces, limiter keys,
-readiness output, preflight metadata, and staging paths must not include raw
-tokens, raw idempotency keys, full GPS, speed, heading, object keys, stored
-paths, staging paths, uploaded bytes, plaintext, raw keys, or user safety data.
+The regional relay must remain temporary, ciphertext-only, location-blind, and
+subordinate to the core API. Relay logs, metrics, traces, limiter keys,
+readiness output, preflight metadata, fanout metadata, and staging paths must
+not include raw tokens, raw idempotency keys, full GPS, speed, heading, object
+keys, stored paths, staging paths, uploaded bytes outside authorized encrypted
+payload transport, plaintext, raw keys, or user safety data.
 
 ## API And Storage Direction
 

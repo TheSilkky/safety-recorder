@@ -395,13 +395,15 @@ The current backend does not implement incident-mode-specific controls yet, so f
   planned in
   [resumable-upload-lease-protocol.md](resumable-upload-lease-protocol.md).
 - The regional stream-ingress relay currently implements health/readiness, core
-  API relay upload capability issuance, service-authenticated core relay
-  preflight/commit endpoints, and a configured complete-chunk upload route with
-  temporary ciphertext staging, hash verification, and core forwarding.
-  Capabilities are signed bearer-like upload-role artifacts bound to one relay
+  API relay upload and fanout capability issuance, service-authenticated core
+  relay preflight/commit/fanout authorization endpoints, a configured
+  complete-chunk upload route with temporary ciphertext staging, hash
+  verification, core forwarding, and optimistic encrypted unconfirmed fanout.
+  Capabilities are signed bearer-like role artifacts bound to one relay
   session, incident, and stream. Core relay commit remains the durable source of
-  truth for accepted ciphertext hashes and metadata; relay-local staging is
-  temporary and recoverable by client retry. Fanout, metrics, production service
+  truth for accepted ciphertext hashes and metadata; relay-local staging and
+  fanout are temporary and recoverable by client retry. Backend
+  confirmation/rejection propagation, replay, metrics, production service
   identity, relay Valkey coordination, and deployment hardening are planned in
   [regional-stream-ingress-relay.md](regional-stream-ingress-relay.md).
 - Retention, backup, restore, and deletion policy is documented in

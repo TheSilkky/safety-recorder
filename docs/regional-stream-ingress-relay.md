@@ -3,12 +3,14 @@
 This document defines an optional regional stream-ingress relay for complete
 encrypted chunk uploads. The current implementation has a separate
 `cmd/stream-ingress` service with token-neutral liveness/readiness routes, a
-core API route that can issue short-lived signed relay upload capabilities for
-authorized open streams, service-authenticated core preflight and commit
-endpoints for relay-to-core calls, and a configured complete-chunk upload route
-that performs metadata-before-file core preflight, temporary relay-local
-ciphertext staging, SHA-256 validation, and core commit forwarding. Optimistic
-fanout, metrics, deployment automation, relay Valkey counters, production
+core API route that can issue short-lived signed relay upload and fanout
+capabilities for authorized open streams, service-authenticated core
+preflight/commit/fanout authorization endpoints for relay-to-core calls, a
+configured complete-chunk upload route that performs metadata-before-file core
+preflight, temporary relay-local ciphertext staging, SHA-256 validation, and
+core commit forwarding, and an optimistic encrypted SSE fanout route that marks
+chunks as near-live/unconfirmed. Confirmation/rejection propagation, replay,
+metrics, deployment automation, relay Valkey counters, production
 service-identity rotation, durable relay storage, decryption, key custody,
 web-client code, mobile-client code, protocol code, and public production
 readiness remain unimplemented.
@@ -54,29 +56,32 @@ separable from broader cluster work:
 - main API/viewer and private `/admin` listener separation
 - a separate `cmd/stream-ingress` command that can be run and tested without
   changing main API behavior
-- backend-issued relay upload capabilities for authorized open media streams,
-  disabled until a relay capability secret is configured
+- backend-issued relay upload and fanout capabilities for authorized open media
+  streams, disabled until a relay capability secret is configured
 - service-authenticated core relay preflight and durable commit endpoints,
   disabled until a relay service auth token and relay capability secret are
   configured
 - a configured `cmd/stream-ingress` complete-chunk upload route that stages
   ciphertext temporarily, validates the ciphertext hash, and forwards exact
   encrypted bytes to the core commit endpoint
+- a configured `cmd/stream-ingress` fanout subscription route that authorizes
+  subscribers through the core API and sends encrypted chunks only as
+  `near_live_unconfirmed` SSE events
 
 Those features do not make `/v1` production-ready public infrastructure. The
 relay exposes only `/health/live`, `/health/ready`, and
-`POST /upload/complete-chunk`; it is not a reason to expose the whole main API
-or private admin surfaces.
+`POST /upload/complete-chunk`, and `GET /fanout/subscribe`; it is not a reason
+to expose the whole main API or private admin surfaces.
 
 Parent epic #202 is split into child implementation issues. Issue #289 added
 only the service boundary, config surface, route-surface tests, and
 implemented-versus-planned documentation. Issue #290 added only backend-issued
 relay upload capabilities for authorized open streams. Issue #291 added only
 the narrow service-authenticated core relay preflight/commit routes. Issue
-#292 adds only relay encrypted upload staging and core forwarding. Later slices
-are expected to add, in order, optimistic near-live encrypted fanout, backend
-confirmation/rejection propagation, operational guardrails, and final relay
-docs/validation alignment.
+#292 added only relay encrypted upload staging and core forwarding. Issue #293
+added only optimistic near-live encrypted fanout. Later slices are expected to
+add, in order, backend confirmation/rejection propagation, operational
+guardrails, and final relay docs/validation alignment.
 
 Future stream variant and supersession behavior is documented in
 [capture-stream-variants.md](capture-stream-variants.md). The relay may use
@@ -86,8 +91,8 @@ for backend confirmation and evidence preservation.
 
 ## Goals
 
-- Keep a small upload-only service boundary that is easier to deploy close to
-  users.
+- Keep a small temporary ciphertext relay boundary that is easier to deploy
+  close to users.
 - Reduce avoidable long-distance upload failures while preserving complete
   encrypted chunk retry semantics.
 - Reject excessive anonymous or denied attempts before large request bodies are
@@ -103,9 +108,9 @@ for backend confirmation and evidence preservation.
 
 ## Non-Goals
 
-- No optimistic fanout, metrics, deployment automation, relay Valkey counters,
-  production service-identity rotation, notifications, or viewer confirmation
-  propagation in the current relay upload slice.
+- No backend confirmation/rejection propagation, replay, metrics, deployment
+  automation, relay Valkey counters, production service-identity rotation,
+  notifications, or viewer durable-evidence claims in the current fanout slice.
 - No public exposure of the full current `/v1` control plane.
 - No admin routes on the ingress service.
 - No broad API gateway behavior.
@@ -133,6 +138,7 @@ The current relay command exposes only:
 - `GET /health/live`
 - `GET /health/ready`
 - `POST /upload/complete-chunk`
+- `GET /fanout/subscribe`
 
 The readiness response reports coarse relay state and whether optional relay
 identity and region labels are configured. It does not return the configured
@@ -163,8 +169,8 @@ turn a denied user/device/upload credential into an authorized upload.
 
 ## Backend-Issued Relay Capabilities
 
-The current core API can issue a short-lived upload capability for one
-authorized open stream:
+The current core API can issue short-lived upload and fanout capabilities for
+one authorized open stream:
 
 ```http
 POST /v1/incidents/{incident_id}/streams/{stream_id}/relay-session
@@ -184,30 +190,31 @@ location/safety-data container. Claims are intentionally narrow:
 
 - relay capability version
 - random relay session ID
-- role, currently `upload`
+- role, currently `upload` for relay upload and `fanout` for relay fanout
 - incident ID and stream ID binding
 - issued-at and expiry timestamps
 - maximum chunk byte size
 - maximum chunk count
 - allowed media types, currently the target stream media type
 
-Relay-side validation must check the signature, expiry, expected role, relay
-session ID, incident ID, and stream ID before accepting any future upload.
-Capabilities are bearer-like credentials and must not be logged, exposed in
-metrics, copied into public issues, used as limiter keys, or stored as durable
-evidence metadata. They are only a narrow authorization artifact for later
-relay slices; they do not by themselves implement relay listener upload,
-staging, fanout, metrics, service identity, or proof of durable evidence
-preservation.
+Relay-side and core-side validation must check the signature, expiry, expected
+role, relay session ID, incident ID, and stream ID before accepting upload or
+fanout behavior. Capabilities are bearer-like credentials and must not be
+logged, exposed in metrics, copied into public issues, used as limiter keys, or
+stored as durable evidence metadata. They are only narrow authorization
+artifacts for relay upload and fanout; they do not by themselves prove durable
+evidence preservation or authorize metrics, broad service identity, admin
+access, decryption, or key custody.
 
 ## Core Relay Preflight And Commit Routes
 
-The current core API exposes two narrow relay-to-core routes on the main API
+The current core API exposes three narrow relay-to-core routes on the main API
 mux:
 
 ```http
 POST /v1/relay/preflight
 POST /v1/relay/commit
+POST /v1/relay/fanout-authorize
 ```
 
 These routes are not mounted on `cmd/stream-ingress`, the public incident
@@ -215,8 +222,8 @@ viewer, or the private-admin listener. They require
 `X-Proofline-Relay-Service-Token`, backed by `[relay_service].auth_token` or
 `[relay_service].auth_token_file`, and that relay-to-core service token is
 separate from user bearer sessions, browser cookies, viewer tokens, incident
-tokens, and relay upload capabilities. When relay service auth is unset, the
-routes fail closed with `503 relay_service_auth_not_configured`. Missing,
+tokens, and relay upload or fanout capabilities. When relay service auth is
+unset, the routes fail closed with `503 relay_service_auth_not_configured`. Missing,
 duplicate, or invalid service tokens return `401 relay_service_auth_required`.
 
 Both routes validate the supplied relay session ID and relay capability against
@@ -244,12 +251,20 @@ server-generated chunk ID and safe ciphertext metadata only; they do not return
 bytes, plaintext, raw keys, wrapped-key ciphertext, or private deployment
 details.
 
+`POST /v1/relay/fanout-authorize` accepts JSON containing relay session ID,
+fanout capability, incident ID, and stream ID. It requires the same relay
+service-auth header, validates the `fanout` role and stream binding, and checks
+that the incident and stream are still active and open. A successful response
+authorizes only a relay-local subscription for optimistic encrypted fanout; it
+does not confirm any chunk, commit evidence, create replay state, or grant
+viewer-token, trusted-contact, admin, decryption, or key access.
+
 These core routes preserve the existing direct authenticated chunk upload
-route. They do not implement optimistic fanout, relay metrics, notifications,
-trusted-contact behavior, public admin behavior, backend decryption, raw key
-custody, or key escrow. The separate `cmd/stream-ingress` command implements
-the relay upload listener, relay-local temporary staging, and relay forwarding
-runtime.
+route. They do not implement relay metrics, notifications, trusted-contact
+behavior, public admin behavior, backend decryption, raw key custody, or key
+escrow. The separate `cmd/stream-ingress` command implements the relay upload
+listener, relay-local temporary staging, relay forwarding runtime, and
+optimistic encrypted fanout runtime.
 
 ## Core API Boundary
 
@@ -315,6 +330,65 @@ relay must not return or log raw capabilities, service tokens, request bodies,
 uploaded bytes, temp paths, stored paths, object keys, plaintext, raw keys,
 wrapped-key ciphertext, private deployment details, or user safety data.
 
+## Relay Fanout Subscription Route
+
+The current relay fanout route is:
+
+```http
+GET /fanout/subscribe
+```
+
+It is mounted only on `cmd/stream-ingress`, not on the core API, private-admin
+listener, or public incident viewer. The subscriber must send authorization
+context in request headers rather than query parameters so credentials are not
+placed in URLs, browser history, proxy URL logs, or referrer paths:
+
+```http
+X-Proofline-Relay-Session-ID: <relay_session_id>
+X-Proofline-Relay-Fanout-Capability: <signed-fanout-capability>
+X-Proofline-Relay-Incident-ID: <incident_id>
+X-Proofline-Relay-Stream-ID: <stream_id>
+```
+
+The relay calls `POST /v1/relay/fanout-authorize` with
+`X-Proofline-Relay-Service-Token` before registering the subscription. Core
+authorization remains authoritative for fanout capability signature, expiry,
+`fanout` role, relay session binding, incident binding, stream binding,
+incident state, and stream state. Missing headers return
+`400 invalid_relay_fanout_request`. Core denial is mapped to
+`core_fanout_rejected` with a controlled `core_error_code` when available.
+
+Successful subscriptions use `text/event-stream` and receive:
+
+- `relay_ready`: confirms the subscription is active and labels state as
+  `near_live_unconfirmed`.
+- `relay_chunk`: sends the exact encrypted chunk bytes as base64 in
+  `payload_b64`, plus safe ciphertext metadata: `incident_id`, `stream_id`,
+  `chunk_index`, `media_type`, `byte_size`, and `sha256_hex`.
+
+Fanout chunks are optimistic and unconfirmed. They are sent after relay-local
+metadata preflight, temporary ciphertext staging, byte-size validation, and
+SHA-256 validation, but before backend confirmation/rejection propagation
+exists. A fanout event does not mean the core API has durably committed the
+chunk. Trusted clients must label these chunks as `near_live_unconfirmed` and
+must not treat them as durable evidence truth until a later backend-confirmed
+state exists.
+
+The fanout hub is in-memory only. It does not replay old chunks to reconnecting
+subscribers, does not store durable fanout metadata, and is lost on relay
+restart. Reconnect currently receives only future encrypted chunks for the same
+authorized relay session, incident, and stream. Backend confirmation/rejection
+propagation, rejection termination, retry-state signaling, and replay are left
+to later issues.
+
+The fanout route does not decrypt, inspect, transform, transcode, or rewrite
+the encryption envelope. It must not expose raw upload capabilities, fanout
+capabilities, service tokens, request bodies, uploaded bytes outside the
+authorized encrypted payload transport, temp paths, stored paths, object keys,
+plaintext, raw keys, wrapped-key ciphertext, private deployment details, GPS
+values, speed, heading, or user safety data in logs, errors, readiness output,
+or public artifacts.
+
 ## Upload Flow
 
 The current complete-chunk relay flow is:
@@ -348,10 +422,10 @@ the final core outcome is ambiguous because of timeout, connection loss, or
 core `5xx`, the client should retry the complete encrypted chunk and rely on
 the documented idempotency and duplicate reconciliation paths.
 
-Future relay fanout may optimistically forward `live_preview` or
-`audio_priority` variants to an authorized live viewer before core confirmation,
-but those chunks must be labeled unconfirmed. They become preserved evidence
-only after the core API commits the encrypted bytes and metadata.
+Current relay fanout may optimistically forward encrypted chunks to an
+authorized subscriber before core confirmation, and those chunks are labeled
+`near_live_unconfirmed`. They become preserved evidence only after the core API
+commits the encrypted bytes and metadata.
 
 ## Preflight And Abuse Controls
 
@@ -552,7 +626,7 @@ Split implementation into small issues:
    Completed by #291.
 4. Implement relay complete-chunk upload staging, hash verification, and core
    forwarding. Completed by #292.
-5. Add optimistic near-live encrypted relay fanout. Planned for #293.
+5. Add optimistic near-live encrypted relay fanout. Completed by #293.
 6. Add backend confirmation/rejection propagation. Planned for #294.
 7. Add operational guardrails for limits, temp pressure, readiness, and safe
    aggregate status. Planned for #295.

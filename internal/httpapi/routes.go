@@ -140,6 +140,7 @@ func (a *API) registerMainStreamRoutes(mux *http.ServeMux) {
 func (a *API) registerMainRelayRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /v1/relay/preflight", a.relayPreflight)
 	mux.HandleFunc("POST /v1/relay/commit", a.relayCommit)
+	mux.HandleFunc("POST /v1/relay/fanout-authorize", a.relayFanoutAuthorize)
 }
 
 func (a *API) registerMainIncidentTokenRoutes(mux *http.ServeMux) {

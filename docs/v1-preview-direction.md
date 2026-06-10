@@ -193,7 +193,7 @@ prefer neutral user-facing language like `Interaction record`.
 | Browser decryption | Not implemented. | In scope for authorized account-owner or trusted-contact review after browser trust model, key custody, and deployment-integrity decisions are accepted. |
 | Trusted contacts | Owner-scoped metadata for contact public keys, grants, and wrapped keys. | Account-based trusted-contact invite/accept, grant-scoped review, wrapped-key delivery, and client-side decrypt UX. |
 | Device sharing | Not implemented. | Each device should have its own key material. Existing trusted devices or a recovery flow should approve new devices, then rewrap relevant CEKs to the new device recipient key. |
-| Regional relay | Health/readiness routes, configured backend-issued upload capabilities for authorized open streams, service-authenticated core relay preflight/commit endpoints, and configured complete-chunk upload forwarding with temporary ciphertext staging. | Optional upload-only, temporary, ciphertext-only relay listener subordinate to the core API, with fanout, confirmation propagation, metrics, production service identity, and deployment hardening only after separate review. |
+| Regional relay | Health/readiness routes, configured backend-issued upload and fanout capabilities for authorized open streams, service-authenticated core relay preflight/commit/fanout authorization endpoints, configured complete-chunk upload forwarding with temporary ciphertext staging, and optimistic encrypted fanout marked unconfirmed. | Optional temporary, ciphertext-only relay listener subordinate to the core API, with backend confirmation/rejection propagation, metrics, production service identity, and deployment hardening only after separate review. |
 | Public registration and required setup | Disabled by default; open mode requires SMTP verification; paid mode fails closed. New admin-created and open-registration accounts carry required setup state that blocks main product routes until email challenge, TOTP, or configured WebAuthn setup is completed. Active TOTP and WebAuthn factors require per-session verification. | Explicit preview deployments may enable open registration with email verification, rate limits, deployment controls, account-scoped committed blob quota, configured WebAuthn/passkey factors, and a reviewed recovery policy. |
 | Billing | Future Stripe-hosted service boundary exists as planning context. | Payment providers, subscriptions, account plans, and hosted entitlements are out of default v1 preview scope unless separately scoped. |
 
@@ -476,13 +476,15 @@ experience ships.
 ## Regional Relay Direction
 
 The regional stream-ingress relay currently has separate health/readiness
-routes, core API issuance of configured short-lived upload capabilities for
-authorized open streams, service-authenticated core relay preflight/commit
-endpoints, and a configured complete-chunk upload route with temporary
-ciphertext staging, hash verification, and core forwarding. Future relay slices
-should keep it upload-only, temporary, ciphertext-only, and subordinate to the
-core API. It should not be a durable evidence store, broad API gateway, GPS
-inspection service, admin route host, decryption service, or public viewer edge.
+routes, core API issuance of configured short-lived upload and fanout
+capabilities for authorized open streams, service-authenticated core relay
+preflight/commit/fanout authorization endpoints, a configured complete-chunk
+upload route with temporary ciphertext staging, hash verification, core
+forwarding, and optimistic encrypted fanout marked
+`near_live_unconfirmed`. Future relay slices should keep it temporary,
+ciphertext-only, and subordinate to the core API. It should not be a durable
+evidence store, broad API gateway, GPS inspection service, admin route host,
+decryption service, or public viewer edge.
 
 The core API remains authoritative for:
 
@@ -495,20 +497,21 @@ The core API remains authoritative for:
 - deletion and retention behavior
 - bundle reconstruction
 
-Relay upload capabilities are not raw account sessions, browser cookies,
-viewer tokens, incident tokens, raw keys, wrapped-key ciphertext, uploaded
-bytes, stored paths, object keys, plaintext, or user safety data. They must be
-treated as bearer-like credentials and kept out of logs, metrics labels, public
-issues, and support artifacts.
+Relay upload and fanout capabilities are not raw account sessions, browser
+cookies, viewer tokens, incident tokens, raw keys, wrapped-key ciphertext,
+uploaded bytes, stored paths, object keys, plaintext, or user safety data. They
+must be treated as bearer-like credentials and kept out of logs, metrics
+labels, public issues, and support artifacts.
 
 Relay-to-core service auth is also separate from user sessions and relay upload
-capabilities. The current static service token authorizes only the narrow core
-preflight/commit route set and must be kept out of logs, metrics labels, public
-issues, and support artifacts.
+or fanout capabilities. The current static service token authorizes only the
+narrow core preflight/commit/fanout authorization route set and must be kept
+out of logs, metrics labels, public issues, and support artifacts.
 
 Relay-local staged chunks are not backend-confirmed evidence. Near-live relay
-fanout may be useful in the future, but trusted clients must label relay-fanned
-chunks as unconfirmed until the core API commits encrypted bytes and metadata.
+fanout chunks are also not backend-confirmed evidence; trusted clients must
+label relay-fanned chunks as unconfirmed until the core API commits encrypted
+bytes and metadata.
 
 ## Cloudflare and Edge Direction
 
