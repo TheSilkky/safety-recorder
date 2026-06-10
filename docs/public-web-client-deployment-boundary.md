@@ -96,6 +96,8 @@ Allowed when `SAFE_WEB_AUTH_ENABLED=true` and the origin is explicitly listed in
 - `GET /v1/auth/web/csrf`
 - `POST /v1/auth/web/logout`
 - `GET /v1/account`
+- `POST /v1/account/second-factor/email/challenge`
+- `POST /v1/account/second-factor/email/verify`
 - `POST /v1/account/password`
 
 The web client must call credentialed requests with:
@@ -108,6 +110,9 @@ Unsafe cookie-authenticated requests must include the CSRF header returned by
 `GET /v1/auth/web/csrf`. Bearer-authenticated API clients keep bearer behavior
 and do not require CSRF. Requests that send both bearer and browser-cookie
 credentials are rejected by the server and should be treated as a client bug.
+Email second-factor setup routes are available to setup-incomplete sessions;
+raw challenge codes are delivered only by email and must not be persisted in
+browser storage, logs, analytics, URLs, or support artifacts.
 
 ### Registration And Email Verification
 
@@ -310,8 +315,9 @@ They must not include:
   private endpoint names
 - full GPS/location context, speed, heading, route history, notes, or user
   safety narratives
-- SMTP credentials, email verification token values, recipient email addresses,
-  or raw provider errors that quote private endpoints
+- SMTP credentials, email verification token values, second-factor challenge
+  code values, recipient email addresses, or raw provider errors that quote
+  private endpoints
 
 Use route classes, safe counts, controlled status fields, and low-cardinality
 error categories instead.

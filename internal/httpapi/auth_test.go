@@ -439,6 +439,239 @@ func TestSecondFactorSetupRequiredAdminKeepsPrivateAdminBoundary(t *testing.T) {
 	assertErrorCode(t, body, "second_factor_setup_required")
 }
 
+func TestEmailSecondFactorSetupBearerSessionEnrollsAndUnlocksProductRoutes(t *testing.T) {
+	sender := &recordingEmailSender{}
+	app := newTestAppWithOptions(t, httpapi.Options{
+		EmailSender:          sender,
+		SecondFactorEmailTTL: time.Minute,
+	})
+	createAccountForStateTest(t, app, "email-setup-user", "state-password")
+	token, _ := loginWithAccountForTest(t, app, "email-setup-user", "state-password")
+
+	response, body := requestWithAuth(t, app.privateHandler, http.MethodGet, "/v1/incidents", "", nil, token)
+	response.Body.Close()
+	if response.StatusCode != http.StatusForbidden {
+		t.Fatalf("pre-challenge product route status = %d, want 403: %s", response.StatusCode, body)
+	}
+	assertErrorCode(t, body, "second_factor_setup_required")
+
+	response, body = requestWithAuth(t, app.privateHandler, http.MethodPost, "/v1/account/second-factor/email/challenge", "application/json", bytes.NewBufferString(`{"email":" Setup.User@Example.Invalid "}`), token)
+	response.Body.Close()
+	if response.StatusCode != http.StatusAccepted {
+		t.Fatalf("challenge request status = %d, want 202: %s", response.StatusCode, body)
+	}
+	if len(sender.messages) != 1 {
+		t.Fatalf("sent email challenge messages = %d, want 1", len(sender.messages))
+	}
+	if sender.messages[0].To != "setup.user@example.invalid" {
+		t.Fatalf("challenge email to = %q", sender.messages[0].To)
+	}
+	rawCode := secondFactorCodeFromEmail(t, sender.messages[0])
+	if rawCode == "" {
+		t.Fatal("email challenge did not contain a code")
+	}
+	for _, disallowed := range []string{"Setup.User@Example.Invalid", "setup.user@example.invalid", rawCode, token} {
+		if bytes.Contains(body, []byte(disallowed)) {
+			t.Fatalf("challenge response exposed %q: %s", disallowed, body)
+		}
+	}
+
+	var storedHash string
+	if err := app.db.QueryRowContext(context.Background(), `
+		SELECT token_hash
+		FROM account_second_factor_challenges
+		ORDER BY created_at DESC
+		LIMIT 1`,
+	).Scan(&storedHash); err != nil {
+		t.Fatalf("read second-factor challenge hash: %v", err)
+	}
+	if storedHash == rawCode || len(storedHash) != 64 {
+		t.Fatalf("second-factor challenge was not stored as a 64-character hash")
+	}
+
+	response, body = requestWithAuth(t, app.privateHandler, http.MethodPost, "/v1/account/second-factor/email/verify", "application/json", bytes.NewBufferString(`{"code":"`+rawCode+`"}`), token)
+	response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("challenge verify status = %d, want 200: %s", response.StatusCode, body)
+	}
+	if bytes.Contains(body, []byte(rawCode)) {
+		t.Fatalf("verify response exposed challenge code: %s", body)
+	}
+	account := mustGetRegistrationAccount(t, app, "email-setup-user")
+	if account.SecondFactorSetup != auth.SecondFactorSetupStateComplete {
+		t.Fatalf("account second-factor setup = %q, want complete", account.SecondFactorSetup)
+	}
+	var factorState string
+	if err := app.db.QueryRowContext(context.Background(), `
+		SELECT factor_state
+		FROM account_second_factors
+		WHERE account_id = ?`,
+		account.ID,
+	).Scan(&factorState); err != nil {
+		t.Fatalf("read second-factor state: %v", err)
+	}
+	if factorState != auth.SecondFactorStateActive {
+		t.Fatalf("factor state = %q, want active", factorState)
+	}
+
+	response, body = requestWithAuth(t, app.privateHandler, http.MethodPost, "/v1/incidents", "application/json", bytes.NewBufferString(`{}`), token)
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusCreated {
+		t.Fatalf("post-challenge product route status = %d, want 201: %s", response.StatusCode, body)
+	}
+}
+
+func TestEmailSecondFactorSetupBrowserCookieSessionEnrollsAndUnlocksProductRoutes(t *testing.T) {
+	sender := &recordingEmailSender{}
+	options := webAuthTestOptions(true, nil)
+	options.EmailSender = sender
+	options.SecondFactorEmailTTL = time.Minute
+	app := newTestAppWithOptions(t, options)
+	createAccountForStateTest(t, app, "email-web-user", "state-password")
+	cookie, _ := webLoginForTest(t, app, "email-web-user", "state-password")
+
+	response, body := requestWithCookie(t, app.privateHandler, http.MethodGet, "/v1/incidents", "", nil, cookie)
+	response.Body.Close()
+	if response.StatusCode != http.StatusForbidden {
+		t.Fatalf("pre-challenge cookie product route status = %d, want 403: %s", response.StatusCode, body)
+	}
+	csrfToken := webCSRFTokenForTest(t, app, cookie)
+
+	response, body = requestWithCookieAndHeaders(t, app.privateHandler, http.MethodPost, "/v1/account/second-factor/email/challenge", "application/json", bytes.NewBufferString(`{"email":"web-factor@example.invalid"}`), cookie, map[string]string{
+		"X-CSRF-Token": csrfToken,
+	})
+	response.Body.Close()
+	if response.StatusCode != http.StatusAccepted {
+		t.Fatalf("cookie challenge request status = %d, want 202: %s", response.StatusCode, body)
+	}
+	rawCode := secondFactorCodeFromEmail(t, sender.messages[0])
+
+	response, body = requestWithCookieAndHeaders(t, app.privateHandler, http.MethodPost, "/v1/account/second-factor/email/verify", "application/json", bytes.NewBufferString(`{"code":"`+rawCode+`"}`), cookie, map[string]string{
+		"X-CSRF-Token": csrfToken,
+	})
+	response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("cookie challenge verify status = %d, want 200: %s", response.StatusCode, body)
+	}
+
+	response, body = requestWithCookieAndHeaders(t, app.privateHandler, http.MethodPost, "/v1/incidents", "application/json", bytes.NewBufferString(`{}`), cookie, map[string]string{
+		"X-CSRF-Token": csrfToken,
+	})
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusCreated {
+		t.Fatalf("post-challenge cookie product route status = %d, want 201: %s", response.StatusCode, body)
+	}
+}
+
+func TestEmailSecondFactorChallengeRejectsInvalidExpiredAndReuseCodes(t *testing.T) {
+	sender := &recordingEmailSender{}
+	app := newTestAppWithOptions(t, httpapi.Options{
+		EmailSender:          sender,
+		SecondFactorEmailTTL: time.Minute,
+	})
+	createAccountForStateTest(t, app, "challenge-user", "state-password")
+	token, _ := loginWithAccountForTest(t, app, "challenge-user", "state-password")
+
+	response, body := requestWithAuth(t, app.privateHandler, http.MethodPost, "/v1/account/second-factor/email/challenge", "application/json", bytes.NewBufferString(`{"email":"challenge@example.invalid"}`), token)
+	response.Body.Close()
+	if response.StatusCode != http.StatusAccepted {
+		t.Fatalf("expired challenge request status = %d, want 202: %s", response.StatusCode, body)
+	}
+	expiredCode := secondFactorCodeFromEmail(t, sender.messages[len(sender.messages)-1])
+	if _, err := app.db.ExecContext(context.Background(), `
+		UPDATE account_second_factor_challenges
+		SET expires_at = ?
+		WHERE token_hash = ?`,
+		time.Now().UTC().Add(-time.Hour).Format(time.RFC3339Nano),
+		auth.SessionTokenHash(expiredCode),
+	); err != nil {
+		t.Fatalf("expire second-factor challenge: %v", err)
+	}
+	response, body = requestWithAuth(t, app.privateHandler, http.MethodPost, "/v1/account/second-factor/email/verify", "application/json", bytes.NewBufferString(`{"code":"`+expiredCode+`"}`), token)
+	response.Body.Close()
+	if response.StatusCode != http.StatusBadRequest {
+		t.Fatalf("expired challenge status = %d, want 400: %s", response.StatusCode, body)
+	}
+	assertErrorCode(t, body, "second_factor_challenge_invalid")
+
+	response, body = requestWithAuth(t, app.privateHandler, http.MethodPost, "/v1/account/second-factor/email/verify", "application/json", bytes.NewBufferString(`{"code":"not-a-real-code"}`), token)
+	response.Body.Close()
+	if response.StatusCode != http.StatusBadRequest {
+		t.Fatalf("invalid challenge status = %d, want 400: %s", response.StatusCode, body)
+	}
+	assertErrorCode(t, body, "second_factor_challenge_invalid")
+
+	response, body = requestWithAuth(t, app.privateHandler, http.MethodPost, "/v1/account/second-factor/email/challenge", "application/json", bytes.NewBufferString(`{"email":"challenge@example.invalid"}`), token)
+	response.Body.Close()
+	if response.StatusCode != http.StatusAccepted {
+		t.Fatalf("valid challenge request status = %d, want 202: %s", response.StatusCode, body)
+	}
+	validCode := secondFactorCodeFromEmail(t, sender.messages[len(sender.messages)-1])
+	response, body = requestWithAuth(t, app.privateHandler, http.MethodPost, "/v1/account/second-factor/email/verify", "application/json", bytes.NewBufferString(`{"code":"`+validCode+`"}`), token)
+	response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("valid challenge status = %d, want 200: %s", response.StatusCode, body)
+	}
+	response, body = requestWithAuth(t, app.privateHandler, http.MethodPost, "/v1/account/second-factor/email/verify", "application/json", bytes.NewBufferString(`{"code":"`+validCode+`"}`), token)
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusBadRequest {
+		t.Fatalf("reused challenge status = %d, want 400: %s", response.StatusCode, body)
+	}
+	assertErrorCode(t, body, "second_factor_challenge_invalid")
+}
+
+func TestEmailSecondFactorChallengeRequiresAuthenticatedAccount(t *testing.T) {
+	sender := &recordingEmailSender{}
+	app := newTestAppWithOptions(t, httpapi.Options{EmailSender: sender})
+
+	response, body := postUnauthenticated(t, app, "/v1/account/second-factor/email/challenge", "application/json", bytes.NewBufferString(`{"email":"public@example.invalid"}`))
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("unauthenticated challenge status = %d, want 401: %s", response.StatusCode, body)
+	}
+	assertErrorCode(t, body, "authentication_required")
+	if len(sender.messages) != 0 {
+		t.Fatalf("unauthenticated challenge sent %d emails", len(sender.messages))
+	}
+	for _, disallowed := range []string{"public@example.invalid"} {
+		if bytes.Contains(body, []byte(disallowed)) {
+			t.Fatalf("unauthenticated response exposed %q: %s", disallowed, body)
+		}
+	}
+}
+
+func TestEmailSecondFactorChallengeLogsAndResponsesDoNotExposeSecrets(t *testing.T) {
+	var logs bytes.Buffer
+	sender := &recordingEmailSender{}
+	app := newTestAppWithOptions(t, httpapi.Options{
+		EmailSender: sender,
+		Logger:      slog.New(slog.NewTextHandler(&logs, nil)),
+	})
+	createAccountForStateTest(t, app, "redact-factor-user", "state-password")
+	token, _ := loginWithAccountForTest(t, app, "redact-factor-user", "state-password")
+
+	response, body := requestWithAuth(t, app.privateHandler, http.MethodPost, "/v1/account/second-factor/email/challenge", "application/json", bytes.NewBufferString(`{"email":"redact-factor@example.invalid"}`), token)
+	response.Body.Close()
+	if response.StatusCode != http.StatusAccepted {
+		t.Fatalf("redaction challenge status = %d, want 202: %s", response.StatusCode, body)
+	}
+	rawCode := secondFactorCodeFromEmail(t, sender.messages[0])
+	for _, disallowed := range []string{"redact-factor@example.invalid", rawCode, token, "state-password"} {
+		if bytes.Contains(body, []byte(disallowed)) {
+			t.Fatalf("challenge response exposed %q: %s", disallowed, body)
+		}
+		if strings.Contains(logs.String(), disallowed) {
+			t.Fatalf("challenge logs exposed %q: %s", disallowed, logs.String())
+		}
+	}
+	if strings.Contains(sender.messages[0].Body, "incident") ||
+		strings.Contains(sender.messages[0].Body, "object") ||
+		strings.Contains(sender.messages[0].Body, "path") ||
+		strings.Contains(sender.messages[0].Body, "wrapped") {
+		t.Fatalf("challenge email body included unrelated private-data language: %q", sender.messages[0].Body)
+	}
+}
+
 func TestBrowserLogoutRevokesSessionAndClearsCookie(t *testing.T) {
 	app := newTestAppWithOptions(t, webAuthTestOptions(true, nil))
 	cookie, _ := webLoginForTest(t, app, "test-admin", "test-password")
@@ -634,6 +867,18 @@ func TestOpenRegistrationRequiresEmailVerificationBeforeLogin(t *testing.T) {
 		t.Fatalf("verified setup-incomplete product route status = %d, want 403: %s", response.StatusCode, body)
 	}
 	assertErrorCode(t, body, "second_factor_setup_required")
+	var secondFactorCount int
+	if err := app.db.QueryRowContext(context.Background(), `
+		SELECT COUNT(*)
+		FROM account_second_factors
+		WHERE account_id = ?`,
+		account.ID,
+	).Scan(&secondFactorCount); err != nil {
+		t.Fatalf("count registration-created second factors: %v", err)
+	}
+	if secondFactorCount != 0 {
+		t.Fatalf("registration email verification created %d second factors, want 0", secondFactorCount)
+	}
 
 	response, body = postUnauthenticated(t, app, "/v1/auth/email/verify", "application/json", bytes.NewBufferString(`{"token":"`+rawToken+`"}`))
 	response.Body.Close()
@@ -1144,6 +1389,22 @@ func verificationTokenFromEmail(t *testing.T, message email.Message) string {
 		t.Fatalf("decode verification token: %v", err)
 	}
 	return token
+}
+
+func secondFactorCodeFromEmail(t *testing.T, message email.Message) string {
+	t.Helper()
+	lines := strings.Split(strings.ReplaceAll(message.Body, "\r\n", "\n"), "\n")
+	for i, line := range lines {
+		if strings.Contains(line, "Use this code to finish Proofline email second-factor setup:") {
+			for _, candidate := range lines[i+1:] {
+				if code := strings.TrimSpace(candidate); code != "" {
+					return code
+				}
+			}
+		}
+	}
+	t.Fatalf("second-factor email missing challenge code: %q", message.Body)
+	return ""
 }
 
 type recordingEmailSender struct {

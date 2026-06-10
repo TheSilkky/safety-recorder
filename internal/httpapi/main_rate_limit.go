@@ -125,6 +125,12 @@ func classifyMainAPIRateLimit(r *http.Request) (mainRateLimitClass, bool) {
 			(r.Method == http.MethodPost && len(segments) == 3 && segments[2] == "password") {
 			return mainRateLimitAccount, true
 		}
+		if r.Method == http.MethodPost && len(segments) == 5 && segments[2] == "second-factor" && segments[3] == "email" {
+			switch segments[4] {
+			case "challenge", "verify":
+				return mainRateLimitAuthEmailVerify, true
+			}
+		}
 	case "account-recipient-keys":
 		return classifyMainAPIAccountRecipientKeyRateLimit(r, segments)
 	case "contact-public-keys":

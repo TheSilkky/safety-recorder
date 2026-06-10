@@ -50,6 +50,14 @@ func TestLoadDefaultSessionTTL(t *testing.T) {
 	}
 }
 
+func TestLoadDefaultSecondFactorEmailChallengeTTL(t *testing.T) {
+	cfg := loadConfigForTest(t, nil)
+
+	if cfg.SecondFactorEmailChallengeTTL != 10*time.Minute {
+		t.Fatalf("default second-factor email challenge ttl = %s, want 10m", cfg.SecondFactorEmailChallengeTTL)
+	}
+}
+
 func TestLoadNoConfigFileUsesBuiltInDefaults(t *testing.T) {
 	t.Chdir(t.TempDir())
 
@@ -509,6 +517,7 @@ temp_upload_staging_quota_bytes = "512MB"
 
 [auth]
 session_ttl = "6h"
+second_factor_email_challenge_ttl = "7m"
 
 [retention]
 default_incident_token_ttl = "12h"
@@ -536,8 +545,8 @@ read_timeout = "45s"
 	if cfg.TempUploadStagingQuotaBytes != 512*1024*1024 {
 		t.Fatalf("temp upload staging quota bytes = %d, want 512MB", cfg.TempUploadStagingQuotaBytes)
 	}
-	if cfg.SessionTTL != 6*time.Hour || cfg.DefaultIncidentTokenTTL != 12*time.Hour {
-		t.Fatalf("durations = session %s token %s", cfg.SessionTTL, cfg.DefaultIncidentTokenTTL)
+	if cfg.SessionTTL != 6*time.Hour || cfg.DefaultIncidentTokenTTL != 12*time.Hour || cfg.SecondFactorEmailChallengeTTL != 7*time.Minute {
+		t.Fatalf("durations = session %s token %s second factor %s", cfg.SessionTTL, cfg.DefaultIncidentTokenTTL, cfg.SecondFactorEmailChallengeTTL)
 	}
 	if cfg.MainAPIRateLimit.AuthRegisterLimit != 14 {
 		t.Fatalf("auth register limit = %d, want 14", cfg.MainAPIRateLimit.AuthRegisterLimit)
@@ -1209,6 +1218,16 @@ func TestLoadSessionTTLFromEnv(t *testing.T) {
 	}
 }
 
+func TestLoadSecondFactorEmailChallengeTTLFromEnv(t *testing.T) {
+	cfg := loadConfigForTest(t, map[string]string{
+		"SAFE_SECOND_FACTOR_EMAIL_CHALLENGE_TTL": "5m",
+	})
+
+	if cfg.SecondFactorEmailChallengeTTL != 5*time.Minute {
+		t.Fatalf("second-factor email challenge ttl = %s, want 5m", cfg.SecondFactorEmailChallengeTTL)
+	}
+}
+
 func TestLoadDeletionRetentionConfigFromEnv(t *testing.T) {
 	cfg := loadConfigForTest(t, map[string]string{
 		"SAFE_DELETION_WORKER_INTERVAL":     "30s",
@@ -1459,6 +1478,29 @@ func TestLoadRejectsInvalidSessionTTL(t *testing.T) {
 			}
 			if !strings.Contains(err.Error(), "parse SAFE_SESSION_TTL") {
 				t.Fatalf("expected SAFE_SESSION_TTL parse context, got %v", err)
+			}
+		})
+	}
+}
+
+func TestLoadRejectsInvalidSecondFactorEmailChallengeTTL(t *testing.T) {
+	tests := map[string]string{
+		"zero":     "0",
+		"negative": "-1s",
+		"invalid":  "forever",
+		"empty":    "",
+	}
+
+	for name, value := range tests {
+		t.Run(name, func(t *testing.T) {
+			_, err := loadConfigForTestErr(t, map[string]string{
+				"SAFE_SECOND_FACTOR_EMAIL_CHALLENGE_TTL": value,
+			})
+			if err == nil {
+				t.Fatal("expected second-factor email challenge ttl config error")
+			}
+			if !strings.Contains(err.Error(), "parse SAFE_SECOND_FACTOR_EMAIL_CHALLENGE_TTL") {
+				t.Fatalf("expected SAFE_SECOND_FACTOR_EMAIL_CHALLENGE_TTL parse context, got %v", err)
 			}
 		})
 	}
@@ -1802,6 +1844,7 @@ func loadConfigWithOptionsForTestErr(t *testing.T, opts LoadOptions, env map[str
 		"SAFE_TEMP_UPLOAD_STAGING_QUOTA_BYTES",
 		"SAFE_DEFAULT_INCIDENT_TOKEN_TTL",
 		"SAFE_SESSION_TTL",
+		"SAFE_SECOND_FACTOR_EMAIL_CHALLENGE_TTL",
 		"SAFE_ACCOUNT_REGISTRATION_MODE",
 		"SAFE_EMAIL_VERIFICATION_TTL",
 		"SAFE_PUBLIC_WEB_ORIGIN",

@@ -24,6 +24,19 @@ const (
 	SecondFactorSetupStateComplete      = "complete"
 )
 
+const (
+	SecondFactorTypeEmailChallenge = "email_challenge"
+)
+
+const (
+	SecondFactorStatePending = "pending"
+	SecondFactorStateActive  = "active"
+)
+
+const (
+	SecondFactorChallengeTypeEmailSetup = "email_setup"
+)
+
 const VerificationPurposeEmail = "email_verification"
 
 var (
@@ -80,6 +93,35 @@ type CreateAccountVerificationTokenParams struct {
 	ExpiresAt time.Time
 }
 
+type SecondFactor struct {
+	ID              string
+	AccountID       string
+	FactorType      string
+	EmailNormalized string
+	FactorState     string
+	CreatedAt       time.Time
+	UpdatedAt       time.Time
+	VerifiedAt      *time.Time
+}
+
+type SecondFactorChallenge struct {
+	ID              string
+	AccountID       string
+	FactorID        string
+	ChallengeType   string
+	TokenHash       string
+	EmailNormalized string
+	CreatedAt       time.Time
+	ExpiresAt       time.Time
+	ConsumedAt      *time.Time
+}
+
+type CreateEmailSecondFactorChallengeParams struct {
+	AccountID       string
+	EmailNormalized string
+	ExpiresAt       time.Time
+}
+
 func ValidRole(role string) bool {
 	return role == RoleUser || role == RoleAdmin
 }
@@ -102,6 +144,16 @@ func ValidSecondFactorSetupState(state string) bool {
 	case SecondFactorSetupStateNotRequired,
 		SecondFactorSetupStateSetupRequired,
 		SecondFactorSetupStateComplete:
+		return true
+	default:
+		return false
+	}
+}
+
+func ValidSecondFactorState(state string) bool {
+	switch state {
+	case SecondFactorStatePending,
+		SecondFactorStateActive:
 		return true
 	default:
 		return false

@@ -74,6 +74,8 @@ func (a *API) registerMainAuthRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /v1/auth/web/csrf", a.withPrivateAuth(a.webCSRF))
 	mux.HandleFunc("GET /v1/account", a.withPrivateAuth(a.getCurrentAccount))
 	mux.HandleFunc("POST /v1/account/password", a.withPrivateAuth(a.changeOwnPassword))
+	mux.HandleFunc("POST /v1/account/second-factor/email/challenge", a.withPrivateAuth(a.requestEmailSecondFactorChallenge))
+	mux.HandleFunc("POST /v1/account/second-factor/email/verify", a.withPrivateAuth(a.verifyEmailSecondFactorChallenge))
 }
 
 func (a *API) registerAdminAPIRoutes(mux *http.ServeMux) {

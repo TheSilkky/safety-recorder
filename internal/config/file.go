@@ -91,9 +91,10 @@ type configFileUploads struct {
 }
 
 type configFileAuth struct {
-	SessionTTL          *string `toml:"session_ttl"`
-	BootstrapSecret     *string `toml:"bootstrap_secret"`
-	BootstrapSecretFile *string `toml:"bootstrap_secret_file"`
+	SessionTTL                    *string `toml:"session_ttl"`
+	BootstrapSecret               *string `toml:"bootstrap_secret"`
+	BootstrapSecretFile           *string `toml:"bootstrap_secret_file"`
+	SecondFactorEmailChallengeTTL *string `toml:"second_factor_email_challenge_ttl"`
 }
 
 type configFileAccountRegistration struct {
@@ -291,6 +292,7 @@ func (file configFile) toValues() (map[string]string, error) {
 	if err := setSecret(values, "SAFE_AUTH_BOOTSTRAP_SECRET", "SAFE_AUTH_BOOTSTRAP_SECRET_FILE", file.Auth.BootstrapSecret, file.Auth.BootstrapSecretFile); err != nil {
 		return nil, err
 	}
+	setString(values, "SAFE_SECOND_FACTOR_EMAIL_CHALLENGE_TTL", file.Auth.SecondFactorEmailChallengeTTL)
 
 	setString(values, "SAFE_ACCOUNT_REGISTRATION_MODE", file.AccountRegistration.Mode)
 	setString(values, "SAFE_EMAIL_VERIFICATION_TTL", file.AccountRegistration.EmailVerificationTTL)

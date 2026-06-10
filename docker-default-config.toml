@@ -50,6 +50,7 @@ temp_upload_cleanup_dry_run = false
 [auth]
 session_ttl = "12h"
 bootstrap_secret_file = ""
+second_factor_email_challenge_ttl = "10m"
 
 [account_registration]
 mode = "disabled"

@@ -18,6 +18,7 @@ const (
 	defaultIncidentTokenTTL      = 24 * time.Hour
 	defaultSessionTTL            = 12 * time.Hour
 	defaultVerificationTTL       = 24 * time.Hour
+	defaultSecondFactorEmailTTL  = 10 * time.Minute
 	jsonBodyLimit                = int64(64 * 1024)
 	fieldLimit                   = int64(64 * 1024)
 	multipartOverhead            = int64(1024 * 1024)
@@ -33,6 +34,7 @@ type Options struct {
 	BootstrapSecret            string
 	WebAuth                    WebAuthConfig
 	AccountRegistration        AccountRegistrationConfig
+	SecondFactorEmailTTL       time.Duration
 	EmailSender                email.Sender
 	MainRateLimit              MainRateLimitConfig
 	MainRateLimiter            RateLimiter
@@ -119,6 +121,7 @@ type API struct {
 	bootstrapSecret            string
 	webAuth                    WebAuthConfig
 	accountRegistration        AccountRegistrationConfig
+	secondFactorEmailTTL       time.Duration
 	emailSender                email.Sender
 	mainRateLimit              MainRateLimitConfig
 	mainRateLimiter            RateLimiter
@@ -216,6 +219,10 @@ func newAPI(repo MetadataRepository, store storage.BlobStore, opts Options) *API
 	if accountRegistration.EmailVerificationTTL <= 0 {
 		accountRegistration.EmailVerificationTTL = defaultVerificationTTL
 	}
+	secondFactorEmailTTL := opts.SecondFactorEmailTTL
+	if secondFactorEmailTTL <= 0 {
+		secondFactorEmailTTL = defaultSecondFactorEmailTTL
+	}
 
 	return &API{
 		repo:                       repo,
@@ -227,6 +234,7 @@ func newAPI(repo MetadataRepository, store storage.BlobStore, opts Options) *API
 		bootstrapSecret:            opts.BootstrapSecret,
 		webAuth:                    webAuth,
 		accountRegistration:        accountRegistration,
+		secondFactorEmailTTL:       secondFactorEmailTTL,
 		emailSender:                opts.EmailSender,
 		mainRateLimit:              opts.MainRateLimit,
 		mainRateLimiter:            mainRateLimiter,

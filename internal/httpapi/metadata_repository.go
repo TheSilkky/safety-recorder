@@ -70,6 +70,8 @@ type MetadataRepository interface {
 	UpdateAccountPassword(ctx context.Context, accountID, passwordHash string) (auth.Account, error)
 	CreateAccountVerificationToken(ctx context.Context, params auth.CreateAccountVerificationTokenParams) (auth.AccountVerificationToken, string, error)
 	ConsumeAccountVerificationToken(ctx context.Context, rawToken, purpose string, now time.Time) (auth.Account, error)
+	CreateEmailSecondFactorChallenge(ctx context.Context, params auth.CreateEmailSecondFactorChallengeParams) (auth.SecondFactorChallenge, string, error)
+	ConsumeEmailSecondFactorChallenge(ctx context.Context, accountID, rawToken string, now time.Time) (auth.SecondFactor, auth.Account, error)
 	CreateSession(ctx context.Context, accountID string, expiresAt time.Time) (auth.Session, string, error)
 	LookupSession(ctx context.Context, rawToken string) (auth.Session, error)
 	RevokeSession(ctx context.Context, sessionID string) error

@@ -82,6 +82,95 @@ func TestMigrateAddsSecondFactorSetupState(t *testing.T) {
 	}
 }
 
+func TestMigrateAddsEmailSecondFactorChallengeSchema(t *testing.T) {
+	ctx := context.Background()
+	conn := openMemoryDB(t)
+	defer conn.Close()
+
+	if err := Migrate(ctx, conn); err != nil {
+		t.Fatalf("Migrate: %v", err)
+	}
+	for _, tableName := range []string{"account_second_factors", "account_second_factor_challenges"} {
+		if !hasTable(t, ctx, conn, tableName) {
+			t.Fatalf("expected %s table", tableName)
+		}
+		for _, forbidden := range []string{"raw_token", "raw_code", "code", "token", "plaintext", "request_body", "authorization_header"} {
+			if hasColumn(t, ctx, conn, tableName, forbidden) {
+				t.Fatalf("%s must not include %s", tableName, forbidden)
+			}
+		}
+	}
+	if _, err := conn.ExecContext(ctx, `
+		INSERT INTO accounts (id, username, password_hash, role, created_at, updated_at, password_changed_at)
+		VALUES ('acct_email_2fa', 'email-2fa', 'hash', 'user', '2026-06-10T00:00:00Z', '2026-06-10T00:00:00Z', '2026-06-10T00:00:00Z')`); err != nil {
+		t.Fatalf("insert second-factor account: %v", err)
+	}
+	if _, err := conn.ExecContext(ctx, `
+		INSERT INTO account_second_factors (
+			id, account_id, factor_type, email_normalized, factor_state, created_at, updated_at
+		)
+		VALUES (
+			'sf_valid',
+			'acct_email_2fa',
+			'email_challenge',
+			'user@example.invalid',
+			'pending',
+			'2026-06-10T00:00:00Z',
+			'2026-06-10T00:00:00Z'
+		)`); err != nil {
+		t.Fatalf("insert valid second factor: %v", err)
+	}
+	if _, err := conn.ExecContext(ctx, `
+		INSERT INTO account_second_factor_challenges (
+			id, account_id, factor_id, challenge_type, token_hash,
+			email_normalized, created_at, expires_at
+		)
+		VALUES (
+			'sfc_valid',
+			'acct_email_2fa',
+			'sf_valid',
+			'email_setup',
+			'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+			'user@example.invalid',
+			'2026-06-10T00:00:00Z',
+			'2026-06-10T00:10:00Z'
+		)`); err != nil {
+		t.Fatalf("insert valid second-factor challenge: %v", err)
+	}
+	if _, err := conn.ExecContext(ctx, `
+		INSERT INTO account_second_factors (
+			id, account_id, factor_type, email_normalized, factor_state, created_at, updated_at
+		)
+		VALUES (
+			'sf_bad_state',
+			'acct_email_2fa',
+			'email_challenge',
+			'user2@example.invalid',
+			'verified',
+			'2026-06-10T00:00:00Z',
+			'2026-06-10T00:00:00Z'
+		)`); err == nil {
+		t.Fatal("expected invalid second-factor state to fail")
+	}
+	if _, err := conn.ExecContext(ctx, `
+		INSERT INTO account_second_factor_challenges (
+			id, account_id, factor_id, challenge_type, token_hash,
+			email_normalized, created_at, expires_at
+		)
+		VALUES (
+			'sfc_bad_hash',
+			'acct_email_2fa',
+			'sf_valid',
+			'email_setup',
+			'not-a-hash',
+			'user@example.invalid',
+			'2026-06-10T00:00:00Z',
+			'2026-06-10T00:10:00Z'
+		)`); err == nil {
+		t.Fatal("expected invalid challenge hash to fail")
+	}
+}
+
 func TestMigrateAddsIncidentModeColumns(t *testing.T) {
 	ctx := context.Background()
 	conn := openMemoryDB(t)

@@ -2,12 +2,17 @@
 
 ## Unreleased
 
+- Added email challenge second-factor setup for account gating, with
+  SQLite/PostgreSQL factor and challenge tables, hashed single-use expiring
+  codes, authenticated bearer and browser-cookie setup routes, setup-state
+  completion, rate-limit coverage, config/docs updates, and tests for
+  enrollment, verification, reuse, expiry, invalid codes, and redaction.
 - Added a factor-neutral required second-factor setup state for accounts, with
   SQLite/PostgreSQL migration parity, setup-required defaults for newly
   admin-created and open-registration accounts, bearer and browser-cookie
   session tests, main product-route gating, private-admin boundary coverage,
-  and docs clarifying that concrete email challenge, TOTP, WebAuthn/passkey,
-  and recovery flows are still future work.
+  and docs clarifying that TOTP, WebAuthn/passkey, and recovery flows are still
+  future work.
 - Added local temp-upload staging quota enforcement, defaulting to 1 GB, for
   both local and S3-compatible blob staging before final commit, with safe
   `507 upload_staging_quota_exceeded` responses, concurrent storage tests, S3
