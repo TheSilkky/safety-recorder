@@ -615,6 +615,17 @@ func TestPostgresDeletionOperatorStatusAndPreview(t *testing.T) {
 	if _, err := repo.CreateChunk(ctx, testChunkParams(failedIncident.ID, "", incidents.MediaTypeAudio, 1)); err != nil {
 		t.Fatalf("create chunk: %v", err)
 	}
+	failedStream, err := repo.CreateMediaStream(ctx, failedIncident.ID, incidents.MediaTypeVideo, "interrupted video")
+	if err != nil {
+		t.Fatalf("create failed stream: %v", err)
+	}
+	failedStreamChunk, err := repo.CreateChunk(ctx, testChunkParams(failedIncident.ID, failedStream.ID, incidents.MediaTypeVideo, 2))
+	if err != nil {
+		t.Fatalf("create failed stream chunk: %v", err)
+	}
+	if _, err := repo.FailMediaStream(ctx, failedIncident.ID, failedStream.ID, "interrupted_upload"); err != nil {
+		t.Fatalf("fail media stream: %v", err)
+	}
 	status, err := repo.RequestIncidentDeletion(ctx, incidents.IncidentDeletionRequest{
 		IncidentID: failedIncident.ID,
 		Source:     incidents.IncidentDeletionSourceAdminRequest,
@@ -627,8 +638,17 @@ func TestPostgresDeletionOperatorStatusAndPreview(t *testing.T) {
 	if err != nil {
 		t.Fatalf("list deletion items: %v", err)
 	}
-	if len(items) != 1 {
-		t.Fatalf("deletion items = %+v, want one", items)
+	if len(items) != 2 {
+		t.Fatalf("deletion items = %+v, want generic and failed-stream chunks", items)
+	}
+	foundFailedStreamChunk := false
+	for _, item := range items {
+		if item.StoredPath == failedStreamChunk.StoredPath {
+			foundFailedStreamChunk = true
+		}
+	}
+	if !foundFailedStreamChunk {
+		t.Fatalf("deletion items = %+v, missing failed stream chunk %s", items, failedStreamChunk.StoredPath)
 	}
 	if err := repo.MarkIncidentDeletionItemFailed(ctx, items[0].ID, "unsafe_stored_path"); err != nil {
 		t.Fatalf("mark item failed: %v", err)

@@ -104,6 +104,68 @@ func TestWorkerRunOnceCompletesDeletionAndPrunesMetadata(t *testing.T) {
 	assertTableCount(t, ctx, conn, "incident_tokens", 0)
 }
 
+func TestWorkerDeletesFailedStreamChunksWithParentIncident(t *testing.T) {
+	ctx := context.Background()
+	repo, _ := newDeletionTestRepository(t, ctx)
+	incident, err := repo.CreateIncident(ctx, "phone", "")
+	if err != nil {
+		t.Fatalf("create incident: %v", err)
+	}
+	stream, err := repo.CreateMediaStream(ctx, incident.ID, incidents.MediaTypeVideo, "interrupted video")
+	if err != nil {
+		t.Fatalf("create failed stream: %v", err)
+	}
+	firstChunk, err := repo.CreateChunk(ctx, deletionTestChunkParams(incident.ID, stream.ID, incidents.MediaTypeVideo, 1))
+	if err != nil {
+		t.Fatalf("create first failed stream chunk: %v", err)
+	}
+	secondChunk, err := repo.CreateChunk(ctx, deletionTestChunkParams(incident.ID, stream.ID, incidents.MediaTypeVideo, 2))
+	if err != nil {
+		t.Fatalf("create second failed stream chunk: %v", err)
+	}
+	failedStream, err := repo.FailMediaStream(ctx, incident.ID, stream.ID, "interrupted_upload")
+	if err != nil {
+		t.Fatalf("fail media stream: %v", err)
+	}
+	if failedStream.Status != incidents.StreamStatusFailed {
+		t.Fatalf("stream status = %q, want failed", failedStream.Status)
+	}
+	status, err := repo.RequestIncidentDeletion(ctx, incidents.IncidentDeletionRequest{
+		IncidentID: incident.ID,
+		Source:     incidents.IncidentDeletionSourceAdminRequest,
+		AllowOpen:  true,
+	})
+	if err != nil {
+		t.Fatalf("request incident deletion: %v", err)
+	}
+	items, err := repo.ListIncidentDeletionItems(ctx, status.DecisionID)
+	if err != nil {
+		t.Fatalf("list deletion items: %v", err)
+	}
+	if len(items) != 2 {
+		t.Fatalf("deletion items = %+v, want two failed-stream chunk paths", items)
+	}
+
+	store := &fakeBlobStore{}
+	summary, err := retention.NewWorker(repo, store, retention.Options{}).RunOnce(ctx)
+	if err != nil {
+		t.Fatalf("run worker: %v", err)
+	}
+	if summary.Processed != 1 || summary.Completed != 1 || summary.Failed != 0 {
+		t.Fatalf("unexpected worker summary: %+v", summary)
+	}
+	assertRemovedPaths(t, store.removed, firstChunk.StoredPath, secondChunk.StoredPath)
+	detail, err := repo.GetIncidentDetail(ctx, incident.ID)
+	if err != nil {
+		t.Fatalf("get incident detail: %v", err)
+	}
+	if detail.Incident.DeletionState != incidents.IncidentDeletionStateDeleted ||
+		len(detail.Streams) != 0 ||
+		len(detail.Chunks) != 0 {
+		t.Fatalf("deleted incident kept failed stream metadata: %+v", detail)
+	}
+}
+
 func TestWorkerTreatsMissingDeletionItemBlobAsSuccess(t *testing.T) {
 	ctx := context.Background()
 	repo, _ := newDeletionTestRepository(t, ctx)
