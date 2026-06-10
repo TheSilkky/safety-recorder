@@ -156,7 +156,7 @@ Tradeoffs:
 
 The viewer downloads encrypted evidence and wrapped keys, then decrypts in the browser or another trusted client. Key material may be delivered out of band, opened by a contact private key, or placed in a URL fragment so it is not sent in HTTP requests.
 
-This can make trusted-contact access easier, but it does not protect against an actively compromised backend serving malicious JavaScript. Browser decryption is stronger against passive storage compromise than active server compromise. A future high-assurance design may need signed/static viewer assets, reproducible builds, or a native trusted-contact client.
+This can make trusted-contact access easier, but it does not protect against an actively compromised backend serving malicious JavaScript. Browser decryption is stronger against passive storage compromise than active server compromise. A production trusted-contact browser path requires a static/signed, pinned, or independently hosted viewer boundary, or a native/offline decrypt path that does not depend on dynamic decrypting JavaScript from the incident backend.
 
 See [browser-decryption.md](browser-decryption.md).
 
@@ -445,12 +445,15 @@ Important constraints:
   they do not fully solve malicious-server risk.
 - Browser decryption is stronger against passive storage compromise than
   active server compromise.
+- Dynamic server-rendered browser decryption is not acceptable as the
+  production trusted-contact decrypt path by itself.
 - Large encrypted ZIP bundles need careful parsing, streaming, cancellation,
   memory limits, and plaintext handling.
 
 The browser path should follow [browser-decryption.md](browser-decryption.md)
-and should not be implemented until the key custody, access-control, and
-viewer trust model are accepted.
+and should not be implemented until the key custody, access-control,
+static/signed or native/offline delivery boundary, and viewer trust model are
+accepted.
 
 ## Server Escrow And Break-Glass Considerations
 
@@ -561,7 +564,9 @@ The hybrid model is designed to keep uploaded ciphertext useful after the phone 
   existing CEKs should be wrapped for them?
 - What metadata should be encrypted, and what must remain server-visible for the incident dashboard?
 - Should browser decryption be the first contact UX, or should a native trusted contact app come first?
-- Are signed/static viewer assets or reproducible builds needed before browser decryption is considered acceptable?
+- Which static/signed viewer, independently hosted viewer, native
+  trusted-contact app, or offline decrypt tool path is acceptable before
+  production browser decryption is considered trusted?
 - Should server escrow be supported at all in the first production release, or deferred until after contact-wrapped keys are proven?
 - What audit log fields are safe to store without leaking tokens, keys, plaintext, or sensitive safety data?
 - What retention, backup, and deletion policies apply to wrapped keys?
@@ -589,7 +594,10 @@ in [contact-wrapped-key-metadata-simulator.md](contact-wrapped-key-metadata-simu
 
 Phase 4: browser/client-side decrypt prototype.
 
-Prototype viewer decryption with strict CSP, no-store behavior, and a clear explanation of malicious-server limitations, following the constraints in [browser-decryption.md](browser-decryption.md).
+Prototype viewer decryption with strict CSP, no-store behavior, static/signed
+or independently verifiable viewer assets, and a clear explanation of
+malicious-server limitations, following the constraints in
+[browser-decryption.md](browser-decryption.md).
 
 Phase 5: iOS/Android keychain and contact-key planning.
 

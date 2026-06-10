@@ -439,7 +439,9 @@ Normal file or object removal is not treated as guaranteed secure erasure. Deplo
 - No implemented production browser decryption or client key-custody UX.
   Current wrapped-key metadata routes validate and store encrypted PQ key
   metadata only and do not introduce recipient private-key custody, raw CEK
-  storage, or decryption
+  storage, or decryption. A production trusted-contact browser decrypt path
+  requires the static/signed or native/offline trust gate documented in
+  [browser-decryption.md](browser-decryption.md).
 - No implemented live or partial stream access beyond current read-only stream
   metadata summaries and completed encrypted bundle downloads; the future
   boundary is documented in

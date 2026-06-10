@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Added a browser-decryption trust-gate decision that rejects dynamic
+  same-origin decrypting viewers as a production trusted-contact path by
+  themselves and requires a static/signed, independently hosted, native-app, or
+  offline decrypt boundary before browser decryption is trusted.
 - Added an encrypted location context design that classifies full-fidelity GPS,
   speed, heading, freshness, token-viewer context, signed-in trusted-contact
   access, relay privacy, envelope binding, and future validation expectations

@@ -32,7 +32,7 @@ This directory contains the detailed documentation for Proofline Server, the Go 
 | [Pure post-quantum encryption envelope](post-quantum-envelope.md) | Current v1 preview runtime default for an ML-KEM-768, HKDF-SHA384, and AES-256-GCM evidence envelope, including server metadata validation and simulator defaults. |
 | [Contact key sharing, grants, and wrapped-key metadata](contact-key-sharing-grants.md) | Current trusted-contact public-key, grant, and wrapped-key metadata boundaries, plus future trusted-contact delivery, retention, audit, and implementation sequencing. |
 | [Contact-wrapped key metadata simulator prototype](contact-wrapped-key-metadata-simulator.md) | Simulator-only prototype for modeling trusted-contact public keys, non-secret key IDs, wrapped stream CEKs, and safe development metadata without production key custody. |
-| [Browser-side decryption](browser-decryption.md) | Future incident viewer decryption options, risks, and phased direction. |
+| [Browser-side decryption](browser-decryption.md) | Future incident viewer decryption options, same-origin trust limits, static/signed viewer gate, risks, and phased direction. |
 | [Live partial stream access boundary](live-partial-stream-access-boundary.md) | Future live or partial stream access roles, stream-state exposure, partial manifests, caching, and key-custody dependencies. |
 | [Break-glass key access](break-glass-key-access.md) | Future optional server-assisted emergency key access and dead-man-switch design. |
 | [API](api.md) | Current main `/v1` routes, private `/admin` dashboard routes, request examples, response examples, and bundle formats. |

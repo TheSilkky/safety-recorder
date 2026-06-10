@@ -284,7 +284,10 @@ protection against an active malicious server that can serve modified
 JavaScript. Mitigations such as strict CSP, static assets, no inline script,
 Subresource Integrity where practical, signed or pinned viewer bundles,
 independent hosted viewer code, and offline verification tools can reduce risk,
-but they do not erase same-origin malicious-code risk.
+but they do not erase same-origin malicious-code risk. A dynamic same-origin
+decrypting viewer is not acceptable as the production trusted-contact decrypt
+path by itself; production browser decryption requires the trust gate in
+[browser-decryption.md](browser-decryption.md).
 
 Any browser decrypt path must use stable Web Crypto APIs or maintained
 libraries where appropriate. It must not implement custom cryptographic

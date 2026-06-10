@@ -17,6 +17,31 @@ The browser path is attractive because it can be available from a normal web lin
 
 Planned incident modes include emergency incidents, interaction records, safety checks, and evidence notes. Browser decryption must not assume every authorised incident is an emergency or that all decrypted output should be shared urgently.
 
+## Trust Gate Decision
+
+A dynamic same-origin, server-rendered decrypting viewer is not acceptable as
+the production trusted-contact decryption path by itself. It may be useful for
+local development, simulator experiments, or explicitly labeled low-assurance
+proofs of concept, but it must not be described as a production trusted-contact
+decrypt path while the backend can serve modified JavaScript at access time.
+
+Before browser decryption can be trusted for production contact or account-owner
+review, the viewer must use one of these higher-assurance delivery models:
+
+- a static viewer bundle with a pinned release hash or signature that contacts
+  can verify independently of the incident backend;
+- an independently hosted viewer whose served bytes are checked against a
+  published build manifest or root distribution hash;
+- a native trusted-contact app distributed through a signed platform channel;
+  or
+- an offline decrypt tool for downloaded encrypted bundles.
+
+The static/signed path does not make browser decryption perfect. Browser
+extensions, local malware, screenshots, clipboard managers, phishing, and
+device compromise can still capture keys or plaintext. The gate only addresses
+the specific risk that the incident backend can silently replace the decrypting
+code.
+
 ## Current Viewer Behaviour
 
 The current incident viewer is token-scoped and read-only. Viewer routes are
@@ -139,6 +164,9 @@ Weaknesses:
 - cross-origin and CORS design may complicate deployment
 
 Fit: promising as a mitigation for malicious-server risk, but it needs careful UX.
+For production trusted-contact access, this or an equivalent independently
+verifiable delivery path is required before browser decryption is considered
+trusted.
 
 ### 6. Browser Decryption Deferred In Favour Of Non-Browser Client
 
@@ -205,6 +233,37 @@ Possible mitigations:
 - offline verification/decryption tool
 
 These mitigations help, but they do not erase the core limitation. If the backend controls the HTML and JavaScript delivered at access time, a fully compromised backend can try to alter the decrypting code, hide warnings, or capture keys and plaintext. Higher-assurance designs need an independently verified client, signed static release, or offline decrypt path.
+
+Therefore, the dynamic server-rendered viewer must remain non-production for
+decrypting trusted-contact flows unless a later review accepts a narrower
+deployment where the backend cannot alter the decrypting assets without
+detection.
+
+## Static Or Signed Viewer Boundary
+
+A production browser decrypting viewer needs a deployment boundary that lets the
+user or contact distinguish reviewed viewer code from code generated at access
+time.
+
+Minimum requirements:
+
+- build artifacts have a published manifest with non-sensitive hashes
+- the root viewer distribution hash or signature is published outside the
+  incident backend control plane
+- post-deploy verification confirms served bytes match built bytes
+- Subresource Integrity is used where the deployment shape supports it
+- CSP forbids inline script and narrows script, worker, object, frame, and
+  connection sources
+- service workers are absent or separately reviewed for cache and update risks
+- the viewer can fail closed when its expected asset hash, signature, manifest,
+  or compatibility profile does not match
+- release notes state the exact viewer version trusted for decryption
+
+Independent hosting can help only if the independent origin, build pipeline,
+and distribution manifest are also reviewed. A same-operator static host still
+reduces accidental drift, but it does not eliminate targeted operator or edge
+tampering. A native app or offline decrypt tool remains the higher-assurance
+option for contacts who can prepare before an incident.
 
 ## Web Crypto Considerations
 
@@ -279,6 +338,17 @@ Failure handling matters. If decryption fails, the viewer should distinguish saf
 
 The viewer should still show token-authorized metadata when decryption fails, as long as the token remains valid and the design allows metadata visibility.
 
+Metadata visible after decryption failure must remain the deliberately
+documented token or account payload, not a partial plaintext leak. It may include
+incident status, latest check-in or latest shared location context only when
+that payload has been separately reviewed, bundle availability, supported
+envelope identifiers, and generic failure categories such as
+`missing_capability`, `unsupported_envelope`, or `integrity_check_failed`. It
+must not include plaintext chunk previews, raw keys, wrapped-key ciphertext,
+browser fragment secrets, decrypted filenames beyond reviewed manifest display
+metadata, backend diagnostics, stored paths, object keys, or private deployment
+details.
+
 ## Threat Model Impacts
 
 Stolen viewer token:
@@ -317,6 +387,40 @@ Screenshots and browser history:
 
 Viewer links, fragment keys, decrypted evidence, and dashboard metadata can leak through screenshots, screen sharing, history behavior, clipboard managers, downloads, and local file previews.
 
+Browser surfaces:
+
+Viewer tokens, fragments, imported private keys, wrapped-key plaintext after
+unwrap, raw media keys, decrypted chunks, and rendered plaintext can leak
+through browser history behavior, extensions, screenshots, screen sharing,
+downloads, caches, local storage, IndexedDB, service workers, console logs,
+analytics hooks, crash reports, and support transcripts. The decrypting viewer
+must treat those browser surfaces as hostile by default and keep plaintext out
+of durable browser storage unless a later issue explicitly designs and tests
+that behavior.
+
+## Required Tests Before Trusting Browser Decryption
+
+Browser decryption must not be trusted until tests cover at least:
+
+- CSP forbidding inline scripts and unreviewed script, worker, frame, object,
+  and connection sources
+- no-store behavior for token, account, decrypt, bundle, and error responses
+- `Referrer-Policy: no-referrer` on token and decrypt-adjacent responses
+- fragment handling that imports then clears or hides sensitive fragments where
+  practical
+- no raw keys, wrapped-key plaintext, raw media keys, decrypted chunks, browser
+  fragment secrets, or plaintext in logs, analytics, URLs, storage, debug
+  globals, or unreviewed DOM attributes
+- static/signed viewer manifest verification and fail-closed behavior on hash,
+  signature, version, scheme, suite, or asset mismatch
+- envelope parsing that rejects malformed magic, oversized headers,
+  unsupported suites, nonce/AAD mismatches, and tampered manifests
+- token-viewer and account-viewer field allowlists when decryption fails
+- key clearing and object URL cleanup where practical
+- cross-browser compatibility for the supported browser set
+- extension, screenshot, clipboard, and local-device risks reflected in product
+  warnings rather than hidden in developer docs
+
 ## Recommended Direction
 
 Use a phased approach.
@@ -333,6 +437,10 @@ Phase 3: static proof-of-concept viewer for downloaded bundles.
 
 Build a local or static prototype that imports a simulator key file, parses a downloaded encrypted bundle, and decrypts chunks locally. Keep it separate from the production incident viewer until the trust model is accepted.
 
+Phase 3 exit criteria: the prototype must use a static or signed distribution
+model, document how contacts verify the viewer release, and fail closed on asset
+or manifest mismatch.
+
 Phase 4: trusted contact key wrapping.
 
 Design and prototype contact public keys, wrapped media keys, key IDs, revocation behavior, and contact-key loss handling. This should align with [key-custody.md](key-custody.md).
@@ -346,7 +454,10 @@ The live or partial stream access boundary is documented separately in
 
 Phase 6: production browser viewer decision.
 
-Decide whether the browser viewer is acceptable as the main trusted-contact UX, or whether a separate trusted contact app or offline decrypt tool should be the higher-assurance path.
+Decide whether a static/signed or independently hosted browser viewer is
+acceptable as the main trusted-contact UX, or whether a separate trusted contact
+app or offline decrypt tool should be the higher-assurance path for the
+deployment being claimed.
 
 ## Open Questions
 
@@ -356,7 +467,8 @@ Decide whether the browser viewer is acceptable as the main trusted-contact UX, 
 - How are contact public keys verified before incidents?
 - Should the viewer token and decryption capability be delivered separately?
 - What bundle or chunk API shape is needed for memory-safe browser decryption?
-- Is a static/signed viewer bundle required before production browser decryption?
+- Which static/signed, independently hosted, native-app, or offline tool path is
+  acceptable for a specific production trusted-contact deployment?
 - How should decrypted output be displayed or saved without creating surprising plaintext caches?
 - What metadata should remain visible when decryption fails?
 - How should live stream session keys differ from completed bundle keys?
