@@ -126,7 +126,9 @@ func (a *API) registerMainStreamRoutes(mux *http.ServeMux) {
 }
 
 func (a *API) registerMainIncidentTokenRoutes(mux *http.ServeMux) {
+	mux.HandleFunc("GET /v1/incidents/{incident_id}/incident-tokens", a.withPrivateAuth(a.listIncidentTokens))
 	mux.HandleFunc("POST /v1/incidents/{incident_id}/incident-tokens", a.withPrivateAuth(a.createIncidentToken))
+	mux.HandleFunc("GET /v1/incidents/{incident_id}/incident-tokens/{token_id}", a.withPrivateAuth(a.getIncidentTokenMetadata))
 	mux.HandleFunc("POST /v1/incident-tokens/{token_id}/revoke", a.withPrivateAuth(a.revokeIncidentToken))
 }
 

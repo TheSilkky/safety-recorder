@@ -277,7 +277,10 @@ func classifyMainAPIIncidentRateLimit(r *http.Request, segments []string) (mainR
 	case "streams":
 		return classifyMainAPIStreamRateLimit(r, segments)
 	case "incident-tokens":
-		if r.Method == http.MethodPost && len(segments) == 4 {
+		if (r.Method == http.MethodGet || r.Method == http.MethodPost) && len(segments) == 4 {
+			return mainRateLimitToken, true
+		}
+		if r.Method == http.MethodGet && len(segments) == 5 {
 			return mainRateLimitToken, true
 		}
 	case "wrapped-keys":

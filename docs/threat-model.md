@@ -89,6 +89,9 @@ encrypted evidence bundles.
 - Optional account email addresses, email verification timestamps, and
   single-use email verification token hashes when open registration is enabled
 - Raw viewer/incident tokens returned once at creation time
+- Owner-visible viewer-token metadata for owned incidents: token IDs, labels,
+  active/expired/revoked state, and creation/expiry/revocation timestamps.
+  These metadata responses do not include raw viewer tokens or token hashes.
 - Incident viewer URLs containing bearer tokens
 - Simulator-only local encryption key files when developers opt into `--key-file`
 - Future mobile/web recordings, interaction-record metadata, safety-check
@@ -257,7 +260,12 @@ encrypted evidence bundles.
   changes require the current password and revoke other sessions; admin resets
   for other accounts revoke that account's sessions; logout revokes the current
   admin web session.
-- Viewer tokens use 256 bits from `crypto/rand`; only SHA-256 token hashes are stored. Tokens created without an explicit `expires_at` default to a 24-hour lifetime unless `SAFE_DEFAULT_INCIDENT_TOKEN_TTL` is configured differently.
+- Viewer tokens use 256 bits from `crypto/rand`; only SHA-256 token hashes are
+  stored. Tokens created without an explicit `expires_at` default to a 24-hour
+  lifetime unless `SAFE_DEFAULT_INCIDENT_TOKEN_TTL` is configured differently.
+  Owner-authenticated viewer-token metadata list/read routes return only
+  non-secret metadata for owned incidents and never return raw viewer tokens,
+  token hashes, public token lookup by token ID, or token replay capability.
 - Expired, revoked, and invalid viewer tokens return the same public error.
 - Public viewer app-level rate limiting groups page lookup, JSON polling,
   encrypted ZIP download, and static asset requests by safe route class and a

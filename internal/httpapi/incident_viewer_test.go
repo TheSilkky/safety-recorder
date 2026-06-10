@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/open-proofline/server/internal/auth"
 	"github.com/open-proofline/server/internal/incidents"
 )
 
@@ -209,6 +210,147 @@ func TestIncidentRawTokenIsNotStored(t *testing.T) {
 	}
 	if rawMatches != 0 {
 		t.Fatalf("raw token matched %d stored rows", rawMatches)
+	}
+}
+
+func TestOwnerCanListAndReadIncidentTokenMetadata(t *testing.T) {
+	app := newTestApp(t)
+	ownerToken := createAccountAndLogin(t, app, "viewer-token-owner", "owner-password", auth.RoleUser)
+	incidentID := createIncidentWithAuth(t, app, ownerToken, `{"client_label":"owner phone"}`)
+	expiredAt := time.Now().UTC().Add(-time.Minute)
+	expired := createIncidentTokenWithExpiryAndAuth(t, app, ownerToken, incidentID, "expired viewer", &expiredAt)
+	active := createIncidentTokenWithAuth(t, app, ownerToken, incidentID, "active viewer")
+	revoked := createIncidentTokenWithAuth(t, app, ownerToken, incidentID, "revoked viewer")
+	response, body := requestWithAuth(t, app.privateHandler, http.MethodPost, "/v1/incident-tokens/"+revoked.TokenID+"/revoke", "application/json", bytes.NewBufferString(`{}`), ownerToken)
+	response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("expected revoke status 200, got %d: %s", response.StatusCode, body)
+	}
+
+	response, body = requestWithAuth(t, app.privateHandler, http.MethodGet, "/v1/incidents/"+incidentID+"/incident-tokens", "", nil, ownerToken)
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("expected list incident tokens status 200, got %d: %s", response.StatusCode, body)
+	}
+	assertMainJSONSecurityHeaders(t, response)
+	assertIncidentTokenMetadataBodyIsRedacted(t, body, active.Token, expired.Token, revoked.Token)
+
+	var list struct {
+		IncidentTokens []struct {
+			TokenID    string    `json:"token_id"`
+			IncidentID string    `json:"incident_id"`
+			Label      string    `json:"label"`
+			TokenState string    `json:"token_state"`
+			CreatedAt  time.Time `json:"created_at"`
+		} `json:"incident_tokens"`
+	}
+	if err := json.Unmarshal(body, &list); err != nil {
+		t.Fatalf("decode incident token list: %v", err)
+	}
+	if len(list.IncidentTokens) != 3 {
+		t.Fatalf("expected three incident tokens, got %+v", list.IncidentTokens)
+	}
+	states := map[string]string{}
+	for _, token := range list.IncidentTokens {
+		if token.IncidentID != incidentID || token.CreatedAt.IsZero() {
+			t.Fatalf("unexpected token metadata: %+v", token)
+		}
+		states[token.TokenID] = token.TokenState
+	}
+	if states[active.TokenID] != "active" || states[expired.TokenID] != "expired" || states[revoked.TokenID] != "revoked" {
+		t.Fatalf("unexpected token states: %+v", states)
+	}
+
+	response, body = requestWithAuth(t, app.privateHandler, http.MethodGet, "/v1/incidents/"+incidentID+"/incident-tokens/"+active.TokenID, "", nil, ownerToken)
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("expected get incident token status 200, got %d: %s", response.StatusCode, body)
+	}
+	assertIncidentTokenMetadataBodyIsRedacted(t, body, active.Token, expired.Token, revoked.Token)
+	var get struct {
+		IncidentToken struct {
+			TokenID    string `json:"token_id"`
+			IncidentID string `json:"incident_id"`
+			Label      string `json:"label"`
+			TokenState string `json:"token_state"`
+		} `json:"incident_token"`
+	}
+	if err := json.Unmarshal(body, &get); err != nil {
+		t.Fatalf("decode incident token metadata: %v", err)
+	}
+	if get.IncidentToken.TokenID != active.TokenID ||
+		get.IncidentToken.IncidentID != incidentID ||
+		get.IncidentToken.Label != "active viewer" ||
+		get.IncidentToken.TokenState != "active" {
+		t.Fatalf("unexpected token metadata: %+v", get.IncidentToken)
+	}
+}
+
+func TestIncidentTokenMetadataRequiresOwnerAndExistingToken(t *testing.T) {
+	app := newTestApp(t)
+	ownerToken := createAccountAndLogin(t, app, "viewer-token-owner-denied", "owner-password", auth.RoleUser)
+	otherToken := createAccountAndLogin(t, app, "viewer-token-other-denied", "other-password", auth.RoleUser)
+	incidentID := createIncidentWithAuth(t, app, ownerToken, `{}`)
+	token := createIncidentTokenWithAuth(t, app, ownerToken, incidentID, "owner viewer")
+
+	for _, target := range []string{
+		"/v1/incidents/" + incidentID + "/incident-tokens",
+		"/v1/incidents/" + incidentID + "/incident-tokens/" + token.TokenID,
+	} {
+		response, body := requestWithAuth(t, app.privateHandler, http.MethodGet, target, "", nil, otherToken)
+		response.Body.Close()
+		if response.StatusCode != http.StatusForbidden {
+			t.Fatalf("expected wrong owner GET %s status 403, got %d: %s", target, response.StatusCode, body)
+		}
+		assertMainJSONSecurityHeaders(t, response)
+	}
+
+	response, body := requestWithAuth(t, app.privateHandler, http.MethodGet, "/v1/incidents/"+incidentID+"/incident-tokens/itk_missing", "", nil, ownerToken)
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusNotFound {
+		t.Fatalf("expected missing token status 404, got %d: %s", response.StatusCode, body)
+	}
+	assertErrorCode(t, body, "incident_token_not_found")
+}
+
+func createIncidentTokenWithExpiryAndAuth(t *testing.T, app *testApp, token, incidentID, label string, expiresAt *time.Time) incidentTokenResponse {
+	t.Helper()
+	requestBody, err := json.Marshal(struct {
+		Label     string     `json:"label"`
+		ExpiresAt *time.Time `json:"expires_at,omitempty"`
+	}{
+		Label:     label,
+		ExpiresAt: expiresAt,
+	})
+	if err != nil {
+		t.Fatalf("marshal incident token request: %v", err)
+	}
+	response, body := requestWithAuth(t, app.privateHandler, http.MethodPost, "/v1/incidents/"+incidentID+"/incident-tokens", "application/json", bytes.NewReader(requestBody), token)
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusCreated {
+		t.Fatalf("expected create incident token status 201, got %d: %s", response.StatusCode, body)
+	}
+	var result incidentTokenResponse
+	if err := json.Unmarshal(body, &result); err != nil {
+		t.Fatalf("decode create incident token response: %v", err)
+	}
+	if result.Token == "" {
+		t.Fatal("raw incident token was empty")
+	}
+	return result
+}
+
+func assertIncidentTokenMetadataBodyIsRedacted(t *testing.T, body []byte, rawTokens ...string) {
+	t.Helper()
+	for _, rawToken := range rawTokens {
+		if bytes.Contains(body, []byte(rawToken)) {
+			t.Fatalf("incident token metadata exposed raw token: %s", body)
+		}
+	}
+	for _, disallowed := range []string{"token_hash", "Authorization", "request_body"} {
+		if bytes.Contains(body, []byte(disallowed)) {
+			t.Fatalf("incident token metadata exposed %q: %s", disallowed, body)
+		}
 	}
 }
 

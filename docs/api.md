@@ -1759,7 +1759,8 @@ Response `201` is the created checkin.
 
 ## Viewer Tokens
 
-Incident-token creation and revocation routes are mounted on the main API listener.
+Incident-token creation, owner metadata reads, and revocation routes are
+mounted on the main API listener.
 
 ### `POST /v1/incidents/{incident_id}/incident-tokens`
 
@@ -1790,6 +1791,58 @@ Response `201`:
 ```
 
 The response includes `Cache-Control: no-store`.
+
+### `GET /v1/incidents/{incident_id}/incident-tokens`
+
+Lists non-secret viewer-token metadata for an incident owned by the
+authenticated account.
+
+Response `200`:
+
+```json
+{
+  "incident_tokens": [
+    {
+      "token_id": "itk_...",
+      "incident_id": "inc_...",
+      "label": "trusted contact",
+      "token_state": "active",
+      "created_at": "2026-05-21T10:00:00Z",
+      "expires_at": "2030-01-01T00:00:00Z"
+    }
+  ]
+}
+```
+
+`token_state` is one of `active`, `expired`, or `revoked`. The response never
+includes the raw viewer token or token hash. It does not allow token replay and
+does not expose public token lookup by token ID. Non-owner accounts cannot read
+another account's viewer-token metadata.
+
+### `GET /v1/incidents/{incident_id}/incident-tokens/{token_id}`
+
+Reads one non-secret viewer-token metadata record for an incident owned by the
+authenticated account.
+
+Response `200`:
+
+```json
+{
+  "incident_token": {
+    "token_id": "itk_...",
+    "incident_id": "inc_...",
+    "label": "trusted contact",
+    "token_state": "revoked",
+    "created_at": "2026-05-21T10:00:00Z",
+    "expires_at": "2030-01-01T00:00:00Z",
+    "revoked_at": "2026-05-21T11:00:00Z"
+  }
+}
+```
+
+If the token metadata record is not found for that incident, the route returns
+`404 incident_token_not_found`. The response never includes the raw viewer token
+or token hash.
 
 ### `POST /v1/incident-tokens/{token_id}/revoke`
 

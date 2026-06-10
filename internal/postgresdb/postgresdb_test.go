@@ -948,6 +948,23 @@ func TestPostgresRepositoryHashesAndRevokesIncidentTokens(t *testing.T) {
 	if lookedUp.ID != token.ID {
 		t.Fatalf("looked up token id = %q, want %q", lookedUp.ID, token.ID)
 	}
+	tokens, err := repo.ListIncidentTokens(ctx, incident.ID)
+	if err != nil {
+		t.Fatalf("list incident tokens: %v", err)
+	}
+	if len(tokens) != 1 || tokens[0].ID != token.ID || tokens[0].TokenHash == "" {
+		t.Fatalf("unexpected listed token metadata: %+v", tokens)
+	}
+	metadata, err := repo.GetIncidentTokenForIncident(ctx, incident.ID, token.ID)
+	if err != nil {
+		t.Fatalf("get incident token metadata: %v", err)
+	}
+	if metadata.ID != token.ID || metadata.TokenHash != storedHash {
+		t.Fatalf("unexpected token metadata: %+v", metadata)
+	}
+	if _, err := repo.GetIncidentTokenForIncident(ctx, "inc_missing", token.ID); !errors.Is(err, incidents.ErrNotFound) {
+		t.Fatalf("wrong incident token metadata error = %v, want ErrNotFound", err)
+	}
 	if err := repo.RevokeIncidentToken(ctx, token.ID); err != nil {
 		t.Fatalf("revoke token: %v", err)
 	}

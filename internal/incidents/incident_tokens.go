@@ -127,6 +127,65 @@ func (r *Repository) GetIncidentToken(ctx context.Context, tokenID string) (Inci
 	return token, nil
 }
 
+// ListIncidentTokens returns non-secret token metadata for one incident.
+func (r *Repository) ListIncidentTokens(ctx context.Context, incidentID string) ([]IncidentToken, error) {
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT incident_tokens.id, incident_tokens.incident_id,
+			incident_tokens.token_hash, incident_tokens.label,
+			incident_tokens.created_at, incident_tokens.expires_at,
+			incident_tokens.revoked_at
+		FROM incident_tokens
+		JOIN incidents ON incidents.id = incident_tokens.incident_id
+		WHERE incident_tokens.incident_id = ? AND incidents.deletion_state = ?
+		ORDER BY incident_tokens.created_at, incident_tokens.id`,
+		incidentID,
+		IncidentDeletionStateActive,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("list incident tokens: %w", err)
+	}
+	defer rows.Close()
+
+	tokens := []IncidentToken{}
+	for rows.Next() {
+		token, err := scanIncidentToken(rows)
+		if err != nil {
+			return nil, fmt.Errorf("scan incident token metadata: %w", err)
+		}
+		tokens = append(tokens, token)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate incident token metadata: %w", err)
+	}
+	return tokens, nil
+}
+
+// GetIncidentTokenForIncident returns non-secret token metadata for one incident.
+func (r *Repository) GetIncidentTokenForIncident(ctx context.Context, incidentID, tokenID string) (IncidentToken, error) {
+	row := r.db.QueryRowContext(ctx, `
+		SELECT incident_tokens.id, incident_tokens.incident_id,
+			incident_tokens.token_hash, incident_tokens.label,
+			incident_tokens.created_at, incident_tokens.expires_at,
+			incident_tokens.revoked_at
+		FROM incident_tokens
+		JOIN incidents ON incidents.id = incident_tokens.incident_id
+		WHERE incident_tokens.incident_id = ?
+			AND incident_tokens.id = ?
+			AND incidents.deletion_state = ?`,
+		incidentID,
+		tokenID,
+		IncidentDeletionStateActive,
+	)
+	token, err := scanIncidentToken(row)
+	if errors.Is(err, sql.ErrNoRows) {
+		return IncidentToken{}, ErrNotFound
+	}
+	if err != nil {
+		return IncidentToken{}, fmt.Errorf("get incident token metadata: %w", err)
+	}
+	return token, nil
+}
+
 // RevokeIncidentToken revokes a token so it can no longer read incident viewer data.
 func (r *Repository) RevokeIncidentToken(ctx context.Context, tokenID string) error {
 	result, err := r.db.ExecContext(ctx, `
