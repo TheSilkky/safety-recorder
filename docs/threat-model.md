@@ -78,6 +78,12 @@ encrypted evidence bundles.
   implemented; the local desktop recorder simulator uses complete encrypted
   chunk retries as documented in
   [resumable-upload-lease-protocol.md](resumable-upload-lease-protocol.md)
+- Future upload telemetry is planned but not implemented. The boundary in
+  [upload-telemetry-boundary.md](upload-telemetry-boundary.md) keeps telemetry
+  client-local before v1 preview and forbids local paths, filenames,
+  GPS/location values, user safety narratives, uploaded bytes, plaintext, raw
+  keys, wrapped-key ciphertext, raw tokens, stored paths, object keys, and
+  private deployment details.
 - Cluster backup, restore, and failure-mode guidance for optional PostgreSQL
   metadata, S3-compatible encrypted blobs, and Valkey/Redis-compatible
   coordination is documented in
@@ -381,6 +387,9 @@ The current backend does not implement incident-mode-specific controls yet, so f
   [cluster-safe-upload-semantics.md](cluster-safe-upload-semantics.md). Uploads
   without idempotency keys still use the existing `409 duplicate_chunk`
   behavior.
+- No implemented upload telemetry endpoint. Client upload telemetry for storage
+  pressure, interruption reasons, retry state, and local queue pressure remains
+  local before v1 preview and must not become evidence truth.
 - No implemented resumable upload or partial-upload lease protocol. Current
   clients should retry complete encrypted chunk uploads; the future design is
   planned in

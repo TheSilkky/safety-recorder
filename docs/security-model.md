@@ -343,6 +343,12 @@ lease sessions are still planning-only. The current API still accepts complete
 encrypted chunks and retries should resend the complete chunk.
 See
 [resumable-upload-lease-protocol.md](resumable-upload-lease-protocol.md).
+Future upload telemetry is also planning-only and should remain client-local
+before v1 preview unless a later issue implements the narrow authenticated
+coarse-code boundary documented in
+[upload-telemetry-boundary.md](upload-telemetry-boundary.md). Telemetry must
+not become evidence truth or drive idempotency, duplicate reconciliation,
+retention, deletion, escalation, sharing, or viewer behavior.
 
 ## Bundle Controls
 

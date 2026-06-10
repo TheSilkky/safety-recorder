@@ -259,7 +259,11 @@ Do not implement these as part of the prototype plan. Track them as future backe
 - no capture stream group, variant-role, source-timeline supersession, or
   canonical evidence resolution API; the future design is documented in
   [capture-stream-variants.md](capture-stream-variants.md)
-- no first-class upload telemetry endpoint for client storage pressure, interruption reasons, or retry state
+- no first-class upload telemetry endpoint for client storage pressure,
+  interruption reasons, or retry state; telemetry remains client-local before
+  v1 preview unless the boundary in
+  [upload-telemetry-boundary.md](upload-telemetry-boundary.md) is implemented
+  by a later issue
 - no notification or dead-man switch delivery system
 
 For the first prototype, avoid expanding the backend unless a gap blocks the basic simulator-equivalent flow.

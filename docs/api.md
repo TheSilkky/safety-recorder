@@ -1903,6 +1903,9 @@ outcomes, and use the duplicate chunk reconciliation route when they need to
 compare a duplicate accepted chunk with a local expected fingerprint. The
 resumable-upload planning decision is documented in
 [resumable-upload-lease-protocol.md](resumable-upload-lease-protocol.md).
+Future upload telemetry remains client-local before v1 preview unless a later
+issue implements the safe coarse-code boundary documented in
+[upload-telemetry-boundary.md](upload-telemetry-boundary.md).
 
 The current API does not implement a regional stream-ingress relay or
 service-authenticated relay preflight/commit endpoints. The future relay design
