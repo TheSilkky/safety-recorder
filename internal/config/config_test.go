@@ -149,6 +149,63 @@ func TestLoadRejectsInvalidRelayCapabilityConfig(t *testing.T) {
 	}
 }
 
+func TestLoadDefaultRelayServiceConfig(t *testing.T) {
+	cfg := loadConfigForTest(t, nil)
+
+	if cfg.RelayService.AuthToken != "" {
+		t.Fatal("relay service auth token should default to unset")
+	}
+}
+
+func TestLoadRelayServiceConfigFromEnv(t *testing.T) {
+	cfg := loadConfigForTest(t, map[string]string{
+		"SAFE_RELAY_SERVICE_AUTH_TOKEN": "relay-service-auth-token-1234567890",
+	})
+
+	if cfg.RelayService.AuthToken != "relay-service-auth-token-1234567890" {
+		t.Fatalf("relay service auth token = %q", cfg.RelayService.AuthToken)
+	}
+}
+
+func TestLoadRelayServiceAuthTokenFileFromEnv(t *testing.T) {
+	secretPath := writeSecretFile(t, "file-relay-service-auth-token-12345\n")
+
+	cfg := loadConfigForTest(t, map[string]string{
+		"SAFE_RELAY_SERVICE_AUTH_TOKEN":      "direct-relay-service-auth-token-123",
+		"SAFE_RELAY_SERVICE_AUTH_TOKEN_FILE": secretPath,
+	})
+
+	if cfg.RelayService.AuthToken != "file-relay-service-auth-token-12345" {
+		t.Fatalf("relay service auth token = %q, want file value", cfg.RelayService.AuthToken)
+	}
+}
+
+func TestLoadRelayServiceConfigFromTOML(t *testing.T) {
+	secretPath := writeSecretFile(t, "toml-relay-service-auth-token-12345\n")
+	configPath := writeConfigFile(t, fmt.Sprintf(`
+[relay_service]
+auth_token_file = %q
+`, secretPath))
+
+	cfg := loadConfigWithOptionsForTest(t, LoadOptions{ConfigFilePath: configPath}, nil)
+
+	if cfg.RelayService.AuthToken != "toml-relay-service-auth-token-12345" {
+		t.Fatalf("relay service auth token = %q, want toml file value", cfg.RelayService.AuthToken)
+	}
+}
+
+func TestLoadRejectsInvalidRelayServiceConfig(t *testing.T) {
+	_, err := loadConfigForTestErr(t, map[string]string{
+		"SAFE_RELAY_SERVICE_AUTH_TOKEN": "short",
+	})
+	if err == nil {
+		t.Fatal("expected relay service config error")
+	}
+	if strings.Contains(err.Error(), "relay-service-auth-token") {
+		t.Fatalf("relay service config error exposed token: %v", err)
+	}
+}
+
 func TestLoadNoConfigFileUsesBuiltInDefaults(t *testing.T) {
 	t.Chdir(t.TempDir())
 
@@ -2038,6 +2095,8 @@ func loadConfigWithOptionsForTestErr(t *testing.T, opts LoadOptions, env map[str
 		"SAFE_RELAY_CAPABILITY_SECRET_FILE",
 		"SAFE_RELAY_CAPABILITY_TTL",
 		"SAFE_RELAY_CAPABILITY_MAX_CHUNKS",
+		"SAFE_RELAY_SERVICE_AUTH_TOKEN",
+		"SAFE_RELAY_SERVICE_AUTH_TOKEN_FILE",
 		"SAFE_ACCOUNT_REGISTRATION_MODE",
 		"SAFE_EMAIL_VERIFICATION_TTL",
 		"SAFE_PUBLIC_WEB_ORIGIN",

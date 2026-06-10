@@ -394,13 +394,16 @@ The current backend does not implement incident-mode-specific controls yet, so f
   clients should retry complete encrypted chunk uploads; the future design is
   planned in
   [resumable-upload-lease-protocol.md](resumable-upload-lease-protocol.md).
-- Only a regional stream-ingress relay health/readiness skeleton and core API
-  relay upload capability issuance are implemented. The skeleton is not an
-  upload edge, and capabilities are signed bearer-like upload-role artifacts
-  bound to one relay session, incident, and stream. Later relay slices must keep
-  the relay upload-only, temporary, ciphertext-only, and subordinate to the core
-  API for authorization, idempotency, durable blob commits, and metadata. The
-  future upload design is planned in
+- Only a regional stream-ingress relay health/readiness skeleton, core API
+  relay upload capability issuance, and service-authenticated core relay
+  preflight/commit endpoints are implemented. The skeleton is not an upload
+  edge, and capabilities are signed bearer-like upload-role artifacts bound to
+  one relay session, incident, and stream. Core relay commit remains the
+  durable source of truth for accepted ciphertext hashes and metadata, while
+  later relay listener slices must keep the relay upload-only, temporary,
+  ciphertext-only, and subordinate to the core API for authorization,
+  idempotency, durable blob commits, and metadata. The future upload design is
+  planned in
   [regional-stream-ingress-relay.md](regional-stream-ingress-relay.md).
 - Retention, backup, restore, and deletion policy is documented in
   [retention-backup-deletion.md](retention-backup-deletion.md), with enforcement

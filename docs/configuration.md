@@ -114,6 +114,8 @@ values for the same field. Within TOML, set either the direct secret key or the
 | `[relay_capability].secret_file` | `SAFE_RELAY_CAPABILITY_SECRET_FILE` |
 | `[relay_capability].ttl` | `SAFE_RELAY_CAPABILITY_TTL` |
 | `[relay_capability].max_chunks` | `SAFE_RELAY_CAPABILITY_MAX_CHUNKS` |
+| `[relay_service].auth_token` | `SAFE_RELAY_SERVICE_AUTH_TOKEN` |
+| `[relay_service].auth_token_file` | `SAFE_RELAY_SERVICE_AUTH_TOKEN_FILE` |
 | `[account_registration].mode` | `SAFE_ACCOUNT_REGISTRATION_MODE` |
 | `[account_registration].email_verification_ttl` | `SAFE_EMAIL_VERIFICATION_TTL` |
 | `[account_registration].public_web_origin` | `SAFE_PUBLIC_WEB_ORIGIN` |
@@ -308,9 +310,38 @@ bytes, plaintext, GPS/speed/heading values, or user safety data. Capability
 tokens are bearer-like credentials and must not be logged, used as metrics
 labels, or copied into public artifacts.
 
+## Regional Relay Service Authentication
+
+The core API also has narrow service-authenticated relay preflight and commit
+routes:
+
+```http
+POST /v1/relay/preflight
+POST /v1/relay/commit
+```
+
+These routes are disabled by default and return `503
+relay_service_auth_not_configured` until a relay-to-core service auth token is
+configured. Relay service auth is separate from user bearer sessions, browser
+cookies, viewer tokens, incident tokens, and relay upload capabilities. It is
+sent by the trusted relay in the `X-Proofline-Relay-Service-Token` header, then
+the core route still validates the relay session ID and signed upload
+capability for the requested incident and stream.
+
+| TOML key | Environment variable | Default | Notes |
+|---|---|---|---|
+| `[relay_service].auth_token` | `SAFE_RELAY_SERVICE_AUTH_TOKEN` | unset | Direct static service token for the early relay-to-core preflight/commit route set. Must be at least 32 bytes when set. Prefer `auth_token_file` for deployments. |
+| `[relay_service].auth_token_file` | `SAFE_RELAY_SERVICE_AUTH_TOKEN_FILE` | unset | File-backed relay service token. Overrides direct env token and conflicts with direct TOML token in the same config. |
+
+Treat the relay service token as a deployment secret. Do not log it, place it
+in URLs, use it as a limiter key or metrics label, copy it into public issues
+or PRs, or share it with clients. The early static token does not add relay
+upload listener behavior, relay-local staging, fanout, metrics, admin access,
+key access, or broad `/v1` access.
+
 The separate `cmd/stream-ingress` skeleton has its own small environment and
 flag surface. It does not use the main API TOML config file yet, and it does
-not add upload, core preflight, core commit, fanout, metrics, service identity,
+not add upload, relay-local staging, relay forwarding, fanout, metrics,
 storage, or coordination settings.
 
 | Stream-ingress variable | Default | Equivalent flag | Notes |
@@ -318,7 +349,7 @@ storage, or coordination settings.
 | `SAFE_STREAM_INGRESS_BIND_ADDR` | `127.0.0.1:8090` | `--bind` | Private bind address for the skeleton health/readiness listener. Keep it on loopback, LAN, WireGuard, firewall, or a private reverse proxy unless a later deployment issue explicitly reviews exposure. |
 | `SAFE_STREAM_INGRESS_RELAY_ID` | unset | `--relay-id` | Optional relay identity label for future service identity planning. The skeleton records only whether it is configured and must not expose the label value in readiness output or logs. |
 | `SAFE_STREAM_INGRESS_REGION` | unset | `--region` | Optional coarse region label for future relay planning. The skeleton records only whether it is configured and must not expose the label value in readiness output or logs. |
-| `SAFE_STREAM_INGRESS_READY` | `false` | `--ready` | Controls whether `GET /health/ready` returns `200 ready` or `503 not_ready`. This readiness flag is only a skeleton smoke signal and does not mean upload, core commit, fanout, or production readiness exists. |
+| `SAFE_STREAM_INGRESS_READY` | `false` | `--ready` | Controls whether `GET /health/ready` returns `200 ready` or `503 not_ready`. This readiness flag is only a skeleton smoke signal and does not mean relay upload, fanout, or production readiness exists. |
 
 Run the skeleton locally with explicit readiness for a private smoke check:
 

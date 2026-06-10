@@ -27,6 +27,7 @@ type configFile struct {
 	Uploads             configFileUploads             `toml:"uploads"`
 	Auth                configFileAuth                `toml:"auth"`
 	RelayCapability     configFileRelayCapability     `toml:"relay_capability"`
+	RelayService        configFileRelayService        `toml:"relay_service"`
 	AccountRegistration configFileAccountRegistration `toml:"account_registration"`
 	Email               configFileEmail               `toml:"email"`
 	WebAuth             configFileWebAuth             `toml:"web_auth"`
@@ -104,6 +105,11 @@ type configFileRelayCapability struct {
 	SecretFile *string `toml:"secret_file"`
 	TTL        *string `toml:"ttl"`
 	MaxChunks  *int    `toml:"max_chunks"`
+}
+
+type configFileRelayService struct {
+	AuthToken     *string `toml:"auth_token"`
+	AuthTokenFile *string `toml:"auth_token_file"`
 }
 
 type configFileAccountRegistration struct {
@@ -316,6 +322,9 @@ func (file configFile) toValues() (map[string]string, error) {
 	}
 	setString(values, "SAFE_RELAY_CAPABILITY_TTL", file.RelayCapability.TTL)
 	setInt(values, "SAFE_RELAY_CAPABILITY_MAX_CHUNKS", file.RelayCapability.MaxChunks)
+	if err := setSecret(values, "SAFE_RELAY_SERVICE_AUTH_TOKEN", "SAFE_RELAY_SERVICE_AUTH_TOKEN_FILE", file.RelayService.AuthToken, file.RelayService.AuthTokenFile); err != nil {
+		return nil, err
+	}
 
 	setString(values, "SAFE_ACCOUNT_REGISTRATION_MODE", file.AccountRegistration.Mode)
 	setString(values, "SAFE_EMAIL_VERIFICATION_TTL", file.AccountRegistration.EmailVerificationTTL)

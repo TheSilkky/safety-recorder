@@ -37,6 +37,7 @@ type Options struct {
 	AccountRegistration        AccountRegistrationConfig
 	SecondFactorEmailTTL       time.Duration
 	RelayCapability            RelayCapabilityConfig
+	RelayService               RelayServiceConfig
 	EmailSender                email.Sender
 	MainRateLimit              MainRateLimitConfig
 	MainRateLimiter            RateLimiter
@@ -115,6 +116,12 @@ type RelayCapabilityConfig struct {
 	MaxChunks int
 }
 
+// RelayServiceConfig configures relay-to-core service authentication. Empty
+// AuthToken disables relay preflight/commit endpoints.
+type RelayServiceConfig struct {
+	AuthToken string
+}
+
 const (
 	AccountRegistrationDisabled  = "disabled"
 	AccountRegistrationAdminOnly = "admin_only"
@@ -145,6 +152,7 @@ type API struct {
 	accountRegistration        AccountRegistrationConfig
 	secondFactorEmailTTL       time.Duration
 	relayCapability            RelayCapabilityConfig
+	relayService               RelayServiceConfig
 	emailSender                email.Sender
 	mainRateLimit              MainRateLimitConfig
 	mainRateLimiter            RateLimiter
@@ -277,6 +285,7 @@ func newAPI(repo MetadataRepository, store storage.BlobStore, opts Options) *API
 		accountRegistration:        accountRegistration,
 		secondFactorEmailTTL:       secondFactorEmailTTL,
 		relayCapability:            relayCapability,
+		relayService:               opts.RelayService,
 		emailSender:                opts.EmailSender,
 		mainRateLimit:              opts.MainRateLimit,
 		mainRateLimiter:            mainRateLimiter,
