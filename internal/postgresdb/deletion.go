@@ -480,6 +480,23 @@ func (r *Repository) CompleteIncidentDeletion(ctx context.Context, decisionID st
 		return incidents.IncidentDeletionStatus{}, incidents.ErrInvalidState
 	}
 
+	ownerAccountID, err := incidentOwnerAccountIDTx(ctx, tx, status.IncidentID)
+	if err != nil {
+		return incidents.IncidentDeletionStatus{}, err
+	}
+	if ownerAccountID != "" {
+		if _, err := createSharingAuditEventTx(ctx, tx, incidents.SharingAuditEventParams{
+			OwnerAccountID:     ownerAccountID,
+			ActorAccountID:     sharingAuditActorAccountID(status.ActorAccountID, ownerAccountID),
+			Action:             incidents.SharingAuditActionIncidentMetadataPruned,
+			OutcomeCategory:    incidents.SharingAuditOutcomeDeleted,
+			IncidentID:         status.IncidentID,
+			DeletionDecisionID: status.DecisionID,
+		}, now); err != nil {
+			return incidents.IncidentDeletionStatus{}, err
+		}
+	}
+
 	for _, query := range []string{
 		"DELETE FROM wrapped_key_records WHERE incident_id = $1",
 		"DELETE FROM sharing_grants WHERE incident_id = $1",

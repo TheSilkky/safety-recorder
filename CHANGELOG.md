@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Added private repository-level audit metadata for trusted-contact public-key,
+  sharing-grant, wrapped-key, and incident deletion-pruning lifecycle events,
+  with SQLite/PostgreSQL parity and tests confirming controlled fields only and
+  no raw keys, wrapped-key ciphertext, public wrapping metadata, tokens, paths,
+  object keys, plaintext, or user safety narratives.
 - Added explicit trusted-contact public-key lifecycle routes and metadata for
   replacement and lost-key states, with SQLite/PostgreSQL parity, tests, and
   docs confirming that old wrapped-key records remain bound to their original

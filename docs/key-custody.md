@@ -389,6 +389,12 @@ are not eligible for new sharing grants or wrapped-key records. Existing
 wrapped-key records remain bound to the original contact public-key ID and
 version; the backend does not rewrap by decrypting existing wrapped-key
 ciphertext.
+The backend also records private sharing audit metadata for contact-key,
+sharing-grant, wrapped-key, and incident deletion-pruning lifecycle events
+using controlled IDs, action names, outcome categories, and timestamps only.
+Those audit records do not include raw keys, wrapped-key ciphertext, public
+wrapping metadata, plaintext, tokens, stored paths, object keys, or safety
+narratives.
 
 ## Trusted Contact Access
 

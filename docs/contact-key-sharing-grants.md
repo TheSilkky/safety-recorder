@@ -301,25 +301,31 @@ authorized responses only.
 
 ## Audit
 
-Useful audit fields:
+The current backend stores private repository-level sharing audit events for
+contact public-key registration, replacement, revocation, and lost-key marking;
+sharing-grant creation and revocation; wrapped-key record creation and
+revocation; and incident deletion-pruning of sharing and wrapped-key metadata.
+No public route exposes these records.
+
+Implemented audit fields:
 
 - timestamp
-- actor ID
-- actor role or grant type
+- actor account ID, or the owner account ID for owner-scoped automatic
+  pruning decisions that have no explicit account actor
 - action type
 - incident ID
 - optional stream ID
 - grant ID
 - contact ID or contact public key ID
-- wrapping profile ID
+- wrapped-key record ID
+- deletion decision ID
 - decision or outcome
-- safe reason category
 
 Audit records must not include raw viewer tokens, raw incident tokens, raw
 session tokens, Authorization headers, request bodies, uploaded bytes,
 plaintext, raw keys, contact private keys, unwrapped shared secrets, wrapped
-key ciphertext, stored paths, staging paths, object keys, private deployment
-details, or user safety narratives.
+key ciphertext, public wrapping metadata, stored paths, staging paths, object
+keys, private deployment details, or user safety narratives.
 
 ## Implementation Sequence
 

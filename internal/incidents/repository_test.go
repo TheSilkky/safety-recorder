@@ -2,6 +2,7 @@ package incidents_test
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"path/filepath"
@@ -741,6 +742,26 @@ func TestWrappedKeyRecords(t *testing.T) {
 	if len(records) != 0 {
 		t.Fatalf("revoked grant still delivered wrapped keys: %+v", records)
 	}
+
+	auditEvents, err := repo.ListSharingAuditEvents(ctx, owner.ID)
+	if err != nil {
+		t.Fatalf("list sharing audit events: %v", err)
+	}
+	requireSharingAuditActions(t, auditEvents,
+		incidents.SharingAuditActionContactKeyRegistered,
+		incidents.SharingAuditActionSharingGrantCreated,
+		incidents.SharingAuditActionWrappedKeyCreated,
+		incidents.SharingAuditActionContactKeyReplaced,
+		incidents.SharingAuditActionWrappedKeyRevoked,
+		incidents.SharingAuditActionSharingGrantRevoked,
+	)
+	assertSharingAuditActorsPresent(t, auditEvents)
+	assertSharingAuditEventsSafe(t, auditEvents,
+		"age1wrapped",
+		"media-key-1",
+		"wrapped-ciphertext",
+		`{"profile":"age-v1-x25519"}`,
+	)
 }
 
 func TestIncidentDeletionPrunesSharingAndWrappedKeyMetadata(t *testing.T) {
@@ -813,6 +834,65 @@ func TestIncidentDeletionPrunesSharingAndWrappedKeyMetadata(t *testing.T) {
 	}
 	if _, err := repo.GetContactPublicKey(ctx, owner.ID, contactKey.ID); err != nil {
 		t.Fatalf("contact key should remain after incident deletion: %v", err)
+	}
+	auditEvents, err := repo.ListSharingAuditEvents(ctx, owner.ID)
+	if err != nil {
+		t.Fatalf("list sharing audit events after deletion: %v", err)
+	}
+	requireSharingAuditActions(t, auditEvents, incidents.SharingAuditActionIncidentMetadataPruned)
+	var found bool
+	for _, event := range auditEvents {
+		if event.Action == incidents.SharingAuditActionIncidentMetadataPruned &&
+			event.OutcomeCategory == incidents.SharingAuditOutcomeDeleted &&
+			event.IncidentID == incident.ID &&
+			event.DeletionDecisionID == status.DecisionID {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("missing deletion-pruning audit event: %+v", auditEvents)
+	}
+	assertSharingAuditActorsPresent(t, auditEvents)
+	assertSharingAuditEventsSafe(t, auditEvents,
+		"media-key-delete",
+		"wrapped-ciphertext",
+		`{"profile":"age-v1-x25519"}`,
+	)
+}
+
+func requireSharingAuditActions(t *testing.T, events []incidents.SharingAuditEvent, actions ...string) {
+	t.Helper()
+	counts := map[string]int{}
+	for _, event := range events {
+		counts[event.Action]++
+	}
+	for _, action := range actions {
+		if counts[action] == 0 {
+			t.Fatalf("missing sharing audit action %q in %+v", action, events)
+		}
+	}
+}
+
+func assertSharingAuditActorsPresent(t *testing.T, events []incidents.SharingAuditEvent) {
+	t.Helper()
+	for _, event := range events {
+		if event.ActorAccountID == "" {
+			t.Fatalf("audit event %q has empty actor account id: %#v", event.ID, event)
+		}
+	}
+}
+
+func assertSharingAuditEventsSafe(t *testing.T, events []incidents.SharingAuditEvent, disallowed ...string) {
+	t.Helper()
+	encoded, err := json.Marshal(events)
+	if err != nil {
+		t.Fatalf("marshal sharing audit events: %v", err)
+	}
+	body := string(encoded)
+	for _, value := range disallowed {
+		if strings.Contains(body, value) {
+			t.Fatalf("sharing audit events exposed disallowed value %q: %s", value, body)
+		}
 	}
 }
 

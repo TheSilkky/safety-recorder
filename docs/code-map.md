@@ -221,6 +221,14 @@ revoked or rotated wrapped-key records are omitted. These routes deliver
 encrypted wrapped-key metadata through authenticated API responses only; public
 viewer routes and bundle manifests remain key-free.
 
+Private sharing audit events are stored by the SQLite and PostgreSQL metadata
+repositories when contact-key, sharing-grant, wrapped-key, or deletion-pruning
+lifecycle changes occur. They are repository metadata only, not a public route
+or dashboard surface, and store controlled IDs, actions, outcomes, and
+timestamps without tokens, request bodies, raw keys, wrapped-key ciphertext,
+public wrapping metadata, paths, object keys, plaintext, or user safety
+narratives.
+
 ## Deletion And Retention Flow
 
 Main owner-scoped deletion requests are handled by
