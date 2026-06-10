@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"database/sql"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -41,6 +42,7 @@ func TestPostgresMigrateCreatesSchemaAndRejectsChecksumMismatch(t *testing.T) {
 	assertPostgresTable(t, ctx, conn, "contact_public_keys")
 	assertPostgresTable(t, ctx, conn, "sharing_grants")
 	assertPostgresTable(t, ctx, conn, "wrapped_key_records")
+	assertPostgresTable(t, ctx, conn, "sharing_audit_events")
 	assertPostgresTable(t, ctx, conn, "legacy_incident_reassignment_events")
 
 	if err := Migrate(ctx, conn); err != nil {
@@ -642,6 +644,61 @@ func TestPostgresContactPublicKeysAndSharingGrants(t *testing.T) {
 	}
 	if _, err := repo.GetWrappedKeyRecord(ctx, owner.ID, record.ID); !errors.Is(err, incidents.ErrNotFound) {
 		t.Fatalf("revoked grant get wrapped key error = %v, want ErrNotFound", err)
+	}
+	auditEvents, err := repo.ListSharingAuditEvents(ctx, owner.ID)
+	if err != nil {
+		t.Fatalf("list sharing audit events: %v", err)
+	}
+	requirePostgresSharingAuditActions(t, auditEvents,
+		incidents.SharingAuditActionContactKeyRegistered,
+		incidents.SharingAuditActionContactKeyReplaced,
+		incidents.SharingAuditActionSharingGrantCreated,
+		incidents.SharingAuditActionWrappedKeyCreated,
+		incidents.SharingAuditActionContactKeyLost,
+		incidents.SharingAuditActionSharingGrantRevoked,
+	)
+	assertPostgresSharingAuditActorsPresent(t, auditEvents)
+	assertPostgresSharingAuditEventsSafe(t, auditEvents,
+		"age1replacement",
+		"media-key-postgres",
+		"wrapped-ciphertext",
+		`{"profile":"age-v1-x25519"}`,
+	)
+}
+
+func requirePostgresSharingAuditActions(t *testing.T, events []incidents.SharingAuditEvent, actions ...string) {
+	t.Helper()
+	counts := map[string]int{}
+	for _, event := range events {
+		counts[event.Action]++
+	}
+	for _, action := range actions {
+		if counts[action] == 0 {
+			t.Fatalf("missing sharing audit action %q in %+v", action, events)
+		}
+	}
+}
+
+func assertPostgresSharingAuditActorsPresent(t *testing.T, events []incidents.SharingAuditEvent) {
+	t.Helper()
+	for _, event := range events {
+		if event.ActorAccountID == "" {
+			t.Fatalf("postgres audit event %q has empty actor account id: %#v", event.ID, event)
+		}
+	}
+}
+
+func assertPostgresSharingAuditEventsSafe(t *testing.T, events []incidents.SharingAuditEvent, disallowed ...string) {
+	t.Helper()
+	encoded, err := json.Marshal(events)
+	if err != nil {
+		t.Fatalf("marshal sharing audit events: %v", err)
+	}
+	body := string(encoded)
+	for _, value := range disallowed {
+		if strings.Contains(body, value) {
+			t.Fatalf("sharing audit events exposed disallowed value %q: %s", value, body)
+		}
 	}
 }
 

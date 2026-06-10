@@ -53,6 +53,27 @@ func (r *Repository) CreateContactPublicKey(ctx context.Context, params CreateCo
 		if _, err := markOpenContactKeysReplacedTx(ctx, tx, params.OwnerAccountID, contactID, contactKey.ID, contactKey.CreatedAt); err != nil {
 			return ContactPublicKey{}, err
 		}
+		if _, err := createSharingAuditEventTx(ctx, tx, SharingAuditEventParams{
+			OwnerAccountID:     params.OwnerAccountID,
+			ActorAccountID:     params.OwnerAccountID,
+			Action:             SharingAuditActionContactKeyReplaced,
+			OutcomeCategory:    SharingAuditOutcomeReplaced,
+			ContactID:          contactID,
+			ContactPublicKeyID: contactKey.ID,
+		}, contactKey.CreatedAt); err != nil {
+			return ContactPublicKey{}, err
+		}
+	} else {
+		if _, err := createSharingAuditEventTx(ctx, tx, SharingAuditEventParams{
+			OwnerAccountID:     params.OwnerAccountID,
+			ActorAccountID:     params.OwnerAccountID,
+			Action:             SharingAuditActionContactKeyRegistered,
+			OutcomeCategory:    SharingAuditOutcomeCreated,
+			ContactID:          contactID,
+			ContactPublicKeyID: contactKey.ID,
+		}, contactKey.CreatedAt); err != nil {
+			return ContactPublicKey{}, err
+		}
 	}
 	if err := tx.Commit(); err != nil {
 		return ContactPublicKey{}, fmt.Errorf("commit create contact public key: %w", err)
@@ -196,6 +217,16 @@ func (r *Repository) ReplaceContactPublicKey(ctx context.Context, params Replace
 	if rowsAffected == 0 {
 		return ContactPublicKey{}, ErrNotFound
 	}
+	if _, err := createSharingAuditEventTx(ctx, tx, SharingAuditEventParams{
+		OwnerAccountID:     params.OwnerAccountID,
+		ActorAccountID:     params.OwnerAccountID,
+		Action:             SharingAuditActionContactKeyReplaced,
+		OutcomeCategory:    SharingAuditOutcomeReplaced,
+		ContactID:          current.ContactID,
+		ContactPublicKeyID: replacement.ID,
+	}, now); err != nil {
+		return ContactPublicKey{}, err
+	}
 	if err := tx.Commit(); err != nil {
 		return ContactPublicKey{}, fmt.Errorf("commit replace contact public key: %w", err)
 	}
@@ -203,7 +234,13 @@ func (r *Repository) ReplaceContactPublicKey(ctx context.Context, params Replace
 }
 
 func (r *Repository) setContactKeyTerminalState(ctx context.Context, ownerAccountID, publicKeyID, state string) (ContactPublicKey, error) {
-	current, err := r.GetContactPublicKey(ctx, ownerAccountID, publicKeyID)
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return ContactPublicKey{}, fmt.Errorf("begin set contact public key terminal state: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	current, err := getContactPublicKeyTx(ctx, tx, ownerAccountID, publicKeyID)
 	if err != nil {
 		return ContactPublicKey{}, err
 	}
@@ -222,7 +259,7 @@ func (r *Repository) setContactKeyTerminalState(ctx context.Context, ownerAccoun
 	if state == ContactKeyStateLost {
 		lostAt = &now
 	}
-	result, err := r.db.ExecContext(ctx, `
+	result, err := tx.ExecContext(ctx, `
 		UPDATE contact_public_keys
 		SET key_state = ?, updated_at = ?, revoked_at = ?, lost_at = ?
 		WHERE owner_account_id = ? AND id = ?`,
@@ -243,7 +280,30 @@ func (r *Repository) setContactKeyTerminalState(ctx context.Context, ownerAccoun
 	if rowsAffected == 0 {
 		return ContactPublicKey{}, ErrNotFound
 	}
-	return r.GetContactPublicKey(ctx, ownerAccountID, publicKeyID)
+	action := SharingAuditActionContactKeyRevoked
+	outcome := SharingAuditOutcomeRevoked
+	if state == ContactKeyStateLost {
+		action = SharingAuditActionContactKeyLost
+		outcome = SharingAuditOutcomeLost
+	}
+	if _, err := createSharingAuditEventTx(ctx, tx, SharingAuditEventParams{
+		OwnerAccountID:     ownerAccountID,
+		ActorAccountID:     ownerAccountID,
+		Action:             action,
+		OutcomeCategory:    outcome,
+		ContactID:          current.ContactID,
+		ContactPublicKeyID: current.ID,
+	}, now); err != nil {
+		return ContactPublicKey{}, err
+	}
+	contactKey, err := getContactPublicKeyTx(ctx, tx, ownerAccountID, publicKeyID)
+	if err != nil {
+		return ContactPublicKey{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return ContactPublicKey{}, fmt.Errorf("commit set contact public key terminal state: %w", err)
+	}
+	return contactKey, nil
 }
 
 // CreateSharingGrant creates an owner-scoped trusted-contact grant for an incident or stream.
@@ -315,6 +375,19 @@ func (r *Repository) CreateSharingGrant(ctx context.Context, params CreateSharin
 		}
 		return SharingGrant{}, fmt.Errorf("insert sharing grant: %w", err)
 	}
+	if _, err := createSharingAuditEventTx(ctx, tx, SharingAuditEventParams{
+		OwnerAccountID:     grant.OwnerAccountID,
+		ActorAccountID:     grant.OwnerAccountID,
+		Action:             SharingAuditActionSharingGrantCreated,
+		OutcomeCategory:    SharingAuditOutcomeCreated,
+		IncidentID:         grant.IncidentID,
+		StreamID:           grant.StreamID,
+		GrantID:            grant.ID,
+		ContactID:          grant.ContactID,
+		ContactPublicKeyID: grant.ContactPublicKeyID,
+	}, now); err != nil {
+		return SharingGrant{}, err
+	}
 	if err := tx.Commit(); err != nil {
 		return SharingGrant{}, fmt.Errorf("commit create sharing grant: %w", err)
 	}
@@ -353,10 +426,32 @@ func (r *Repository) GetSharingGrant(ctx context.Context, ownerAccountID, grantI
 	return grant, nil
 }
 
+func getSharingGrantTx(ctx context.Context, tx *sql.Tx, ownerAccountID, grantID string) (SharingGrant, error) {
+	row := tx.QueryRowContext(ctx, sharingGrantSelect()+`
+		WHERE owner_account_id = ? AND id = ?`,
+		ownerAccountID,
+		grantID,
+	)
+	grant, err := scanSharingGrant(row)
+	if errors.Is(err, sql.ErrNoRows) {
+		return SharingGrant{}, ErrNotFound
+	}
+	if err != nil {
+		return SharingGrant{}, fmt.Errorf("get sharing grant in transaction: %w", err)
+	}
+	return grant, nil
+}
+
 // RevokeSharingGrant marks a grant revoked without deleting its audit metadata.
 func (r *Repository) RevokeSharingGrant(ctx context.Context, ownerAccountID, grantID, revokedByAccountID string) (SharingGrant, error) {
 	now := time.Now().UTC()
-	result, err := r.db.ExecContext(ctx, `
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return SharingGrant{}, fmt.Errorf("begin revoke sharing grant: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	result, err := tx.ExecContext(ctx, `
 		UPDATE sharing_grants
 		SET grant_state = ?, updated_at = ?, revoked_at = ?, revoked_by_account_id = ?
 		WHERE owner_account_id = ? AND id = ? AND revoked_at IS NULL`,
@@ -377,7 +472,27 @@ func (r *Repository) RevokeSharingGrant(ctx context.Context, ownerAccountID, gra
 	if rowsAffected == 0 {
 		return SharingGrant{}, ErrNotFound
 	}
-	return r.GetSharingGrant(ctx, ownerAccountID, grantID)
+	grant, err := getSharingGrantTx(ctx, tx, ownerAccountID, grantID)
+	if err != nil {
+		return SharingGrant{}, err
+	}
+	if _, err := createSharingAuditEventTx(ctx, tx, SharingAuditEventParams{
+		OwnerAccountID:     ownerAccountID,
+		ActorAccountID:     revokedByAccountID,
+		Action:             SharingAuditActionSharingGrantRevoked,
+		OutcomeCategory:    SharingAuditOutcomeRevoked,
+		IncidentID:         grant.IncidentID,
+		StreamID:           grant.StreamID,
+		GrantID:            grant.ID,
+		ContactID:          grant.ContactID,
+		ContactPublicKeyID: grant.ContactPublicKeyID,
+	}, now); err != nil {
+		return SharingGrant{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return SharingGrant{}, fmt.Errorf("commit revoke sharing grant: %w", err)
+	}
+	return grant, nil
 }
 
 func requireOwnedActiveIncidentTx(ctx context.Context, tx *sql.Tx, ownerAccountID, incidentID string) error {

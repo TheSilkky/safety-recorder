@@ -96,6 +96,20 @@ func (r *Repository) CreateWrappedKeyRecord(ctx context.Context, params incident
 		}
 		return incidents.WrappedKeyRecord{}, fmt.Errorf("insert postgres wrapped key record: %w", err)
 	}
+	if _, err := createSharingAuditEventTx(ctx, tx, incidents.SharingAuditEventParams{
+		OwnerAccountID:     record.OwnerAccountID,
+		ActorAccountID:     record.OwnerAccountID,
+		Action:             incidents.SharingAuditActionWrappedKeyCreated,
+		OutcomeCategory:    incidents.SharingAuditOutcomeCreated,
+		IncidentID:         record.IncidentID,
+		StreamID:           record.StreamID,
+		GrantID:            record.GrantID,
+		ContactID:          record.ContactID,
+		ContactPublicKeyID: record.ContactPublicKeyID,
+		WrappedKeyID:       record.ID,
+	}, now); err != nil {
+		return incidents.WrappedKeyRecord{}, err
+	}
 	if err := tx.Commit(); err != nil {
 		return incidents.WrappedKeyRecord{}, fmt.Errorf("commit create postgres wrapped key record: %w", err)
 	}
@@ -155,7 +169,13 @@ func (r *Repository) GetWrappedKeyRecord(ctx context.Context, ownerAccountID, wr
 // RevokeWrappedKeyRecord marks one owner-scoped wrapped-key record revoked.
 func (r *Repository) RevokeWrappedKeyRecord(ctx context.Context, ownerAccountID, wrappedKeyID, revokedByAccountID string) (incidents.WrappedKeyRecord, error) {
 	now := time.Now().UTC()
-	result, err := r.db.ExecContext(ctx, `
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return incidents.WrappedKeyRecord{}, fmt.Errorf("begin revoke postgres wrapped key record: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	result, err := tx.ExecContext(ctx, `
 		UPDATE wrapped_key_records
 		SET wrapped_key_state = $1, updated_at = $2, revoked_at = $3, revoked_by_account_id = $4
 		WHERE owner_account_id = $5 AND id = $6 AND wrapped_key_state = $7`,
@@ -177,7 +197,28 @@ func (r *Repository) RevokeWrappedKeyRecord(ctx context.Context, ownerAccountID,
 	if rowsAffected == 0 {
 		return incidents.WrappedKeyRecord{}, incidents.ErrNotFound
 	}
-	return r.getWrappedKeyRecordForOwner(ctx, ownerAccountID, wrappedKeyID)
+	record, err := getWrappedKeyRecordForOwnerTx(ctx, tx, ownerAccountID, wrappedKeyID)
+	if err != nil {
+		return incidents.WrappedKeyRecord{}, err
+	}
+	if _, err := createSharingAuditEventTx(ctx, tx, incidents.SharingAuditEventParams{
+		OwnerAccountID:     ownerAccountID,
+		ActorAccountID:     revokedByAccountID,
+		Action:             incidents.SharingAuditActionWrappedKeyRevoked,
+		OutcomeCategory:    incidents.SharingAuditOutcomeRevoked,
+		IncidentID:         record.IncidentID,
+		StreamID:           record.StreamID,
+		GrantID:            record.GrantID,
+		ContactID:          record.ContactID,
+		ContactPublicKeyID: record.ContactPublicKeyID,
+		WrappedKeyID:       record.ID,
+	}, now); err != nil {
+		return incidents.WrappedKeyRecord{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return incidents.WrappedKeyRecord{}, fmt.Errorf("commit revoke postgres wrapped key record: %w", err)
+	}
+	return record, nil
 }
 
 func activeGrantForWrappedKey(ctx context.Context, tx *sql.Tx, params incidents.CreateWrappedKeyRecordParams) (incidents.SharingGrant, error) {
@@ -224,6 +265,19 @@ func (r *Repository) getWrappedKeyRecordForOwner(ctx context.Context, ownerAccou
 		ownerAccountID,
 		wrappedKeyID,
 	)
+	return scanWrappedKeyRecordForOwner(row)
+}
+
+func getWrappedKeyRecordForOwnerTx(ctx context.Context, tx *sql.Tx, ownerAccountID, wrappedKeyID string) (incidents.WrappedKeyRecord, error) {
+	row := tx.QueryRowContext(ctx, wrappedKeyRecordSelect()+`
+		WHERE w.owner_account_id = $1 AND w.id = $2`,
+		ownerAccountID,
+		wrappedKeyID,
+	)
+	return scanWrappedKeyRecordForOwner(row)
+}
+
+func scanWrappedKeyRecordForOwner(row scanner) (incidents.WrappedKeyRecord, error) {
 	record, err := scanWrappedKeyRecord(row)
 	if errors.Is(err, sql.ErrNoRows) {
 		return incidents.WrappedKeyRecord{}, incidents.ErrNotFound

@@ -230,6 +230,12 @@ encrypted evidence bundles.
   keys, ML-KEM shared secrets, derived KEKs, plaintext, decrypted caches,
   browser fragment secrets, request bodies, uploaded bytes, stored paths,
   staging paths, object keys, or private deployment details.
+  Private sharing-audit records capture controlled lifecycle fields such as
+  action, outcome category, actor account ID, incident ID, grant ID, contact
+  public-key ID, wrapped-key record ID, deletion decision ID, and timestamp.
+  They intentionally omit tokens, request bodies, uploaded bytes, plaintext,
+  raw keys, wrapped-key ciphertext, public wrapping metadata, stored paths,
+  object keys, private deployment details, and user safety narratives.
 - The private admin web surface uses `html/template`, stores browser admin
   sessions in an HttpOnly SameSite cookie scoped to `/admin`, serves embedded
   token-neutral CSS from the private admin prefix without authentication, and

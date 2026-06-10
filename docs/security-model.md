@@ -218,8 +218,14 @@ Viewer URLs contain bearer tokens and should be treated as secrets. Reverse prox
   remain compatibility identifiers for that CEK. These routes do not store or
   return recipient private keys, raw CEKs, raw media keys, ML-KEM shared
   secrets, derived KEKs, plaintext, decrypted caches, browser fragment secrets,
-  request bodies, uploaded bytes, stored paths, staging paths, object keys, or
-  private deployment details.
+  request bodies, uploaded bytes, stored paths, staging paths, object keys,
+  private deployment details, or server escrow material. The metadata backends
+  also store private sharing-audit events for contact-key, sharing-grant,
+  wrapped-key, and deletion-pruning lifecycle changes using controlled IDs,
+  action names, outcome categories, and timestamps only. Those audit events do
+  not include tokens, request bodies, uploaded bytes, plaintext, raw keys,
+  wrapped-key ciphertext, public wrapping metadata, stored paths, object keys,
+  private deployment details, or user safety narratives.
 
 Optional S3-compatible storage preserves ciphertext-only behavior for committed
 encrypted chunks. It uses server-controlled object keys, does not expose object

@@ -964,6 +964,16 @@ account. Revocation stops future delivery of that wrapped-key record. It does
 not delete encrypted chunks, incident metadata, bundle contents, or material an
 authorized actor may already have downloaded.
 
+Contact-key, sharing-grant, wrapped-key, and incident deletion-pruning
+lifecycle changes also write private repository-level audit metadata. The
+current API does not expose audit routes. Audit records use controlled IDs,
+actor/owner account IDs, action names, outcome categories, and timestamps only;
+owner-scoped automatic pruning decisions without an explicit account actor use
+the owner account as the private audit actor. They do not store raw
+keys, wrapped-key ciphertext, public wrapping metadata, plaintext, tokens,
+request bodies, uploaded bytes, stored paths, object keys, private deployment
+details, or user safety narratives.
+
 ## Incidents
 
 Incident routes are mounted on the main API listener and require a valid
