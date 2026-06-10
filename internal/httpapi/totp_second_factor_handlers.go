@@ -193,13 +193,19 @@ func (a *API) sessionRequiresSecondFactorVerification(rctx context.Context, acco
 		return false, nil
 	}
 	_, err := a.repo.GetActiveTOTPSecondFactor(rctx, account.ID)
-	if errors.Is(err, auth.ErrNotFound) {
-		return false, nil
+	if err == nil {
+		return true, nil
 	}
+	if err != nil {
+		if !errors.Is(err, auth.ErrNotFound) {
+			return false, err
+		}
+	}
+	hasWebAuthn, err := a.repo.HasActiveWebAuthnCredential(rctx, account.ID)
 	if err != nil {
 		return false, err
 	}
-	return true, nil
+	return hasWebAuthn, nil
 }
 
 func decodeTOTPCode(w http.ResponseWriter, r *http.Request) (string, bool) {

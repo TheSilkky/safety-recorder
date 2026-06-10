@@ -17,6 +17,10 @@ const (
 	defaultSessionTTL                         = 12 * time.Hour
 	defaultEmailVerificationTTL               = 24 * time.Hour
 	defaultSecondFactorEmailChallengeTTL      = 10 * time.Minute
+	defaultWebAuthnEnabled                    = false
+	defaultWebAuthnRPDisplayName              = "Proofline"
+	defaultWebAuthnUserVerification           = "required"
+	defaultWebAuthnChallengeTTL               = 5 * time.Minute
 	defaultDeletionInterval                   = time.Minute
 	defaultTempUploadCleanupAge               = 0
 	defaultTempUploadCleanupDryRun            = false
@@ -100,6 +104,7 @@ type Config struct {
 	MainAPIRateLimit              MainAPIRateLimitConfig
 	PublicViewerRateLimit         PublicViewerRateLimitConfig
 	WebAuth                       WebAuthConfig
+	WebAuthn                      WebAuthnConfig
 	MainTimeouts                  HTTPTimeouts
 	AdminTimeouts                 HTTPTimeouts
 }
@@ -208,6 +213,18 @@ type WebAuthConfig struct {
 	SessionCookieSecure   bool
 	SessionCookieSameSite string
 	CSRFHeaderName        string
+}
+
+// WebAuthnConfig contains optional WebAuthn passkey/security-key second-factor
+// settings. It is disabled by default and fails closed when enabled without an
+// explicit relying-party ID and exact origin allow-list.
+type WebAuthnConfig struct {
+	Enabled          bool
+	RPID             string
+	RPDisplayName    string
+	AllowedOrigins   []string
+	UserVerification string
+	ChallengeTTL     time.Duration
 }
 
 // HTTPTimeouts groups net/http server timeout settings.
@@ -355,6 +372,10 @@ func loadFromSource(source configSource) (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
+	webAuthn, err := webAuthnConfigFromSource(source)
+	if err != nil {
+		return Config{}, err
+	}
 
 	mainTimeouts, err := mainTimeoutsFromSource(source)
 	if err != nil {
@@ -393,6 +414,7 @@ func loadFromSource(source configSource) (Config, error) {
 		MainAPIRateLimit:              mainAPIRateLimit,
 		PublicViewerRateLimit:         publicViewerRateLimit,
 		WebAuth:                       webAuth,
+		WebAuthn:                      webAuthn,
 		MainTimeouts:                  mainTimeouts,
 		AdminTimeouts:                 adminTimeouts,
 	}, nil

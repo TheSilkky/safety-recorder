@@ -52,7 +52,7 @@ contact key-sharing boundaries in
   addresses, data directory, database path, max upload size, upload
   coordination lease TTL, main API and public viewer rate limits, account
   registration and SMTP email settings, optional web-auth cookie/CORS/CSRF
-  settings, HTTP server timeouts, local account bootstrap secret, session TTL,
+  settings, optional WebAuthn RP/origin policy, HTTP server timeouts, local account bootstrap secret, session TTL,
   deletion worker interval, closed-incident retention window, token metadata
   retention window, and tombstone retention window.
 - `internal/coordination`: defines the small optional coordination boundary, the default no-coordination backend, and the Valkey/Redis-compatible startup check, main API/public viewer rate-limit counter backend, and short-lived complete-upload lease backend.
@@ -65,9 +65,9 @@ contact key-sharing boundaries in
 - `internal/envelope`: implements the explicit v1 compatibility AES-256-GCM
   client-side chunk envelope, associated data builder, and local simulator key
   file helpers.
-- `internal/auth`: normalizes local account usernames and email addresses, validates passwords, hashes passwords with bcrypt, and hashes opaque session or verification tokens before storage.
+- `internal/auth`: normalizes local account usernames and email addresses, validates passwords, hashes passwords with bcrypt, hashes opaque session or verification tokens before storage, and maps WebAuthn user and credential records to the go-webauthn library types.
 - `internal/httpapi`: owns separate main and private-admin muxes, JSON responses, request logging, recovery, local account/session authentication, request validation, upload handling, stream state handlers, trusted-contact relationship handlers, contact public-key handlers, sharing-grant handlers, wrapped-key handlers, incident deletion handlers, ZIP bundle streaming, app-level main API and public viewer rate limiting, private admin JSON API routes, the private admin web surface, the incident viewer, and the narrow metadata repository boundary consumed by handlers. Logging changes in this package should follow [logging-requirements.md](logging-requirements.md).
-- `internal/incidents`: defines incident/stream/chunk/checkin/account/session/deletion/trusted-contact-relationship/contact-key/sharing-grant/wrapped-key models and provides the SQLite metadata repository implementation, including deletion decisions, tombstones, retry item state, trusted-contact relationship records, contact public-key records, sharing-grant records, wrapped-key records, and write guards for deleting incidents.
+- `internal/incidents`: defines incident/stream/chunk/checkin/account/session/deletion/trusted-contact-relationship/contact-key/sharing-grant/wrapped-key/WebAuthn models and provides the SQLite metadata repository implementation, including deletion decisions, tombstones, retry item state, trusted-contact relationship records, contact public-key records, sharing-grant records, wrapped-key records, WebAuthn user/credential/challenge records, and write guards for deleting incidents.
 - `internal/postgresdb`: opens optional PostgreSQL metadata connections, applies PostgreSQL migrations, and implements the metadata repository behavior with PostgreSQL transaction, row-locking, deletion, and constraint semantics.
 - `internal/retention`: runs the background deletion and optional closed-incident retention worker. It claims retryable deletion decisions, removes encrypted blobs through the storage boundary using stored paths snapshotted from metadata, records safe retry state, prunes sensitive child metadata after blob deletion, and logs only non-sensitive counts or error categories under the standard logging requirements.
 - `internal/storage`: defines the blob-store boundary used by HTTP handlers and provides local filesystem and optional S3-compatible implementations, including temp uploads, hashing while streaming, server-controlled stored paths, and immutable final commits.
@@ -90,8 +90,9 @@ idempotency, durable blob commits, and metadata.
 
 Main `/v1` routes require `Authorization: Bearer <session_token>` except for
 login, disabled-by-default registration, and email verification; authenticated
-setup routes also include email second-factor challenge and TOTP setup or
-session verification.
+setup routes also include email second-factor challenge, TOTP setup or session
+verification, and disabled-by-default WebAuthn registration/assertion
+ceremonies.
 Authenticated routes can also use a browser session cookie when
 `SAFE_WEB_AUTH_ENABLED=true` and no bearer token is present. Browser login uses
 `POST /v1/auth/web/login`,

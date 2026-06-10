@@ -91,6 +91,7 @@ func run(logger *slog.Logger, configFilePath string) error {
 		SessionTTL:                 cfg.SessionTTL,
 		BootstrapSecret:            cfg.AuthBootstrapSecret,
 		WebAuth:                    webAuthConfig(cfg.WebAuth),
+		WebAuthn:                   webAuthnConfig(cfg.WebAuthn),
 		AccountRegistration:        accountRegistrationConfig(cfg.AccountRegistration),
 		SecondFactorEmailTTL:       cfg.SecondFactorEmailChallengeTTL,
 		EmailSender:                newEmailSender(cfg.Email),
@@ -171,6 +172,17 @@ func webAuthConfig(cfg config.WebAuthConfig) httpapi.WebAuthConfig {
 		SessionCookieSecure:   cfg.SessionCookieSecure,
 		SessionCookieSameSite: sameSite,
 		CSRFHeaderName:        cfg.CSRFHeaderName,
+	}
+}
+
+func webAuthnConfig(cfg config.WebAuthnConfig) httpapi.WebAuthnConfig {
+	return httpapi.WebAuthnConfig{
+		Enabled:          cfg.Enabled,
+		RPID:             cfg.RPID,
+		RPDisplayName:    cfg.RPDisplayName,
+		AllowedOrigins:   cfg.AllowedOrigins,
+		UserVerification: cfg.UserVerification,
+		ChallengeTTL:     cfg.ChallengeTTL,
 	}
 }
 

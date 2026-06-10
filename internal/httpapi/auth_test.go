@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"context"
 	"database/sql"
+	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"io"
 	"log/slog"
@@ -14,6 +16,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-webauthn/webauthn/protocol"
+	"github.com/go-webauthn/webauthn/protocol/webauthncose"
+	"github.com/go-webauthn/webauthn/webauthn"
 	"github.com/open-proofline/server/internal/auth"
 	"github.com/open-proofline/server/internal/email"
 	"github.com/open-proofline/server/internal/httpapi"
@@ -902,6 +907,110 @@ func TestTOTPLogsAndResponsesDoNotExposeSecretsAfterEnrollment(t *testing.T) {
 	}
 }
 
+func TestWebAuthnSecondFactorSetupBearerSessionRegistersAndVerifiesProductRoutes(t *testing.T) {
+	app := newTestAppWithOptions(t, webAuthnTestOptions())
+	createAccountForStateTest(t, app, "webauthn-setup-user", "state-password")
+	token, _ := loginWithAccountForTest(t, app, "webauthn-setup-user", "state-password")
+
+	response, body := requestWithAuth(t, app.privateHandler, http.MethodGet, "/v1/incidents", "", nil, token)
+	response.Body.Close()
+	if response.StatusCode != http.StatusForbidden {
+		t.Fatalf("pre-WebAuthn product route status = %d, want 403: %s", response.StatusCode, body)
+	}
+	assertErrorCode(t, body, "second_factor_setup_required")
+
+	account := mustGetRegistrationAccount(t, app, "webauthn-setup-user")
+	credentialID := registerWebAuthnCredentialForTest(t, app, token, account.ID)
+
+	response, body = requestWithAuth(t, app.privateHandler, http.MethodPost, "/v1/incidents", "application/json", bytes.NewBufferString(`{}`), token)
+	response.Body.Close()
+	if response.StatusCode != http.StatusCreated {
+		t.Fatalf("post-WebAuthn product route status = %d, want 201: %s", response.StatusCode, body)
+	}
+
+	loginResponse, body := postUnauthenticated(t, app, "/v1/auth/login", "application/json", bytes.NewBufferString(`{"username":"webauthn-setup-user","password":"state-password"}`))
+	loginResponse.Body.Close()
+	if loginResponse.StatusCode != http.StatusCreated {
+		t.Fatalf("WebAuthn active login status = %d, want 201: %s", loginResponse.StatusCode, body)
+	}
+	var loginResult struct {
+		Token                            string `json:"token"`
+		SecondFactorVerificationRequired bool   `json:"second_factor_verification_required"`
+	}
+	if err := json.Unmarshal(body, &loginResult); err != nil {
+		t.Fatalf("decode WebAuthn active login response: %v", err)
+	}
+	if loginResult.Token == "" || !loginResult.SecondFactorVerificationRequired {
+		t.Fatalf("login did not report required WebAuthn verification: token_present=%t required=%t", loginResult.Token != "", loginResult.SecondFactorVerificationRequired)
+	}
+
+	response, body = requestWithAuth(t, app.privateHandler, http.MethodPost, "/v1/incidents", "application/json", bytes.NewBufferString(`{}`), loginResult.Token)
+	response.Body.Close()
+	if response.StatusCode != http.StatusForbidden {
+		t.Fatalf("primary-only WebAuthn product route status = %d, want 403: %s", response.StatusCode, body)
+	}
+	assertErrorCode(t, body, "second_factor_verification_required")
+
+	response, body = requestWithAuth(t, app.privateHandler, http.MethodPost, "/v1/account/second-factor/webauthn/verify/start", "application/json", bytes.NewBufferString(`{}`), loginResult.Token)
+	response.Body.Close()
+	if response.StatusCode != http.StatusCreated {
+		t.Fatalf("WebAuthn verify start status = %d, want 201: %s", response.StatusCode, body)
+	}
+	finishWebAuthnVerificationForTest(t, app, loginResult.Token, account.ID, credentialID)
+
+	response, body = requestWithAuth(t, app.privateHandler, http.MethodPost, "/v1/incidents", "application/json", bytes.NewBufferString(`{}`), loginResult.Token)
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusCreated {
+		t.Fatalf("verified WebAuthn session product route status = %d, want 201: %s", response.StatusCode, body)
+	}
+}
+
+func TestWebAuthnActiveFactorRequiresBrowserCookieSessionChallenge(t *testing.T) {
+	options := webAuthTestOptions(true, nil)
+	options.WebAuthn = webAuthnTestOptions().WebAuthn
+	app := newTestAppWithOptions(t, options)
+	createAccountForStateTest(t, app, "webauthn-web-user", "state-password")
+	setupToken, _ := loginWithAccountForTest(t, app, "webauthn-web-user", "state-password")
+	account := mustGetRegistrationAccount(t, app, "webauthn-web-user")
+	registerWebAuthnCredentialForTest(t, app, setupToken, account.ID)
+
+	cookie, webLoginResult := webLoginForTest(t, app, "webauthn-web-user", "state-password")
+	if required, ok := webLoginResult["second_factor_verification_required"].(bool); !ok || !required {
+		t.Fatalf("web login did not report required WebAuthn verification: %+v", webLoginResult)
+	}
+	csrfToken := webCSRFTokenForTest(t, app, cookie)
+
+	response, body := requestWithCookieAndHeaders(t, app.privateHandler, http.MethodPost, "/v1/incidents", "application/json", bytes.NewBufferString(`{}`), cookie, map[string]string{
+		"X-CSRF-Token": csrfToken,
+	})
+	response.Body.Close()
+	if response.StatusCode != http.StatusForbidden {
+		t.Fatalf("primary-only WebAuthn cookie product route status = %d, want 403: %s", response.StatusCode, body)
+	}
+	assertErrorCode(t, body, "second_factor_verification_required")
+
+	response, body = requestWithCookieAndHeaders(t, app.privateHandler, http.MethodPost, "/v1/account/second-factor/webauthn/verify/start", "application/json", bytes.NewBufferString(`{}`), cookie, map[string]string{
+		"X-CSRF-Token": csrfToken,
+	})
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusCreated {
+		t.Fatalf("WebAuthn cookie verify start status = %d, want 201: %s", response.StatusCode, body)
+	}
+}
+
+func TestWebAuthnRoutesFailClosedWhenDisabled(t *testing.T) {
+	app := newTestApp(t)
+	createAccountForStateTest(t, app, "webauthn-disabled-user", "state-password")
+	token, _ := loginWithAccountForTest(t, app, "webauthn-disabled-user", "state-password")
+
+	response, body := requestWithAuth(t, app.privateHandler, http.MethodPost, "/v1/account/second-factor/webauthn/register/start", "application/json", bytes.NewBufferString(`{}`), token)
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusServiceUnavailable {
+		t.Fatalf("disabled WebAuthn start status = %d, want 503: %s", response.StatusCode, body)
+	}
+	assertErrorCode(t, body, "webauthn_unavailable")
+}
+
 func TestBrowserLogoutRevokesSessionAndClearsCookie(t *testing.T) {
 	app := newTestAppWithOptions(t, webAuthTestOptions(true, nil))
 	cookie, _ := webLoginForTest(t, app, "test-admin", "test-password")
@@ -1676,6 +1785,231 @@ func confirmTOTPEnrollmentForTest(t *testing.T, app *testApp, token, secret stri
 	if response.StatusCode != http.StatusOK {
 		t.Fatalf("TOTP confirm status = %d, want 200", response.StatusCode)
 	}
+}
+
+func webAuthnTestOptions() httpapi.Options {
+	return httpapi.Options{
+		MaxUploadBytes: 1024 * 1024,
+		WebAuthn: httpapi.WebAuthnConfig{
+			Enabled:          true,
+			RPID:             "example.org",
+			RPDisplayName:    "Proofline Test",
+			AllowedOrigins:   []string{"https://example.org"},
+			UserVerification: "preferred",
+			ChallengeTTL:     time.Minute,
+		},
+	}
+}
+
+func registerWebAuthnCredentialForTest(t *testing.T, app *testApp, token, accountID string) []byte {
+	t.Helper()
+
+	response, body := requestWithAuth(t, app.privateHandler, http.MethodPost, "/v1/account/second-factor/webauthn/register/start", "application/json", bytes.NewBufferString(`{"authenticator_attachment":"cross-platform"}`), token)
+	response.Body.Close()
+	if response.StatusCode != http.StatusCreated {
+		t.Fatalf("WebAuthn registration start status = %d, want 201: %s", response.StatusCode, body)
+	}
+	if !bytes.Contains(body, []byte(`"credential_creation"`)) || !bytes.Contains(body, []byte(`"cross-platform"`)) {
+		t.Fatalf("unexpected WebAuthn registration start response: %s", body)
+	}
+
+	userHandle := webAuthnUserHandleForTest(t, app, accountID)
+	sessionID := authSessionIDForToken(t, app, token)
+	finishBody, challenge, credentialID := webAuthnRegistrationSpecVectorNoneES256(t)
+	replaceWebAuthnChallengeSessionForTest(t, app, accountID, sessionID, auth.SecondFactorChallengeTypeWebAuthnRegistration, webauthn.SessionData{
+		Challenge:        challenge,
+		UserID:           userHandle,
+		UserVerification: protocol.VerificationPreferred,
+		CredParams: []protocol.CredentialParameter{{
+			Type:      protocol.PublicKeyCredentialType,
+			Algorithm: webauthncose.AlgES256,
+		}},
+		Expires: time.Now().UTC().Add(time.Minute),
+	})
+
+	response, body = requestWithAuth(t, app.privateHandler, http.MethodPost, "/v1/account/second-factor/webauthn/register/finish", "application/json", bytes.NewReader(finishBody), token)
+	response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("WebAuthn registration finish status = %d, want 200: %s", response.StatusCode, body)
+	}
+	for _, disallowed := range [][]byte{[]byte(challenge), []byte(token), []byte("state-password")} {
+		if bytes.Contains(body, disallowed) {
+			t.Fatalf("WebAuthn registration response exposed sensitive material: %s", body)
+		}
+	}
+	var result struct {
+		Account struct {
+			SecondFactorSetup string `json:"second_factor_setup_state"`
+		} `json:"account"`
+		Session struct {
+			SecondFactorMethod string `json:"second_factor_method"`
+		} `json:"session"`
+	}
+	if err := json.Unmarshal(body, &result); err != nil {
+		t.Fatalf("decode WebAuthn registration finish response: %v", err)
+	}
+	if result.Account.SecondFactorSetup != auth.SecondFactorSetupStateComplete || result.Session.SecondFactorMethod != auth.SecondFactorTypeWebAuthn {
+		t.Fatalf("unexpected WebAuthn registration finish response: %+v", result)
+	}
+	return credentialID
+}
+
+func finishWebAuthnVerificationForTest(t *testing.T, app *testApp, token, accountID string, expectedCredentialID []byte) {
+	t.Helper()
+
+	userHandle := webAuthnUserHandleForTest(t, app, accountID)
+	sessionID := authSessionIDForToken(t, app, token)
+	finishBody, challenge, credentialID := webAuthnLoginSpecVectorNoneES256(t)
+	if !bytes.Equal(credentialID, expectedCredentialID) {
+		t.Fatal("WebAuthn assertion vector credential does not match registration vector")
+	}
+	replaceWebAuthnChallengeSessionForTest(t, app, accountID, sessionID, auth.SecondFactorChallengeTypeWebAuthnAssertion, webauthn.SessionData{
+		Challenge:            challenge,
+		UserID:               userHandle,
+		UserVerification:     protocol.VerificationPreferred,
+		AllowedCredentialIDs: [][]byte{credentialID},
+		Expires:              time.Now().UTC().Add(time.Minute),
+	})
+
+	response, body := requestWithAuth(t, app.privateHandler, http.MethodPost, "/v1/account/second-factor/webauthn/verify/finish", "application/json", bytes.NewReader(finishBody), token)
+	response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("WebAuthn verification finish status = %d, want 200: %s", response.StatusCode, body)
+	}
+	for _, disallowed := range [][]byte{[]byte(challenge), []byte(token), []byte("state-password")} {
+		if bytes.Contains(body, disallowed) {
+			t.Fatalf("WebAuthn verification response exposed sensitive material: %s", body)
+		}
+	}
+	var result struct {
+		Session struct {
+			SecondFactorMethod string `json:"second_factor_method"`
+		} `json:"session"`
+	}
+	if err := json.Unmarshal(body, &result); err != nil {
+		t.Fatalf("decode WebAuthn verification finish response: %v", err)
+	}
+	if result.Session.SecondFactorMethod != auth.SecondFactorTypeWebAuthn {
+		t.Fatalf("unexpected WebAuthn verification finish response: %+v", result)
+	}
+}
+
+func authSessionIDForToken(t *testing.T, app *testApp, token string) string {
+	t.Helper()
+	var sessionID string
+	if err := app.db.QueryRowContext(context.Background(), `
+		SELECT id
+		FROM auth_sessions
+		WHERE token_hash = ?`,
+		auth.SessionTokenHash(token),
+	).Scan(&sessionID); err != nil {
+		t.Fatalf("read auth session id: %v", err)
+	}
+	return sessionID
+}
+
+func webAuthnUserHandleForTest(t *testing.T, app *testApp, accountID string) []byte {
+	t.Helper()
+	var userHandle []byte
+	if err := app.db.QueryRowContext(context.Background(), `
+		SELECT user_handle
+		FROM account_webauthn_users
+		WHERE account_id = ? AND rp_id = ?`,
+		accountID,
+		"example.org",
+	).Scan(&userHandle); err != nil {
+		t.Fatalf("read WebAuthn user handle: %v", err)
+	}
+	return userHandle
+}
+
+func replaceWebAuthnChallengeSessionForTest(t *testing.T, app *testApp, accountID, sessionID, challengeType string, session webauthn.SessionData) {
+	t.Helper()
+	data, err := json.Marshal(session)
+	if err != nil {
+		t.Fatalf("marshal WebAuthn session: %v", err)
+	}
+	result, err := app.db.ExecContext(context.Background(), `
+		UPDATE account_webauthn_challenges
+		SET session_data_json = ?, expires_at = ?
+		WHERE account_id = ? AND auth_session_id = ? AND challenge_type = ? AND consumed_at IS NULL`,
+		data,
+		session.Expires.UTC().Format(time.RFC3339Nano),
+		accountID,
+		sessionID,
+		challengeType,
+	)
+	if err != nil {
+		t.Fatalf("replace WebAuthn challenge session: %v", err)
+	}
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		t.Fatalf("replace WebAuthn challenge rows affected: %v", err)
+	}
+	if rowsAffected != 1 {
+		t.Fatalf("replace WebAuthn challenge rows affected = %d, want 1", rowsAffected)
+	}
+}
+
+func webAuthnRegistrationSpecVectorNoneES256(t *testing.T) ([]byte, string, []byte) {
+	t.Helper()
+	const (
+		attestationObjectHex = "a363666d74646e6f6e656761747453746d74a068617574684461746158a4bfabc37432958b063360d3ad6461c9c4735ae7f8edd46592a5e0f01452b2e4b559000000008446ccb9ab1db374750b2367ff6f3a1f0020f91f391db4c9b2fde0ea70189cba3fb63f579ba6122b33ad94ff3ec330084be4a5010203262001215820afefa16f97ca9b2d23eb86ccb64098d20db90856062eb249c33a9b672f26df61225820930a56b87a2fca66334b03458abf879717c12cc68ed73290af2e2664796b9220"
+		clientDataJSONHex    = "7b2274797065223a22776562617574686e2e637265617465222c226368616c6c656e6765223a22414d4d507434557878475453746e63647134313759447742466938767049612d7077386f4f755657345441222c226f726967696e223a2268747470733a2f2f6578616d706c652e6f7267222c2263726f73734f726967696e223a66616c73652c22657874726144617461223a22636c69656e74446174614a534f4e206d617920626520657874656e6465642077697468206164646974696f6e616c206669656c647320696e20746865206675747572652c207375636820617320746869733a20426b5165446a646354427258426941774a544c453551227d"
+		credentialIDHex      = "f91f391db4c9b2fde0ea70189cba3fb63f579ba6122b33ad94ff3ec330084be4"
+		challengeHex         = "00c30fb78531c464d2b6771dab8d7b603c01162f2fa486bea70f283ae556e130"
+	)
+	credentialID := decodeWebAuthnHexForTest(t, credentialIDHex)
+	id := base64.RawURLEncoding.EncodeToString(credentialID)
+	body, err := json.Marshal(map[string]any{
+		"id":    id,
+		"rawId": id,
+		"type":  "public-key",
+		"response": map[string]any{
+			"attestationObject": base64.RawURLEncoding.EncodeToString(decodeWebAuthnHexForTest(t, attestationObjectHex)),
+			"clientDataJSON":    base64.RawURLEncoding.EncodeToString(decodeWebAuthnHexForTest(t, clientDataJSONHex)),
+		},
+	})
+	if err != nil {
+		t.Fatalf("marshal WebAuthn registration vector: %v", err)
+	}
+	return body, base64.RawURLEncoding.EncodeToString(decodeWebAuthnHexForTest(t, challengeHex)), credentialID
+}
+
+func webAuthnLoginSpecVectorNoneES256(t *testing.T) ([]byte, string, []byte) {
+	t.Helper()
+	const (
+		authenticatorDataHex = "bfabc37432958b063360d3ad6461c9c4735ae7f8edd46592a5e0f01452b2e4b51900000000"
+		clientDataJSONHex    = "7b2274797065223a22776562617574686e2e676574222c226368616c6c656e6765223a224f63446e55685158756c5455506f334a5558543049393770767a7a59425039745a63685879617630314167222c226f726967696e223a2268747470733a2f2f6578616d706c652e6f7267222c2263726f73734f726967696e223a66616c73657d"
+		signatureHex         = "3046022100f50a4e2e4409249c4a853ba361282f09841df4dd4547a13a87780218deffcd380221008480ac0f0b93538174f575bf11a1dd5d78c6e486013f937295ea13653e331e87"
+		credentialIDHex      = "f91f391db4c9b2fde0ea70189cba3fb63f579ba6122b33ad94ff3ec330084be4"
+		challengeHex         = "39c0e7521417ba54d43e8dc95174f423dee9bf3cd804ff6d65c857c9abf4d408"
+	)
+	credentialID := decodeWebAuthnHexForTest(t, credentialIDHex)
+	id := base64.RawURLEncoding.EncodeToString(credentialID)
+	body, err := json.Marshal(map[string]any{
+		"id":    id,
+		"rawId": id,
+		"type":  "public-key",
+		"response": map[string]any{
+			"authenticatorData": base64.RawURLEncoding.EncodeToString(decodeWebAuthnHexForTest(t, authenticatorDataHex)),
+			"clientDataJSON":    base64.RawURLEncoding.EncodeToString(decodeWebAuthnHexForTest(t, clientDataJSONHex)),
+			"signature":         base64.RawURLEncoding.EncodeToString(decodeWebAuthnHexForTest(t, signatureHex)),
+		},
+	})
+	if err != nil {
+		t.Fatalf("marshal WebAuthn login vector: %v", err)
+	}
+	return body, base64.RawURLEncoding.EncodeToString(decodeWebAuthnHexForTest(t, challengeHex)), credentialID
+}
+
+func decodeWebAuthnHexForTest(t *testing.T, value string) []byte {
+	t.Helper()
+	data, err := hex.DecodeString(value)
+	if err != nil {
+		t.Fatalf("decode WebAuthn hex vector: %v", err)
+	}
+	return data
 }
 
 type recordingEmailSender struct {

@@ -164,11 +164,13 @@ a billing control.
 New admin-created, `/admin` bootstrap, and open-registration accounts also
 start with `second_factor_setup_state=setup_required`. That state allows
 primary login/session creation but blocks main product routes until email
-second-factor setup verifies a single-use challenge code or TOTP setup verifies
-a TOTP code and marks the account `complete`; existing migrated accounts
-default to `not_required` for preview compatibility. Do not claim a deployment
-has complete required 2FA until the selected factor set and an approved recovery
-policy have been implemented and reviewed.
+second-factor setup verifies a single-use challenge code, TOTP setup verifies a
+TOTP code, or WebAuthn setup verifies a configured RP/origin ceremony and marks
+the account `complete`; existing migrated accounts default to `not_required`
+for preview compatibility. WebAuthn remains disabled until `[webauthn]` is
+explicitly configured with an RP ID and exact allowed origins. Do not claim a
+deployment has complete required 2FA until the selected factor set and an
+approved recovery policy have been implemented and reviewed.
 
 TOML open-registration shape:
 
@@ -836,7 +838,7 @@ Suggested route groups:
 | Main chunk uploads | `POST /v1/incidents/{incident_id}/chunks` | Tune for expected chunk cadence, upload retries, body size limits, and client network conditions. |
 | Main incident, stream, check-in, and token actions | Other product `/v1/...` routes | Use limits as an abuse backstop, not as the only security control. |
 | Registration and email verification | `POST /v1/auth/register`, `POST /v1/auth/email/verify` | Keep separate from login limits and never include raw emails, usernames, verification tokens, or request bodies in logs or metrics. |
-| Required setup status and factor setup | `GET /v1/account`, `POST /v1/account/second-factor/email/challenge`, `POST /v1/account/second-factor/email/verify`, `POST /v1/account/second-factor/totp/enroll`, `POST /v1/account/second-factor/totp/confirm`, `POST /v1/account/second-factor/totp/verify` | Setup-incomplete accounts may inspect their account state and complete email or TOTP setup routes, and active TOTP accounts may verify a primary-authenticated session before product access. Main product routes should fail closed until setup and required session verification are complete. Never log raw challenge codes, TOTP codes, TOTP seeds, or `otpauth_url` values. |
+| Required setup status and factor setup | `GET /v1/account`, email/TOTP/WebAuthn second-factor setup and verification routes | Setup-incomplete accounts may inspect their account state and complete email, TOTP, or WebAuthn setup routes, and active TOTP/WebAuthn accounts may verify a primary-authenticated session before product access. Main product routes should fail closed until setup and required session verification are complete. Never log raw challenge codes, TOTP codes, TOTP seeds, `otpauth_url` values, WebAuthn challenge/client data, credential bytes, or request bodies. |
 | Private admin dashboard actions | `/admin/...` | Keep on the private-admin listener and do not route from public entry points. |
 | Admin JSON API actions | `/v1/admin/...` | Authenticated admin-only routes on the private-admin listener; do not route from public entry points. |
 

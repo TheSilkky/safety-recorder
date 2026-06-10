@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Added disabled-by-default WebAuthn/FIDO2 passkey and roaming security-key
+  second-factor setup and session verification, with approved go-webauthn
+  integration, fail-closed RP/origin config, SQLite/PostgreSQL credential and
+  challenge tables, bearer and browser-cookie route coverage, route-limit
+  coverage, redaction tests, and docs for exact-origin and challenge handling.
 - Added TOTP authenticator-app second-factor setup and session verification,
   with SQLite/PostgreSQL TOTP factor tables, session elevation metadata,
   enrollment confirmation, replay-step rejection, active-factor login gating,
@@ -15,8 +20,7 @@
   SQLite/PostgreSQL migration parity, setup-required defaults for newly
   admin-created and open-registration accounts, bearer and browser-cookie
   session tests, main product-route gating, private-admin boundary coverage,
-  and docs clarifying that WebAuthn/passkey and recovery flows are still future
-  work.
+  and docs clarifying the then-future WebAuthn/passkey and recovery boundaries.
 - Added local temp-upload staging quota enforcement, defaulting to 1 GB, for
   both local and S3-compatible blob staging before final commit, with safe
   `507 upload_staging_quota_exceeded` responses, concurrent storage tests, S3

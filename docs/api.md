@@ -71,15 +71,17 @@ Non-upload JSON bodies are limited to 64 KiB. Upload file bytes are limited by `
 Main API route classes are rate limited by default before authentication using
 safe server-controlled keys based on route class and a hash of the socket peer
 identity. Login/logout, public registration, registration email verification,
-email second-factor challenge routes, and TOTP setup/verification routes have
-separate authentication-related route classes. Existing main API limit classes
+email second-factor challenge routes, TOTP setup/verification routes, and
+WebAuthn register/verify routes have separate authentication-related route
+classes. Existing main API limit classes
 also cover account metadata, account/device recipient-key metadata, contact-key
 metadata, trusted-contact relationship metadata, incident metadata reads and
 writes, sharing-grant metadata, wrapped-key metadata, uploads, reconciliation,
 streams, incident tokens, and private encrypted downloads. Rate-limit keys do
 not include raw email addresses, raw usernames, verification tokens,
-second-factor challenge codes, TOTP codes, TOTP seeds, raw session tokens,
-Authorization headers, raw idempotency keys, request bodies, uploaded bytes,
+second-factor challenge codes, TOTP codes, TOTP seeds, WebAuthn challenge or
+client-data values, raw session tokens, Authorization headers, raw idempotency
+keys, request bodies, uploaded bytes,
 incident IDs, stored paths, object keys, plaintext, raw keys, wrapped-key
 ciphertext, or private deployment details. Exhausted limits return
 `429 rate_limited` with `Retry-After`. A configured coordination limiter
@@ -152,7 +154,7 @@ Accounts also carry a factor-neutral `second_factor_setup_state`:
 | State | Meaning |
 |---|---|
 | `not_required` | Product-route access is not blocked by second-factor setup. Existing migrated accounts default to this state for preview compatibility. |
-| `setup_required` | Primary login can create bearer or browser-cookie sessions, but main product routes fail closed until setup is completed by email challenge or TOTP second-factor verification. |
+| `setup_required` | Primary login can create bearer or browser-cookie sessions, but main product routes fail closed until setup is completed by email challenge, TOTP, or WebAuthn second-factor verification. |
 | `complete` | Required second-factor setup is complete for product-route access. |
 
 New accounts created through the private admin API, the `/admin` bootstrap
@@ -160,7 +162,7 @@ surface, or open registration start in `setup_required`. Email verification
 only moves `account_state` from `pending_email_verification` to `active`; it
 does not complete second-factor setup. While setup is required, authenticated
 clients can inspect `GET /v1/account`, obtain browser CSRF metadata, request or
-verify email/TOTP second-factor setup, and log out. Other main product routes
+verify email/TOTP/WebAuthn second-factor setup, and log out. Other main product routes
 return:
 
 ```json
@@ -172,11 +174,12 @@ return:
 }
 ```
 
-Email challenge and TOTP are the implemented second-factor setup methods.
-Accounts with active TOTP factors also require per-session TOTP verification
-after primary login before product routes are available. Until that challenge
-is satisfied, authenticated sessions can inspect `GET /v1/account`, obtain
-browser CSRF metadata, verify the TOTP challenge, and log out. Other main
+Email challenge, TOTP, and disabled-by-default WebAuthn/FIDO2 are the
+implemented second-factor setup methods. Accounts with active TOTP or WebAuthn
+factors also require per-session second-factor verification after primary login
+before product routes are available. Until that challenge is satisfied,
+authenticated sessions can inspect `GET /v1/account`, obtain browser CSRF
+metadata, verify the active TOTP or WebAuthn challenge, and log out. Other main
 product routes return:
 
 ```json
@@ -188,8 +191,9 @@ product routes return:
 }
 ```
 
-WebAuthn/passkey, security-key, recovery, and lost-factor flows are not
-implemented.
+Recovery and lost-factor flows are not implemented. WebAuthn routes remain
+unavailable with `503 webauthn_unavailable` until `[webauthn]` is explicitly
+enabled with an RP ID and exact allowed origins.
 
 ### `POST /v1/account/second-factor/email/challenge`
 
@@ -405,6 +409,157 @@ Invalid, replayed, missing-factor, or wrong-account codes all return
 bodies, session tokens, CSRF tokens, and other credential material must not be
 logged.
 
+### `POST /v1/account/second-factor/webauthn/register/start`
+
+Authenticated setup route for starting WebAuthn/FIDO2 passkey or roaming
+security-key registration after primary login. Setup-incomplete bearer and
+browser-cookie sessions may call this route; cookie-authenticated requests
+still require the configured CSRF header. WebAuthn must be enabled with a valid
+RP ID and exact allowed origins or the route returns `503 webauthn_unavailable`.
+
+Request:
+
+```json
+{
+  "authenticator_attachment": "cross-platform"
+}
+```
+
+`authenticator_attachment` is optional. When present it must be `platform` or
+`cross-platform`; the server uses it only to shape authenticator selection and
+client hints.
+
+Response `201`:
+
+```json
+{
+  "status": "registration_challenge_created",
+  "credential_creation": {
+    "publicKey": {}
+  },
+  "expires_at": "2026-06-10T12:05:00Z",
+  "authenticator_attachment": "cross-platform"
+}
+```
+
+The `credential_creation.publicKey` object is produced by the WebAuthn library
+and includes the challenge and RP/user options needed by browser
+`navigator.credentials.create()`. Challenge session data is stored server-side,
+expires according to `SAFE_WEBAUTHN_CHALLENGE_TTL`, and is consumed on finish.
+
+### `POST /v1/account/second-factor/webauthn/register/finish`
+
+Authenticated setup route for finishing WebAuthn registration. The request body
+is the browser WebAuthn attestation response from
+`navigator.credentials.create()`. Successful verification stores public
+credential material, sign counter, transports, attachment and backup flags,
+sets the account `second_factor_setup_state` to `complete`, and marks the
+current session as WebAuthn-verified.
+
+Response `200`:
+
+```json
+{
+  "status": "verified",
+  "second_factor": {
+    "id": "sf_...",
+    "factor_type": "webauthn",
+    "attachment": "cross-platform",
+    "backup_eligible": true,
+    "backup_state": false,
+    "user_verified": true,
+    "clone_warning": false,
+    "verified_at": "2026-06-10T12:04:00Z"
+  },
+  "account": {
+    "id": "acct_...",
+    "username": "user",
+    "account_state": "active",
+    "second_factor_setup_state": "complete",
+    "second_factor_setup_required": false,
+    "role": "user",
+    "created_at": "2026-06-10T11:00:00Z",
+    "updated_at": "2026-06-10T12:04:00Z",
+    "password_changed_at": "2026-06-10T11:00:00Z"
+  },
+  "session": {
+    "session_id": "ses_...",
+    "second_factor_verified_at": "2026-06-10T12:04:00Z",
+    "second_factor_method": "webauthn"
+  }
+}
+```
+
+Expired, reused, wrong-account, malformed, or origin/RP-invalid ceremonies all
+return the same generic `400 webauthn_challenge_invalid` response. Raw
+challenge values, client data JSON, credential bytes, request bodies, session
+tokens, CSRF tokens, and other credential material must not be logged.
+
+### `POST /v1/account/second-factor/webauthn/verify/start`
+
+Authenticated session challenge route for accounts that already have an active
+WebAuthn factor. Primary login can create a bearer or browser-cookie session,
+but product routes remain blocked with
+`403 second_factor_verification_required` until this route and the finish route
+complete successfully.
+
+Request:
+
+```json
+{}
+```
+
+Response `201`:
+
+```json
+{
+  "status": "verification_challenge_created",
+  "credential_assertion": {
+    "publicKey": {}
+  },
+  "expires_at": "2026-06-10T12:10:00Z"
+}
+```
+
+The `credential_assertion.publicKey` object is produced by the WebAuthn library
+and includes the challenge and allowed credential IDs needed by browser
+`navigator.credentials.get()`.
+
+### `POST /v1/account/second-factor/webauthn/verify/finish`
+
+Authenticated session challenge route for finishing WebAuthn assertion
+verification. The request body is the browser WebAuthn assertion response from
+`navigator.credentials.get()`. Successful verification updates credential
+sign-count and backup/user-presence flags and marks the current session as
+WebAuthn-verified.
+
+Response `200`:
+
+```json
+{
+  "status": "verified",
+  "second_factor": {
+    "id": "sf_...",
+    "factor_type": "webauthn",
+    "backup_eligible": true,
+    "backup_state": false,
+    "user_verified": true,
+    "clone_warning": false,
+    "verified_at": "2026-06-10T12:04:00Z",
+    "last_used_at": "2026-06-10T12:09:00Z"
+  },
+  "session": {
+    "session_id": "ses_...",
+    "second_factor_verified_at": "2026-06-10T12:09:00Z",
+    "second_factor_method": "webauthn"
+  }
+}
+```
+
+Expired, reused, wrong-account, unknown-credential, malformed, or
+origin/RP-invalid ceremonies all return the same generic
+`400 webauthn_challenge_invalid` response.
+
 ### `POST /v1/auth/login`
 
 Authenticates a local account and returns a raw session token once.
@@ -441,9 +596,10 @@ Response `201`:
 }
 ```
 
-For accounts with an active TOTP factor, primary login still returns a session
-token, but `second_factor_verification_required` is `true` and product routes
-fail closed until `POST /v1/account/second-factor/totp/verify` succeeds.
+For accounts with an active TOTP or WebAuthn factor, primary login still
+returns a session token, but `second_factor_verification_required` is `true`
+and product routes fail closed until the matching TOTP or WebAuthn verification
+route succeeds.
 
 ### `POST /v1/auth/register`
 
@@ -536,9 +692,9 @@ JSON.
 
 Response metadata includes `second_factor_verification_required`,
 `second_factor_verified_at`, and `second_factor_method` with the same meaning
-as bearer login. For accounts with an active TOTP factor,
-`second_factor_verification_required` is `true` until
-`POST /v1/account/second-factor/totp/verify` succeeds with a valid CSRF header.
+as bearer login. For accounts with an active TOTP or WebAuthn factor,
+`second_factor_verification_required` is `true` until the matching
+second-factor verification route succeeds with a valid CSRF header.
 
 The preferred production cookie is `__Host-proofline_session` with `HttpOnly`,
 `Secure`, `SameSite=Lax`, `Path=/`, no `Domain` attribute, and expiry aligned
