@@ -154,7 +154,31 @@ main `/v1` routes publicly without a reviewed deployment boundary.
    - Confirm completed bundle generation fails closed when a required blob is
      missing or when metadata and blobs do not match.
 
-6. Validate coordination loss behavior.
+6. Validate deletion state and restore reconciliation.
+   - In the private restored environment, sample active, deletion-pending,
+     deleting, deletion-failed, deleted, and tombstone-pruned incidents when the
+     backup set contains those states.
+   - Confirm private owner/admin deletion status routes and
+     `proofline-server operator deletion-status` report only non-sensitive
+     deletion state, retry categories, item counts, and timestamps.
+   - Confirm deleted incidents retain only minimal tombstone fields and that
+     sensitive child rows such as streams, chunks, checkins, viewer-token rows,
+     incident-scoped sharing grants, and wrapped-key records have been pruned
+     after deletion completes.
+   - Confirm completed bundle generation works for active incidents and fails
+     closed for deleting, deleted, tombstone-pruned, or blob-mismatched
+     incidents.
+   - Confirm public viewer routes fail closed for deleting, deleted, expired,
+     revoked-token, tombstone-pruned, and metadata/blob-mismatch cases without
+     revealing deletion state, incident mode, stored paths, object keys,
+     private endpoints, or grant/wrapped-key metadata.
+   - If an older backup reintroduces an incident that live state has since
+     deleted, keep the restored copy private and reconcile it through private
+     operator notes, backup expiry, storage-key retirement, or a separate
+     reviewed deletion decision. Do not use public routes, public issue text,
+     or public screenshots for that reconciliation.
+
+7. Validate coordination loss behavior.
    - If Valkey/Redis coordination is configured and unavailable at startup, the
      server should fail closed.
    - For restore drills that do not need coordination, use
@@ -164,7 +188,7 @@ main `/v1` routes publicly without a reviewed deployment boundary.
      operational failure, not as evidence loss, because durable state belongs in
      PostgreSQL and committed blob storage.
 
-7. Keep restored environments private.
+8. Keep restored environments private.
    - Do not broaden `/v1` public routing during validation.
    - Do not use restore drills to claim production readiness.
    - Tear down or lock down restored copies according to the deployment's
