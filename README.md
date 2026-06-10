@@ -138,11 +138,12 @@ escrow.
 - `Idempotency-Key` support for equivalent complete chunk upload retries
 - Optional Valkey/Redis-compatible short-lived complete-upload leases and
   `upload_in_progress` retry hints when coordination is explicitly configured
-- Separate `cmd/stream-ingress` regional relay skeleton with only
-  token-neutral liveness/readiness routes and no upload or fanout behavior,
-  plus main-API issuance of configured short-lived relay upload capabilities
-  for authorized open streams and service-authenticated core relay
-  preflight/commit endpoints
+- Separate `cmd/stream-ingress` regional relay with token-neutral
+  liveness/readiness routes, configured complete encrypted chunk upload,
+  temporary local ciphertext staging, hash validation, and forwarding to
+  service-authenticated core relay preflight/commit endpoints, plus main-API
+  issuance of configured short-lived relay upload capabilities for authorized
+  open streams
 - Authenticated duplicate chunk reconciliation for comparing accepted metadata with
   an expected chunk fingerprint
 - Optional incident-mode, capture-profile, escalation-policy, and sharing-state
@@ -194,8 +195,8 @@ escrow.
   model beyond the current concrete media stream upload lanes
 - No implemented resumable or partial upload protocol; current Valkey upload
   leases are short-lived complete-upload hints, not durable evidence truth
-- No implemented regional relay upload listener, encrypted relay staging,
-  optimistic fanout, metrics endpoint, relay forwarding runtime, or production
+- No implemented regional relay optimistic fanout, metrics endpoint,
+  production relay deployment automation, relay Valkey counters, or production
   service-identity rotation beyond the early static relay-to-core token
 - No implemented live or partial stream chunk access before stream completion
 - No backend/browser decryption, raw key handling, server escrow, break-glass
@@ -416,10 +417,10 @@ Please see [SECURITY.md](SECURITY.md) for supported versions and vulnerability r
 - Continue hardening optional PostgreSQL metadata support while preserving SQLite local/default support
 - Complete the remaining cluster-safe upload operation semantics before multi-node production deployment
 - Keep cluster backup, restore, and failure runbooks current as optional PostgreSQL, S3-compatible storage, and coordination behavior evolve
-- Keep the regional stream-ingress relay beyond its current health/readiness
-  skeleton and backend-issued upload capabilities upload-only, temporary,
+- Keep the regional stream-ingress relay upload-only, temporary,
   ciphertext-only, and subordinate to the core API for authorization,
-  idempotency, durable blob commits, and metadata
+  idempotency, durable blob commits, and metadata as fanout, metrics,
+  production service identity, and deployment hardening are added later
 - WireGuard-only bind/firewall deployment guidance
 - Mode-driven access, escalation, retention, sharing, viewer, and key-custody
   behavior after protocol and security design

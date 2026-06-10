@@ -2,18 +2,25 @@
 
 ## Unreleased
 
+- Added the first regional stream-ingress encrypted upload route, with
+  metadata-before-file core preflight, relay-local temporary ciphertext
+  staging, SHA-256 verification, per-session/per-client in-flight limits,
+  forwarding to the service-authenticated core commit endpoint, cleanup tests
+  for success and failure paths, and docs preserving the boundary that fanout,
+  metrics, production deployment automation, notifications, and key-custody
+  changes remain unimplemented.
+
 - Added service-authenticated core regional relay preflight and durable commit
   endpoints, with relay-to-core token config, capability validation, stream and
   quota checks, ciphertext hash/envelope validation on commit, route-limit
-  coverage, redaction tests, and docs preserving the boundary that the relay
-  listener upload edge, staging, fanout, metrics, and deployment automation
-  remain unimplemented.
+  coverage, redaction tests, and docs preserving the boundary that relay
+  fanout, metrics, and deployment automation remain separately scoped.
 
 - Added backend-issued regional relay session capabilities for authorized open
   media streams, with HMAC-signed upload-role tokens, explicit expiry, bounded
   chunk limits, stream binding, route-limit coverage, config validation, tests,
-  and docs confirming that relay listener upload, staging, fanout, metrics, and
-  deployment automation remain separately scoped.
+  and docs confirming that relay fanout, metrics, and deployment automation
+  remain separately scoped.
 
 - Added a separate `cmd/stream-ingress` regional relay skeleton with private
   bind/readiness config, token-neutral health/readiness routes only, route

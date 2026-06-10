@@ -1,13 +1,15 @@
 # Regional Stream Ingress Relay Design
 
-This document defines a future optional regional stream-ingress relay for
-complete encrypted chunk uploads. The current implementation has a separate
-`cmd/stream-ingress` service skeleton with token-neutral liveness/readiness
-routes and a core API route that can issue short-lived signed relay upload
-capabilities for authorized open streams, plus service-authenticated core
-preflight and commit endpoints for future relay-to-core calls. Relay listener
-upload handling, relay-local encrypted staging, optimistic fanout, metrics,
-deployment automation, relay storage backends, decryption, key custody,
+This document defines an optional regional stream-ingress relay for complete
+encrypted chunk uploads. The current implementation has a separate
+`cmd/stream-ingress` service with token-neutral liveness/readiness routes, a
+core API route that can issue short-lived signed relay upload capabilities for
+authorized open streams, service-authenticated core preflight and commit
+endpoints for relay-to-core calls, and a configured complete-chunk upload route
+that performs metadata-before-file core preflight, temporary relay-local
+ciphertext staging, SHA-256 validation, and core commit forwarding. Optimistic
+fanout, metrics, deployment automation, relay Valkey counters, production
+service-identity rotation, durable relay storage, decryption, key custody,
 web-client code, mobile-client code, protocol code, and public production
 readiness remain unimplemented.
 
@@ -50,28 +52,31 @@ separable from broader cluster work:
   in-progress leases
 - main API and public viewer rate limiting
 - main API/viewer and private `/admin` listener separation
-- a separate `cmd/stream-ingress` skeleton that can be run and tested without
+- a separate `cmd/stream-ingress` command that can be run and tested without
   changing main API behavior
 - backend-issued relay upload capabilities for authorized open media streams,
   disabled until a relay capability secret is configured
 - service-authenticated core relay preflight and durable commit endpoints,
   disabled until a relay service auth token and relay capability secret are
   configured
+- a configured `cmd/stream-ingress` complete-chunk upload route that stages
+  ciphertext temporarily, validates the ciphertext hash, and forwards exact
+  encrypted bytes to the core commit endpoint
 
 Those features do not make `/v1` production-ready public infrastructure. The
-relay skeleton exposes only `/health/live` and `/health/ready`; it does not
-implement an upload edge and is not a reason to expose the whole main API or
-private admin surfaces.
+relay exposes only `/health/live`, `/health/ready`, and
+`POST /upload/complete-chunk`; it is not a reason to expose the whole main API
+or private admin surfaces.
 
 Parent epic #202 is split into child implementation issues. Issue #289 added
 only the service boundary, config surface, route-surface tests, and
-implemented-versus-planned documentation. Issue #290 adds only backend-issued
-relay upload capabilities for authorized open streams. Issue #291 adds only
-the narrow service-authenticated core relay preflight/commit routes. Later
-slices are expected to add, in order, relay upload staging and forwarding,
-relay abuse controls, optional Valkey/Redis-compatible counters, production
-service-identity rotation guidance, deployment docs, and any explicitly scoped
-smoke validation.
+implemented-versus-planned documentation. Issue #290 added only backend-issued
+relay upload capabilities for authorized open streams. Issue #291 added only
+the narrow service-authenticated core relay preflight/commit routes. Issue
+#292 adds only relay encrypted upload staging and core forwarding. Later slices
+are expected to add, in order, optimistic near-live encrypted fanout, backend
+confirmation/rejection propagation, operational guardrails, and final relay
+docs/validation alignment.
 
 Future stream variant and supersession behavior is documented in
 [capture-stream-variants.md](capture-stream-variants.md). The relay may use
@@ -98,9 +103,9 @@ for backend confirmation and evidence preservation.
 
 ## Non-Goals
 
-- No relay listener upload, encrypted staging, relay forwarding, fanout,
-  metrics, deployment automation, or production service-identity rotation in
-  the current core API slices.
+- No optimistic fanout, metrics, deployment automation, relay Valkey counters,
+  production service-identity rotation, notifications, or viewer confirmation
+  propagation in the current relay upload slice.
 - No public exposure of the full current `/v1` control plane.
 - No admin routes on the ingress service.
 - No broad API gateway behavior.
@@ -123,17 +128,18 @@ The relay boundary is a separate `cmd/stream-ingress` command, not a new route
 tree mounted into the existing main API/viewer listener or private-admin
 listener.
 
-The current skeleton exposes only:
+The current relay command exposes only:
 
 - `GET /health/live`
 - `GET /health/ready`
+- `POST /upload/complete-chunk`
 
-The readiness response reports coarse skeleton state and whether optional relay
+The readiness response reports coarse relay state and whether optional relay
 identity and region labels are configured. It does not return the configured
 label values, private bind address, service credentials, upstream endpoints,
 paths, object keys, tokens, user safety data, or upload state.
 
-Future upload slices may expose only:
+Future upload slices may continue to expose only:
 
 - a narrow complete-chunk upload route family
 - token-neutral liveness/readiness routes that reveal only coarse relay status
@@ -239,10 +245,11 @@ bytes, plaintext, raw keys, wrapped-key ciphertext, or private deployment
 details.
 
 These core routes preserve the existing direct authenticated chunk upload
-route. They do not implement a relay upload listener, relay-local staging,
-relay forwarding runtime, optimistic fanout, relay metrics, notifications,
+route. They do not implement optimistic fanout, relay metrics, notifications,
 trusted-contact behavior, public admin behavior, backend decryption, raw key
-custody, or key escrow.
+custody, or key escrow. The separate `cmd/stream-ingress` command implements
+the relay upload listener, relay-local temporary staging, and relay forwarding
+runtime.
 
 ## Core API Boundary
 
@@ -263,9 +270,54 @@ The relay should treat the core preflight as a cheap hint that lets it decide
 whether to accept a large body. It must still treat the final core commit
 response as authoritative.
 
+## Relay Complete-Chunk Upload Route
+
+The current relay upload route is:
+
+```http
+POST /upload/complete-chunk
+```
+
+It accepts `multipart/form-data`. Metadata fields must be sent before the
+`file` part so the relay can call core preflight before accepting large
+ciphertext bodies where practical. Required metadata fields match the core
+preflight/commit shape:
+
+- `relay_session_id`
+- `capability`
+- `incident_id`
+- `stream_id`
+- `chunk_index`
+- `media_type`
+- `started_at`
+- `ended_at`
+- `byte_size`
+- `sha256_hex`
+- optional `original_filename`
+
+The relay parses and bounds metadata fields, enforces positive `chunk_index`
+and `byte_size`, rejects unsupported media types, rejects declared bytes above
+`SAFE_STREAM_INGRESS_MAX_UPLOAD_BYTES`, and sends the metadata to
+`POST /v1/relay/preflight` with `X-Proofline-Relay-Service-Token`. Core
+preflight remains authoritative for capability signature, expiry, role,
+incident/stream binding, incident state, stream state, duplicate identity,
+quota, and core upload policy.
+
+After successful preflight, the relay stages only the encrypted `file` part
+under its local temp directory while computing SHA-256. It rejects byte-size or
+hash mismatches before forwarding. On success, it forwards the exact encrypted
+bytes and metadata to `POST /v1/relay/commit`; a relay upload is successful
+only after the core commit route returns committed or equivalent success.
+
+Relay responses are intentionally small and safe. Core rejection responses are
+mapped to relay errors with a controlled `core_error_code` when available. The
+relay must not return or log raw capabilities, service tokens, request bodies,
+uploaded bytes, temp paths, stored paths, object keys, plaintext, raw keys,
+wrapped-key ciphertext, private deployment details, or user safety data.
+
 ## Upload Flow
 
-A future complete-chunk relay flow should be:
+The current complete-chunk relay flow is:
 
 1. Classify the request by route class before authentication and before
    reading a large body.
@@ -274,17 +326,19 @@ A future complete-chunk relay flow should be:
 3. Parse only cheap metadata needed for preflight, such as incident ID, stream
    ID, chunk index, media type, declared byte size if provided, declared
    `sha256_hex`, and idempotency-key presence.
-4. Call the core API preflight over authenticated service-to-service HTTPS.
+4. Call the core API preflight over authenticated service-to-service HTTP(S).
 5. If preflight denies the upload, return a small safe error without accepting
    the large body.
-6. If preflight allows staging, enforce body size, concurrent upload,
-   per-client in-flight, and temp disk pressure limits.
+6. If preflight allows staging, enforce body size, per-session/per-client
+   in-flight limits, duplicate in-flight chunk identity limits, and temp disk
+   pressure limits.
 7. Stream the uploaded ciphertext to local temporary storage while computing
    SHA-256.
 8. Compare the computed ciphertext hash with declared `sha256_hex`.
 9. On hash mismatch, delete local staging where safe and return a safe failure
    without forwarding bytes to the core API.
-10. Forward the complete encrypted chunk and upload metadata to the core API.
+10. Forward the complete encrypted chunk and upload metadata to the core API
+    commit route.
 11. Return success only after the core API confirms committed or equivalent
     success with `201` or `200`.
 12. Delete local temporary staging after success or failure where safe.
@@ -301,7 +355,7 @@ only after the core API commits the encrypted bytes and metadata.
 
 ## Preflight And Abuse Controls
 
-The relay needs layered controls because it cannot fully know whether an upload
+The relay uses layered controls because it cannot fully know whether an upload
 credential is valid without asking the core API.
 
 Required layers:
@@ -314,9 +368,14 @@ Required layers:
 4. Backend-denial feedback counters when the core returns `401`, `403`, or
    `429`.
 5. No punishment of clients for core `5xx` or infrastructure timeouts.
-6. Optional Valkey/Redis-compatible counters for multi-node relay
+6. Optional future Valkey/Redis-compatible counters for multi-node relay
    deployments.
 7. Local in-memory counters for single-node and development deployments.
+
+The current relay slice implements local in-memory per-session, per-client,
+and duplicate chunk in-flight limits. Backend-denial feedback counters,
+anonymous denial throttling, and Valkey/Redis-compatible relay counters remain
+future slices.
 
 Denial feedback counters should be short-lived. They may help slow repeated
 invalid credentials, repeated denied users, or repeated core rate-limit
@@ -383,13 +442,13 @@ that service identity.
 
 ## Failure Behavior
 
-Expected relay behavior:
+Current relay behavior:
 
 | Condition | Relay behavior |
 |---|---|
 | Core `201` or `200` | Return committed or equivalent success to the client. |
-| Core `401` or `403` | Return a safe denied response and increment short-lived denial counters. |
-| Core `429` | Honor the core limit, mirror `Retry-After` where safe, and increment rate-denial counters. |
+| Core `401` or `403` | Return a safe denied response; denial counters remain future hardening work. |
+| Core `429` | Return a safe rate-limit response; `Retry-After` mirroring and rate-denial counters remain future hardening work. |
 | Core `5xx` | Return a retryable safe error without poisoning denial counters. |
 | Core timeout or network loss | Return a retryable safe error without poisoning denial counters. |
 | Hash mismatch | Delete local staging where safe and return a safe failure without forwarding bytes. |
@@ -400,6 +459,10 @@ Core `5xx`, DNS failure, TLS failure, upstream timeout, and relay-to-core
 network loss should not be interpreted as evidence that the client credential
 is invalid.
 
+The current relay slice returns safe retryable errors for core timeout,
+network, and `5xx` failures. Denial counters and `Retry-After` mirroring remain
+future hardening work.
+
 Relay failure must not cause the core system to discard already confirmed
 reduced-quality or audio-priority chunks. If a full-quality evidence-master
 variant never arrives, backend-confirmed lower-quality chunks remain preserved
@@ -407,7 +470,9 @@ evidence under the capture stream variant model.
 
 ## Temporary Staging
 
-Ingress staging is for in-flight encrypted bytes only.
+Ingress staging is for in-flight encrypted bytes only. The current relay stores
+only temporary `upload-*` files under `SAFE_STREAM_INGRESS_DATA_DIR` while an
+upload is being validated and forwarded.
 
 The relay should:
 
@@ -419,6 +484,11 @@ The relay should:
 - clean request-local temp files after success, denial after body read, hash
   mismatch, relay-to-core failure, or client disconnect where safe
 - run conservative age-based cleanup for old relay-local temp files
+
+The current slice cleans request-local temp files after success, hash mismatch,
+core rejection, upstream timeout, relay-to-core failure, invalid metadata after
+body read, and client upload rejection. Background age-based cleanup remains
+future work.
 
 The relay must not:
 
@@ -477,18 +547,16 @@ Split implementation into small issues:
 
 1. Add a `cmd/stream-ingress` skeleton with no upload behavior yet. Completed
    by #289.
-2. Add narrow core service-authenticated preflight and commit endpoints.
+2. Add backend-issued regional relay session capabilities. Completed by #290.
+3. Add narrow core service-authenticated preflight and commit endpoints.
    Completed by #291.
-3. Implement relay complete-chunk upload staging, hash verification, and core
-   forwarding.
-4. Add relay anonymous pre-body limits, body/staging limits, and denial
-   feedback counters.
-5. Add relay Valkey/Redis-compatible counter support while preserving local
-   in-memory counters.
-6. Select and implement ingress-to-core service identity and rotation guidance.
-7. Add relay deployment documentation and safe reverse-proxy examples.
-8. Add local smoke or Compose-based relay validation only if explicitly scoped
-   for development/testing.
+4. Implement relay complete-chunk upload staging, hash verification, and core
+   forwarding. Completed by #292.
+5. Add optimistic near-live encrypted relay fanout. Planned for #293.
+6. Add backend confirmation/rejection propagation. Planned for #294.
+7. Add operational guardrails for limits, temp pressure, readiness, and safe
+   aggregate status. Planned for #295.
+8. Run final relay docs and validation alignment. Planned for #296.
 
 Expected implementation tests:
 
@@ -505,13 +573,14 @@ Expected implementation tests:
 - local in-memory limiter works for single-node/dev
 - core-confirmed success is required before relay success
 
-## Validation For The Current Core Slice
+## Validation For The Current Relay Upload Slice
 
-The #291 core preflight/commit slice changes Go and Markdown. Validation is:
+The #292 relay upload slice changes Go and Markdown. Validation is:
 
-- route tests for service auth success/failure, relay capability validation,
-  preflight acceptance/rejection, durable commit acceptance/rejection, hash
-  mismatch, redaction, and preservation of direct authenticated upload
+- stream-ingress tests for config parsing, route surface, valid encrypted
+  upload forwarding, core preflight rejection, hash mismatch, core commit
+  rejection, temp staging pressure, upstream timeout cleanup, duplicate
+  in-flight chunk rejection, and redaction
 - `gofmt -w ./cmd ./internal ./migrations`
 - `go test ./...`
 - `go vet ./...`

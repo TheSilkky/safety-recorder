@@ -1909,11 +1909,13 @@ issue implements the safe coarse-code boundary documented in
 
 The current API can issue short-lived regional relay upload capabilities for
 authorized open streams and exposes narrow service-authenticated core relay
-preflight/commit routes. It does not implement regional stream-ingress upload
-listener routes, relay-local encrypted staging, relay forwarding runtime,
-optimistic fanout, or relay metrics. A separate `cmd/stream-ingress` skeleton
-exposes only `/health/live` and `/health/ready`; the future relay upload design
-is documented in [regional-stream-ingress-relay.md](regional-stream-ingress-relay.md).
+preflight/commit routes. The separate `cmd/stream-ingress` relay can accept
+configured complete encrypted chunk uploads at `POST /upload/complete-chunk`,
+stage ciphertext temporarily, verify the declared SHA-256, and forward exact
+bytes to these core routes. It does not implement optimistic fanout, relay
+metrics, production service-identity rotation, or deployment automation. The
+relay upload design is documented in
+[regional-stream-ingress-relay.md](regional-stream-ingress-relay.md).
 Any relay implementation must keep the core API authoritative for
 authorization, idempotency, final blob commits, and metadata, and must not
 expose the full `/v1` control plane or admin routes through the relay.
@@ -1921,7 +1923,8 @@ expose the full `/v1` control plane or admin routes through the relay.
 ### `POST /v1/relay/preflight`
 
 Service-authenticated relay-to-core preflight route for cheap complete-chunk
-metadata checks before a future relay upload listener accepts a large body.
+metadata checks before the stream-ingress relay accepts a large body where
+practical.
 This route is mounted on the main API mux, not on the public incident viewer,
 not on the private-admin listener, and not on `cmd/stream-ingress`.
 

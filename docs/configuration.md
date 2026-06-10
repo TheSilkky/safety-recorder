@@ -293,7 +293,8 @@ cannot silently become the private-admin listener.
 The main API can issue short-lived signed regional relay upload capabilities
 for authorized open streams. Issuance is disabled by default and returns
 `503 relay_capability_not_configured` until a capability secret is configured.
-This config belongs to the core API, not the `cmd/stream-ingress` skeleton.
+This config belongs to the core API, not the separate `cmd/stream-ingress`
+relay command.
 
 | TOML key | Environment variable | Default | Notes |
 |---|---|---|---|
@@ -336,22 +337,29 @@ capability for the requested incident and stream.
 Treat the relay service token as a deployment secret. Do not log it, place it
 in URLs, use it as a limiter key or metrics label, copy it into public issues
 or PRs, or share it with clients. The early static token does not add relay
-upload listener behavior, relay-local staging, fanout, metrics, admin access,
-key access, or broad `/v1` access.
+fanout, metrics, admin access, key access, or broad `/v1` access.
 
-The separate `cmd/stream-ingress` skeleton has its own small environment and
-flag surface. It does not use the main API TOML config file yet, and it does
-not add upload, relay-local staging, relay forwarding, fanout, metrics,
-storage, or coordination settings.
+The separate `cmd/stream-ingress` command has its own small environment and
+flag surface. It does not use the main API TOML config file yet. Its upload
+route is configured separately from the core API and remains upload-only.
 
 | Stream-ingress variable | Default | Equivalent flag | Notes |
 |---|---|---|---|
-| `SAFE_STREAM_INGRESS_BIND_ADDR` | `127.0.0.1:8090` | `--bind` | Private bind address for the skeleton health/readiness listener. Keep it on loopback, LAN, WireGuard, firewall, or a private reverse proxy unless a later deployment issue explicitly reviews exposure. |
-| `SAFE_STREAM_INGRESS_RELAY_ID` | unset | `--relay-id` | Optional relay identity label for future service identity planning. The skeleton records only whether it is configured and must not expose the label value in readiness output or logs. |
-| `SAFE_STREAM_INGRESS_REGION` | unset | `--region` | Optional coarse region label for future relay planning. The skeleton records only whether it is configured and must not expose the label value in readiness output or logs. |
-| `SAFE_STREAM_INGRESS_READY` | `false` | `--ready` | Controls whether `GET /health/ready` returns `200 ready` or `503 not_ready`. This readiness flag is only a skeleton smoke signal and does not mean relay upload, fanout, or production readiness exists. |
+| `SAFE_STREAM_INGRESS_BIND_ADDR` | `127.0.0.1:8090` | `--bind` | Private bind address for the relay health/readiness and complete-chunk upload listener. Keep it on loopback, LAN, WireGuard, firewall, or a private reverse proxy unless a later deployment issue explicitly reviews exposure. |
+| `SAFE_STREAM_INGRESS_RELAY_ID` | unset | `--relay-id` | Optional relay identity label for future service identity planning. The relay records only whether it is configured and must not expose the label value in readiness output or logs. |
+| `SAFE_STREAM_INGRESS_REGION` | unset | `--region` | Optional coarse region label for future relay planning. The relay records only whether it is configured and must not expose the label value in readiness output or logs. |
+| `SAFE_STREAM_INGRESS_READY` | `false` | `--ready` | Controls whether `GET /health/ready` returns `200 ready` or `503 not_ready`. This readiness flag is only a smoke signal and does not mean fanout, metrics, production deployment hardening, or broad public readiness exists. |
+| `SAFE_STREAM_INGRESS_CORE_BASE_URL` | unset | `--core-url` | Core API base URL used for `/v1/relay/preflight` and `/v1/relay/commit`. Uploads return `503 relay_core_not_configured` until this and the service token are configured. |
+| `SAFE_STREAM_INGRESS_CORE_SERVICE_AUTH_TOKEN` | unset | none | Static relay-to-core service token sent as `X-Proofline-Relay-Service-Token`. Must be at least 32 bytes when set. Prefer the `_FILE` form for deployments. |
+| `SAFE_STREAM_INGRESS_CORE_SERVICE_AUTH_TOKEN_FILE` | unset | none | File-backed relay-to-core service token. Overrides the direct token. Treat the path and contents as private deployment details. |
+| `SAFE_STREAM_INGRESS_DATA_DIR` | `./data/stream-ingress` | `--data-dir` | Relay-local temp staging root. Staged files are temporary encrypted bytes only and are cleaned after request success or failure where safe. |
+| `SAFE_STREAM_INGRESS_MAX_UPLOAD_BYTES` | `250MB` | `--max-upload-bytes` | Maximum complete encrypted file bytes accepted by the relay before forwarding. Supports byte counts and `K`/`KB`, `M`/`MB`, `G`/`GB` suffixes. |
+| `SAFE_STREAM_INGRESS_TEMP_STAGING_QUOTA_BYTES` | `1GB` | `--temp-staging-quota-bytes` | Maximum relay-local temporary staging bytes under the relay data directory. Exhaustion returns `507 relay_temp_staging_quota_exceeded`. |
+| `SAFE_STREAM_INGRESS_CORE_REQUEST_TIMEOUT` | `30s` | `--core-request-timeout` | Timeout for relay-to-core preflight and commit requests. Core timeouts return safe retryable relay errors. |
+| `SAFE_STREAM_INGRESS_MAX_IN_FLIGHT_PER_SESSION` | `2` | `--max-in-flight-per-session` | Local in-memory in-flight upload limit per relay session. |
+| `SAFE_STREAM_INGRESS_MAX_IN_FLIGHT_PER_CLIENT` | `4` | `--max-in-flight-per-client` | Local in-memory in-flight upload limit per hashed socket client identity. |
 
-Run the skeleton locally with explicit readiness for a private smoke check:
+Run the relay locally with explicit readiness for a private smoke check:
 
 ```bash
 SAFE_STREAM_INGRESS_READY=true go run ./cmd/stream-ingress
@@ -359,8 +367,8 @@ SAFE_STREAM_INGRESS_READY=true go run ./cmd/stream-ingress
 
 Any later relay settings should continue to use a distinct namespace, keep the
 relay upload-only, and avoid logging service credentials, token fingerprints,
-staging paths, object keys, private endpoints, or other private deployment
-details.
+raw capabilities, request bodies, uploaded bytes, staging paths, object keys,
+private endpoints, or other private deployment details.
 
 ## Backend Selection Scaffold
 
