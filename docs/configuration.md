@@ -237,7 +237,7 @@ values for the same field. Within TOML, set either the direct secret key or the
 | `SAFE_MAIN_API_RATE_LIMIT_WINDOW` | `1m` | Fixed-window duration for app-level main API limits. |
 | `SAFE_MAIN_API_RATE_LIMIT_AUTH` | `30` | Main API bearer login/logout and browser cookie login/logout/CSRF requests allowed per window per hashed socket peer. Set to `0` to disable this route-class limit. |
 | `SAFE_MAIN_API_RATE_LIMIT_AUTH_REGISTER` | `10` | Public registration requests allowed per window per hashed socket peer. Set to `0` to disable this route-class limit. |
-| `SAFE_MAIN_API_RATE_LIMIT_AUTH_EMAIL_VERIFY` | `30` | Registration email verification and email second-factor challenge/verify requests allowed per window per hashed socket peer. Set to `0` to disable this route-class limit. |
+| `SAFE_MAIN_API_RATE_LIMIT_AUTH_EMAIL_VERIFY` | `30` | Registration email verification, email second-factor challenge/verify, and TOTP enroll/confirm/verify requests allowed per window per hashed socket peer. Set to `0` to disable this route-class limit. |
 | `SAFE_MAIN_API_RATE_LIMIT_BOOTSTRAP` | `5` | Compatibility setting for the legacy JSON bootstrap route class. The current first-admin bootstrap flow is the private `/admin/bootstrap` form. |
 | `SAFE_MAIN_API_RATE_LIMIT_ACCOUNT` | `120` | Account self-service, owner account/device recipient-key metadata, trusted-contact relationship metadata, and owner contact public-key metadata requests allowed per window per hashed socket peer. Set to `0` to disable this route-class limit. |
 | `SAFE_MAIN_API_RATE_LIMIT_INCIDENT_READ` | `300` | Incident metadata, sharing-grant metadata, and wrapped-key metadata read requests allowed per window per hashed socket peer. Set to `0` to disable this route-class limit. |
@@ -661,11 +661,14 @@ created with `second_factor_setup_state=setup_required`; existing migrated
 accounts default to `not_required` for preview compatibility. Password login
 and browser-cookie login can create a primary-authenticated session for an
 active setup-incomplete account, but main product routes fail closed until
-email second-factor setup verifies a single-use challenge code and marks the
+email challenge or TOTP second-factor setup verifies the account and marks the
 account `complete`. Email challenge uses the configured SMTP sender, stores
 only challenge-code hashes, and remains distinct from registration email
-verification. There is no `SAFE_*` setting in this foundation to choose TOTP,
-WebAuthn, passkeys, recovery codes, or lost-factor behavior.
+verification. TOTP setup uses fixed six-digit SHA-1 codes with 30-second time
+steps and one adjacent step of clock skew on either side; active TOTP factors
+require each new session to verify TOTP before product-route access. There is
+no `SAFE_*` setting in this foundation to choose WebAuthn, passkeys, recovery
+codes, or lost-factor behavior.
 
 `SAFE_ACCOUNT_REGISTRATION_MODE=paid` is accepted only as a future
 hosted-service placeholder. `POST /v1/auth/register` returns

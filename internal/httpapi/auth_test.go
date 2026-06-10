@@ -672,6 +672,236 @@ func TestEmailSecondFactorChallengeLogsAndResponsesDoNotExposeSecrets(t *testing
 	}
 }
 
+func TestTOTPSecondFactorSetupBearerSessionEnrollsAndUnlocksProductRoutes(t *testing.T) {
+	app := newTestApp(t)
+	createAccountForStateTest(t, app, "totp-setup-user", "state-password")
+	token, _ := loginWithAccountForTest(t, app, "totp-setup-user", "state-password")
+
+	response, body := requestWithAuth(t, app.privateHandler, http.MethodGet, "/v1/incidents", "", nil, token)
+	response.Body.Close()
+	if response.StatusCode != http.StatusForbidden {
+		t.Fatalf("pre-TOTP product route status = %d, want 403: %s", response.StatusCode, body)
+	}
+	assertErrorCode(t, body, "second_factor_setup_required")
+
+	enrollment := startTOTPEnrollmentForTest(t, app, token)
+	if enrollment.Secret == "" || !strings.Contains(enrollment.OTPAuthURL, "otpauth://totp/") {
+		t.Fatalf("unexpected TOTP enrollment material: secret_present=%t otpauth_present=%t", enrollment.Secret != "", strings.Contains(enrollment.OTPAuthURL, "otpauth://totp/"))
+	}
+	if enrollment.PeriodSeconds != auth.TOTPDefaultPeriodSeconds || enrollment.Digits != auth.TOTPDefaultDigits || enrollment.Algorithm != auth.TOTPAlgorithmSHA1 {
+		t.Fatalf("unexpected TOTP policy: period=%d digits=%d algorithm=%q", enrollment.PeriodSeconds, enrollment.Digits, enrollment.Algorithm)
+	}
+
+	code, err := auth.GenerateTOTPCodeForTest(enrollment.Secret, time.Now().UTC())
+	if err != nil {
+		t.Fatalf("generate TOTP setup code: %v", err)
+	}
+	response, body = requestWithAuth(t, app.privateHandler, http.MethodPost, "/v1/account/second-factor/totp/confirm", "application/json", bytes.NewBufferString(`{"code":"`+code+`"}`), token)
+	response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("TOTP confirm status = %d, want 200", response.StatusCode)
+	}
+	for _, disallowed := range []string{enrollment.Secret, code, token, "state-password"} {
+		if bytes.Contains(body, []byte(disallowed)) {
+			t.Fatal("TOTP confirm response exposed sensitive material")
+		}
+	}
+	var confirmResult struct {
+		Account struct {
+			SecondFactorSetup string `json:"second_factor_setup_state"`
+		} `json:"account"`
+		Session struct {
+			SecondFactorMethod string `json:"second_factor_method"`
+		} `json:"session"`
+	}
+	if err := json.Unmarshal(body, &confirmResult); err != nil {
+		t.Fatalf("decode TOTP confirm response: %v", err)
+	}
+	if confirmResult.Account.SecondFactorSetup != auth.SecondFactorSetupStateComplete || confirmResult.Session.SecondFactorMethod != auth.SecondFactorTypeTOTP {
+		t.Fatalf("unexpected TOTP confirm response: %+v", confirmResult)
+	}
+
+	response, body = requestWithAuth(t, app.privateHandler, http.MethodPost, "/v1/incidents", "application/json", bytes.NewBufferString(`{}`), token)
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusCreated {
+		t.Fatalf("post-TOTP product route status = %d, want 201: %s", response.StatusCode, body)
+	}
+}
+
+func TestTOTPActiveFactorRequiresSessionChallengeAfterLogin(t *testing.T) {
+	app := newTestApp(t)
+	createAccountForStateTest(t, app, "totp-login-user", "state-password")
+	setupToken, _ := loginWithAccountForTest(t, app, "totp-login-user", "state-password")
+	enrollment := startTOTPEnrollmentForTest(t, app, setupToken)
+	confirmTOTPEnrollmentForTest(t, app, setupToken, enrollment.Secret, time.Now().UTC())
+
+	loginResponse, body := postUnauthenticated(t, app, "/v1/auth/login", "application/json", bytes.NewBufferString(`{"username":"totp-login-user","password":"state-password"}`))
+	loginResponse.Body.Close()
+	if loginResponse.StatusCode != http.StatusCreated {
+		t.Fatalf("TOTP active login status = %d, want 201: %s", loginResponse.StatusCode, body)
+	}
+	var loginResult struct {
+		Token                            string `json:"token"`
+		SecondFactorVerificationRequired bool   `json:"second_factor_verification_required"`
+	}
+	if err := json.Unmarshal(body, &loginResult); err != nil {
+		t.Fatalf("decode TOTP active login response: %v", err)
+	}
+	if loginResult.Token == "" || !loginResult.SecondFactorVerificationRequired {
+		t.Fatalf("login did not report required TOTP verification: token_present=%t required=%t", loginResult.Token != "", loginResult.SecondFactorVerificationRequired)
+	}
+
+	response, body := requestWithAuth(t, app.privateHandler, http.MethodPost, "/v1/incidents", "application/json", bytes.NewBufferString(`{}`), loginResult.Token)
+	response.Body.Close()
+	if response.StatusCode != http.StatusForbidden {
+		t.Fatalf("primary-only product route status = %d, want 403: %s", response.StatusCode, body)
+	}
+	assertErrorCode(t, body, "second_factor_verification_required")
+
+	response, body = requestWithAuth(t, app.privateHandler, http.MethodPost, "/v1/account/second-factor/email/challenge", "application/json", bytes.NewBufferString(`{"email":"bypass@example.invalid"}`), loginResult.Token)
+	response.Body.Close()
+	if response.StatusCode != http.StatusForbidden {
+		t.Fatalf("primary-only email setup status = %d, want 403: %s", response.StatusCode, body)
+	}
+	assertErrorCode(t, body, "second_factor_verification_required")
+
+	codeTime := time.Now().UTC().Add(time.Duration(auth.TOTPDefaultPeriodSeconds) * time.Second)
+	code, err := auth.GenerateTOTPCodeForTest(enrollment.Secret, codeTime)
+	if err != nil {
+		t.Fatalf("generate TOTP login code: %v", err)
+	}
+	response, body = requestWithAuth(t, app.privateHandler, http.MethodPost, "/v1/account/second-factor/totp/verify", "application/json", bytes.NewBufferString(`{"code":"`+code+`"}`), loginResult.Token)
+	response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("TOTP session verify status = %d, want 200", response.StatusCode)
+	}
+
+	response, body = requestWithAuth(t, app.privateHandler, http.MethodPost, "/v1/incidents", "application/json", bytes.NewBufferString(`{}`), loginResult.Token)
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusCreated {
+		t.Fatalf("verified TOTP session product route status = %d, want 201: %s", response.StatusCode, body)
+	}
+}
+
+func TestTOTPActiveFactorRequiresBrowserCookieSessionChallenge(t *testing.T) {
+	options := webAuthTestOptions(true, nil)
+	app := newTestAppWithOptions(t, options)
+	createAccountForStateTest(t, app, "totp-web-user", "state-password")
+	setupToken, _ := loginWithAccountForTest(t, app, "totp-web-user", "state-password")
+	enrollment := startTOTPEnrollmentForTest(t, app, setupToken)
+	confirmTOTPEnrollmentForTest(t, app, setupToken, enrollment.Secret, time.Now().UTC())
+
+	cookie, webLoginResult := webLoginForTest(t, app, "totp-web-user", "state-password")
+	if required, ok := webLoginResult["second_factor_verification_required"].(bool); !ok || !required {
+		t.Fatalf("web login did not report required TOTP verification: %+v", webLoginResult)
+	}
+	csrfToken := webCSRFTokenForTest(t, app, cookie)
+
+	response, body := requestWithCookieAndHeaders(t, app.privateHandler, http.MethodPost, "/v1/incidents", "application/json", bytes.NewBufferString(`{}`), cookie, map[string]string{
+		"X-CSRF-Token": csrfToken,
+	})
+	response.Body.Close()
+	if response.StatusCode != http.StatusForbidden {
+		t.Fatalf("primary-only cookie product route status = %d, want 403: %s", response.StatusCode, body)
+	}
+	assertErrorCode(t, body, "second_factor_verification_required")
+
+	codeTime := time.Now().UTC().Add(time.Duration(auth.TOTPDefaultPeriodSeconds) * time.Second)
+	code, err := auth.GenerateTOTPCodeForTest(enrollment.Secret, codeTime)
+	if err != nil {
+		t.Fatalf("generate TOTP cookie code: %v", err)
+	}
+	response, body = requestWithCookieAndHeaders(t, app.privateHandler, http.MethodPost, "/v1/account/second-factor/totp/verify", "application/json", bytes.NewBufferString(`{"code":"`+code+`"}`), cookie, map[string]string{
+		"X-CSRF-Token": csrfToken,
+	})
+	response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("TOTP cookie verify status = %d, want 200", response.StatusCode)
+	}
+
+	response, body = requestWithCookieAndHeaders(t, app.privateHandler, http.MethodPost, "/v1/incidents", "application/json", bytes.NewBufferString(`{}`), cookie, map[string]string{
+		"X-CSRF-Token": csrfToken,
+	})
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusCreated {
+		t.Fatalf("verified TOTP cookie product route status = %d, want 201: %s", response.StatusCode, body)
+	}
+}
+
+func TestTOTPRejectsInvalidReplayAndStaleEnrollmentCodes(t *testing.T) {
+	app := newTestApp(t)
+	createAccountForStateTest(t, app, "totp-replay-user", "state-password")
+	token, _ := loginWithAccountForTest(t, app, "totp-replay-user", "state-password")
+	staleEnrollment := startTOTPEnrollmentForTest(t, app, token)
+	currentEnrollment := startTOTPEnrollmentForTest(t, app, token)
+
+	staleCode, err := auth.GenerateTOTPCodeForTest(staleEnrollment.Secret, time.Now().UTC())
+	if err != nil {
+		t.Fatalf("generate stale TOTP setup code: %v", err)
+	}
+	response, body := requestWithAuth(t, app.privateHandler, http.MethodPost, "/v1/account/second-factor/totp/confirm", "application/json", bytes.NewBufferString(`{"code":"`+staleCode+`"}`), token)
+	response.Body.Close()
+	if response.StatusCode != http.StatusBadRequest {
+		t.Fatalf("stale TOTP setup status = %d, want 400", response.StatusCode)
+	}
+	assertErrorCode(t, body, "totp_challenge_invalid")
+
+	confirmTOTPEnrollmentForTest(t, app, token, currentEnrollment.Secret, time.Now().UTC())
+	loginToken, _ := loginWithAccountForTest(t, app, "totp-replay-user", "state-password")
+
+	response, body = requestWithAuth(t, app.privateHandler, http.MethodPost, "/v1/account/second-factor/totp/verify", "application/json", bytes.NewBufferString(`{"code":"123456"}`), loginToken)
+	response.Body.Close()
+	if response.StatusCode != http.StatusBadRequest {
+		t.Fatalf("invalid TOTP status = %d, want 400", response.StatusCode)
+	}
+	assertErrorCode(t, body, "totp_challenge_invalid")
+
+	codeTime := time.Now().UTC().Add(time.Duration(auth.TOTPDefaultPeriodSeconds) * time.Second)
+	code, err := auth.GenerateTOTPCodeForTest(currentEnrollment.Secret, codeTime)
+	if err != nil {
+		t.Fatalf("generate replay TOTP code: %v", err)
+	}
+	response, body = requestWithAuth(t, app.privateHandler, http.MethodPost, "/v1/account/second-factor/totp/verify", "application/json", bytes.NewBufferString(`{"code":"`+code+`"}`), loginToken)
+	response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("valid TOTP status = %d, want 200", response.StatusCode)
+	}
+	response, body = requestWithAuth(t, app.privateHandler, http.MethodPost, "/v1/account/second-factor/totp/verify", "application/json", bytes.NewBufferString(`{"code":"`+code+`"}`), loginToken)
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusBadRequest {
+		t.Fatalf("replayed TOTP status = %d, want 400", response.StatusCode)
+	}
+	assertErrorCode(t, body, "totp_challenge_invalid")
+}
+
+func TestTOTPLogsAndResponsesDoNotExposeSecretsAfterEnrollment(t *testing.T) {
+	var logs bytes.Buffer
+	app := newTestAppWithOptions(t, httpapi.Options{
+		Logger: slog.New(slog.NewTextHandler(&logs, nil)),
+	})
+	createAccountForStateTest(t, app, "totp-redact-user", "state-password")
+	token, _ := loginWithAccountForTest(t, app, "totp-redact-user", "state-password")
+	enrollment := startTOTPEnrollmentForTest(t, app, token)
+	code, err := auth.GenerateTOTPCodeForTest(enrollment.Secret, time.Now().UTC())
+	if err != nil {
+		t.Fatalf("generate redaction TOTP code: %v", err)
+	}
+
+	response, body := requestWithAuth(t, app.privateHandler, http.MethodPost, "/v1/account/second-factor/totp/confirm", "application/json", bytes.NewBufferString(`{"code":"`+code+`"}`), token)
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("redaction TOTP confirm status = %d, want 200", response.StatusCode)
+	}
+	for _, disallowed := range []string{enrollment.Secret, code, token, "state-password"} {
+		if bytes.Contains(body, []byte(disallowed)) {
+			t.Fatal("TOTP confirm response exposed sensitive material")
+		}
+		if strings.Contains(logs.String(), disallowed) {
+			t.Fatal("TOTP logs exposed sensitive material")
+		}
+	}
+}
+
 func TestBrowserLogoutRevokesSessionAndClearsCookie(t *testing.T) {
 	app := newTestAppWithOptions(t, webAuthTestOptions(true, nil))
 	cookie, _ := webLoginForTest(t, app, "test-admin", "test-password")
@@ -1405,6 +1635,47 @@ func secondFactorCodeFromEmail(t *testing.T, message email.Message) string {
 	}
 	t.Fatalf("second-factor email missing challenge code: %q", message.Body)
 	return ""
+}
+
+type totpEnrollmentTestResponse struct {
+	ID            string `json:"id"`
+	FactorType    string `json:"factor_type"`
+	State         string `json:"state"`
+	Secret        string `json:"secret"`
+	OTPAuthURL    string `json:"otpauth_url"`
+	PeriodSeconds int    `json:"period_seconds"`
+	Digits        int    `json:"digits"`
+	Algorithm     string `json:"algorithm"`
+}
+
+func startTOTPEnrollmentForTest(t *testing.T, app *testApp, token string) totpEnrollmentTestResponse {
+	t.Helper()
+	response, body := requestWithAuth(t, app.privateHandler, http.MethodPost, "/v1/account/second-factor/totp/enroll", "application/json", bytes.NewBufferString(`{}`), token)
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusCreated {
+		t.Fatalf("TOTP enroll status = %d, want 201", response.StatusCode)
+	}
+	var enrollment totpEnrollmentTestResponse
+	if err := json.Unmarshal(body, &enrollment); err != nil {
+		t.Fatalf("decode TOTP enrollment response: %v", err)
+	}
+	if enrollment.ID == "" || enrollment.FactorType != auth.SecondFactorTypeTOTP || enrollment.State != auth.SecondFactorStatePending {
+		t.Fatalf("unexpected TOTP enrollment response: id_present=%t factor_type=%q state=%q", enrollment.ID != "", enrollment.FactorType, enrollment.State)
+	}
+	return enrollment
+}
+
+func confirmTOTPEnrollmentForTest(t *testing.T, app *testApp, token, secret string, at time.Time) {
+	t.Helper()
+	code, err := auth.GenerateTOTPCodeForTest(secret, at)
+	if err != nil {
+		t.Fatalf("generate TOTP confirm code: %v", err)
+	}
+	response, _ := requestWithAuth(t, app.privateHandler, http.MethodPost, "/v1/account/second-factor/totp/confirm", "application/json", bytes.NewBufferString(`{"code":"`+code+`"}`), token)
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("TOTP confirm status = %d, want 200", response.StatusCode)
+	}
 }
 
 type recordingEmailSender struct {

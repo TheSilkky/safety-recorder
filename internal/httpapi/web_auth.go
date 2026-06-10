@@ -13,10 +13,13 @@ import (
 )
 
 type webAuthSessionResponse struct {
-	SessionID string          `json:"session_id"`
-	Account   accountResponse `json:"account"`
-	CreatedAt time.Time       `json:"created_at"`
-	ExpiresAt time.Time       `json:"expires_at"`
+	SessionID                        string          `json:"session_id"`
+	Account                          accountResponse `json:"account"`
+	SecondFactorVerificationRequired bool            `json:"second_factor_verification_required"`
+	SecondFactorVerifiedAt           *time.Time      `json:"second_factor_verified_at,omitempty"`
+	SecondFactorMethod               string          `json:"second_factor_method,omitempty"`
+	CreatedAt                        time.Time       `json:"created_at"`
+	ExpiresAt                        time.Time       `json:"expires_at"`
 }
 
 func (a *API) webLogin(w http.ResponseWriter, r *http.Request) {
@@ -54,12 +57,20 @@ func (a *API) webLogin(w http.ResponseWriter, r *http.Request) {
 		a.internalError(w, "create web auth session", err)
 		return
 	}
+	requiresSecondFactor, err := a.sessionRequiresSecondFactorVerification(r.Context(), account, session)
+	if err != nil {
+		a.internalError(w, "check web login second factor requirement", err)
+		return
+	}
 	http.SetCookie(w, a.webSessionCookie(rawToken, session.ExpiresAt))
 	writeJSON(w, http.StatusCreated, webAuthSessionResponse{
-		SessionID: session.ID,
-		Account:   makeAccountResponse(account),
-		CreatedAt: session.CreatedAt,
-		ExpiresAt: session.ExpiresAt,
+		SessionID:                        session.ID,
+		Account:                          makeAccountResponse(account),
+		SecondFactorVerificationRequired: requiresSecondFactor,
+		SecondFactorVerifiedAt:           session.SecondFactorVerifiedAt,
+		SecondFactorMethod:               session.SecondFactorMethod,
+		CreatedAt:                        session.CreatedAt,
+		ExpiresAt:                        session.ExpiresAt,
 	})
 }
 

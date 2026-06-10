@@ -171,6 +171,82 @@ func TestMigrateAddsEmailSecondFactorChallengeSchema(t *testing.T) {
 	}
 }
 
+func TestMigrateAddsTOTPSecondFactorSchema(t *testing.T) {
+	ctx := context.Background()
+	conn := openMemoryDB(t)
+	defer conn.Close()
+
+	if err := Migrate(ctx, conn); err != nil {
+		t.Fatalf("Migrate: %v", err)
+	}
+	if !hasTable(t, ctx, conn, "account_totp_second_factors") {
+		t.Fatal("expected account_totp_second_factors table")
+	}
+	for _, columnName := range []string{"second_factor_verified_at", "second_factor_factor_id", "second_factor_method"} {
+		if !hasColumn(t, ctx, conn, "auth_sessions", columnName) {
+			t.Fatalf("expected auth_sessions.%s column", columnName)
+		}
+	}
+	for _, forbidden := range []string{"raw_code", "code", "request_body", "authorization_header"} {
+		if hasColumn(t, ctx, conn, "account_totp_second_factors", forbidden) {
+			t.Fatalf("account_totp_second_factors must not include %s", forbidden)
+		}
+	}
+	if _, err := conn.ExecContext(ctx, `
+		INSERT INTO accounts (id, username, password_hash, role, created_at, updated_at, password_changed_at)
+		VALUES ('acct_totp_2fa', 'totp-2fa', 'hash', 'user', '2026-06-10T00:00:00Z', '2026-06-10T00:00:00Z', '2026-06-10T00:00:00Z')`); err != nil {
+		t.Fatalf("insert TOTP account: %v", err)
+	}
+	if _, err := conn.ExecContext(ctx, `
+		INSERT INTO account_totp_second_factors (
+			id, account_id, factor_state, secret, period_seconds, digits, algorithm, created_at, updated_at
+		)
+		VALUES (
+			'sf_totp_valid',
+			'acct_totp_2fa',
+			'pending',
+			'JBSWY3DPEHPK3PXP',
+			30,
+			6,
+			'SHA1',
+			'2026-06-10T00:00:00Z',
+			'2026-06-10T00:00:00Z'
+		)`); err != nil {
+		t.Fatalf("insert valid TOTP second factor: %v", err)
+	}
+	if _, err := conn.ExecContext(ctx, `
+		INSERT INTO account_totp_second_factors (
+			id, account_id, factor_state, secret, period_seconds, digits, algorithm, created_at, updated_at
+		)
+		VALUES (
+			'sf_totp_bad_digits',
+			'acct_totp_2fa',
+			'pending',
+			'JBSWY3DPEHPK3PXQ',
+			30,
+			7,
+			'SHA1',
+			'2026-06-10T00:00:00Z',
+			'2026-06-10T00:00:00Z'
+		)`); err == nil {
+		t.Fatal("expected invalid TOTP digits to fail")
+	}
+	if _, err := conn.ExecContext(ctx, `
+		INSERT INTO auth_sessions (
+			id, account_id, token_hash, second_factor_method, created_at, expires_at
+		)
+		VALUES (
+			'ses_bad_method',
+			'acct_totp_2fa',
+			'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+			'sms',
+			'2026-06-10T00:00:00Z',
+			'2026-06-10T01:00:00Z'
+		)`); err == nil {
+		t.Fatal("expected invalid session second-factor method to fail")
+	}
+}
+
 func TestMigrateAddsIncidentModeColumns(t *testing.T) {
 	ctx := context.Background()
 	conn := openMemoryDB(t)

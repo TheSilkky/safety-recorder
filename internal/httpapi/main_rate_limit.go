@@ -125,9 +125,9 @@ func classifyMainAPIRateLimit(r *http.Request) (mainRateLimitClass, bool) {
 			(r.Method == http.MethodPost && len(segments) == 3 && segments[2] == "password") {
 			return mainRateLimitAccount, true
 		}
-		if r.Method == http.MethodPost && len(segments) == 5 && segments[2] == "second-factor" && segments[3] == "email" {
-			switch segments[4] {
-			case "challenge", "verify":
+		if r.Method == http.MethodPost && len(segments) == 5 && segments[2] == "second-factor" {
+			switch segments[3] + "/" + segments[4] {
+			case "email/challenge", "email/verify", "totp/enroll", "totp/confirm", "totp/verify":
 				return mainRateLimitAuthEmailVerify, true
 			}
 		}

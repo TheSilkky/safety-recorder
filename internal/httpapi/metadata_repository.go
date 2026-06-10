@@ -72,8 +72,14 @@ type MetadataRepository interface {
 	ConsumeAccountVerificationToken(ctx context.Context, rawToken, purpose string, now time.Time) (auth.Account, error)
 	CreateEmailSecondFactorChallenge(ctx context.Context, params auth.CreateEmailSecondFactorChallengeParams) (auth.SecondFactorChallenge, string, error)
 	ConsumeEmailSecondFactorChallenge(ctx context.Context, accountID, rawToken string, now time.Time) (auth.SecondFactor, auth.Account, error)
+	CreateTOTPSecondFactorEnrollment(ctx context.Context, params auth.CreateTOTPSecondFactorEnrollmentParams) (auth.SecondFactor, error)
+	GetPendingTOTPSecondFactor(ctx context.Context, accountID string) (auth.SecondFactor, error)
+	GetActiveTOTPSecondFactor(ctx context.Context, accountID string) (auth.SecondFactor, error)
+	ActivateTOTPSecondFactor(ctx context.Context, accountID, factorID string, verifiedAt time.Time, lastUsedTimeStep int64) (auth.SecondFactor, auth.Account, error)
+	MarkTOTPSecondFactorUsed(ctx context.Context, factorID string, verifiedAt time.Time, lastUsedTimeStep int64) (auth.SecondFactor, error)
 	CreateSession(ctx context.Context, accountID string, expiresAt time.Time) (auth.Session, string, error)
 	LookupSession(ctx context.Context, rawToken string) (auth.Session, error)
+	MarkSessionSecondFactorVerified(ctx context.Context, sessionID, factorID, method string, verifiedAt time.Time) (auth.Session, error)
 	RevokeSession(ctx context.Context, sessionID string) error
 	RevokeAccountSessions(ctx context.Context, accountID, exceptSessionID string) (int64, error)
 

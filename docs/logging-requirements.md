@@ -15,9 +15,10 @@ Proofline Server logs must be structured, low-cardinality, and safe by default.
 Logs should identify the component, operation, stage, route class, and stable
 error category where that information is useful and safe. Logs must not include
 raw request data, uploaded bytes, plaintext, raw keys, raw tokens,
-Authorization headers, object keys, stored paths, private filesystem paths,
-database DSNs, SMTP credentials, secret file paths, secret file contents,
-wrapped-key ciphertext, private deployment details, or user safety data.
+Authorization headers, TOTP codes, TOTP seeds, `otpauth_url` values, object
+keys, stored paths, private filesystem paths, database DSNs, SMTP credentials,
+secret file paths, secret file contents, wrapped-key ciphertext, private
+deployment details, or user safety data.
 
 Raw `err.Error()` is forbidden by default in startup, request, upload, storage,
 token, key, auth, object-store, email, and user-safety paths. A log may include
@@ -30,8 +31,8 @@ code proves the raw error type cannot contain sensitive data.
 - Use stable structured fields so logs can be searched and reviewed.
 - Keep log field values low-cardinality and safe for metrics backends.
 - Preserve the current redaction posture for tokens, paths, object keys,
-  request bodies, uploaded bytes, plaintext, raw keys, wrapped-key ciphertext,
-  and private deployment details.
+  request bodies, uploaded bytes, plaintext, raw keys, TOTP credential
+  material, wrapped-key ciphertext, and private deployment details.
 - Give future code reviews a concrete checklist for logging changes.
 - Require tests when code changes alter logging behavior.
 
@@ -39,7 +40,8 @@ code proves the raw error type cannot contain sensitive data.
 
 - No third-party logging dependency.
 - No broad request-body logging.
-- No uploaded byte, plaintext, media, key, token, or wrapped-key logging.
+- No uploaded byte, plaintext, media, key, token, TOTP credential material, or
+  wrapped-key logging.
 - No path, object-key, private endpoint, DSN, or secret-file-path logging.
 - No public production-readiness claim.
 - No observability backend, metrics system, tracing system, log shipper, or
@@ -163,6 +165,7 @@ Request logs must not include:
 - Authorization headers
 - cookies or session identifiers
 - raw viewer, incident, session, verification, CSRF, or idempotency tokens
+- TOTP codes, TOTP seeds, or `otpauth_url` values
 - usernames, emails, notes, original filenames, location values, or user safety
   narratives
 - full GPS, speed, heading, route history, or location freshness values
@@ -240,6 +243,7 @@ Auth and token logs:
 
 - never log raw session tokens, viewer tokens, incident tokens, verification
   tokens, CSRF tokens, idempotency keys, bearer tokens, or cookies
+- never log TOTP codes, TOTP seeds, or `otpauth_url` values
 - do not log password input, password hashes, reset material, verification
   credentials, or browser fragment secrets
 - use collapsed categories for invalid, expired, or revoked public-link tokens
@@ -355,6 +359,9 @@ Never log:
 - raw verification tokens
 - raw CSRF tokens
 - raw idempotency keys
+- TOTP codes
+- TOTP seeds
+- `otpauth_url` values
 - Authorization headers
 - cookies
 - request bodies

@@ -28,6 +28,17 @@ func (a *API) requirePrivateAuth(next http.Handler) http.Handler {
 			writeError(w, http.StatusForbidden, "second_factor_setup_required", "second factor setup is required before account access")
 			return
 		}
+		if auth.CanAccessProductRoutes(principal.Account) {
+			required, err := a.sessionRequiresSecondFactorVerification(r.Context(), principal.Account, principal.Session)
+			if err != nil {
+				a.internalError(w, "check session second factor requirement", err)
+				return
+			}
+			if required && !secondFactorVerificationAllowedRoute(r) {
+				writeError(w, http.StatusForbidden, "second_factor_verification_required", "second factor verification is required before account access")
+				return
+			}
+		}
 		next.ServeHTTP(w, r.WithContext(contextWithPrincipal(r.Context(), principal)))
 	})
 }
@@ -114,6 +125,22 @@ func secondFactorSetupAllowedRoute(r *http.Request) bool {
 	case r.Method == http.MethodPost && path == "v1/auth/logout":
 		return true
 	case r.Method == http.MethodGet && path == "v1/auth/web/csrf":
+		return true
+	default:
+		return false
+	}
+}
+
+func secondFactorVerificationAllowedRoute(r *http.Request) bool {
+	path := strings.Trim(r.URL.EscapedPath(), "/")
+	switch {
+	case r.Method == http.MethodGet && path == "v1/account":
+		return true
+	case r.Method == http.MethodPost && path == "v1/auth/logout":
+		return true
+	case r.Method == http.MethodGet && path == "v1/auth/web/csrf":
+		return true
+	case r.Method == http.MethodPost && path == "v1/account/second-factor/totp/verify":
 		return true
 	default:
 		return false

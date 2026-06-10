@@ -26,11 +26,14 @@ type accountResponse struct {
 }
 
 type authSessionResponse struct {
-	SessionID string          `json:"session_id"`
-	Account   accountResponse `json:"account"`
-	Token     string          `json:"token"`
-	CreatedAt time.Time       `json:"created_at"`
-	ExpiresAt time.Time       `json:"expires_at"`
+	SessionID                        string          `json:"session_id"`
+	Account                          accountResponse `json:"account"`
+	Token                            string          `json:"token"`
+	SecondFactorVerificationRequired bool            `json:"second_factor_verification_required"`
+	SecondFactorVerifiedAt           *time.Time      `json:"second_factor_verified_at,omitempty"`
+	SecondFactorMethod               string          `json:"second_factor_method,omitempty"`
+	CreatedAt                        time.Time       `json:"created_at"`
+	ExpiresAt                        time.Time       `json:"expires_at"`
 }
 
 func (a *API) login(w http.ResponseWriter, r *http.Request) {
@@ -65,12 +68,20 @@ func (a *API) login(w http.ResponseWriter, r *http.Request) {
 		a.internalError(w, "create auth session", err)
 		return
 	}
+	requiresSecondFactor, err := a.sessionRequiresSecondFactorVerification(r.Context(), account, session)
+	if err != nil {
+		a.internalError(w, "check login second factor requirement", err)
+		return
+	}
 	writeJSON(w, http.StatusCreated, authSessionResponse{
-		SessionID: session.ID,
-		Account:   makeAccountResponse(account),
-		Token:     rawToken,
-		CreatedAt: session.CreatedAt,
-		ExpiresAt: session.ExpiresAt,
+		SessionID:                        session.ID,
+		Account:                          makeAccountResponse(account),
+		Token:                            rawToken,
+		SecondFactorVerificationRequired: requiresSecondFactor,
+		SecondFactorVerifiedAt:           session.SecondFactorVerifiedAt,
+		SecondFactorMethod:               session.SecondFactorMethod,
+		CreatedAt:                        session.CreatedAt,
+		ExpiresAt:                        session.ExpiresAt,
 	})
 }
 

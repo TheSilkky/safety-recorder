@@ -26,6 +26,7 @@ const (
 
 const (
 	SecondFactorTypeEmailChallenge = "email_challenge"
+	SecondFactorTypeTOTP           = "totp"
 )
 
 const (
@@ -59,12 +60,15 @@ type Account struct {
 }
 
 type Session struct {
-	ID        string     `json:"id"`
-	AccountID string     `json:"account_id"`
-	TokenHash string     `json:"-"`
-	CreatedAt time.Time  `json:"created_at"`
-	ExpiresAt time.Time  `json:"expires_at"`
-	RevokedAt *time.Time `json:"revoked_at,omitempty"`
+	ID                     string     `json:"id"`
+	AccountID              string     `json:"account_id"`
+	TokenHash              string     `json:"-"`
+	SecondFactorVerifiedAt *time.Time `json:"second_factor_verified_at,omitempty"`
+	SecondFactorFactorID   string     `json:"-"`
+	SecondFactorMethod     string     `json:"second_factor_method,omitempty"`
+	CreatedAt              time.Time  `json:"created_at"`
+	ExpiresAt              time.Time  `json:"expires_at"`
+	RevokedAt              *time.Time `json:"revoked_at,omitempty"`
 }
 
 type CreateAccountParams struct {
@@ -94,14 +98,19 @@ type CreateAccountVerificationTokenParams struct {
 }
 
 type SecondFactor struct {
-	ID              string
-	AccountID       string
-	FactorType      string
-	EmailNormalized string
-	FactorState     string
-	CreatedAt       time.Time
-	UpdatedAt       time.Time
-	VerifiedAt      *time.Time
+	ID                   string
+	AccountID            string
+	FactorType           string
+	EmailNormalized      string
+	FactorState          string
+	TOTPSecret           string
+	TOTPPeriodSeconds    int
+	TOTPDigits           int
+	TOTPAlgorithm        string
+	TOTPLastUsedTimeStep *int64
+	CreatedAt            time.Time
+	UpdatedAt            time.Time
+	VerifiedAt           *time.Time
 }
 
 type SecondFactorChallenge struct {
@@ -120,6 +129,14 @@ type CreateEmailSecondFactorChallengeParams struct {
 	AccountID       string
 	EmailNormalized string
 	ExpiresAt       time.Time
+}
+
+type CreateTOTPSecondFactorEnrollmentParams struct {
+	AccountID     string
+	Secret        string
+	PeriodSeconds int
+	Digits        int
+	Algorithm     string
 }
 
 func ValidRole(role string) bool {
@@ -154,6 +171,15 @@ func ValidSecondFactorState(state string) bool {
 	switch state {
 	case SecondFactorStatePending,
 		SecondFactorStateActive:
+		return true
+	default:
+		return false
+	}
+}
+
+func ValidSecondFactorMethod(method string) bool {
+	switch method {
+	case SecondFactorTypeTOTP:
 		return true
 	default:
 		return false

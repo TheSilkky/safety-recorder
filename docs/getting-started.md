@@ -6,6 +6,7 @@ This guide starts the Proofline backend locally and runs the simulator against i
 
 - Go 1.26.4
 - SQLite through the bundled Go SQLite driver dependency
+- TOTP generation and validation through the bundled Go OTP dependency
 - PostgreSQL only when explicitly setting `[metadata].backend = "postgresql"`
   in TOML, or using the equivalent `SAFE_METADATA_BACKEND=postgresql`
   environment override
