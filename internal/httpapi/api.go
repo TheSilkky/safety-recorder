@@ -36,6 +36,7 @@ type Options struct {
 	WebAuthn                   WebAuthnConfig
 	AccountRegistration        AccountRegistrationConfig
 	SecondFactorEmailTTL       time.Duration
+	RelayCapability            RelayCapabilityConfig
 	EmailSender                email.Sender
 	MainRateLimit              MainRateLimitConfig
 	MainRateLimiter            RateLimiter
@@ -106,6 +107,14 @@ type AccountRegistrationConfig struct {
 	PublicWebOrigin      string
 }
 
+// RelayCapabilityConfig configures backend-issued regional relay session
+// capabilities. Empty Secret disables issuance while keeping existing routes.
+type RelayCapabilityConfig struct {
+	Secret    string
+	TTL       time.Duration
+	MaxChunks int
+}
+
 const (
 	AccountRegistrationDisabled  = "disabled"
 	AccountRegistrationAdminOnly = "admin_only"
@@ -135,6 +144,7 @@ type API struct {
 	webAuthn                   WebAuthnConfig
 	accountRegistration        AccountRegistrationConfig
 	secondFactorEmailTTL       time.Duration
+	relayCapability            RelayCapabilityConfig
 	emailSender                email.Sender
 	mainRateLimit              MainRateLimitConfig
 	mainRateLimiter            RateLimiter
@@ -246,6 +256,13 @@ func newAPI(repo MetadataRepository, store storage.BlobStore, opts Options) *API
 	if secondFactorEmailTTL <= 0 {
 		secondFactorEmailTTL = defaultSecondFactorEmailTTL
 	}
+	relayCapability := opts.RelayCapability
+	if relayCapability.TTL <= 0 {
+		relayCapability.TTL = 5 * time.Minute
+	}
+	if relayCapability.MaxChunks <= 0 {
+		relayCapability.MaxChunks = 64
+	}
 
 	return &API{
 		repo:                       repo,
@@ -259,6 +276,7 @@ func newAPI(repo MetadataRepository, store storage.BlobStore, opts Options) *API
 		webAuthn:                   webAuthn,
 		accountRegistration:        accountRegistration,
 		secondFactorEmailTTL:       secondFactorEmailTTL,
+		relayCapability:            relayCapability,
 		emailSender:                opts.EmailSender,
 		mainRateLimit:              opts.MainRateLimit,
 		mainRateLimiter:            mainRateLimiter,

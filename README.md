@@ -139,7 +139,9 @@ escrow.
 - Optional Valkey/Redis-compatible short-lived complete-upload leases and
   `upload_in_progress` retry hints when coordination is explicitly configured
 - Separate `cmd/stream-ingress` regional relay skeleton with only
-  token-neutral liveness/readiness routes and no upload or fanout behavior
+  token-neutral liveness/readiness routes and no upload or fanout behavior,
+  plus main-API issuance of configured short-lived relay upload capabilities
+  for authorized open streams
 - Authenticated duplicate chunk reconciliation for comparing accepted metadata with
   an expected chunk fingerprint
 - Optional incident-mode, capture-profile, escalation-policy, and sharing-state
@@ -191,8 +193,8 @@ escrow.
   model beyond the current concrete media stream upload lanes
 - No implemented resumable or partial upload protocol; current Valkey upload
   leases are short-lived complete-upload hints, not durable evidence truth
-- No implemented regional relay upload, relay session, core relay preflight or
-  commit, optimistic fanout, metrics endpoint, or service identity
+- No implemented regional relay upload, core relay preflight or commit,
+  encrypted staging, optimistic fanout, metrics endpoint, or service identity
 - No implemented live or partial stream chunk access before stream completion
 - No backend/browser decryption, raw key handling, server escrow, break-glass
   key access, or playable media export
@@ -413,8 +415,9 @@ Please see [SECURITY.md](SECURITY.md) for supported versions and vulnerability r
 - Complete the remaining cluster-safe upload operation semantics before multi-node production deployment
 - Keep cluster backup, restore, and failure runbooks current as optional PostgreSQL, S3-compatible storage, and coordination behavior evolve
 - Keep the regional stream-ingress relay beyond its current health/readiness
-  skeleton upload-only, temporary, ciphertext-only, and subordinate to the core
-  API for authorization, idempotency, durable blob commits, and metadata
+  skeleton and backend-issued upload capabilities upload-only, temporary,
+  ciphertext-only, and subordinate to the core API for authorization,
+  idempotency, durable blob commits, and metadata
 - WireGuard-only bind/firewall deployment guidance
 - Mode-driven access, escalation, retention, sharing, viewer, and key-custody
   behavior after protocol and security design

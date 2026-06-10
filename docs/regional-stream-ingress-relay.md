@@ -1,12 +1,13 @@
 # Regional Stream Ingress Relay Design
 
 This document defines a future optional regional stream-ingress relay for
-complete encrypted chunk uploads. The current implementation adds only a
-separate `cmd/stream-ingress` service skeleton with token-neutral liveness and
-readiness routes. Relay upload, relay session, core preflight, core commit,
-fanout, metrics, deployment automation, schema, storage backends, decryption,
-key custody, web-client code, mobile-client code, protocol code, and public
-production readiness remain unimplemented.
+complete encrypted chunk uploads. The current implementation has a separate
+`cmd/stream-ingress` service skeleton with token-neutral liveness/readiness
+routes and a core API route that can issue short-lived signed relay upload
+capabilities for authorized open streams. Relay upload, core preflight, core
+commit, fanout, metrics, deployment automation, schema, storage backends,
+decryption, key custody, web-client code, mobile-client code, protocol code,
+and public production readiness remain unimplemented.
 
 ## Summary
 
@@ -49,18 +50,22 @@ separable from broader cluster work:
 - main API/viewer and private `/admin` listener separation
 - a separate `cmd/stream-ingress` skeleton that can be run and tested without
   changing main API behavior
+- backend-issued relay upload capabilities for authorized open media streams,
+  disabled until a relay capability secret is configured
 
 Those features do not make `/v1` production-ready public infrastructure. The
 relay skeleton exposes only `/health/live` and `/health/ready`; it does not
 implement an upload edge and is not a reason to expose the whole main API or
 private admin surfaces.
 
-Parent epic #202 is split into child implementation issues. Issue #289 adds
+Parent epic #202 is split into child implementation issues. Issue #289 added
 only the service boundary, config surface, route-surface tests, and
-implemented-versus-planned documentation. Later slices are expected to add, in
-order, narrow core relay preflight/commit routes, relay upload staging and
-forwarding, relay abuse controls, optional Valkey/Redis-compatible counters,
-service identity, deployment docs, and any explicitly scoped smoke validation.
+implemented-versus-planned documentation. Issue #290 adds only backend-issued
+relay upload capabilities for authorized open streams. Later slices are
+expected to add, in order, narrow core relay preflight/commit routes, relay
+upload staging and forwarding, relay abuse controls, optional
+Valkey/Redis-compatible counters, service identity, deployment docs, and any
+explicitly scoped smoke validation.
 
 Future stream variant and supersession behavior is documented in
 [capture-stream-variants.md](capture-stream-variants.md). The relay may use
@@ -141,6 +146,44 @@ The ingress service must not expose:
 The relay is not an authorization authority. A trusted ingress service identity
 may let it call narrow core preflight and commit endpoints, but it must not
 turn a denied user/device/upload credential into an authorized upload.
+
+## Backend-Issued Relay Capabilities
+
+The current core API can issue a short-lived upload capability for one
+authorized open stream:
+
+```http
+POST /v1/incidents/{incident_id}/streams/{stream_id}/relay-session
+```
+
+This route is mounted on the authenticated main `/v1` API, not on
+`cmd/stream-ingress`. It uses the existing account/session authorization path,
+requires write access to the incident, rejects closed incidents, requires the
+target stream to be `open`, and returns `503 relay_capability_not_configured`
+until `SAFE_RELAY_CAPABILITY_SECRET` or `SAFE_RELAY_CAPABILITY_SECRET_FILE` is
+configured.
+
+The signed capability is HMAC-SHA256 over a bounded JSON payload and is not a
+raw account session, browser cookie, viewer token, incident token, raw key,
+wrapped-key ciphertext, object key, stored path, uploaded byte, plaintext, or
+location/safety-data container. Claims are intentionally narrow:
+
+- relay capability version
+- random relay session ID
+- role, currently `upload`
+- incident ID and stream ID binding
+- issued-at and expiry timestamps
+- maximum chunk byte size
+- maximum chunk count
+- allowed media types, currently the target stream media type
+
+Relay-side validation must check the signature, expiry, expected role, relay
+session ID, incident ID, and stream ID before accepting any future upload.
+Capabilities are bearer-like credentials and must not be logged, exposed in
+metrics, copied into public issues, used as limiter keys, or stored as durable
+evidence metadata. They are only a narrow authorization artifact for later
+relay slices; they do not implement relay upload, staging, core commit,
+fanout, metrics, service identity, or proof of durable evidence preservation.
 
 ## Core API Boundary
 

@@ -186,8 +186,9 @@ A successful chunk upload should mean encrypted bytes are durably committed outs
 
 ## Regional Stream Ingress Relay Scope
 
-The regional stream-ingress relay currently has only a separate
-health/readiness skeleton. Future slices may make it an optional upload-only
+The regional stream-ingress relay currently has a separate health/readiness
+skeleton and core API issuance of configured short-lived upload capabilities
+for authorized open streams. Future slices may make it an optional upload-only
 edge that can run close to users while the core API remains authoritative. The
 full relay design is documented in
 [regional-stream-ingress-relay.md](regional-stream-ingress-relay.md).

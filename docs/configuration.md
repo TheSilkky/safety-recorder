@@ -110,6 +110,10 @@ values for the same field. Within TOML, set either the direct secret key or the
 | `[auth].bootstrap_secret` | `SAFE_AUTH_BOOTSTRAP_SECRET` |
 | `[auth].bootstrap_secret_file` | `SAFE_AUTH_BOOTSTRAP_SECRET_FILE` |
 | `[auth].second_factor_email_challenge_ttl` | `SAFE_SECOND_FACTOR_EMAIL_CHALLENGE_TTL` |
+| `[relay_capability].secret` | `SAFE_RELAY_CAPABILITY_SECRET` |
+| `[relay_capability].secret_file` | `SAFE_RELAY_CAPABILITY_SECRET_FILE` |
+| `[relay_capability].ttl` | `SAFE_RELAY_CAPABILITY_TTL` |
+| `[relay_capability].max_chunks` | `SAFE_RELAY_CAPABILITY_MAX_CHUNKS` |
 | `[account_registration].mode` | `SAFE_ACCOUNT_REGISTRATION_MODE` |
 | `[account_registration].email_verification_ttl` | `SAFE_EMAIL_VERIFICATION_TTL` |
 | `[account_registration].public_web_origin` | `SAFE_PUBLIC_WEB_ORIGIN` |
@@ -282,6 +286,28 @@ accepted as legacy aliases for the main listener only. `SAFE_PUBLIC_BIND_ADDRS`
 and `SAFE_PUBLIC_BIND_ADDR` now fail startup so a previously public viewer bind
 cannot silently become the private-admin listener.
 
+## Regional Relay Capability Issuance
+
+The main API can issue short-lived signed regional relay upload capabilities
+for authorized open streams. Issuance is disabled by default and returns
+`503 relay_capability_not_configured` until a capability secret is configured.
+This config belongs to the core API, not the `cmd/stream-ingress` skeleton.
+
+| TOML key | Environment variable | Default | Notes |
+|---|---|---|---|
+| `[relay_capability].secret` | `SAFE_RELAY_CAPABILITY_SECRET` | unset | Direct HMAC signing secret for relay capabilities. Must be at least 32 bytes when set. Prefer `secret_file` for deployments. |
+| `[relay_capability].secret_file` | `SAFE_RELAY_CAPABILITY_SECRET_FILE` | unset | File-backed HMAC signing secret. Overrides direct env secret and conflicts with direct TOML secret in the same config. |
+| `[relay_capability].ttl` | `SAFE_RELAY_CAPABILITY_TTL` | `5m` | Positive duration used as the capability expiry window. |
+| `[relay_capability].max_chunks` | `SAFE_RELAY_CAPABILITY_MAX_CHUNKS` | `64` | Positive maximum chunk count embedded in each issued capability. |
+
+Capabilities include the relay session ID, `upload` role, incident ID, stream
+ID, expiry, max chunk bytes, max chunk count, and allowed media types. They do
+not include raw account sessions, browser cookies, viewer tokens, incident
+tokens, raw keys, wrapped-key ciphertext, object keys, stored paths, uploaded
+bytes, plaintext, GPS/speed/heading values, or user safety data. Capability
+tokens are bearer-like credentials and must not be logged, used as metrics
+labels, or copied into public artifacts.
+
 The separate `cmd/stream-ingress` skeleton has its own small environment and
 flag surface. It does not use the main API TOML config file yet, and it does
 not add upload, core preflight, core commit, fanout, metrics, service identity,
@@ -292,7 +318,7 @@ storage, or coordination settings.
 | `SAFE_STREAM_INGRESS_BIND_ADDR` | `127.0.0.1:8090` | `--bind` | Private bind address for the skeleton health/readiness listener. Keep it on loopback, LAN, WireGuard, firewall, or a private reverse proxy unless a later deployment issue explicitly reviews exposure. |
 | `SAFE_STREAM_INGRESS_RELAY_ID` | unset | `--relay-id` | Optional relay identity label for future service identity planning. The skeleton records only whether it is configured and must not expose the label value in readiness output or logs. |
 | `SAFE_STREAM_INGRESS_REGION` | unset | `--region` | Optional coarse region label for future relay planning. The skeleton records only whether it is configured and must not expose the label value in readiness output or logs. |
-| `SAFE_STREAM_INGRESS_READY` | `false` | `--ready` | Controls whether `GET /health/ready` returns `200 ready` or `503 not_ready`. This readiness flag is only a skeleton smoke signal and does not mean upload, relay session, core commit, fanout, or production readiness exists. |
+| `SAFE_STREAM_INGRESS_READY` | `false` | `--ready` | Controls whether `GET /health/ready` returns `200 ready` or `503 not_ready`. This readiness flag is only a skeleton smoke signal and does not mean upload, core commit, fanout, or production readiness exists. |
 
 Run the skeleton locally with explicit readiness for a private smoke check:
 

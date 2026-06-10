@@ -569,12 +569,13 @@ deployment automation, backend decryption, key escrow, or production readiness.
 
 ## Regional Stream Ingress Relay
 
-The regional stream-ingress relay currently has only a separate
-`cmd/stream-ingress` skeleton. The skeleton is not a public upload edge and
+The regional stream-ingress relay currently has a separate `cmd/stream-ingress`
+skeleton plus core API issuance of configured short-lived upload capabilities
+for authorized open streams. The skeleton is not a public upload edge and
 exposes only token-neutral `GET /health/live` and `GET /health/ready`. It does
-not implement relay upload, backend-issued relay sessions, core preflight,
-core commit, optimistic fanout, metrics, service identity, durable storage, or
-production deployment automation.
+not implement relay upload, core preflight, core commit, optimistic fanout,
+metrics, service identity, durable storage, or production deployment
+automation.
 
 The full relay planning boundary is documented in
 [regional-stream-ingress-relay.md](regional-stream-ingress-relay.md).

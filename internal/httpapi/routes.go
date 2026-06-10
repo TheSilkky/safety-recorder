@@ -130,6 +130,7 @@ func (a *API) registerMainStreamRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /v1/incidents/{incident_id}/streams", a.withPrivateAuth(a.createMediaStream))
 	mux.HandleFunc("GET /v1/incidents/{incident_id}/streams", a.withPrivateAuth(a.listMediaStreams))
 	mux.HandleFunc("GET /v1/incidents/{incident_id}/streams/{stream_id}", a.withPrivateAuth(a.getMediaStream))
+	mux.HandleFunc("POST /v1/incidents/{incident_id}/streams/{stream_id}/relay-session", a.withPrivateAuth(a.createRelaySession))
 	mux.HandleFunc("POST /v1/incidents/{incident_id}/streams/{stream_id}/complete", a.withPrivateAuth(a.completeMediaStream))
 	mux.HandleFunc("POST /v1/incidents/{incident_id}/streams/{stream_id}/fail", a.withPrivateAuth(a.failMediaStream))
 	mux.HandleFunc("GET /v1/incidents/{incident_id}/streams/{stream_id}/download", a.withPrivateAuth(a.downloadPrivateStreamBundle))
