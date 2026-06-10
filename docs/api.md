@@ -377,11 +377,16 @@ Contact key states are:
 | `revoked` | Revoked and not eligible for future grants. |
 | `lost` | Marked lost and not eligible for future grants. |
 
-New sharing grants require an `active` contact public key. The API can register
-a new contact by omitting `contact_id`, or rotate an existing contact by
-providing an account-owned `contact_id`; rotated keys receive the next version.
-Contact public-key routes store owner-scoped public-key metadata. The accepted
-v1 preview wrapped-key profile is documented in
+New sharing grants and new wrapped-key records require an `active` contact
+public key. The API can register a new contact by omitting `contact_id`, rotate
+an existing contact by providing an account-owned `contact_id`, or replace a
+specific key with `POST /v1/contact-public-keys/{public_key_id}/replace`.
+Rotated or replaced keys receive the next version and mark prior nonterminal
+versions for that contact `replaced`. Replacement does not mutate old
+sharing-grant or wrapped-key records; those records remain bound to the
+original contact public-key ID and version. Contact public-key routes store
+owner-scoped public-key metadata only. The accepted v1 preview wrapped-key
+profile is documented in
 [post-quantum-envelope.md](post-quantum-envelope.md) and uses
 `proofline-pq-mlkem768-hkdfsha384-aes256gcm-v1`. The contact-key route does not
 prove possession of a recipient private key by itself; wrapped-key record
@@ -436,7 +441,9 @@ account return `404 contact_public_key_not_found`.
 ### `PATCH /v1/contact-public-keys/{public_key_id}`
 
 Updates mutable contact-key metadata. The request may change `display_label`
-and `key_state`. Revoked keys cannot be reactivated.
+and may move nonterminal keys between `pending_verification` and `active`.
+Terminal states use the dedicated revoke, lost, and replace routes. Replaced,
+revoked, or lost keys cannot be reactivated.
 
 Request:
 
@@ -453,6 +460,37 @@ Marks one account-owned contact public key revoked. Revocation prevents the key
 from receiving new sharing grants or future wrapped-key records. It does not
 delete already accepted ciphertext, bundle contents, or any material a future
 authorized actor may already have downloaded.
+
+### `POST /v1/contact-public-keys/{public_key_id}/lost`
+
+Marks one account-owned contact public key lost after the trusted contact or
+client reports private-key/device loss. Lost keys cannot receive new sharing
+grants or future wrapped-key records and cannot be reactivated. Existing
+sharing-grant and wrapped-key records are not rewritten.
+
+### `POST /v1/contact-public-keys/{public_key_id}/replace`
+
+Creates a successor public-key version for the same `contact_id` and marks
+prior nonterminal versions for that contact `replaced`. The request body uses
+the same public-key metadata fields as creation except `contact_id`.
+
+Request:
+
+```json
+{
+  "display_label": "Trusted contact replacement",
+  "wrapping_algorithm": "proofline-pq-mlkem768-hkdfsha384-aes256gcm",
+  "public_key": "base64url-or-profile-encoded-public-key",
+  "public_key_fingerprint": "fingerprint-...",
+  "key_state": "pending_verification"
+}
+```
+
+Response `201` returns the new `contact_public_key`. The old record remains
+readable to the owner with `key_state: "replaced"`, `replaced_at`, and
+`replaced_by_public_key_id`. Existing wrapped-key records keep the old
+`contact_public_key_id` and `contact_public_key_version`; delivery filters omit
+them while the referenced key is no longer active.
 
 ## Trusted Contact Relationships
 

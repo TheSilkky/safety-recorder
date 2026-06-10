@@ -381,6 +381,15 @@ audit, restore consistency, or already-granted access, but delivery policy shoul
 fail closed when a grant, recipient key, or wrapped-key record is revoked,
 expired, lost, or rotated out of active use.
 
+The current trusted-contact public-key metadata routes use the same lifecycle
+shape for contact keys: `pending_verification`, `active`, `replaced`,
+`revoked`, and `lost`. Replacement creates a successor contact key version and
+links the old public-key record to it. Lost, revoked, and replaced contact keys
+are not eligible for new sharing grants or wrapped-key records. Existing
+wrapped-key records remain bound to the original contact public-key ID and
+version; the backend does not rewrap by decrypting existing wrapped-key
+ciphertext.
+
 ## Trusted Contact Access
 
 Trusted contact access should be designed around pre-registration.
@@ -465,9 +474,10 @@ approved together.
 The current API has owner-scoped account/device recipient-key registration,
 replacement, revocation, and lost-device state routes; account-to-account
 trusted-contact relationship invite, accept, decline, revoke, and replacement
-routes; owner-scoped contact public-key registration; sharing-grant metadata
-routes; and grant-bound wrapped-key record storage and delivery behind the
-authenticated main `/v1` boundary. Account/device recipient-key routes store
+routes; owner-scoped contact public-key registration, replacement, revocation,
+and lost-key routes; sharing-grant metadata routes; and grant-bound wrapped-key
+record storage and delivery behind the authenticated main `/v1` boundary.
+Account/device recipient-key routes store
 public metadata only and do not yet deliver wrapped keys. Trusted-contact
 relationship routes record identity and lifecycle state only; they do not
 deliver trusted-contact wrapped keys, plaintext, notifications, or emergency
@@ -479,7 +489,8 @@ future design should define:
   recovery, and future CEK rewrapping behavior
 - trusted-contact relationship verification, consent, replacement, privacy, and
   UX rules
-- contact public-key registration, verification, replacement, and revocation
+- contact public-key registration, verification, replacement, revocation, and
+  lost-key recovery
 - device identity and recovery-key enrollment
 - how clients choose, validate, and encode wrapping formats for server-stored
   records

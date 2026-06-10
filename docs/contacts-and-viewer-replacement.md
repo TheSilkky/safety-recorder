@@ -141,7 +141,9 @@ Current authenticated owner-scoped metadata APIs exist for:
 - contact public-key metadata:
   `POST/GET /v1/contact-public-keys`,
   `GET/PATCH /v1/contact-public-keys/{public_key_id}`, and
-  `POST /v1/contact-public-keys/{public_key_id}/revoke`;
+  `POST /v1/contact-public-keys/{public_key_id}/revoke`,
+  `POST /v1/contact-public-keys/{public_key_id}/lost`, and
+  `POST /v1/contact-public-keys/{public_key_id}/replace`;
 - incident/stream sharing grants:
   `POST/GET /v1/incidents/{incident_id}/sharing-grants`,
   `GET /v1/sharing-grants/{grant_id}`, and

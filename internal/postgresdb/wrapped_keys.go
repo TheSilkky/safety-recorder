@@ -103,7 +103,7 @@ func (r *Repository) CreateWrappedKeyRecord(ctx context.Context, params incident
 }
 
 // ListWrappedKeyRecords returns active, grant-deliverable records for one owner
-// incident. Revoked grants, expired grants, revoked contact keys, and revoked
+// incident. Revoked grants, expired grants, inactive contact keys, and revoked
 // wrapped-key records are excluded.
 func (r *Repository) ListWrappedKeyRecords(ctx context.Context, ownerAccountID, incidentID string) ([]incidents.WrappedKeyRecord, error) {
 	rows, err := r.db.QueryContext(ctx, wrappedKeyRecordSelect()+activeWrappedKeyJoins()+`

@@ -197,10 +197,13 @@ Viewer URLs contain bearer tokens and should be treated as secrets. Reverse prox
   notification delivery, emergency dispatch, or public viewer privileges.
   Account/device recipient-key records store only public key material,
   non-secret key IDs, scheme/suite identifiers, fingerprints, state,
-  timestamps, and optional display labels. Revoked, replaced, and lost
-  account/device keys are terminal for future wrapping eligibility; those state
-  changes do not delete ciphertext or revoke material already downloaded by a
-  future authorized client. Sharing-grant and wrapped-key creation, listing,
+  timestamps, and optional display labels. Contact public-key records store
+  trusted-contact public key material, wrapping algorithm names, fingerprints,
+  version, state, timestamps, replacement links, and optional display labels.
+  Revoked, replaced, and lost account/device or contact keys are terminal for
+  future wrapping eligibility; those state changes do not rewrite old
+  wrapped-key records, delete ciphertext, or revoke material already downloaded
+  by a future authorized client. Sharing-grant and wrapped-key creation, listing,
   lookup, and revocation require the authenticated account to own the incident
   or record; admins do not manage another account's sharing grants or
   wrapped-key records through the product routes unless the admin account also

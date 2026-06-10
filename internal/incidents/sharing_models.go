@@ -34,18 +34,21 @@ const (
 // ContactPublicKey records an account-owner controlled trusted-contact public
 // key. It never contains contact private keys or media keys.
 type ContactPublicKey struct {
-	ID                   string     `json:"public_key_id"`
-	OwnerAccountID       string     `json:"owner_account_id"`
-	ContactID            string     `json:"contact_id"`
-	Version              int        `json:"version"`
-	DisplayLabel         string     `json:"display_label,omitempty"`
-	WrappingAlgorithm    string     `json:"wrapping_algorithm"`
-	PublicKey            string     `json:"public_key"`
-	PublicKeyFingerprint string     `json:"public_key_fingerprint"`
-	KeyState             string     `json:"key_state"`
-	CreatedAt            time.Time  `json:"created_at"`
-	UpdatedAt            time.Time  `json:"updated_at"`
-	RevokedAt            *time.Time `json:"revoked_at,omitempty"`
+	ID                    string     `json:"public_key_id"`
+	OwnerAccountID        string     `json:"owner_account_id"`
+	ContactID             string     `json:"contact_id"`
+	Version               int        `json:"version"`
+	DisplayLabel          string     `json:"display_label,omitempty"`
+	WrappingAlgorithm     string     `json:"wrapping_algorithm"`
+	PublicKey             string     `json:"public_key"`
+	PublicKeyFingerprint  string     `json:"public_key_fingerprint"`
+	KeyState              string     `json:"key_state"`
+	CreatedAt             time.Time  `json:"created_at"`
+	UpdatedAt             time.Time  `json:"updated_at"`
+	RevokedAt             *time.Time `json:"revoked_at,omitempty"`
+	ReplacedAt            *time.Time `json:"replaced_at,omitempty"`
+	LostAt                *time.Time `json:"lost_at,omitempty"`
+	ReplacedByPublicKeyID string     `json:"replaced_by_public_key_id,omitempty"`
 }
 
 // CreateContactPublicKeyParams contains owner-scoped public-key metadata.
@@ -65,6 +68,18 @@ type UpdateContactPublicKeyParams struct {
 	PublicKeyID    string
 	DisplayLabel   *string
 	KeyState       *string
+}
+
+// ReplaceContactPublicKeyParams creates a successor key version for one
+// trusted-contact public-key identity.
+type ReplaceContactPublicKeyParams struct {
+	OwnerAccountID       string
+	PublicKeyID          string
+	DisplayLabel         string
+	WrappingAlgorithm    string
+	PublicKey            string
+	PublicKeyFingerprint string
+	KeyState             string
 }
 
 // SharingGrant records an account-owner grant for trusted-contact access to
@@ -103,6 +118,16 @@ type CreateSharingGrantParams struct {
 func ValidContactKeyState(state string) bool {
 	switch state {
 	case ContactKeyStatePendingVerification, ContactKeyStateActive, ContactKeyStateReplaced, ContactKeyStateRevoked, ContactKeyStateLost:
+		return true
+	default:
+		return false
+	}
+}
+
+// TerminalContactKeyState reports whether state prevents future grant or wrap use.
+func TerminalContactKeyState(state string) bool {
+	switch state {
+	case ContactKeyStateReplaced, ContactKeyStateRevoked, ContactKeyStateLost:
 		return true
 	default:
 		return false

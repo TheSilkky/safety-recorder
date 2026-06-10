@@ -216,17 +216,20 @@ encrypted evidence bundles.
   replaced, revoked, or lost; those terminal states prevent future
   account/device wrapping eligibility and cannot recover or claw back any future
   wrapped keys, ciphertext, or plaintext already delivered before the state
-  change. Current sharing-grant and wrapped-key routes are owner-only: users and
-  admins can create, list, read, or revoke records only for incidents, grants,
-  or wrapped-key records owned by the authenticated account. New grants require
-  an active contact public key owned by the same account and can be scoped to an
-  incident or one stream. New wrapped-key records currently require an active,
-  unexpired trusted-contact grant that authorizes ciphertext access and an
-  active contact public key. The routes do not store or return recipient private
-  keys, raw CEKs, raw media keys, ML-KEM shared secrets, derived KEKs,
-  plaintext, decrypted caches, browser fragment secrets, request bodies,
-  uploaded bytes, stored paths, staging paths, object keys, or private
-  deployment details.
+  change. Trusted-contact public keys can be marked replaced, revoked, or lost;
+  those terminal states prevent future grant and wrapped-key eligibility and do
+  not rewrite older wrapped-key records that are already bound to the original
+  contact public-key ID and version. Current sharing-grant and wrapped-key
+  routes are owner-only: users and admins can create, list, read, or revoke
+  records only for incidents, grants, or wrapped-key records owned by the
+  authenticated account. New grants require an active contact public key owned
+  by the same account and can be scoped to an incident or one stream. New
+  wrapped-key records currently require an active, unexpired trusted-contact
+  grant that authorizes ciphertext access and an active contact public key. The
+  routes do not store or return recipient private keys, raw CEKs, raw media
+  keys, ML-KEM shared secrets, derived KEKs, plaintext, decrypted caches,
+  browser fragment secrets, request bodies, uploaded bytes, stored paths,
+  staging paths, object keys, or private deployment details.
 - The private admin web surface uses `html/template`, stores browser admin
   sessions in an HttpOnly SameSite cookie scoped to `/admin`, serves embedded
   token-neutral CSS from the private admin prefix without authentication, and

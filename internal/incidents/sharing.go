@@ -11,6 +11,9 @@ import (
 // CreateContactPublicKey stores a trusted-contact public key owned by one
 // account. It never stores contact private keys or media keys.
 func (r *Repository) CreateContactPublicKey(ctx context.Context, params CreateContactPublicKeyParams) (ContactPublicKey, error) {
+	if !ValidContactKeyState(params.KeyState) || TerminalContactKeyState(params.KeyState) {
+		return ContactPublicKey{}, ErrInvalidState
+	}
 	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
 		return ContactPublicKey{}, fmt.Errorf("begin create contact public key: %w", err)
@@ -39,48 +42,17 @@ func (r *Repository) CreateContactPublicKey(ctx context.Context, params CreateCo
 		}
 	}
 
-	id, err := newID("cpk")
+	contactKey, err := newContactPublicKey(params, contactID, version)
 	if err != nil {
 		return ContactPublicKey{}, err
 	}
-	now := time.Now().UTC()
-	contactKey := ContactPublicKey{
-		ID:                   id,
-		OwnerAccountID:       params.OwnerAccountID,
-		ContactID:            contactID,
-		Version:              version,
-		DisplayLabel:         params.DisplayLabel,
-		WrappingAlgorithm:    params.WrappingAlgorithm,
-		PublicKey:            params.PublicKey,
-		PublicKeyFingerprint: params.PublicKeyFingerprint,
-		KeyState:             params.KeyState,
-		CreatedAt:            now,
-		UpdatedAt:            now,
+	if err := insertContactPublicKeyTx(ctx, tx, contactKey); err != nil {
+		return ContactPublicKey{}, err
 	}
-
-	if _, err := tx.ExecContext(ctx, `
-		INSERT INTO contact_public_keys (
-			id, owner_account_id, contact_id, version, display_label,
-			wrapping_algorithm, public_key, public_key_fingerprint, key_state,
-			created_at, updated_at
-		)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		contactKey.ID,
-		contactKey.OwnerAccountID,
-		contactKey.ContactID,
-		contactKey.Version,
-		nullableString(contactKey.DisplayLabel),
-		contactKey.WrappingAlgorithm,
-		contactKey.PublicKey,
-		contactKey.PublicKeyFingerprint,
-		contactKey.KeyState,
-		formatDBTime(contactKey.CreatedAt),
-		formatDBTime(contactKey.UpdatedAt),
-	); err != nil {
-		if isConstraint(err) {
-			return ContactPublicKey{}, ErrNotFound
+	if params.ContactID != "" {
+		if _, err := markOpenContactKeysReplacedTx(ctx, tx, params.OwnerAccountID, contactID, contactKey.ID, contactKey.CreatedAt); err != nil {
+			return ContactPublicKey{}, err
 		}
-		return ContactPublicKey{}, fmt.Errorf("insert contact public key: %w", err)
 	}
 	if err := tx.Commit(); err != nil {
 		return ContactPublicKey{}, fmt.Errorf("commit create contact public key: %w", err)
@@ -129,25 +101,20 @@ func (r *Repository) UpdateContactPublicKey(ctx context.Context, params UpdateCo
 		current.DisplayLabel = *params.DisplayLabel
 	}
 	if params.KeyState != nil {
-		if current.KeyState == ContactKeyStateRevoked && *params.KeyState != ContactKeyStateRevoked {
+		if !allowedContactKeyUpdate(current.KeyState, *params.KeyState) {
 			return ContactPublicKey{}, ErrInvalidState
 		}
 		current.KeyState = *params.KeyState
-		if current.KeyState == ContactKeyStateRevoked && current.RevokedAt == nil {
-			revokedAt := time.Now().UTC()
-			current.RevokedAt = &revokedAt
-		}
 	}
 	current.UpdatedAt = time.Now().UTC()
 
 	result, err := r.db.ExecContext(ctx, `
 		UPDATE contact_public_keys
-		SET display_label = ?, key_state = ?, updated_at = ?, revoked_at = ?
+		SET display_label = ?, key_state = ?, updated_at = ?
 		WHERE owner_account_id = ? AND id = ?`,
 		nullableString(current.DisplayLabel),
 		current.KeyState,
 		formatDBTime(current.UpdatedAt),
-		nullableTime(current.RevokedAt),
 		params.OwnerAccountID,
 		params.PublicKeyID,
 	)
@@ -166,12 +133,117 @@ func (r *Repository) UpdateContactPublicKey(ctx context.Context, params UpdateCo
 
 // RevokeContactPublicKey marks a contact key revoked so it cannot receive new grants.
 func (r *Repository) RevokeContactPublicKey(ctx context.Context, ownerAccountID, publicKeyID string) (ContactPublicKey, error) {
-	state := ContactKeyStateRevoked
-	return r.UpdateContactPublicKey(ctx, UpdateContactPublicKeyParams{
-		OwnerAccountID: ownerAccountID,
-		PublicKeyID:    publicKeyID,
-		KeyState:       &state,
-	})
+	return r.setContactKeyTerminalState(ctx, ownerAccountID, publicKeyID, ContactKeyStateRevoked)
+}
+
+// MarkContactPublicKeyLost marks a contact key lost so it cannot receive new grants.
+func (r *Repository) MarkContactPublicKeyLost(ctx context.Context, ownerAccountID, publicKeyID string) (ContactPublicKey, error) {
+	return r.setContactKeyTerminalState(ctx, ownerAccountID, publicKeyID, ContactKeyStateLost)
+}
+
+// ReplaceContactPublicKey creates a successor key version and marks the
+// previous trusted-contact public key replaced in one transaction.
+func (r *Repository) ReplaceContactPublicKey(ctx context.Context, params ReplaceContactPublicKeyParams) (ContactPublicKey, error) {
+	if !ValidContactKeyState(params.KeyState) || TerminalContactKeyState(params.KeyState) {
+		return ContactPublicKey{}, ErrInvalidState
+	}
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return ContactPublicKey{}, fmt.Errorf("begin replace contact public key: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	current, err := getContactPublicKeyTx(ctx, tx, params.OwnerAccountID, params.PublicKeyID)
+	if err != nil {
+		return ContactPublicKey{}, err
+	}
+	if TerminalContactKeyState(current.KeyState) {
+		return ContactPublicKey{}, ErrInvalidState
+	}
+
+	var version int
+	if err := tx.QueryRowContext(ctx, `
+		SELECT COALESCE(MAX(version), 0) + 1
+		FROM contact_public_keys
+		WHERE owner_account_id = ? AND contact_id = ?`,
+		params.OwnerAccountID,
+		current.ContactID,
+	).Scan(&version); err != nil {
+		return ContactPublicKey{}, fmt.Errorf("read replacement contact public key version: %w", err)
+	}
+
+	replacement, err := newContactPublicKey(CreateContactPublicKeyParams{
+		OwnerAccountID:       params.OwnerAccountID,
+		ContactID:            current.ContactID,
+		DisplayLabel:         params.DisplayLabel,
+		WrappingAlgorithm:    params.WrappingAlgorithm,
+		PublicKey:            params.PublicKey,
+		PublicKeyFingerprint: params.PublicKeyFingerprint,
+		KeyState:             params.KeyState,
+	}, current.ContactID, version)
+	if err != nil {
+		return ContactPublicKey{}, err
+	}
+	if err := insertContactPublicKeyTx(ctx, tx, replacement); err != nil {
+		return ContactPublicKey{}, err
+	}
+
+	now := time.Now().UTC()
+	rowsAffected, err := markOpenContactKeysReplacedTx(ctx, tx, params.OwnerAccountID, current.ContactID, replacement.ID, now)
+	if err != nil {
+		return ContactPublicKey{}, err
+	}
+	if rowsAffected == 0 {
+		return ContactPublicKey{}, ErrNotFound
+	}
+	if err := tx.Commit(); err != nil {
+		return ContactPublicKey{}, fmt.Errorf("commit replace contact public key: %w", err)
+	}
+	return replacement, nil
+}
+
+func (r *Repository) setContactKeyTerminalState(ctx context.Context, ownerAccountID, publicKeyID, state string) (ContactPublicKey, error) {
+	current, err := r.GetContactPublicKey(ctx, ownerAccountID, publicKeyID)
+	if err != nil {
+		return ContactPublicKey{}, err
+	}
+	if TerminalContactKeyState(current.KeyState) && current.KeyState != state {
+		return ContactPublicKey{}, ErrInvalidState
+	}
+	if current.KeyState == state {
+		return current, nil
+	}
+
+	now := time.Now().UTC()
+	var revokedAt, lostAt *time.Time
+	if state == ContactKeyStateRevoked {
+		revokedAt = &now
+	}
+	if state == ContactKeyStateLost {
+		lostAt = &now
+	}
+	result, err := r.db.ExecContext(ctx, `
+		UPDATE contact_public_keys
+		SET key_state = ?, updated_at = ?, revoked_at = ?, lost_at = ?
+		WHERE owner_account_id = ? AND id = ?`,
+		state,
+		formatDBTime(now),
+		nullableTime(revokedAt),
+		nullableTime(lostAt),
+		ownerAccountID,
+		publicKeyID,
+	)
+	if err != nil {
+		return ContactPublicKey{}, fmt.Errorf("set contact public key terminal state: %w", err)
+	}
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return ContactPublicKey{}, fmt.Errorf("terminal contact public key rows affected: %w", err)
+	}
+	if rowsAffected == 0 {
+		return ContactPublicKey{}, ErrNotFound
+	}
+	return r.GetContactPublicKey(ctx, ownerAccountID, publicKeyID)
 }
 
 // CreateSharingGrant creates an owner-scoped trusted-contact grant for an incident or stream.
@@ -379,7 +451,8 @@ func contactPublicKeySelect() string {
 	return `
 		SELECT id, owner_account_id, contact_id, version, display_label,
 			wrapping_algorithm, public_key, public_key_fingerprint, key_state,
-			created_at, updated_at, revoked_at
+			created_at, updated_at, revoked_at, replaced_at, lost_at,
+			replaced_by_public_key_id
 		FROM contact_public_keys `
 }
 
@@ -420,4 +493,108 @@ func scanSharingGrantRows(rows *sql.Rows) ([]SharingGrant, error) {
 		return nil, fmt.Errorf("iterate sharing grants: %w", err)
 	}
 	return grants, nil
+}
+
+func newContactPublicKey(params CreateContactPublicKeyParams, contactID string, version int) (ContactPublicKey, error) {
+	id, err := newID("cpk")
+	if err != nil {
+		return ContactPublicKey{}, err
+	}
+	now := time.Now().UTC()
+	return ContactPublicKey{
+		ID:                   id,
+		OwnerAccountID:       params.OwnerAccountID,
+		ContactID:            contactID,
+		Version:              version,
+		DisplayLabel:         params.DisplayLabel,
+		WrappingAlgorithm:    params.WrappingAlgorithm,
+		PublicKey:            params.PublicKey,
+		PublicKeyFingerprint: params.PublicKeyFingerprint,
+		KeyState:             params.KeyState,
+		CreatedAt:            now,
+		UpdatedAt:            now,
+	}, nil
+}
+
+func insertContactPublicKeyTx(ctx context.Context, tx *sql.Tx, contactKey ContactPublicKey) error {
+	_, err := tx.ExecContext(ctx, `
+		INSERT INTO contact_public_keys (
+			id, owner_account_id, contact_id, version, display_label,
+			wrapping_algorithm, public_key, public_key_fingerprint, key_state,
+			created_at, updated_at
+		)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		contactKey.ID,
+		contactKey.OwnerAccountID,
+		contactKey.ContactID,
+		contactKey.Version,
+		nullableString(contactKey.DisplayLabel),
+		contactKey.WrappingAlgorithm,
+		contactKey.PublicKey,
+		contactKey.PublicKeyFingerprint,
+		contactKey.KeyState,
+		formatDBTime(contactKey.CreatedAt),
+		formatDBTime(contactKey.UpdatedAt),
+	)
+	if err != nil {
+		if isConstraint(err) {
+			return ErrNotFound
+		}
+		return fmt.Errorf("insert contact public key: %w", err)
+	}
+	return nil
+}
+
+func getContactPublicKeyTx(ctx context.Context, tx *sql.Tx, ownerAccountID, publicKeyID string) (ContactPublicKey, error) {
+	row := tx.QueryRowContext(ctx, contactPublicKeySelect()+`
+		WHERE owner_account_id = ? AND id = ?`,
+		ownerAccountID,
+		publicKeyID,
+	)
+	contactKey, err := scanContactPublicKey(row)
+	if errors.Is(err, sql.ErrNoRows) {
+		return ContactPublicKey{}, ErrNotFound
+	}
+	if err != nil {
+		return ContactPublicKey{}, fmt.Errorf("get contact public key in transaction: %w", err)
+	}
+	return contactKey, nil
+}
+
+func markOpenContactKeysReplacedTx(ctx context.Context, tx *sql.Tx, ownerAccountID, contactID, replacementID string, replacedAt time.Time) (int64, error) {
+	result, err := tx.ExecContext(ctx, `
+		UPDATE contact_public_keys
+		SET key_state = ?, updated_at = ?, replaced_at = ?, replaced_by_public_key_id = ?
+		WHERE owner_account_id = ?
+			AND contact_id = ?
+			AND id <> ?
+			AND key_state IN (?, ?)`,
+		ContactKeyStateReplaced,
+		formatDBTime(replacedAt),
+		formatDBTime(replacedAt),
+		replacementID,
+		ownerAccountID,
+		contactID,
+		replacementID,
+		ContactKeyStatePendingVerification,
+		ContactKeyStateActive,
+	)
+	if err != nil {
+		return 0, fmt.Errorf("mark contact public keys replaced: %w", err)
+	}
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return 0, fmt.Errorf("replace contact public key rows affected: %w", err)
+	}
+	return rowsAffected, nil
+}
+
+func allowedContactKeyUpdate(currentState, nextState string) bool {
+	if currentState == nextState {
+		return true
+	}
+	if TerminalContactKeyState(currentState) || TerminalContactKeyState(nextState) {
+		return false
+	}
+	return nextState == ContactKeyStatePendingVerification || nextState == ContactKeyStateActive
 }

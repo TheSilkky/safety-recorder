@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Added explicit trusted-contact public-key lifecycle routes and metadata for
+  replacement and lost-key states, with SQLite/PostgreSQL parity, tests, and
+  docs confirming that old wrapped-key records remain bound to their original
+  key version and that no private keys, raw CEKs/media keys, plaintext, or
+  backend/browser decryption are introduced.
 - Added authenticated trusted-contact relationship lifecycle routes,
   SQLite/PostgreSQL metadata parity, and docs for owner invites, recipient
   accept/decline, owner revoke, and replacement without adding trusted-contact

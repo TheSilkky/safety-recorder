@@ -3,12 +3,12 @@
 This document designs the contact key-sharing model for Proofline. The current
 backend implements the server metadata steps for this model: account owners can
 create account-to-account trusted-contact relationship invites, register
-trusted-contact public-key metadata, create or revoke incident/stream-scoped
-sharing grants, and store or revoke grant-bound wrapped-key records through
-authenticated private `/v1` routes. It does not add bundle wrapped-key fields,
-trusted-contact wrapped-key delivery, browser decryption, backend decryption,
-server escrow, public account workflows, notifications, client code, or
-production key custody behavior.
+trusted-contact public-key metadata, replace or mark contact keys revoked/lost,
+create or revoke incident/stream-scoped sharing grants, and store or revoke
+grant-bound wrapped-key records through authenticated private `/v1` routes. It
+does not add bundle wrapped-key fields, trusted-contact wrapped-key delivery,
+browser decryption, backend decryption, server escrow, public account
+workflows, notifications, client code, or production key custody behavior.
 
 The design connects the long-term key custody direction in
 [key-custody.md](key-custody.md), the role and grant boundaries in
@@ -89,11 +89,16 @@ Suggested contact key states:
 - `revoked`: no longer eligible for new grants or new wrapping
 - `lost`: contact reports private-key loss; not eligible for new wrapping
 
-Replacing or rotating a contact key should not mutate old wrapped-key records.
-New CEKs should be wrapped only to the active key version. Rewrapping older
-CEKs is possible only when an authorized client or reviewed future service
-still has access to the raw CEK; the server must not invent a rewrap path by
-decrypting existing wrapped-key ciphertext.
+The implemented `/v1/contact-public-keys/{public_key_id}/replace` route creates
+a successor version for the same contact and marks prior nonterminal versions
+`replaced`. `/lost` records contact private-key or device loss. Replacement,
+revocation, and lost-key states are terminal for future grants and wrapped-key
+records. They do not mutate old wrapped-key records; old records remain bound
+to the original contact public-key ID and version, and current delivery filters
+omit them once the referenced key is no longer active. Rewrapping older CEKs is
+possible only when an authorized client or reviewed future service still has
+access to the raw CEK; the server must not invent a rewrap path by decrypting
+existing wrapped-key ciphertext.
 
 ## Grants
 
@@ -322,9 +327,9 @@ Implementation should stay split into narrow issues:
 
 1. Implemented: add metadata schema and repository coverage for contact public keys and
    sharing grants behind the existing reviewed `/v1` boundary.
-2. Implemented: add authenticated owner routes for contact key registration, verification,
-   replacement, revocation, and grant management behind the existing reviewed
-   `/v1` boundary.
+2. Implemented: add authenticated owner routes for contact key registration,
+   verification, replacement, revocation, lost-key marking, and grant
+   management behind the existing reviewed `/v1` boundary.
 3. Implemented: add wrapped-key metadata schema and repository behavior without
    exposing raw CEKs, raw media keys, or recipient private keys.
 4. Implemented: add owner-authenticated wrapped-key delivery through private

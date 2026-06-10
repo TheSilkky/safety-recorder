@@ -77,6 +77,8 @@ type MetadataRepository interface {
 	GetContactPublicKey(ctx context.Context, ownerAccountID, publicKeyID string) (incidents.ContactPublicKey, error)
 	UpdateContactPublicKey(ctx context.Context, params incidents.UpdateContactPublicKeyParams) (incidents.ContactPublicKey, error)
 	RevokeContactPublicKey(ctx context.Context, ownerAccountID, publicKeyID string) (incidents.ContactPublicKey, error)
+	MarkContactPublicKeyLost(ctx context.Context, ownerAccountID, publicKeyID string) (incidents.ContactPublicKey, error)
+	ReplaceContactPublicKey(ctx context.Context, params incidents.ReplaceContactPublicKeyParams) (incidents.ContactPublicKey, error)
 	CreateAccountRecipientKey(ctx context.Context, params incidents.CreateAccountRecipientKeyParams) (incidents.AccountRecipientKey, error)
 	ListAccountRecipientKeys(ctx context.Context, ownerAccountID string) ([]incidents.AccountRecipientKey, error)
 	GetAccountRecipientKey(ctx context.Context, ownerAccountID, recipientKeyID string) (incidents.AccountRecipientKey, error)

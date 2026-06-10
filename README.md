@@ -79,10 +79,11 @@ trusted-contact workflows, or change public viewer and bundle behavior. See
 [docs/incident-modes.md](docs/incident-modes.md).
 
 Authenticated account owners can also invite local accounts into
-trusted-contact relationships, register trusted-contact public-key metadata,
-and create or revoke incident/stream-scoped sharing grants for their own
-incidents. Those grants can authorize private API storage and delivery of
-contact-wrapped CEK/media-key metadata for owned incidents or streams.
+trusted-contact relationships, register or replace trusted-contact public-key
+metadata, mark contact keys lost or revoked, and create or revoke
+incident/stream-scoped sharing grants for their own incidents. Those grants can
+authorize private API storage and delivery of contact-wrapped CEK/media-key
+metadata for owned incidents or streams.
 Relationship records do not add trusted-contact wrapped-key delivery, browser
 or backend decryption, public viewer changes, notifications, raw key storage,
 or key escrow.
@@ -123,7 +124,8 @@ or key escrow.
   revoked, and lost states for future wrapping eligibility
 - Account-to-account trusted-contact relationship invites with accept, decline,
   revoke, and replace states
-- Owner-scoped contact public-key metadata and sharing-grant records for owned
+- Owner-scoped trusted-contact public-key metadata with pending, active,
+  replaced, revoked, and lost states, plus sharing-grant records for owned
   incidents or streams
 - Owner-scoped wrapped CEK/media-key metadata storage and private API delivery
   for active sharing grants

@@ -406,6 +406,9 @@ func scanContactPublicKey(s scanner) (ContactPublicKey, error) {
 	var createdAt string
 	var updatedAt string
 	var revokedAt sql.NullString
+	var replacedAt sql.NullString
+	var lostAt sql.NullString
+	var replacedByPublicKeyID sql.NullString
 	if err := s.Scan(
 		&contactKey.ID,
 		&contactKey.OwnerAccountID,
@@ -419,6 +422,9 @@ func scanContactPublicKey(s scanner) (ContactPublicKey, error) {
 		&createdAt,
 		&updatedAt,
 		&revokedAt,
+		&replacedAt,
+		&lostAt,
+		&replacedByPublicKeyID,
 	); err != nil {
 		return ContactPublicKey{}, err
 	}
@@ -437,6 +443,15 @@ func scanContactPublicKey(s scanner) (ContactPublicKey, error) {
 	}
 	if contactKey.RevokedAt, err = nullableDBTime(revokedAt); err != nil {
 		return ContactPublicKey{}, err
+	}
+	if contactKey.ReplacedAt, err = nullableDBTime(replacedAt); err != nil {
+		return ContactPublicKey{}, err
+	}
+	if contactKey.LostAt, err = nullableDBTime(lostAt); err != nil {
+		return ContactPublicKey{}, err
+	}
+	if replacedByPublicKeyID.Valid {
+		contactKey.ReplacedByPublicKeyID = replacedByPublicKeyID.String
 	}
 	return contactKey, nil
 }
