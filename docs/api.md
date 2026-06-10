@@ -1862,6 +1862,62 @@ Incident viewer responses include `Referrer-Policy: no-referrer`, `X-Content-Typ
 
 The Go app does not set `Strict-Transport-Security` in local/dev HTTP mode. Set HSTS at the HTTPS reverse proxy or deployment edge for production hostnames.
 
+### `GET /i/{token}/viewer-payload`
+
+Returns the stable, token-scoped no-account viewer payload intended for the
+future web-client viewer. It is narrower than `/i/{token}/data`: it provides
+incident status, latest check-in time, safe device state when present, and a
+single latest shared or last reported location context when a check-in contains
+both latitude and longitude. It does not expose chunk summaries, stream
+summaries, encrypted bundle metadata, raw viewer tokens, token hashes, session
+tokens, Authorization headers, request bodies, uploaded bytes, stored paths,
+object keys, plaintext, raw keys, wrapped-key ciphertext, admin/operator
+details, backend diagnostics, private deployment details, user safety
+narrative, map-provider links, map API keys, or decryption material.
+
+Response `200`:
+
+```json
+{
+  "payload_version": "proofline.viewer.basic.v1",
+  "incident": {
+    "id": "inc_...",
+    "status": "open",
+    "client_label": "iphone",
+    "created_at": "2026-05-21T10:00:00Z",
+    "updated_at": "2026-05-21T10:00:00Z"
+  },
+  "latest_checkin": {
+    "server_received_at": "2026-05-21T10:02:00Z",
+    "safe_device_state": {
+      "device_battery_percent": 82,
+      "device_network": "wifi"
+    }
+  },
+  "latest_shared_location": {
+    "latitude": -37.0,
+    "longitude": 145.0,
+    "accuracy_meters": 20,
+    "source": "checkin",
+    "server_received_at": "2026-05-21T10:02:00Z",
+    "freshness_status": "recent"
+  },
+  "warning": "If you are concerned about immediate safety, call emergency services now.",
+  "generated_at": "2026-05-21T10:02:12Z"
+}
+```
+
+`latest_shared_location` is omitted when no check-in contains both coordinates.
+`client_reported_at` is reserved and omitted until clients submit a separate
+client-reported check-in timestamp. `freshness_status` is based on the
+server-received check-in timestamp and is either `recent` or `stale` for a
+reported location. This is not a live-tracking contract, does not imply
+emergency dispatch, and does not authorize map-provider backend integration.
+
+Invalid, expired, and revoked tokens return the same
+`404 incident_token_invalid` response as the other public viewer routes. The
+route is read-only and uses the public viewer data rate-limit class.
+
 ### `GET /i/{token}/streams/{stream_id}/download`
 
 Downloads a completed stream bundle for the token's incident. The route is read-only and never accepts a client-provided file path. Invalid, expired, and revoked tokens return `404 incident_token_invalid`.

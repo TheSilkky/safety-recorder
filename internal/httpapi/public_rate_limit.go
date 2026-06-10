@@ -152,6 +152,8 @@ func classifyPublicViewerRateLimit(r *http.Request) (publicRateLimitClass, bool)
 		return publicRateLimitPage, true
 	case len(segments) == 3 && segments[2] == "data":
 		return publicRateLimitData, true
+	case len(segments) == 3 && segments[2] == "viewer-payload":
+		return publicRateLimitData, true
 	case len(segments) == 4 && segments[2] == "incident" && segments[3] == "download":
 		return publicRateLimitDownload, true
 	case len(segments) == 5 && segments[2] == "streams" && segments[4] == "download":

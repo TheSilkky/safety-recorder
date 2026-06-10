@@ -136,8 +136,9 @@ encrypted evidence bundles.
   authentication, require the admin role after login, and are mounted only on
   the private-admin server. The token-neutral `/admin/static/...` CSS route is
   unauthenticated.
-- `/i/{token}`, `/i/{token}/data`, and viewer bundle download routes are
-  public-shaped read-only routes gated by a bearer token. Pre-rename
+- `/i/{token}`, `/i/{token}/data`, `/i/{token}/viewer-payload`, and viewer
+  bundle download routes are public-shaped read-only routes gated by a bearer
+  token. Pre-rename
   `/e/{token}` viewer, data, and download paths remain as compatibility
   aliases. These routes are mounted on the main API/viewer server.
 - Static assets under `/static/` are embedded and token-neutral.
@@ -265,6 +266,15 @@ encrypted evidence bundles.
   manifests may expose user-supplied `original_filename` basenames when clients
   provided them. Viewer bundle downloads expose only encrypted chunk bytes and
   generated manifests for completed streams.
+- The web-client no-account viewer payload exposes only a stable allowlist for
+  incident status, latest check-in time, limited safe device state, and one
+  latest shared or last reported check-in location when present. It does not
+  expose chunk or stream inventories, encrypted evidence, full GPS routes,
+  speed or heading histories, raw viewer tokens, token hashes, session tokens,
+  Authorization headers, request bodies, uploaded bytes, plaintext, raw keys,
+  wrapped-key ciphertext, stored paths, object keys, backend diagnostics,
+  admin/operator details, private deployment details, map-provider links, map
+  API keys, or user safety narrative.
 - Open and failed streams are exposed to the current public viewer only as
   metadata summaries. Live or partial stream access is planning-only in
   [live-partial-stream-access-boundary.md](live-partial-stream-access-boundary.md).

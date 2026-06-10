@@ -332,15 +332,24 @@ backend does not implement encrypted location sidecars, live tracking, browser
 decryption, trusted-contact incident reads, or map-provider backend
 integration.
 
-Basic no-account token viewers must not receive full routes, chunk-by-chunk GPS
-samples, speed histories, heading histories, or live tracking claims by default.
-Signed-in trusted-contact access must remain account-authenticated and
-grant-scoped rather than inferred from a bearer viewer link.
+The basic web-client no-account viewer payload at
+`GET /i/{token}/viewer-payload` is token-scoped and read-only. It may include
+incident status, latest check-in time, deliberately limited safe device state,
+and a single latest shared or last reported location from check-in metadata
+when both coordinates are present. It must not include full routes,
+chunk-by-chunk GPS samples, speed histories, heading histories, live tracking
+claims, encrypted evidence bytes, chunk or stream inventories, wrapped-key
+ciphertext, raw tokens, token hashes, session tokens, Authorization headers,
+request bodies, uploaded bytes, stored paths, object keys, plaintext, raw keys,
+backend diagnostics, admin/operator details, private deployment details, or
+user safety narrative. Signed-in trusted-contact access remains
+account-authenticated and grant-scoped rather than inferred from a bearer
+viewer link.
 
-Future implementation tests should cover token-viewer field allowlists,
-redaction assertions, location-context envelope or authenticated metadata
-binding, relay/logging omissions, and indistinguishable invalid, expired, and
-revoked token behavior.
+Implementation tests cover the token-viewer field allowlist, redaction
+assertions, and indistinguishable invalid, expired, and revoked token behavior.
+Future encrypted location-context envelope or authenticated metadata binding
+work still needs separate relay/logging and privacy validation.
 
 ## Logging And Headers
 

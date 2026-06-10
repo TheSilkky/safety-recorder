@@ -151,6 +151,7 @@ func (a *API) publicRoutes() http.Handler {
 func (a *API) registerPublicIncidentViewerRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /i/{token}", a.incidentViewerPage)
 	mux.HandleFunc("GET /i/{token}/data", a.incidentViewData)
+	mux.HandleFunc("GET /i/{token}/viewer-payload", a.webClientViewerPayload)
 	mux.HandleFunc("GET /i/{token}/streams/{stream_id}/download", a.downloadIncidentViewerStreamBundle)
 	mux.HandleFunc("GET /i/{token}/incident/download", a.downloadIncidentViewerIncidentBundle)
 	// Keep the pre-rename viewer path as a compatibility alias for already

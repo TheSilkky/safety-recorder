@@ -715,6 +715,127 @@ func TestIncidentViewDataReturnsExpectedReadOnlyJSON(t *testing.T) {
 	}
 }
 
+func TestWebClientViewerPayloadReturnsMinimalMapReadyContext(t *testing.T) {
+	app := newTestApp(t)
+	incidentID := createIncident(t, app, `{"client_label":"iphone","notes":"private narrative"}`)
+	stream := createMediaStream(t, app, incidentID, incidents.MediaTypeLocation, "encrypted location")
+	payload := []byte("encrypted location chunk")
+	response, body := uploadChunkWithStream(t, app, incidentID, stream.ID, 1, incidents.MediaTypeLocation, payload, sha256Hex(payload))
+	response.Body.Close()
+	if response.StatusCode != http.StatusCreated {
+		t.Fatalf("expected upload status 201, got %d: %s", response.StatusCode, body)
+	}
+	createCheckin(t, app, incidentID)
+	token := createIncidentToken(t, app, incidentID, "trusted contact", nil)
+
+	response, body = getPublic(t, app, "/i/"+token.Token+"/viewer-payload")
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("expected web-client viewer payload status 200, got %d: %s", response.StatusCode, body)
+	}
+	assertIncidentViewerPrivacyHeaders(t, response)
+
+	for _, disallowed := range []string{
+		token.Token,
+		"private narrative",
+		"chunk_count_by_media_type",
+		"latest_chunk_by_media_type",
+		"completed_streams",
+		"stored_path",
+		"owner_account_id",
+		"token_hash",
+		"wrapped_key",
+		"sha256_hex",
+		"byte_size",
+	} {
+		if bytes.Contains(body, []byte(disallowed)) {
+			t.Fatalf("web-client viewer payload exposed %q: %s", disallowed, body)
+		}
+	}
+
+	var data struct {
+		PayloadVersion string `json:"payload_version"`
+		Incident       struct {
+			ID          string `json:"id"`
+			Status      string `json:"status"`
+			ClientLabel string `json:"client_label"`
+		} `json:"incident"`
+		LatestCheckin *struct {
+			ServerReceivedAt time.Time `json:"server_received_at"`
+			SafeDeviceState  *struct {
+				DeviceBatteryPercent *int    `json:"device_battery_percent"`
+				DeviceNetwork        *string `json:"device_network"`
+			} `json:"safe_device_state"`
+		} `json:"latest_checkin"`
+		LatestSharedLocation *struct {
+			Latitude         float64    `json:"latitude"`
+			Longitude        float64    `json:"longitude"`
+			AccuracyMeters   *float64   `json:"accuracy_meters"`
+			Source           string     `json:"source"`
+			ServerReceivedAt time.Time  `json:"server_received_at"`
+			ClientReportedAt *time.Time `json:"client_reported_at"`
+			FreshnessStatus  string     `json:"freshness_status"`
+		} `json:"latest_shared_location"`
+		Warning     string    `json:"warning"`
+		GeneratedAt time.Time `json:"generated_at"`
+	}
+	if err := json.Unmarshal(body, &data); err != nil {
+		t.Fatalf("decode web-client viewer payload: %v", err)
+	}
+	if data.PayloadVersion != "proofline.viewer.basic.v1" {
+		t.Fatalf("unexpected payload version %q", data.PayloadVersion)
+	}
+	if data.Incident.ID != incidentID || data.Incident.Status != incidents.StatusOpen || data.Incident.ClientLabel != "iphone" {
+		t.Fatalf("unexpected incident summary: %+v", data.Incident)
+	}
+	if data.LatestCheckin == nil || data.LatestCheckin.SafeDeviceState == nil ||
+		data.LatestCheckin.SafeDeviceState.DeviceBatteryPercent == nil ||
+		*data.LatestCheckin.SafeDeviceState.DeviceBatteryPercent != 82 {
+		t.Fatalf("unexpected latest checkin: %+v", data.LatestCheckin)
+	}
+	if data.LatestSharedLocation == nil {
+		t.Fatal("expected latest shared location")
+	}
+	if data.LatestSharedLocation.Latitude != -37 || data.LatestSharedLocation.Longitude != 145 {
+		t.Fatalf("unexpected latest shared location: %+v", data.LatestSharedLocation)
+	}
+	if data.LatestSharedLocation.AccuracyMeters == nil || *data.LatestSharedLocation.AccuracyMeters != 20 {
+		t.Fatalf("unexpected latest shared location accuracy: %+v", data.LatestSharedLocation)
+	}
+	if data.LatestSharedLocation.Source != "checkin" || data.LatestSharedLocation.FreshnessStatus != "recent" {
+		t.Fatalf("unexpected latest shared location context: %+v", data.LatestSharedLocation)
+	}
+	if data.LatestSharedLocation.ClientReportedAt != nil {
+		t.Fatalf("client reported timestamp should be omitted until clients submit it: %+v", data.LatestSharedLocation)
+	}
+	if data.Warning == "" || data.GeneratedAt.IsZero() {
+		t.Fatalf("expected warning and generated_at, got warning=%q generated_at=%s", data.Warning, data.GeneratedAt)
+	}
+}
+
+func TestWebClientViewerPayloadRejectsInvalidExpiredAndRevokedTokens(t *testing.T) {
+	app := newTestApp(t)
+	incidentID := createIncident(t, app, `{}`)
+	expiredAt := time.Now().UTC().Add(-time.Minute)
+	expired := createIncidentToken(t, app, incidentID, "expired", &expiredAt)
+	revoked := createIncidentToken(t, app, incidentID, "revoked", nil)
+	response, body := post(t, app, "/v1/incident-tokens/"+revoked.TokenID+"/revoke", "application/json", bytes.NewBufferString(`{}`))
+	response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("expected revoke status 200, got %d: %s", response.StatusCode, body)
+	}
+
+	for _, token := range []string{"not-a-real-token", expired.Token, revoked.Token} {
+		response, body := getPublic(t, app, "/i/"+token+"/viewer-payload")
+		response.Body.Close()
+		if response.StatusCode != http.StatusNotFound {
+			t.Fatalf("expected token %q status 404, got %d: %s", token, response.StatusCode, body)
+		}
+		assertIncidentViewerPrivacyHeaders(t, response)
+		assertErrorCode(t, body, "incident_token_invalid")
+	}
+}
+
 func TestIncidentViewDataCompletedStreamsStayDownloadScoped(t *testing.T) {
 	app := newTestApp(t)
 	incidentID, completed := createIncidentStreamWithChunks(t, app, 2)

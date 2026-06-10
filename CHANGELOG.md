@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Added a token-scoped web-client viewer payload for no-account incident
+  viewers, with latest check-in and latest shared location context, field
+  allowlist tests, docs, and unchanged ciphertext-only/key-custody behavior.
 - Added a public web-client deployment-boundary design for v1 preview route
   exposure, browser-cookie sessions, credentialed CORS, CSRF, cache headers,
   TLS/HSTS-at-proxy, viewer-token handling, logging review, and the #223/#233
