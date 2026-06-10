@@ -6,6 +6,7 @@ func (a *API) mainRoutes() http.Handler {
 	mux := http.NewServeMux()
 	a.registerMainAuthRoutes(mux)
 	a.registerMainContactRoutes(mux)
+	a.registerMainAccountRecipientKeyRoutes(mux)
 	a.registerMainIncidentRoutes(mux)
 	a.registerMainStreamRoutes(mux)
 	a.registerMainIncidentTokenRoutes(mux)
@@ -23,6 +24,16 @@ func (a *API) registerMainContactRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /v1/contact-public-keys/{public_key_id}", a.withPrivateAuth(a.getContactPublicKey))
 	mux.HandleFunc("PATCH /v1/contact-public-keys/{public_key_id}", a.withPrivateAuth(a.updateContactPublicKey))
 	mux.HandleFunc("POST /v1/contact-public-keys/{public_key_id}/revoke", a.withPrivateAuth(a.revokeContactPublicKey))
+}
+
+func (a *API) registerMainAccountRecipientKeyRoutes(mux *http.ServeMux) {
+	mux.HandleFunc("POST /v1/account-recipient-keys", a.withPrivateAuth(a.createAccountRecipientKey))
+	mux.HandleFunc("GET /v1/account-recipient-keys", a.withPrivateAuth(a.listAccountRecipientKeys))
+	mux.HandleFunc("GET /v1/account-recipient-keys/{recipient_key_id}", a.withPrivateAuth(a.getAccountRecipientKey))
+	mux.HandleFunc("PATCH /v1/account-recipient-keys/{recipient_key_id}", a.withPrivateAuth(a.updateAccountRecipientKey))
+	mux.HandleFunc("POST /v1/account-recipient-keys/{recipient_key_id}/revoke", a.withPrivateAuth(a.revokeAccountRecipientKey))
+	mux.HandleFunc("POST /v1/account-recipient-keys/{recipient_key_id}/lost", a.withPrivateAuth(a.markAccountRecipientKeyLost))
+	mux.HandleFunc("POST /v1/account-recipient-keys/{recipient_key_id}/replace", a.withPrivateAuth(a.replaceAccountRecipientKey))
 }
 
 func (a *API) adminRoutes() http.Handler {

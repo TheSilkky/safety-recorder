@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Added authenticated owner-scoped account/device recipient-key lifecycle routes,
+  SQLite/PostgreSQL metadata parity, and docs for create/list/read/update,
+  revoke, replace, and lost-device states without adding backend decryption,
+  raw key storage, or account/device wrapped-key delivery.
 - Made the accepted post-quantum envelope the v1 preview runtime upload
   default: chunk uploads now fail closed unless the public PQ payload frame
   matches the request identity, wrapped-key records validate the accepted PQ

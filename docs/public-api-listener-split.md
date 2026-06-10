@@ -145,7 +145,7 @@ minimum:
 | Viewer download | Viewer stream and incident ZIP downloads | Protect bundle generation and storage reads. |
 | Static asset | `/static/...` | Keep asset floods from bypassing route accounting. |
 | Login/auth | `/v1/auth/login`, `/v1/auth/logout`, browser cookie login/logout/CSRF routes | Slow password guessing, session churn, and browser credential probes. |
-| Account/password/contact keys | `/v1/account`, `/v1/account/password`, `/v1/contact-public-keys...` | Bound password change, account self-service, and owner contact-key metadata traffic. |
+| Account/password/recipient keys | `/v1/account`, `/v1/account/password`, `/v1/account-recipient-keys...`, `/v1/contact-public-keys...` | Bound password change, account self-service, owner account/device recipient-key metadata, and owner contact-key metadata traffic. |
 | Incident metadata write | Incident create, close, deletion, sharing-grant writes, wrapped-key writes, token creation/revocation | Bound state changes and grant or wrapped-key metadata creation. |
 | Incident metadata read | Incident, stream, chunk, check-in, sharing-grant, and wrapped-key metadata reads | Bound authenticated metadata scraping. |
 | Upload body | Chunk uploads and future resumable upload routes | Protect request body handling, temp storage, hashing, and metadata writes. |

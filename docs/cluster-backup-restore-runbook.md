@@ -27,7 +27,7 @@ together. Coordination state is intentionally not evidence storage.
 
 | System | Role | Backup source of truth |
 |---|---|---|
-| PostgreSQL metadata | Incidents, streams, chunk metadata, checkins, viewer-token hashes, migrations, and durable upload-operation state for complete chunk upload idempotency. | Yes, when `SAFE_METADATA_BACKEND=postgresql`. |
+| PostgreSQL metadata | Accounts, account/device recipient-key metadata, contact public-key metadata, sharing grants, wrapped-key records, incidents, streams, chunk metadata, checkins, viewer-token hashes, migrations, and durable upload-operation state for complete chunk upload idempotency. | Yes, when `SAFE_METADATA_BACKEND=postgresql`. |
 | S3-compatible encrypted blob storage | Committed encrypted chunk bytes addressed by server-controlled final object keys. | Yes, when `SAFE_BLOB_BACKEND=s3`. |
 | Deployment configuration | Backend selectors, bind addresses, data paths, upload limits, token TTL defaults, S3 settings, PostgreSQL settings, Valkey settings, reverse-proxy routing, and secret references. | Yes, but keep secret values in a private secret-management backup, not in public docs or tickets. |
 | Local `SAFE_DATA_DIR/tmp` | Temporary upload staging before final commit. Current S3 support uses local temp files and does not create S3 staging objects. | No, except for forensic review during a private incident response. |
@@ -67,6 +67,10 @@ details in private operator documentation.
    - Use a PostgreSQL backup method appropriate for the deployment, such as a
      logical dump, physical backup, or managed database snapshot.
    - Include schema migrations and all Proofline metadata tables.
+   - Include account/device recipient-key rows, contact public-key rows,
+     sharing-grant rows, and wrapped-key rows with the same recovery point as
+     account and incident rows. These rows are key-access metadata, not raw
+     keys, and must remain consistent with restored incidents and blobs.
    - Treat database backup output, backup logs, and failure output as sensitive
      if they can include IDs, labels, timestamps, private paths, or connection
      details.
@@ -141,6 +145,9 @@ main `/v1` routes publicly without a reviewed deployment boundary.
 5. Validate metadata and blob consistency.
    - Start the API in the isolated environment.
    - Load known incident metadata through authenticated main `/v1` routes only.
+   - Load account/device recipient-key metadata and contact/sharing/wrapped-key
+     metadata through authenticated owner routes when the backup set includes
+     those rows.
    - Generate completed stream or incident encrypted ZIP bundles.
    - Confirm generated manifests match expected stream and chunk metadata.
    - Confirm completed bundle generation fails closed when a required blob is

@@ -1,12 +1,13 @@
 # Key Custody And Emergency Access
 
 This document defines the intended production key custody direction for
-Proofline. The current backend now includes account-owner contact public-key
-metadata, sharing-grant metadata, and grant-bound wrapped-key record storage and
-delivery, but this document remains the security boundary for production
-custody. The current implementation does not add browser decryption, backend
-decryption, server escrow, trusted-contact accounts, simulator envelope
-changes, or production key custody behavior.
+Proofline. The current backend now includes account/device recipient public-key
+metadata, account-owner contact public-key metadata, sharing-grant metadata, and
+grant-bound wrapped-key record storage and delivery, but this document remains
+the security boundary for production custody. The current implementation does
+not add browser decryption, backend decryption, server escrow, trusted-contact
+accounts, account/device wrapped-key delivery, or production key custody
+behavior.
 
 ## Summary
 
@@ -62,8 +63,10 @@ ciphertext-only by default.
 - No iOS, Android, or web-client code.
 - No browser decryption implementation.
 - No server-side decryption implementation.
-- No new API routes.
-- No database schema changes.
+- The account/device recipient-key routes are metadata lifecycle routes only;
+  they do not add decryption or key custody by themselves.
+- No browser, trusted-contact, or account/device wrapped-key delivery
+  implementation.
 - No key-custody, wrapped-key, decryption, or emergency-access behavior tied to
   incident-mode, capture-profile, escalation-policy, or sharing-state metadata.
 - No playable media export.
@@ -266,7 +269,11 @@ Optional future mode:
 
 This document decides the long-term direction: contact-wrapped keys plus client-side decryption should be the default production path, with server escrow or server-side decryption reserved for explicit break-glass modes.
 
-The first production contact-wrapped implementation should follow
+The implemented account/device recipient-key metadata routes provide only owner
+public-key lifecycle records: public key material, non-secret key IDs,
+scheme/suite identifiers, fingerprints, state, timestamps, and optional display
+labels. They are separate from trusted-contact key routes and do not deliver
+wrapped keys yet. The first production contact-wrapped implementation should follow
 [contact-key-sharing-grants.md](contact-key-sharing-grants.md): access grants
 must remain separate from decryption capability, wrapped-key records must remain
 separate from viewer tokens, and the server must not store raw CEKs, raw media
@@ -282,7 +289,9 @@ Future implementations should keep the hierarchy simple and auditable.
 Suggested hierarchy:
 
 - Account or device recipient key: a long-lived client key pair controlled by
-  the user's account or device in a future client.
+  the user's account or device in a future client. The backend stores only the
+  account-owned public metadata for current account/device recipient-key
+  records.
 - Trusted-contact recipient key: a long-lived public/private key pair
   controlled by each trusted contact.
 - CEK: a symmetric content-encryption key scoped to one incident, stream, or
@@ -323,6 +332,10 @@ Initial production direction:
 - Treat key IDs, contact IDs, algorithm names, and public wrapping metadata as
   non-secret identifiers, but treat wrapped-key ciphertext as access-enabling
   metadata that must not be logged.
+- Treat account/device recipient-key records as access-enabling public metadata:
+  they are safe to store in the metadata backend, but they still need
+  authenticated owner access, backup/restore consistency, and deletion
+  lifecycle handling.
 - Keep raw CEKs, media keys, and recipient private keys in client or
   trusted-contact environments only, except for separately approved break-glass
   modes.
@@ -355,9 +368,13 @@ Future owner-device behavior should follow these rules:
   trusted-contact key replacement, grant revocation, CEK rotation, and optional
   break-glass policy
 
-Future implementation should record recipient key versions and key states
-explicitly enough that clients can stop wrapping to lost or revoked keys without
-mutating historical records. Older wrapped-key records may need to remain for
+The current account/device recipient-key metadata routes already record
+recipient key versions and states for owner account and device keys. They allow
+keys to be `pending_verification`, `active`, `replaced`, `revoked`, or `lost`.
+Only `active` keys are eligible for future account/device wrapping. Replaced,
+revoked, and lost keys are terminal for future wrapping, but the state change
+does not mutate historical metadata or recover material already downloaded by a
+future authorized client. Older wrapped-key records may need to remain for
 audit, restore consistency, or already-granted access, but delivery policy should
 fail closed when a grant, recipient key, or wrapped-key record is revoked,
 expired, lost, or rotated out of active use.
@@ -443,13 +460,17 @@ approved together.
 
 ## API And Storage Changes
 
-The current API has owner-scoped contact public-key registration,
-sharing-grant metadata routes, and grant-bound wrapped-key record storage and
-delivery behind the authenticated main `/v1` boundary. It still has no
-trusted-contact account model, browser decryption, backend decryption, or
-server escrow path. Before iOS or production trusted-contact work starts,
-future design should define:
+The current API has owner-scoped account/device recipient-key registration,
+replacement, revocation, and lost-device state routes; owner-scoped contact
+public-key registration; sharing-grant metadata routes; and grant-bound
+wrapped-key record storage and delivery behind the authenticated main `/v1`
+boundary. Account/device recipient-key routes store public metadata only and do
+not yet deliver wrapped keys. The backend still has no trusted-contact account
+model, browser decryption, backend decryption, or server escrow path. Before iOS
+or production trusted-contact work starts, future design should define:
 
+- account/device recipient-key verification, replacement, revocation, lost-key
+  recovery, and future CEK rewrapping behavior
 - contact public-key registration, verification, replacement, and revocation
 - device identity and recovery-key enrollment
 - how clients choose, validate, and encode wrapping formats for server-stored

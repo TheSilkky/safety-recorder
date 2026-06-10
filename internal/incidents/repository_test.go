@@ -11,6 +11,7 @@ import (
 
 	"github.com/open-proofline/server/internal/auth"
 	"github.com/open-proofline/server/internal/db"
+	"github.com/open-proofline/server/internal/envelope/pq"
 	"github.com/open-proofline/server/internal/incidents"
 	"github.com/open-proofline/server/internal/incidents/contracttest"
 )
@@ -268,6 +269,154 @@ func TestContactPublicKeysAndSharingGrants(t *testing.T) {
 		KeyState:       &active,
 	}); !errors.Is(err, incidents.ErrInvalidState) {
 		t.Fatalf("reactivate revoked key error = %v, want ErrInvalidState", err)
+	}
+}
+
+func TestAccountRecipientKeys(t *testing.T) {
+	ctx := context.Background()
+	repo := newRepository(t, ctx)
+	owner, err := repo.CreateAccount(ctx, auth.CreateAccountParams{
+		Username:     "account-recipient-owner",
+		PasswordHash: "hash",
+		Role:         auth.RoleUser,
+	})
+	if err != nil {
+		t.Fatalf("create owner account: %v", err)
+	}
+	other, err := repo.CreateAccount(ctx, auth.CreateAccountParams{
+		Username:     "account-recipient-other",
+		PasswordHash: "hash",
+		Role:         auth.RoleUser,
+	})
+	if err != nil {
+		t.Fatalf("create other account: %v", err)
+	}
+
+	key, err := repo.CreateAccountRecipientKey(ctx, incidents.CreateAccountRecipientKeyParams{
+		OwnerAccountID:       owner.ID,
+		RecipientID:          "device-phone",
+		RecipientType:        incidents.AccountRecipientTypeDevice,
+		KeyID:                "recipient-key-sqlite-1",
+		DisplayLabel:         "owner phone",
+		Scheme:               pq.SchemeID,
+		SuiteID:              pq.SuiteID,
+		PublicKey:            "mlkem-public-key-sqlite-1",
+		PublicKeyFingerprint: "fingerprint-sqlite-1",
+		KeyState:             incidents.AccountRecipientKeyStateActive,
+	})
+	if err != nil {
+		t.Fatalf("create account recipient key: %v", err)
+	}
+	if key.Version != 1 || key.RecipientID != "device-phone" {
+		t.Fatalf("unexpected account recipient key: %+v", key)
+	}
+	if _, err := repo.GetActiveAccountRecipientKey(ctx, owner.ID, key.ID); err != nil {
+		t.Fatalf("get active account recipient key: %v", err)
+	}
+	if _, err := repo.GetAccountRecipientKey(ctx, other.ID, key.ID); !errors.Is(err, incidents.ErrNotFound) {
+		t.Fatalf("other account get key error = %v, want ErrNotFound", err)
+	}
+	if _, err := repo.CreateAccountRecipientKey(ctx, incidents.CreateAccountRecipientKeyParams{
+		OwnerAccountID:       owner.ID,
+		RecipientID:          "device-phone",
+		RecipientType:        incidents.AccountRecipientTypeDevice,
+		KeyID:                "recipient-key-sqlite-duplicate-version",
+		Scheme:               pq.SchemeID,
+		SuiteID:              pq.SuiteID,
+		PublicKey:            "mlkem-public-key-duplicate-version",
+		PublicKeyFingerprint: "fingerprint-duplicate-version",
+		KeyState:             incidents.AccountRecipientKeyStateActive,
+	}); !errors.Is(err, incidents.ErrDuplicate) {
+		t.Fatalf("duplicate recipient version error = %v, want ErrDuplicate", err)
+	}
+	if _, err := repo.CreateAccountRecipientKey(ctx, incidents.CreateAccountRecipientKeyParams{
+		OwnerAccountID:       owner.ID,
+		RecipientID:          "device-tablet",
+		RecipientType:        incidents.AccountRecipientTypeDevice,
+		KeyID:                "recipient-key-sqlite-1",
+		Scheme:               pq.SchemeID,
+		SuiteID:              pq.SuiteID,
+		PublicKey:            "mlkem-public-key-duplicate-key",
+		PublicKeyFingerprint: "fingerprint-duplicate-key",
+		KeyState:             incidents.AccountRecipientKeyStateActive,
+	}); !errors.Is(err, incidents.ErrDuplicate) {
+		t.Fatalf("duplicate key_id error = %v, want ErrDuplicate", err)
+	}
+
+	replacement, err := repo.ReplaceAccountRecipientKey(ctx, incidents.ReplaceAccountRecipientKeyParams{
+		OwnerAccountID:       owner.ID,
+		RecipientKeyID:       key.ID,
+		KeyID:                "recipient-key-sqlite-2",
+		DisplayLabel:         "owner phone replacement",
+		Scheme:               pq.SchemeID,
+		SuiteID:              pq.SuiteID,
+		PublicKey:            "mlkem-public-key-sqlite-2",
+		PublicKeyFingerprint: "fingerprint-sqlite-2",
+		KeyState:             incidents.AccountRecipientKeyStateActive,
+	})
+	if err != nil {
+		t.Fatalf("replace account recipient key: %v", err)
+	}
+	if replacement.Version != 2 || replacement.RecipientID != key.RecipientID {
+		t.Fatalf("unexpected replacement key: %+v", replacement)
+	}
+	oldKey, err := repo.GetAccountRecipientKey(ctx, owner.ID, key.ID)
+	if err != nil {
+		t.Fatalf("get old account recipient key: %v", err)
+	}
+	if oldKey.KeyState != incidents.AccountRecipientKeyStateReplaced || oldKey.ReplacedAt == nil || oldKey.ReplacedByRecipientKeyID != replacement.ID {
+		t.Fatalf("old key was not replaced: %+v", oldKey)
+	}
+	if _, err := repo.GetActiveAccountRecipientKey(ctx, owner.ID, key.ID); !errors.Is(err, incidents.ErrNotFound) {
+		t.Fatalf("active old key error = %v, want ErrNotFound", err)
+	}
+	if _, err := repo.ReplaceAccountRecipientKey(ctx, incidents.ReplaceAccountRecipientKeyParams{
+		OwnerAccountID:       owner.ID,
+		RecipientKeyID:       key.ID,
+		KeyID:                "recipient-key-sqlite-3",
+		Scheme:               pq.SchemeID,
+		SuiteID:              pq.SuiteID,
+		PublicKey:            "mlkem-public-key-sqlite-3",
+		PublicKeyFingerprint: "fingerprint-sqlite-3",
+		KeyState:             incidents.AccountRecipientKeyStateActive,
+	}); !errors.Is(err, incidents.ErrInvalidState) {
+		t.Fatalf("replace replaced key error = %v, want ErrInvalidState", err)
+	}
+
+	revoked, err := repo.RevokeAccountRecipientKey(ctx, owner.ID, replacement.ID)
+	if err != nil {
+		t.Fatalf("revoke account recipient key: %v", err)
+	}
+	if revoked.KeyState != incidents.AccountRecipientKeyStateRevoked || revoked.RevokedAt == nil {
+		t.Fatalf("replacement key was not revoked: %+v", revoked)
+	}
+	if _, err := repo.GetActiveAccountRecipientKey(ctx, owner.ID, replacement.ID); !errors.Is(err, incidents.ErrNotFound) {
+		t.Fatalf("active revoked key error = %v, want ErrNotFound", err)
+	}
+
+	lostCandidate, err := repo.CreateAccountRecipientKey(ctx, incidents.CreateAccountRecipientKeyParams{
+		OwnerAccountID:       owner.ID,
+		RecipientID:          "device-tablet",
+		RecipientType:        incidents.AccountRecipientTypeDevice,
+		KeyID:                "recipient-key-sqlite-lost",
+		Scheme:               pq.SchemeID,
+		SuiteID:              pq.SuiteID,
+		PublicKey:            "mlkem-public-key-lost",
+		PublicKeyFingerprint: "fingerprint-lost",
+		KeyState:             incidents.AccountRecipientKeyStateActive,
+	})
+	if err != nil {
+		t.Fatalf("create lost candidate: %v", err)
+	}
+	lost, err := repo.MarkAccountRecipientKeyLost(ctx, owner.ID, lostCandidate.ID)
+	if err != nil {
+		t.Fatalf("mark account recipient key lost: %v", err)
+	}
+	if lost.KeyState != incidents.AccountRecipientKeyStateLost || lost.LostAt == nil {
+		t.Fatalf("key was not marked lost: %+v", lost)
+	}
+	if _, err := repo.GetActiveAccountRecipientKey(ctx, owner.ID, lost.ID); !errors.Is(err, incidents.ErrNotFound) {
+		t.Fatalf("active lost key error = %v, want ErrNotFound", err)
 	}
 }
 

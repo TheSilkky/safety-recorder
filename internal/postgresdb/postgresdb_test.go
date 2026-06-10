@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/open-proofline/server/internal/auth"
+	"github.com/open-proofline/server/internal/envelope/pq"
 	"github.com/open-proofline/server/internal/incidents"
 	"github.com/open-proofline/server/internal/incidents/contracttest"
 	"golang.org/x/crypto/bcrypt"
@@ -580,6 +581,79 @@ func TestPostgresContactPublicKeysAndSharingGrants(t *testing.T) {
 	}
 	if _, err := repo.GetWrappedKeyRecord(ctx, owner.ID, record.ID); !errors.Is(err, incidents.ErrNotFound) {
 		t.Fatalf("revoked grant get wrapped key error = %v, want ErrNotFound", err)
+	}
+}
+
+func TestPostgresAccountRecipientKeys(t *testing.T) {
+	ctx := context.Background()
+	conn := openPostgresTestDB(t, ctx)
+	if err := Migrate(ctx, conn); err != nil {
+		t.Fatalf("Migrate: %v", err)
+	}
+	repo := NewRepository(conn)
+	owner, err := repo.CreateAccount(ctx, auth.CreateAccountParams{
+		Username:     "postgres-account-recipient-owner",
+		PasswordHash: "hash",
+		Role:         auth.RoleUser,
+	})
+	if err != nil {
+		t.Fatalf("create owner account: %v", err)
+	}
+	key, err := repo.CreateAccountRecipientKey(ctx, incidents.CreateAccountRecipientKeyParams{
+		OwnerAccountID:       owner.ID,
+		RecipientID:          "postgres-device",
+		RecipientType:        incidents.AccountRecipientTypeDevice,
+		KeyID:                "postgres-recipient-key-1",
+		Scheme:               pq.SchemeID,
+		SuiteID:              pq.SuiteID,
+		PublicKey:            "postgres-public-key-1",
+		PublicKeyFingerprint: "postgres-fingerprint-1",
+		KeyState:             incidents.AccountRecipientKeyStateActive,
+	})
+	if err != nil {
+		t.Fatalf("create account recipient key: %v", err)
+	}
+	if _, err := repo.CreateAccountRecipientKey(ctx, incidents.CreateAccountRecipientKeyParams{
+		OwnerAccountID:       owner.ID,
+		RecipientID:          "postgres-device",
+		RecipientType:        incidents.AccountRecipientTypeDevice,
+		KeyID:                "postgres-recipient-key-duplicate",
+		Scheme:               pq.SchemeID,
+		SuiteID:              pq.SuiteID,
+		PublicKey:            "postgres-public-key-duplicate",
+		PublicKeyFingerprint: "postgres-fingerprint-duplicate",
+		KeyState:             incidents.AccountRecipientKeyStateActive,
+	}); !errors.Is(err, incidents.ErrDuplicate) {
+		t.Fatalf("duplicate recipient version error = %v, want ErrDuplicate", err)
+	}
+	replacement, err := repo.ReplaceAccountRecipientKey(ctx, incidents.ReplaceAccountRecipientKeyParams{
+		OwnerAccountID:       owner.ID,
+		RecipientKeyID:       key.ID,
+		KeyID:                "postgres-recipient-key-2",
+		Scheme:               pq.SchemeID,
+		SuiteID:              pq.SuiteID,
+		PublicKey:            "postgres-public-key-2",
+		PublicKeyFingerprint: "postgres-fingerprint-2",
+		KeyState:             incidents.AccountRecipientKeyStateActive,
+	})
+	if err != nil {
+		t.Fatalf("replace account recipient key: %v", err)
+	}
+	if replacement.Version != 2 {
+		t.Fatalf("replacement version = %d, want 2", replacement.Version)
+	}
+	if _, err := repo.GetActiveAccountRecipientKey(ctx, owner.ID, key.ID); !errors.Is(err, incidents.ErrNotFound) {
+		t.Fatalf("active replaced key error = %v, want ErrNotFound", err)
+	}
+	revoked, err := repo.RevokeAccountRecipientKey(ctx, owner.ID, replacement.ID)
+	if err != nil {
+		t.Fatalf("revoke replacement key: %v", err)
+	}
+	if revoked.KeyState != incidents.AccountRecipientKeyStateRevoked || revoked.RevokedAt == nil {
+		t.Fatalf("replacement was not revoked: %+v", revoked)
+	}
+	if _, err := repo.GetActiveAccountRecipientKey(ctx, owner.ID, replacement.ID); !errors.Is(err, incidents.ErrNotFound) {
+		t.Fatalf("active revoked key error = %v, want ErrNotFound", err)
 	}
 }
 

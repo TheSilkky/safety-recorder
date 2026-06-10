@@ -18,13 +18,14 @@ public viewer and bundle behavior. Mode-specific retention behavior is not
 implemented; deletion and closed-incident retention enforcement are documented
 in [retention-backup-deletion.md](retention-backup-deletion.md). Planned
 mode-driven behavior is documented in [incident-modes.md](incident-modes.md).
-Authenticated account-owner routes can store trusted-contact public-key
-metadata, owner-scoped sharing-grant records, and wrapped CEK/media-key metadata
-for active grants. Trusted-contact accounts, browser or backend decryption,
-notifications, raw key storage, and key escrow do not exist yet. The main API
-does include a narrow public-safe owner incident list/detail read surface for
-the future web client, but this does not make every `/v1` route group
-public-ready without route-level deployment review.
+Authenticated account-owner routes can store account/device recipient public-key
+metadata, trusted-contact public-key metadata, owner-scoped sharing-grant
+records, and wrapped CEK/media-key metadata for active trusted-contact grants.
+Trusted-contact accounts, account/device wrapped-key delivery, browser or
+backend decryption, notifications, raw key storage, and key escrow do not exist
+yet. The main API does include a narrow public-safe owner incident list/detail
+read surface for the future web client, but this does not make every `/v1`
+route group public-ready without route-level deployment review.
 
 Future capture stream groups, stream variant roles, source-timeline identity,
 and evidence supersession are planning-only in
@@ -61,9 +62,10 @@ Main API route classes are rate limited by default before authentication using
 safe server-controlled keys based on route class and a hash of the socket peer
 identity. Login/logout, public registration, and email verification have
 separate authentication-related route classes. Existing main API limit classes
-also cover account/contact-key metadata, incident metadata reads and writes,
-sharing-grant metadata, wrapped-key metadata, uploads, reconciliation, streams,
-incident tokens, and private encrypted downloads. Rate-limit keys do not
+also cover account metadata, account/device recipient-key metadata, contact-key
+metadata, incident metadata reads and writes, sharing-grant metadata,
+wrapped-key metadata, uploads, reconciliation, streams, incident tokens, and
+private encrypted downloads. Rate-limit keys do not
 include raw email addresses, raw usernames, verification tokens, raw session
 tokens, Authorization headers, raw idempotency keys, request bodies, uploaded
 bytes, incident IDs, stored paths, object keys, plaintext, raw keys, wrapped-key
@@ -448,6 +450,172 @@ Marks one account-owned contact public key revoked. Revocation prevents the key
 from receiving new sharing grants or future wrapped-key records. It does not
 delete already accepted ciphertext, bundle contents, or any material a future
 authorized actor may already have downloaded.
+
+## Account And Device Recipient Keys
+
+Account/device recipient-key routes are mounted on the main API listener and
+require a valid local account session. They are scoped to the authenticated
+account only; admins do not use these product routes to manage another
+account's device keys unless the admin account owns those keys as its own
+account. The server stores public recipient-key metadata, non-secret key IDs,
+scheme/suite identifiers, fingerprints, state, timestamps, and optional display
+labels. It does not store private keys, raw media keys, raw CEKs, ML-KEM shared
+secrets, derived KEKs, plaintext, decrypted caches, browser fragment secrets,
+request bodies, uploaded bytes, stored paths, staging paths, object keys, or
+private deployment details.
+
+These records are separate from trusted-contact public-key routes. They model
+the owner's own account-level or device-level recipient keys so future clients
+can wrap CEKs for the user's account or devices without treating every incident
+as a new identity. Current wrapped-key creation remains trusted-contact
+grant-scoped; account/device wrapped-key delivery is future work and must use
+only `active` recipient-key versions when it is implemented.
+
+Supported recipient types:
+
+| Type | Meaning |
+|---|---|
+| `account` | Account-level recipient key metadata. |
+| `device` | One owner device or client recipient key. |
+
+Recipient key states:
+
+| State | Meaning |
+|---|---|
+| `pending_verification` | Registered but not eligible for future wrapping. |
+| `active` | Eligible for future account/device wrapping. |
+| `replaced` | Superseded by another key version and not eligible for future wrapping. |
+| `revoked` | Revoked and not eligible for future wrapping. |
+| `lost` | Marked lost because the device/private-key copy is unavailable and not eligible for future wrapping. |
+
+Revocation, replacement, and lost-device marking are forward-looking controls.
+They stop future wrapping to the affected key version. They cannot claw back
+wrapped keys, encrypted chunks, bundle contents, downloaded records, or any
+plaintext produced by a future authorized client before the state change.
+
+The accepted v1 preview recipient-key profile is documented in
+[post-quantum-envelope.md](post-quantum-envelope.md). The current route accepts:
+
+```text
+scheme = proofline-pq-envelope-v1
+suite_id = proofline-pq-mlkem768-hkdfsha384-aes256gcm-v1
+```
+
+The route stores the caller-supplied public `key_id` and public key material as
+metadata. It does not derive keys, prove private-key possession, unwrap CEKs, or
+decrypt media.
+
+### `POST /v1/account-recipient-keys`
+
+Registers account/device recipient public-key metadata for the authenticated
+account. `recipient_type` is required and must be `account` or `device`.
+`recipient_id` is optional for a new recipient identity; if omitted, the server
+creates one. New records default to `pending_verification`, and may start as
+`active` only when the client has already completed its own verification.
+Terminal states must be set with the dedicated revoke, replace, or lost routes.
+
+Request:
+
+```json
+{
+  "recipient_type": "device",
+  "key_id": "recipient-key-id",
+  "display_label": "Owner phone",
+  "scheme": "proofline-pq-envelope-v1",
+  "suite_id": "proofline-pq-mlkem768-hkdfsha384-aes256gcm-v1",
+  "public_key": "base64url-or-profile-encoded-public-key",
+  "public_key_fingerprint": "fingerprint-...",
+  "key_state": "pending_verification"
+}
+```
+
+Response `201`:
+
+```json
+{
+  "account_recipient_key": {
+    "recipient_key_id": "ark_...",
+    "owner_account_id": "acct_...",
+    "recipient_id": "arcp_...",
+    "recipient_type": "device",
+    "key_id": "recipient-key-id",
+    "version": 1,
+    "display_label": "Owner phone",
+    "scheme": "proofline-pq-envelope-v1",
+    "suite_id": "proofline-pq-mlkem768-hkdfsha384-aes256gcm-v1",
+    "public_key": "base64url-or-profile-encoded-public-key",
+    "public_key_fingerprint": "fingerprint-...",
+    "key_state": "pending_verification",
+    "created_at": "2026-06-10T10:00:00Z",
+    "updated_at": "2026-06-10T10:00:00Z"
+  }
+}
+```
+
+Duplicate `recipient_id` or `key_id` values for the same account return
+`409 account_recipient_key_duplicate`. Use the replacement route for a new
+version of an existing recipient identity.
+
+### `GET /v1/account-recipient-keys`
+
+Lists account/device recipient-key metadata owned by the authenticated account.
+
+### `GET /v1/account-recipient-keys/{recipient_key_id}`
+
+Returns one account-owned recipient-key record. Records owned by another
+account return `404 account_recipient_key_not_found`.
+
+### `PATCH /v1/account-recipient-keys/{recipient_key_id}`
+
+Updates mutable metadata. The request may change `display_label` and can move a
+`pending_verification` key to `active`. It cannot reactivate `revoked`,
+`replaced`, or `lost` keys, and it cannot use `PATCH` to set terminal states.
+
+Request:
+
+```json
+{
+  "display_label": "Verified owner phone",
+  "key_state": "active"
+}
+```
+
+Invalid state transitions return `409 invalid_account_recipient_key_state`.
+
+### `POST /v1/account-recipient-keys/{recipient_key_id}/revoke`
+
+Marks one account-owned recipient key revoked and records `revoked_at`.
+Revoked keys are not eligible for future account/device wrapped-key records.
+
+### `POST /v1/account-recipient-keys/{recipient_key_id}/lost`
+
+Marks one account-owned recipient key lost and records `lost_at`. Use this when
+a device or local private-key copy is unavailable, destroyed, taken, or
+otherwise cannot be trusted for future wrapping.
+
+### `POST /v1/account-recipient-keys/{recipient_key_id}/replace`
+
+Creates a successor version for the same recipient identity and marks the old
+record `replaced`. Replacement is rejected for already revoked, replaced, or
+lost keys.
+
+Request:
+
+```json
+{
+  "key_id": "replacement-recipient-key-id",
+  "display_label": "Replacement owner phone",
+  "scheme": "proofline-pq-envelope-v1",
+  "suite_id": "proofline-pq-mlkem768-hkdfsha384-aes256gcm-v1",
+  "public_key": "base64url-or-profile-encoded-public-key",
+  "public_key_fingerprint": "fingerprint-...",
+  "key_state": "active"
+}
+```
+
+Response `201` contains the new `account_recipient_key` with the next version.
+The old record remains readable as owner metadata with `key_state: "replaced"`,
+`replaced_at`, and `replaced_by_recipient_key_id`.
 
 ## Sharing Grants
 

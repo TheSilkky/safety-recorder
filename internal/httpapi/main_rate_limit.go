@@ -125,6 +125,8 @@ func classifyMainAPIRateLimit(r *http.Request) (mainRateLimitClass, bool) {
 			(r.Method == http.MethodPost && len(segments) == 3 && segments[2] == "password") {
 			return mainRateLimitAccount, true
 		}
+	case "account-recipient-keys":
+		return classifyMainAPIAccountRecipientKeyRateLimit(r, segments)
 	case "contact-public-keys":
 		return classifyMainAPIContactPublicKeyRateLimit(r, segments)
 	case "incidents":
@@ -176,6 +178,21 @@ func classifyMainAPIContactPublicKeyRateLimit(r *http.Request, segments []string
 	default:
 		return "", false
 	}
+}
+
+func classifyMainAPIAccountRecipientKeyRateLimit(r *http.Request, segments []string) (mainRateLimitClass, bool) {
+	switch {
+	case len(segments) == 2 && (r.Method == http.MethodGet || r.Method == http.MethodPost):
+		return mainRateLimitAccount, true
+	case len(segments) == 3 && (r.Method == http.MethodGet || r.Method == http.MethodPatch):
+		return mainRateLimitAccount, true
+	case len(segments) == 4 && r.Method == http.MethodPost:
+		switch segments[3] {
+		case "revoke", "lost", "replace":
+			return mainRateLimitAccount, true
+		}
+	}
+	return "", false
 }
 
 func classifyMainAPIIncidentRateLimit(r *http.Request, segments []string) (mainRateLimitClass, bool) {

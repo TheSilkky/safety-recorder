@@ -6,9 +6,10 @@ chunks, groups them into media streams, records metadata in SQLite by default
 or optional PostgreSQL, supports optional Valkey/Redis-compatible short-lived
 coordination, serves authenticated incident deletion and optional closed-incident
 retention workflows, and serves a scoped read-only incident viewer with
-encrypted evidence bundle downloads. It also stores owner-scoped
-trusted-contact public-key metadata, incident/stream sharing-grant metadata,
-and grant-bound wrapped-key records without adding decryption.
+encrypted evidence bundle downloads. It also stores owner-scoped account/device
+recipient public-key metadata, trusted-contact public-key metadata,
+incident/stream sharing-grant metadata, and grant-bound wrapped-key records
+without adding decryption.
 
 This repository is the server/backend component only. In the current
 `open-proofline` organisation it is `open-proofline/server`. Web-client,
@@ -20,8 +21,8 @@ incident-mode, capture-profile, escalation-policy, and sharing-state metadata on
 main incident create/read routes. The account incident list/detail routes return
 owner-only public-safe metadata for future web-client reads. Those mode fields
 do not drive access, notification, retention, sharing, viewer, or key-custody behavior.
-Account-owner contact public-key, sharing-grant, and wrapped-key metadata is
-implemented separately behind authenticated `/v1` routes. Mode-driven behavior
+Account/device recipient-key, contact public-key, sharing-grant, and wrapped-key
+metadata is implemented separately behind authenticated `/v1` routes. Mode-driven behavior
 boundaries are documented in [incident-modes.md](incident-modes.md), with role
 and grant boundaries in [v1-access-control.md](v1-access-control.md) and
 contact key-sharing boundaries in
@@ -293,6 +294,7 @@ This repository should stay focused on server/backend work:
 - SQLite migrations and repository code
 - encrypted blob storage
 - token-scoped incident viewer
+- account/device recipient-key metadata
 - contact public-key, sharing-grant, and wrapped-key metadata
 - backend deployment docs
 - backend security, retention, and threat-model docs
