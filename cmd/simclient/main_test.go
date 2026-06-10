@@ -212,6 +212,160 @@ func TestClientUploadChunkUsesMainAPIBaseAndStreamID(t *testing.T) {
 	}
 }
 
+func TestClientReconcileChunkUsesMainAPIBaseAndSafeMetadata(t *testing.T) {
+	body := []byte("encrypted bytes")
+	upload := buildChunkUpload("inc_1", "str_1", 2, "audio", time.Date(2026, 5, 22, 10, 0, 0, 0, time.UTC), body)
+
+	httpClient := &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		if r.URL.Host != "api.example" {
+			t.Fatalf("reconciliation used host %q, want api.example", r.URL.Host)
+		}
+		if r.Method != http.MethodPost || r.URL.Path != "/v1/incidents/inc_1/chunks/reconcile" {
+			t.Fatalf("unexpected reconciliation route %s %s", r.Method, r.URL.Path)
+		}
+		if r.Header.Get("Authorization") != "Bearer session-token" {
+			t.Fatalf("reconciliation omitted session Authorization header")
+		}
+		var request map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+			t.Fatalf("decode reconciliation request: %v", err)
+		}
+		if request["stream_id"] != "str_1" {
+			t.Fatalf("stream_id = %q", request["stream_id"])
+		}
+		if request["chunk_index"].(float64) != 2 {
+			t.Fatalf("chunk_index = %v", request["chunk_index"])
+		}
+		if request["byte_size"].(float64) != float64(len(body)) {
+			t.Fatalf("byte_size = %v", request["byte_size"])
+		}
+		if request["sha256_hex"] != sha256Hex(body) {
+			t.Fatalf("sha256_hex = %q", request["sha256_hex"])
+		}
+		if _, ok := request["file"]; ok {
+			t.Fatalf("reconciliation request included uploaded bytes field")
+		}
+		return testResponse(http.StatusOK, "application/json", `{
+			"reconciliation":{
+				"status":"matched",
+				"identity":{"incident_id":"inc_1","stream_id":"str_1","chunk_index":2,"media_type":"audio"},
+				"chunk_id":"chk_1",
+				"byte_size":15,
+				"sha256_hex":"`+sha256Hex(body)+`"
+			}
+		}`), nil
+	})}
+	sim := client{
+		httpClient:   httpClient,
+		apiBase:      "http://api.example",
+		viewerBase:   "http://viewer.example",
+		sessionToken: "session-token",
+	}
+
+	if err := sim.expectChunkReconciliationMatch(context.Background(), upload); err != nil {
+		t.Fatalf("expectChunkReconciliationMatch returned error: %v", err)
+	}
+}
+
+func TestDuplicateReconciliationDrillOutputIsSafe(t *testing.T) {
+	body := []byte("encrypted bytes")
+	upload := buildChunkUpload("inc_1", "str_1", 1, "audio", time.Date(2026, 5, 22, 10, 0, 0, 0, time.UTC), body)
+	requests := 0
+	httpClient := &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		requests++
+		if !strings.HasSuffix(r.URL.Path, "/v1/incidents/inc_1/chunks/reconcile") {
+			t.Fatalf("unexpected reconciliation route %s", r.URL.Path)
+		}
+		if r.Header.Get("Authorization") != "Bearer session-token" {
+			t.Fatalf("reconciliation omitted session Authorization header")
+		}
+		switch requests {
+		case 1:
+			return testResponse(http.StatusOK, "application/json", `{
+				"reconciliation":{
+					"status":"matched",
+					"identity":{"incident_id":"inc_1","stream_id":"str_1","chunk_index":1,"media_type":"audio"},
+					"chunk_id":"chk_1",
+					"byte_size":15,
+					"sha256_hex":"`+upload.sha256Hex+`"
+				}
+			}`), nil
+		case 2:
+			return testResponse(http.StatusConflict, "application/json", `{
+				"error":{"code":"duplicate_chunk_conflict","message":"session-token `+upload.sha256Hex+` http://api.example/private-path"},
+				"reconciliation":{
+					"status":"conflict",
+					"identity":{"incident_id":"inc_1","stream_id":"str_1","chunk_index":1,"media_type":"audio"},
+					"mismatched_fields":["sha256_hex"]
+				}
+			}`), nil
+		default:
+			t.Fatalf("unexpected reconciliation request %d", requests)
+			return nil, errSimulatedNetwork
+		}
+	})}
+	sim := client{
+		httpClient:   httpClient,
+		apiBase:      "http://api.example/private-path",
+		viewerBase:   "http://viewer.example",
+		sessionToken: "session-token",
+	}
+	var output bytes.Buffer
+
+	if err := verifyDuplicateReconciliationDrill(context.Background(), &output, sim, upload); err != nil {
+		t.Fatalf("verifyDuplicateReconciliationDrill returned error: %v", err)
+	}
+	if requests != 2 {
+		t.Fatalf("requests = %d, want 2", requests)
+	}
+	for _, disallowed := range []string{
+		"session-token",
+		upload.sha256Hex,
+		string(body),
+		"api.example",
+		"private-path",
+		"/v1/incidents",
+	} {
+		if strings.Contains(output.String(), disallowed) {
+			t.Fatalf("reconciliation output exposed %q: %s", disallowed, output.String())
+		}
+	}
+}
+
+func TestReconciliationErrorsOmitTokenBearingMessages(t *testing.T) {
+	upload := buildChunkUpload("inc_1", "str_1", 1, "audio", time.Date(2026, 5, 22, 10, 0, 0, 0, time.UTC), []byte("encrypted bytes"))
+	httpClient := &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		return testResponse(http.StatusBadRequest, "application/json", `{
+			"error":{"code":"invalid_sha256_hex","message":"session-token raw-idempotency-key http://api.example/private-path"}
+		}`), nil
+	})}
+	sim := client{
+		httpClient:   httpClient,
+		apiBase:      "http://api.example/private-path",
+		viewerBase:   "http://viewer.example",
+		sessionToken: "session-token",
+	}
+
+	err := sim.expectChunkReconciliationMatch(context.Background(), upload)
+	if err == nil {
+		t.Fatal("expected reconciliation error")
+	}
+	message := err.Error()
+	if !strings.Contains(message, "invalid_sha256_hex") {
+		t.Fatalf("reconciliation error = %q, want code", message)
+	}
+	for _, disallowed := range []string{
+		"session-token",
+		"raw-idempotency-key",
+		"api.example",
+		"private-path",
+	} {
+		if strings.Contains(message, disallowed) {
+			t.Fatalf("reconciliation error exposed %q: %s", disallowed, message)
+		}
+	}
+}
+
 func TestUploadDesktopStageRetriesAcceptedUploadAfterResponseLoss(t *testing.T) {
 	stage, err := openDesktopStage(t.TempDir())
 	if err != nil {
@@ -499,6 +653,16 @@ func TestParseConfigStreamFlags(t *testing.T) {
 	}
 }
 
+func TestParseConfigReconcileDuplicateFlag(t *testing.T) {
+	cfg, err := parseConfig(withAuthArgs("--reconcile-duplicate"))
+	if err != nil {
+		t.Fatalf("parseConfig returned error: %v", err)
+	}
+	if !cfg.reconcileDuplicate {
+		t.Fatal("expected reconcile duplicate flag to be set")
+	}
+}
+
 func TestParseConfigBundleOutput(t *testing.T) {
 	cfg, err := parseConfig(withAuthArgs(
 		"--chunks", "2",
@@ -658,8 +822,16 @@ func TestParseConfigRejectsInvalidValues(t *testing.T) {
 			args: withAuthArgs("--simulate-failure-every", "-1"),
 		},
 		{
+			name: "reconcile duplicate without chunks",
+			args: withAuthArgs("--chunks", "0", "--reconcile-duplicate"),
+		},
+		{
 			name: "desktop recorder without stage dir",
 			args: withAuthArgs("--desktop-recorder"),
+		},
+		{
+			name: "reconcile duplicate in desktop mode",
+			args: withAuthArgs("--desktop-recorder", "--stage-dir", "stage", "--reconcile-duplicate"),
 		},
 		{
 			name: "desktop files without input",

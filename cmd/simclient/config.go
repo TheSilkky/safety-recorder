@@ -33,6 +33,7 @@ type config struct {
 	wrappedKeyContactID   string
 	verifyBundleDecrypt   bool
 	simulateFailureEvery  int
+	reconcileDuplicate    bool
 	desktopRecorder       bool
 	desktopStageDir       string
 	desktopResume         bool
@@ -86,6 +87,7 @@ func parseConfig(args []string) (config, error) {
 	fs.StringVar(&cfg.wrappedKeyContactID, "wrapped-key-contact-id", defaultWrappedKeyContactID, "Local simulator trusted-contact ID for wrapped-key metadata")
 	fs.BoolVar(&cfg.verifyBundleDecrypt, "verify-bundle-decryption", true, "Decrypt downloaded stream bundles locally when encryption is enabled")
 	fs.IntVar(&cfg.simulateFailureEvery, "simulate-failure-every", 0, "Every Nth chunk should intentionally fail hash verification before retrying")
+	fs.BoolVar(&cfg.reconcileDuplicate, "reconcile-duplicate", false, "After uploading chunk 1, call the private duplicate chunk reconciliation route and verify a safe conflict drill")
 	fs.BoolVar(&cfg.desktopRecorder, "desktop-recorder", false, "Use durable desktop recorder simulator mode")
 	fs.StringVar(&cfg.desktopStageDir, "stage-dir", "", "Durable local staging directory for desktop recorder mode")
 	fs.BoolVar(&cfg.desktopResume, "resume-staged", false, "Resume uploading an existing desktop recorder staging queue")
@@ -151,6 +153,12 @@ func parseConfig(args []string) (config, error) {
 	}
 	if cfg.simulateFailureEvery < 0 {
 		return config{}, fmt.Errorf("--simulate-failure-every must be non-negative")
+	}
+	if cfg.reconcileDuplicate && cfg.chunks == 0 {
+		return config{}, fmt.Errorf("--reconcile-duplicate requires at least one chunk")
+	}
+	if cfg.reconcileDuplicate && cfg.desktopRecorder {
+		return config{}, fmt.Errorf("--reconcile-duplicate is only supported in the standard simulator flow")
 	}
 	if cfg.networkLatency < 0 {
 		return config{}, fmt.Errorf("--network-latency must be non-negative")
