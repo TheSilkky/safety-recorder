@@ -55,6 +55,8 @@ type MetadataRepository interface {
 
 	CreateIncidentToken(ctx context.Context, incidentID, label string, expiresAt *time.Time) (incidents.IncidentToken, string, error)
 	GetIncidentToken(ctx context.Context, tokenID string) (incidents.IncidentToken, error)
+	ListIncidentTokens(ctx context.Context, incidentID string) ([]incidents.IncidentToken, error)
+	GetIncidentTokenForIncident(ctx context.Context, incidentID, tokenID string) (incidents.IncidentToken, error)
 	LookupIncidentToken(ctx context.Context, rawToken string) (incidents.IncidentToken, error)
 	RevokeIncidentToken(ctx context.Context, tokenID string) error
 

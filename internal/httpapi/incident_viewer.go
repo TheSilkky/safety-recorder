@@ -108,6 +108,16 @@ type createIncidentTokenResponse struct {
 	ExpiresAt  *time.Time `json:"expires_at,omitempty"`
 }
 
+type incidentTokenMetadataResponse struct {
+	TokenID    string     `json:"token_id"`
+	IncidentID string     `json:"incident_id"`
+	Label      string     `json:"label,omitempty"`
+	TokenState string     `json:"token_state"`
+	CreatedAt  time.Time  `json:"created_at"`
+	ExpiresAt  *time.Time `json:"expires_at,omitempty"`
+	RevokedAt  *time.Time `json:"revoked_at,omitempty"`
+}
+
 type createIncidentTokenRequest struct {
 	Label        string     `json:"label"`
 	ExpiresAt    *time.Time `json:"expires_at"`
@@ -149,6 +159,11 @@ func (request *createIncidentTokenRequest) UnmarshalJSON(data []byte) error {
 const incidentWarning = "If you are concerned about immediate safety, call emergency services now."
 const webClientViewerPayloadVersion = "proofline.viewer.basic.v1"
 const webClientViewerLocationRecentWindow = 15 * time.Minute
+const (
+	incidentTokenStateActive  = "active"
+	incidentTokenStateExpired = "expired"
+	incidentTokenStateRevoked = "revoked"
+)
 
 // createIncidentToken is an authenticated main API route that mints a read-only
 // incident viewer capability for one incident.
@@ -185,6 +200,67 @@ func (a *API) createIncidentToken(w http.ResponseWriter, r *http.Request) {
 		CreatedAt:  token.CreatedAt,
 		ExpiresAt:  token.ExpiresAt,
 	})
+}
+
+func (a *API) listIncidentTokens(w http.ResponseWriter, r *http.Request) {
+	incidentID := r.PathValue("incident_id")
+	if _, ok := a.authorizeOwnedIncident(w, r, incidentID, actionReadPublicLink, dataClassPublicLinkGrant); !ok {
+		return
+	}
+	tokens, err := a.repo.ListIncidentTokens(r.Context(), incidentID)
+	if err != nil {
+		a.internalError(w, "list incident tokens", err)
+		return
+	}
+	response := make([]incidentTokenMetadataResponse, 0, len(tokens))
+	now := time.Now().UTC()
+	for _, token := range tokens {
+		response = append(response, makeIncidentTokenMetadataResponse(token, now))
+	}
+	writeJSON(w, http.StatusOK, map[string][]incidentTokenMetadataResponse{
+		"incident_tokens": response,
+	})
+}
+
+func (a *API) getIncidentTokenMetadata(w http.ResponseWriter, r *http.Request) {
+	incidentID := r.PathValue("incident_id")
+	if _, ok := a.authorizeOwnedIncident(w, r, incidentID, actionReadPublicLink, dataClassPublicLinkGrant); !ok {
+		return
+	}
+	token, err := a.repo.GetIncidentTokenForIncident(r.Context(), incidentID, r.PathValue("token_id"))
+	if errors.Is(err, incidents.ErrNotFound) {
+		writeError(w, http.StatusNotFound, "incident_token_not_found", "incident token was not found")
+		return
+	}
+	if err != nil {
+		a.internalError(w, "get incident token metadata", err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]incidentTokenMetadataResponse{
+		"incident_token": makeIncidentTokenMetadataResponse(token, time.Now().UTC()),
+	})
+}
+
+func makeIncidentTokenMetadataResponse(token incidents.IncidentToken, now time.Time) incidentTokenMetadataResponse {
+	return incidentTokenMetadataResponse{
+		TokenID:    token.ID,
+		IncidentID: token.IncidentID,
+		Label:      token.Label,
+		TokenState: incidentTokenMetadataState(token, now),
+		CreatedAt:  token.CreatedAt,
+		ExpiresAt:  token.ExpiresAt,
+		RevokedAt:  token.RevokedAt,
+	}
+}
+
+func incidentTokenMetadataState(token incidents.IncidentToken, now time.Time) string {
+	if token.RevokedAt != nil {
+		return incidentTokenStateRevoked
+	}
+	if token.ExpiresAt != nil && !token.ExpiresAt.After(now) {
+		return incidentTokenStateExpired
+	}
+	return incidentTokenStateActive
 }
 
 func (a *API) incidentTokenExpiresAt(requestExpiresAt *time.Time, requestExpiresAtSet bool) *time.Time {

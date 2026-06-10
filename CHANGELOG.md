@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Added owner-authenticated viewer-token metadata list/read routes that expose
+  only non-secret token IDs, labels, active/expired/revoked state, and
+  timestamps without returning raw viewer tokens or token hashes.
 - Added a token-scoped web-client viewer payload for no-account incident
   viewers, with latest check-in and latest shared location context, field
   allowlist tests, docs, and unchanged ciphertext-only/key-custody behavior.

@@ -75,6 +75,16 @@ func TestSafeLogPathRedactsMainAPIPathsWithoutMuxPattern(t *testing.T) {
 			},
 		},
 		{
+			name:   "incident token metadata",
+			method: http.MethodGet,
+			target: "/v1/incidents/inc_secret/incident-tokens/itk_secret",
+			want:   "GET /v1/incidents/{incident_id}/incident-tokens/{token_id}",
+			disallowed: []string{
+				"inc_secret",
+				"itk_secret",
+			},
+		},
+		{
 			name:   "account recipient key replace",
 			method: http.MethodPost,
 			target: "/v1/account-recipient-keys/recipient_key_secret/replace",

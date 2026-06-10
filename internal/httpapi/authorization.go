@@ -11,6 +11,7 @@ import (
 const (
 	actionReadIncident         = "read_incident"
 	actionWriteIncident        = "write_incident"
+	actionReadPublicLink       = "read_public_link"
 	actionCreatePublicLink     = "create_public_link"
 	actionRevokePublicLink     = "revoke_public_link"
 	actionReadSharingGrant     = "read_sharing_grant"
@@ -40,6 +41,7 @@ var currentIncidentAuthorizationScopes = map[incidentAuthorizationScope]struct{}
 	{action: actionWriteIncident, dataClass: dataClassCiphertext}:         {},
 	{action: actionReadCiphertextBundle, dataClass: dataClassCiphertext}:  {},
 	{action: actionDeleteIncident, dataClass: dataClassIncidentMetadata}:  {},
+	{action: actionReadPublicLink, dataClass: dataClassPublicLinkGrant}:   {},
 	{action: actionCreatePublicLink, dataClass: dataClassPublicLinkGrant}: {},
 	{action: actionRevokePublicLink, dataClass: dataClassPublicLinkGrant}: {},
 	{action: actionReadSharingGrant, dataClass: dataClassSharingGrant}:    {},

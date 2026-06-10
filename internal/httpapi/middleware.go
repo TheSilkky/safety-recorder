@@ -247,6 +247,9 @@ func redactedIncidentPath(method string, segments []string) string {
 		if len(segments) == 4 {
 			return method + " /v1/incidents/{incident_id}/" + segments[3]
 		}
+		if len(segments) == 5 && segments[3] == "incident-tokens" {
+			return method + " /v1/incidents/{incident_id}/incident-tokens/{token_id}"
+		}
 	}
 	return method + " /v1/incidents/{incident_id}/{route}"
 }

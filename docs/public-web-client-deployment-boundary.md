@@ -133,14 +133,15 @@ Allowed for a metadata-only public web-client deployment after route review:
 - owner-scoped sharing-grant metadata routes
 - owner-scoped wrapped-key metadata routes
 - signed-in trusted-contact wrapped-key metadata read routes
+- owner-scoped viewer-token metadata list/read routes for owned incidents
 - `GET /v1/incidents`
 - `GET /v1/incidents/{incident_id}`
 
 These routes remain authenticated and account-scoped. They do not expose raw
-private keys, raw CEKs, plaintext, backend decryption, trusted-contact incident
-reads, browser decryption, public viewer privileges, or emergency dispatch.
-Wrapped-key ciphertext is access-enabling metadata and must not be logged or
-sent to analytics.
+private keys, raw CEKs, raw viewer tokens, token hashes, plaintext, backend
+decryption, trusted-contact incident reads, browser decryption, public viewer
+privileges, or emergency dispatch. Wrapped-key ciphertext is access-enabling
+metadata and must not be logged or sent to analytics.
 
 ### Evidence Capture And Encrypted Review
 

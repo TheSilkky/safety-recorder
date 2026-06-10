@@ -111,7 +111,18 @@ because it is public source code and contains no incident data, secrets, tokens,
 keys, or deployment details. This does not add a public admin dashboard or
 public product API exposure model.
 
-Incident viewer tokens are scoped to one incident. The raw token is returned only at creation time; the configured metadata backend stores only a SHA-256 hash. Tokens created without an explicit `expires_at` default to a 24-hour lifetime unless `SAFE_DEFAULT_INCIDENT_TOKEN_TTL` is configured differently. Expired, revoked, and invalid tokens return the same public error.
+Incident viewer tokens are scoped to one incident. The raw token is returned
+only at creation time; the configured metadata backend stores only a SHA-256
+hash. Owner-authenticated viewer-token metadata routes can list and read only
+non-secret metadata for owned incidents: token ID, incident ID, label, active,
+expired, or revoked state, and creation/expiry/revocation timestamps. They do
+not return raw viewer tokens, token hashes, public token lookup by token ID,
+token replay capability, contact/trusted-contact access, wrapped-key
+ciphertext, plaintext, raw keys, backend diagnostics, or private deployment
+details. Tokens created without an explicit `expires_at` default to a 24-hour
+lifetime unless `SAFE_DEFAULT_INCIDENT_TOKEN_TTL` is configured differently.
+Expired, revoked, and invalid tokens return the same public error on public
+viewer routes.
 
 Viewer URLs contain bearer tokens and should be treated as secrets. Reverse proxies and operational logs should avoid recording raw `/i/{token}` paths. During upgrades from pre-rename releases, `/e/{token}` compatibility links may also reach the edge proxy and should be redacted.
 
