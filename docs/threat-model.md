@@ -395,6 +395,11 @@ Use TLS at the edge for any network access. Apply deployment-edge rate limiting 
 
 The Go app does not set `Strict-Transport-Security` by default because local development uses plain HTTP and MDN guidance expects HSTS only over HTTPS. Enable HSTS at the production HTTPS reverse proxy after the public hostname is consistently available over TLS.
 
+Public web-client deployments must follow the route, CORS, CSRF, cookie, cache,
+edge, and logging boundary in
+[public-web-client-deployment-boundary.md](public-web-client-deployment-boundary.md)
+before they are described as a reviewed v1 preview path.
+
 ## Next Security Steps
 
 - Review the current `/v1` route groups before broad public product API

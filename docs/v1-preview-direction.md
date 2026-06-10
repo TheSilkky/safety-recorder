@@ -115,7 +115,10 @@ incident deletion request UI.
 It does not currently deploy publicly as a production Proofline service. Public
 static deployment needs separate server, deployment, abuse-control, CSRF/CORS,
 credential-storage, security-header, supply-chain, and served-asset integrity
-review before it can be treated as a v1 preview deployment path.
+review before it can be treated as a v1 preview deployment path. The server-side
+route, browser credential, CORS, CSRF, cache, edge, and logging boundary is
+documented in
+[public-web-client-deployment-boundary.md](public-web-client-deployment-boundary.md).
 
 When public web-client deployment exists, deployment integrity should include
 built asset manifests, root distribution hashes, post-deploy verification that

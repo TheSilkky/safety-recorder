@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Added a public web-client deployment-boundary design for v1 preview route
+  exposure, browser-cookie sessions, credentialed CORS, CSRF, cache headers,
+  TLS/HSTS-at-proxy, viewer-token handling, logging review, and the #223/#233
+  relationship without changing runtime behavior.
 - Added a browser-decryption trust-gate decision that rejects dynamic
   same-origin decrypting viewers as a production trusted-contact path by
   themselves and requires a static/signed, independently hosted, native-app, or

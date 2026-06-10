@@ -38,6 +38,9 @@ authenticated admin-only routes on the private-admin listener and must not be
 routed from public entry points. The current topology separates the main
 API/viewer listener from a separately bound private admin listener; see
 [public-api-listener-split.md](public-api-listener-split.md).
+Future public web-client deployments must also follow the route, browser
+credential, CORS, CSRF, cache, edge, and logging boundary in
+[public-web-client-deployment-boundary.md](public-web-client-deployment-boundary.md).
 
 ## Listener Boundary
 
@@ -412,7 +415,8 @@ Normal file or object removal is not treated as guaranteed secure erasure. Deplo
 - No complete public product API deployment model for `/v1`; local account
   sessions, optional browser cookie sessions, app-level route-class limits, and
   the narrow owner incident metadata list/detail reads are authenticated
-  main-API controls, not a complete public deployment model
+  main-API controls. The public web-client deployment boundary is documented,
+  but it is still a review gate and not a runtime deployment change.
 - No built-in TLS
 - No deployment-edge abuse-throttling system beyond app-level main API and
   public viewer route-class rate limiting
