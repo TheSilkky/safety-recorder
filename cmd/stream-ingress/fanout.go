@@ -31,15 +31,19 @@ type relayFanoutAuthorizeInput struct {
 }
 
 type relayFanoutEvent struct {
-	Type       string `json:"type"`
-	State      string `json:"state"`
-	IncidentID string `json:"incident_id"`
-	StreamID   string `json:"stream_id"`
-	ChunkIndex int    `json:"chunk_index"`
-	MediaType  string `json:"media_type"`
-	ByteSize   int64  `json:"byte_size"`
-	SHA256Hex  string `json:"sha256_hex"`
-	PayloadB64 string `json:"payload_b64"`
+	Type          string `json:"type"`
+	State         string `json:"state"`
+	IncidentID    string `json:"incident_id"`
+	StreamID      string `json:"stream_id"`
+	ChunkIndex    int    `json:"chunk_index"`
+	MediaType     string `json:"media_type"`
+	ByteSize      int64  `json:"byte_size"`
+	SHA256Hex     string `json:"sha256_hex"`
+	PayloadB64    string `json:"payload_b64,omitempty"`
+	ErrorCode     string `json:"error_code,omitempty"`
+	CoreErrorCode string `json:"core_error_code,omitempty"`
+	Retryable     *bool  `json:"retryable,omitempty"`
+	Terminal      bool   `json:"terminal,omitempty"`
 }
 
 type relayFanoutHub struct {
@@ -93,11 +97,17 @@ func (u *relayUploader) fanoutSubscribe(w http.ResponseWriter, r *http.Request) 
 		select {
 		case <-r.Context().Done():
 			return
-		case event := <-events:
-			if !writeSSEEvent(w, "relay_chunk", event) {
+		case event, ok := <-events:
+			if !ok {
+				return
+			}
+			if !writeSSEEvent(w, event.Type, event) {
 				return
 			}
 			flusher.Flush()
+			if event.Terminal {
+				return
+			}
 		}
 	}
 }
@@ -153,19 +163,33 @@ func (input relayFanoutAuthorizeInput) coreFields() map[string]any {
 	}
 }
 
-func (u *relayUploader) publishRelayFanout(input relayUploadMetadata, temp *storage.TempUpload) {
+func (u *relayUploader) publishRelayFanout(input relayUploadMetadata, temp *storage.TempUpload) bool {
 	if u == nil || u.fanout == nil || temp == nil {
-		return
+		return false
 	}
 	key := u.fanoutKey(input)
 	if !u.fanout.hasSubscribers(key) {
-		return
+		return false
 	}
 	payloadB64, byteSize, err := relayFanoutPayloadB64(temp.Path)
 	if err != nil || byteSize != input.ByteSize {
-		return
+		return false
 	}
 	u.fanout.broadcast(key, relayFanoutEventFromUpload(input, payloadB64, byteSize))
+	return true
+}
+
+func (u *relayUploader) publishRelayFanoutOutcome(input relayUploadMetadata, outcome relayCoreCommitOutcome) {
+	if u == nil || u.fanout == nil || !outcome.Publish {
+		return
+	}
+	event := relayFanoutStateEventFromUpload(input, outcome)
+	key := u.fanoutKey(input)
+	if outcome.Terminal {
+		u.fanout.terminate(key, event)
+		return
+	}
+	u.fanout.broadcast(key, event)
 }
 
 func (u *relayUploader) fanoutKey(input relayUploadMetadata) string {
@@ -218,6 +242,33 @@ func (h *relayFanoutHub) broadcast(key string, event relayFanoutEvent) {
 	}
 }
 
+func (h *relayFanoutHub) terminate(key string, event relayFanoutEvent) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	subscribers := h.subscribers[key]
+	delete(h.subscribers, key)
+	for _, ch := range subscribers {
+		sendTerminalFanoutEvent(ch, event)
+		close(ch)
+	}
+}
+
+func sendTerminalFanoutEvent(ch chan relayFanoutEvent, event relayFanoutEvent) {
+	select {
+	case ch <- event:
+		return
+	default:
+	}
+	select {
+	case <-ch:
+	default:
+	}
+	select {
+	case ch <- event:
+	default:
+	}
+}
+
 func writeSSEEvent(w http.ResponseWriter, eventName string, payload any) bool {
 	data, err := json.Marshal(payload)
 	if err != nil {
@@ -251,5 +302,22 @@ func relayFanoutEventFromUpload(input relayUploadMetadata, payloadB64 string, by
 		ByteSize:   byteSize,
 		SHA256Hex:  input.SHA256Hex,
 		PayloadB64: payloadB64,
+	}
+}
+
+func relayFanoutStateEventFromUpload(input relayUploadMetadata, outcome relayCoreCommitOutcome) relayFanoutEvent {
+	return relayFanoutEvent{
+		Type:          "relay_chunk_state",
+		State:         outcome.State,
+		IncidentID:    input.IncidentID,
+		StreamID:      input.StreamID,
+		ChunkIndex:    input.ChunkIndex,
+		MediaType:     input.MediaType,
+		ByteSize:      input.ByteSize,
+		SHA256Hex:     input.SHA256Hex,
+		ErrorCode:     outcome.ErrorCode,
+		CoreErrorCode: outcome.CoreErrorCode,
+		Retryable:     outcome.Retryable,
+		Terminal:      outcome.Terminal,
 	}
 }

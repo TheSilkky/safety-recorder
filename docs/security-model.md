@@ -527,9 +527,10 @@ Normal file or object removal is not treated as guaranteed secure erasure. Deplo
   service-authenticated core relay preflight/commit/fanout authorization
   endpoints, a configured complete-chunk upload route with temporary
   ciphertext staging, hash verification, core forwarding, and optimistic
-  encrypted unconfirmed fanout. Backend confirmation/rejection propagation,
-  replay, metrics, production service-identity rotation, durable relay storage,
-  relay Valkey coordination, and production deployment automation remain planned in
+  encrypted unconfirmed fanout followed by bounded backend confirmation,
+  rejection, or terminal-failure state. Replay, metrics, production
+  service-identity rotation, durable relay storage, relay Valkey coordination,
+  and production deployment automation remain planned in
   [regional-stream-ingress-relay.md](regional-stream-ingress-relay.md)
 - No implemented mode-driven access, escalation, retention, key-custody,
   trusted-contact incident delivery, dead-man switch notification, browser

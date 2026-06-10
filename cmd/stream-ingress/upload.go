@@ -52,6 +52,15 @@ type relayCoreError struct {
 	} `json:"error"`
 }
 
+type relayCoreCommitOutcome struct {
+	Publish       bool
+	State         string
+	ErrorCode     string
+	CoreErrorCode string
+	Retryable     *bool
+	Terminal      bool
+}
+
 func newRelayUploader(cfg streamIngressConfig, client *http.Client) (*relayUploader, error) {
 	cfg = cfg.withDefaults()
 	store, err := storage.NewWithOptions(cfg.DataDir, storage.Options{
@@ -192,8 +201,11 @@ func (u *relayUploader) uploadCompleteChunk(w http.ResponseWriter, r *http.Reque
 		writeError(w, http.StatusBadRequest, "hash_mismatch", "computed SHA-256 did not match provided hash")
 		return
 	}
-	u.publishRelayFanout(input, temp)
-	u.coreCommit(w, r.Context(), input, temp)
+	fanoutPublished := u.publishRelayFanout(input, temp)
+	outcome := u.coreCommit(w, r.Context(), input, temp)
+	if fanoutPublished {
+		u.publishRelayFanoutOutcome(input, outcome)
+	}
 }
 
 func (u *relayUploader) acquireUploadSlot(w http.ResponseWriter, r *http.Request, input relayUploadMetadata) (func(), bool) {
@@ -232,7 +244,7 @@ func (u *relayUploader) corePreflight(w http.ResponseWriter, ctx context.Context
 	return true
 }
 
-func (u *relayUploader) coreCommit(w http.ResponseWriter, ctx context.Context, input relayUploadMetadata, temp *storage.TempUpload) {
+func (u *relayUploader) coreCommit(w http.ResponseWriter, ctx context.Context, input relayUploadMetadata, temp *storage.TempUpload) relayCoreCommitOutcome {
 	reader, writer := io.Pipe()
 	multipartWriter := multipart.NewWriter(writer)
 	errCh := make(chan error, 1)
@@ -246,7 +258,7 @@ func (u *relayUploader) coreCommit(w http.ResponseWriter, ctx context.Context, i
 		_ = reader.Close()
 		<-errCh
 		writeError(w, http.StatusServiceUnavailable, "core_commit_unavailable", "core commit is unavailable")
-		return
+		return relayCommitUnavailableOutcome("core_commit_unavailable")
 	}
 	req.Header.Set("Content-Type", multipartWriter.FormDataContentType())
 	req.Header.Set(relayCoreServiceAuthHeader, u.cfg.CoreServiceAuthToken)
@@ -256,20 +268,23 @@ func (u *relayUploader) coreCommit(w http.ResponseWriter, ctx context.Context, i
 		_ = reader.Close()
 		<-errCh
 		writeError(w, http.StatusServiceUnavailable, "core_commit_unavailable", "core commit is unavailable")
-		return
+		return relayCommitUnavailableOutcome("core_commit_unavailable")
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusCreated && resp.StatusCode != http.StatusOK {
 		_ = reader.Close()
 		<-errCh
-		writeCoreRejected(w, resp, "core_commit_rejected", "core rejected relay commit")
-		return
+		coreCode := writeCoreRejected(w, resp, "core_commit_rejected", "core rejected relay commit")
+		return relayCommitRejectedOutcome(resp.StatusCode, coreCode)
 	}
 	if writeErr := <-errCh; writeErr != nil {
 		writeError(w, http.StatusServiceUnavailable, "core_commit_unavailable", "core commit is unavailable")
-		return
+		return relayCommitUnavailableOutcome("core_commit_unavailable")
 	}
-	relayUploadResponse(w, resp)
+	if !relayUploadResponse(w, resp) {
+		return relayCommitUnavailableOutcome("core_commit_invalid_response")
+	}
+	return relayCommitConfirmedOutcome()
 }
 
 func writeRelayCommitMultipart(pipeWriter *io.PipeWriter, multipartWriter *multipart.Writer, input relayUploadMetadata, tempPath string) error {
@@ -310,11 +325,11 @@ func writeRelayCommitMultipart(pipeWriter *io.PipeWriter, multipartWriter *multi
 	return nil
 }
 
-func relayUploadResponse(w http.ResponseWriter, resp *http.Response) {
+func relayUploadResponse(w http.ResponseWriter, resp *http.Response) bool {
 	var decoded map[string]map[string]any
 	if err := json.NewDecoder(io.LimitReader(resp.Body, 64*1024)).Decode(&decoded); err != nil {
 		writeError(w, http.StatusBadGateway, "core_commit_invalid_response", "core commit response was invalid")
-		return
+		return false
 	}
 	payload := map[string]any{"status": "committed"}
 	if coreCommit, ok := decoded["relay_commit"]; ok {
@@ -327,9 +342,10 @@ func relayUploadResponse(w http.ResponseWriter, resp *http.Response) {
 	writeJSON(w, resp.StatusCode, map[string]map[string]any{
 		"relay_upload": payload,
 	})
+	return true
 }
 
-func writeCoreRejected(w http.ResponseWriter, resp *http.Response, code, message string) {
+func writeCoreRejected(w http.ResponseWriter, resp *http.Response, code, message string) string {
 	coreCode := coreErrorCode(resp.Body)
 	status := safeCoreStatus(resp.StatusCode)
 	body := map[string]any{
@@ -342,6 +358,49 @@ func writeCoreRejected(w http.ResponseWriter, resp *http.Response, code, message
 		body["core_error_code"] = coreCode
 	}
 	writeJSON(w, status, body)
+	return coreCode
+}
+
+func relayCommitConfirmedOutcome() relayCoreCommitOutcome {
+	return relayCoreCommitOutcome{
+		Publish: true,
+		State:   "confirmed",
+	}
+}
+
+func relayCommitRejectedOutcome(status int, coreCode string) relayCoreCommitOutcome {
+	if status == http.StatusTooManyRequests || status >= 500 {
+		return relayCoreCommitOutcome{
+			Publish:       true,
+			State:         "terminal_failure",
+			ErrorCode:     "core_commit_rejected",
+			CoreErrorCode: coreCode,
+			Retryable:     boolPointer(true),
+			Terminal:      true,
+		}
+	}
+	return relayCoreCommitOutcome{
+		Publish:       true,
+		State:         "rejected",
+		ErrorCode:     "core_commit_rejected",
+		CoreErrorCode: coreCode,
+		Retryable:     boolPointer(false),
+		Terminal:      true,
+	}
+}
+
+func relayCommitUnavailableOutcome(code string) relayCoreCommitOutcome {
+	return relayCoreCommitOutcome{
+		Publish:   true,
+		State:     "terminal_failure",
+		ErrorCode: code,
+		Retryable: boolPointer(true),
+		Terminal:  true,
+	}
+}
+
+func boolPointer(value bool) *bool {
+	return &value
 }
 
 func coreErrorCode(body io.Reader) string {

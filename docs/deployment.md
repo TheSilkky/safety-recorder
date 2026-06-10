@@ -581,13 +581,14 @@ core preflight before accepting the file part when metadata is ordered
 correctly, stages ciphertext temporarily, verifies `sha256_hex`, and returns
 success only after core commit succeeds. The fanout route requires relay
 session/fanout capability context in headers, calls core fanout authorization,
-and emits only `near_live_unconfirmed` encrypted chunks without replay or
-durable relay metadata. The core relay endpoints require the separate
+emits `near_live_unconfirmed` encrypted chunks, and then emits bounded
+`confirmed`, `rejected`, or `terminal_failure` state after the core commit
+outcome without replay or durable relay metadata. The core relay endpoints
+require the separate
 `X-Proofline-Relay-Service-Token` header when `[relay_service]` auth is
 configured; user sessions and relay capabilities are not service identity.
-This does not implement backend confirmation/rejection propagation, replay,
-metrics, durable relay storage, production service-identity rotation, or
-production deployment automation.
+This does not implement replay, metrics, durable relay storage, production
+service-identity rotation, or production deployment automation.
 
 The full relay planning boundary is documented in
 [regional-stream-ingress-relay.md](regional-stream-ingress-relay.md).
@@ -620,7 +621,8 @@ a temporary relay edge only; the core API remains the durable source of truth
 for service-authenticated relay preflight/commit/fanout authorization
 decisions, authorization, incident and stream state, idempotency, final blob
 commits, and metadata. Current fanout chunks are optimistic and must remain
-viewer-labeled as unconfirmed until a later backend-confirmed state exists.
+viewer-labeled as unconfirmed until a matching `confirmed` relay state or
+other backend-confirmed state exists.
 
 Do not route `/admin`, `/v1/admin/...`, public incident viewer routes, bundle
 downloads, deletion, retention, backup, restore, escrow, break-glass,

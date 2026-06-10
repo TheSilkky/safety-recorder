@@ -1914,8 +1914,9 @@ routes. The separate `cmd/stream-ingress` relay can accept configured complete
 encrypted chunk uploads at `POST /upload/complete-chunk`, stage ciphertext
 temporarily, verify the declared SHA-256, forward exact bytes to the core
 routes, and serve optimistic encrypted `GET /fanout/subscribe` SSE events
-marked `near_live_unconfirmed`. It does not implement backend
-confirmation/rejection propagation, replay, relay metrics, production
+marked `near_live_unconfirmed` before emitting bounded `relay_chunk_state`
+events for `confirmed`, `rejected`, or `terminal_failure` core commit
+outcomes. It does not implement replay, relay metrics, production
 service-identity rotation, or deployment automation. The relay upload and
 fanout design is documented in
 [regional-stream-ingress-relay.md](regional-stream-ingress-relay.md).
@@ -2091,6 +2092,18 @@ fanout for that relay session/incident/stream context:
 The response does not commit evidence, create replay state, confirm chunk
 durability, or grant viewer-token, trusted-contact, admin, decryption, or key
 access.
+
+The separate `cmd/stream-ingress` SSE fanout route remains outside the core API.
+After successful fanout authorization, it sends `relay_chunk` events containing
+base64 ciphertext and safe ciphertext metadata with state
+`near_live_unconfirmed`. If the relay forwarded that exact ciphertext to the
+core commit route, it then sends a `relay_chunk_state` event without
+`payload_b64`: `confirmed` for core `201` or `200`, `rejected` with
+`terminal: true` and `retryable: false` for non-retryable core rejection, or
+`terminal_failure` with `terminal: true` and `retryable: true` for timeout,
+network loss, core `429`, core `5xx`, or invalid core success response.
+Rejected and terminal-failure events close the affected in-memory fanout
+stream/session. Hash mismatches are rejected before fanout publication.
 
 ### `POST /v1/incidents/{incident_id}/chunks/reconcile`
 

@@ -12,8 +12,9 @@ short-lived relay upload and fanout capabilities for authorized open streams,
 service-authenticated core relay preflight, commit, and fanout authorization
 endpoints, relay complete-chunk upload handling with relay-local temporary
 ciphertext staging and core forwarding, and optimistic encrypted unconfirmed
-fanout. Backend confirmation/rejection propagation, replay, metrics, relay
-Valkey counters, production service-identity rotation, and deployment automation remain planned in
+fanout followed by bounded backend confirmation, rejection, or terminal-failure
+state. Replay, metrics, relay Valkey counters, production service-identity
+rotation, and deployment automation remain planned in
 [regional-stream-ingress-relay.md](regional-stream-ingress-relay.md).
 
 This repository is the server/backend component only. In the current
@@ -221,7 +222,9 @@ that bound stream context. A relay capability or unconfirmed fanout event by
 itself does not prove durable evidence preservation. The relay command stages
 ciphertext temporarily, validates the declared hash, forwards complete
 encrypted chunks to the core API, and can optimistically send encrypted
-`near_live_unconfirmed` SSE events to authorized subscribers. The core API
+`near_live_unconfirmed` SSE events to authorized subscribers, followed by
+bounded `confirmed`, `rejected`, or `terminal_failure` state for the same
+ciphertext metadata after the core commit outcome is known. The core API
 remains responsible for account/session or future upload authorization, relay
 capability validation, incident and stream state, idempotency decisions,
 duplicate reconciliation, final blob commits, and metadata.

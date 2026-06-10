@@ -2,14 +2,21 @@
 
 ## Unreleased
 
+- Added backend confirmation, rejection, and terminal-failure propagation for
+  regional relay fanout, with `relay_chunk_state` SSE events tied to exact
+  ciphertext metadata, fanout termination on core rejection or ambiguous
+  upstream failure, timeout and core `5xx` coverage, hash-mismatch no-fanout
+  coverage, redaction tests, and docs preserving the boundary that replay,
+  durable relay storage, metrics, notifications, decryption, and production
+  relay deployment automation remain separately scoped.
+
 - Added optimistic near-live encrypted regional relay fanout, with separate
   backend-issued fanout capabilities, a service-authenticated core fanout
   authorization route, a header-authenticated stream-ingress SSE subscription
   route, near-live/unconfirmed chunk state, encrypted payload transport only,
-  redaction tests, and docs preserving the boundary that backend
-  confirmation/rejection propagation, replay, durable relay storage, metrics,
-  notifications, decryption, and production relay deployment automation remain
-  separately scoped.
+  redaction tests, and docs preserving the boundary that replay, durable relay
+  storage, metrics, notifications, decryption, and production relay deployment
+  automation remain separately scoped.
 
 - Added the first regional stream-ingress encrypted upload route, with
   metadata-before-file core preflight, relay-local temporary ciphertext
