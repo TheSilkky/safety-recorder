@@ -225,7 +225,9 @@ remain separate explicit designs.
 
 GPS/location context may be evidence, but plaintext GPS, speed, heading, or
 route history must not be introduced into relay/server operational metadata as
-part of this design.
+part of this design. The detailed encrypted location field taxonomy, binding
+model, token-viewer boundary, and validation expectations are documented in
+[encrypted-location-context.md](encrypted-location-context.md).
 
 Future encrypted context options:
 
@@ -243,10 +245,9 @@ replacement for a reduced-quality chunk if the reduced-quality chunk is the only
 confirmed item linked to relevant encrypted context. Either the context must be
 shared, separately preserved, or explicitly marked missing for review.
 
-Open issue #231 tracks the encrypted GPS/location chunk context model. Future
-implementation should coordinate these designs rather than leaking location
-semantics through labels, route paths, relay logs, metrics, or public issue
-text.
+Future implementation should coordinate this design with the encrypted
+location context model rather than leaking location semantics through labels,
+route paths, relay logs, metrics, or public issue text.
 
 ## Regional Relay Relationship
 

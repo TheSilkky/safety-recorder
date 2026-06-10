@@ -102,8 +102,9 @@ Encryption and decryption must use identical associated data. IDs and media type
 The v1 associated data does not include capture stream group IDs, variant roles,
 source timeline identity, supersession state, or encrypted GPS/context
 bindings. Those fields are future planning work in
-[capture-stream-variants.md](capture-stream-variants.md) and require explicit
-protocol and envelope review before they are implemented.
+[capture-stream-variants.md](capture-stream-variants.md) and
+[encrypted-location-context.md](encrypted-location-context.md), and they require
+explicit protocol and envelope review before they are implemented.
 
 ## Chunk Envelope
 

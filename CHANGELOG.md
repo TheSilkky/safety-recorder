@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Added an encrypted location context design that classifies full-fidelity GPS,
+  speed, heading, freshness, token-viewer context, signed-in trusted-contact
+  access, relay privacy, envelope binding, and future validation expectations
+  without changing runtime behavior.
 - Added authenticated trusted-contact wrapped-key read routes that deliver
   grant-scoped wrapped-key ciphertext only to signed-in accepted trusted
   contacts with a bound active contact key, active unexpired ciphertext grant,

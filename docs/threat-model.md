@@ -21,6 +21,12 @@ encrypted evidence bundles.
   evidence-selection metadata and must not expose plaintext GPS/context, stored
   paths, object keys, raw tokens, raw keys, uploaded bytes, or private
   deployment details.
+- Future full-fidelity GPS, speed, heading, route history, and location
+  freshness context are planning-only and should be Class A encrypted evidence
+  by default. The design in
+  [encrypted-location-context.md](encrypted-location-context.md) separates
+  encrypted evidence from limited token-viewer context and server/relay
+  operational metadata.
 - Deployment configuration and secret material used for startup, including the
   one-time bootstrap secret, optional PostgreSQL DSN, optional S3 credentials,
   optional Valkey password, and optional SMTP password. These values may be
@@ -353,6 +359,10 @@ The current backend does not implement incident-mode-specific controls yet, so f
 - No implemented live or partial stream chunk access before stream completion.
 - No implemented capture stream group, stream-variant, source-timeline
   supersession, or canonical evidence resolution behavior.
+- No implemented encrypted location context schema, location sidecar, or
+  full-fidelity location evidence binding. Future implementation must test
+  encrypted field handling, token-viewer allowlists, relay/log redaction, and
+  envelope or authenticated metadata mismatch failures.
 - No account self-service recovery, second factor authentication, delegated
   identity provider, or public account portal. The only implemented email
   delivery path is SMTP-backed registration email verification when open

@@ -216,6 +216,7 @@ paths must never include:
 - raw `/i/{token}` or `/e/{token}` paths
 - request bodies
 - uploaded bytes
+- full GPS, speed, heading, route history, or location freshness values
 - plaintext
 - raw keys
 - stored paths

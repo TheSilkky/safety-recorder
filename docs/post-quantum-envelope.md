@@ -825,7 +825,8 @@ production APIs.
 The envelope authenticates metadata; it does not make all metadata secret.
 Incident IDs, stream IDs, byte counts, timestamps, sharing state, and access logs
 may remain visible to the backend. Sensitive GPS or dashboard metadata may need a
-separate encrypted metadata design.
+separate encrypted metadata design. The location-specific design is documented
+in [encrypted-location-context.md](encrypted-location-context.md).
 
 ### Algorithm agility
 
