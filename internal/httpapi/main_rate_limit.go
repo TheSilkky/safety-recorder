@@ -167,7 +167,7 @@ func classifyMainAPIRelayRateLimit(r *http.Request, segments []string) (mainRate
 		return "", false
 	}
 	switch segments[2] {
-	case "preflight":
+	case "preflight", "fanout-authorize":
 		return mainRateLimitStream, true
 	case "commit":
 		return mainRateLimitUpload, true

@@ -29,6 +29,7 @@ type relayUploader struct {
 	store   *storage.Store
 	client  *http.Client
 	limiter *relayInFlightLimiter
+	fanout  *relayFanoutHub
 }
 
 type relayUploadMetadata struct {
@@ -67,6 +68,7 @@ func newRelayUploader(cfg streamIngressConfig, client *http.Client) (*relayUploa
 		store:   store,
 		client:  client,
 		limiter: newRelayInFlightLimiter(cfg.MaxInFlightPerSession, cfg.MaxInFlightPerClient),
+		fanout:  newRelayFanoutHub(),
 	}, nil
 }
 
@@ -190,6 +192,7 @@ func (u *relayUploader) uploadCompleteChunk(w http.ResponseWriter, r *http.Reque
 		writeError(w, http.StatusBadRequest, "hash_mismatch", "computed SHA-256 did not match provided hash")
 		return
 	}
+	u.publishRelayFanout(input, temp)
 	u.coreCommit(w, r.Context(), input, temp)
 }
 

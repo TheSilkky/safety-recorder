@@ -233,3 +233,15 @@ func TestUploadRouteRejectsNonPostMethods(t *testing.T) {
 		t.Fatalf("GET /upload/complete-chunk Allow = %q, want POST", recorder.Header().Get("Allow"))
 	}
 }
+
+func TestFanoutRouteRejectsNonGetMethods(t *testing.T) {
+	handler := newHandler(streamIngressConfig{Ready: true}, nil)
+	recorder := httptest.NewRecorder()
+	handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodPost, "/fanout/subscribe", nil))
+	if recorder.Code != http.StatusMethodNotAllowed {
+		t.Fatalf("POST /fanout/subscribe status = %d, want 405", recorder.Code)
+	}
+	if recorder.Header().Get("Allow") != http.MethodGet {
+		t.Fatalf("POST /fanout/subscribe Allow = %q, want GET", recorder.Header().Get("Allow"))
+	}
+}

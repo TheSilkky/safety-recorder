@@ -251,9 +251,9 @@ route paths, relay logs, metrics, or public issue text.
 
 ## Regional Relay Relationship
 
-The regional ingress relay remains upload-only, temporary, and subordinate to
-the core API. This variant model gives it future policy inputs without making
-the relay authoritative for evidence.
+The regional ingress relay remains temporary, ciphertext-only, and subordinate
+to the core API. This variant model gives it future policy inputs without
+making the relay authoritative for evidence.
 
 Future relay behavior should distinguish:
 

@@ -290,8 +290,8 @@ cannot silently become the private-admin listener.
 
 ## Regional Relay Capability Issuance
 
-The main API can issue short-lived signed regional relay upload capabilities
-for authorized open streams. Issuance is disabled by default and returns
+The main API can issue short-lived signed regional relay upload and fanout
+capabilities for authorized open streams. Issuance is disabled by default and returns
 `503 relay_capability_not_configured` until a capability secret is configured.
 This config belongs to the core API, not the separate `cmd/stream-ingress`
 relay command.
@@ -303,31 +303,33 @@ relay command.
 | `[relay_capability].ttl` | `SAFE_RELAY_CAPABILITY_TTL` | `5m` | Positive duration used as the capability expiry window. |
 | `[relay_capability].max_chunks` | `SAFE_RELAY_CAPABILITY_MAX_CHUNKS` | `64` | Positive maximum chunk count embedded in each issued capability. |
 
-Capabilities include the relay session ID, `upload` role, incident ID, stream
-ID, expiry, max chunk bytes, max chunk count, and allowed media types. They do
-not include raw account sessions, browser cookies, viewer tokens, incident
-tokens, raw keys, wrapped-key ciphertext, object keys, stored paths, uploaded
-bytes, plaintext, GPS/speed/heading values, or user safety data. Capability
-tokens are bearer-like credentials and must not be logged, used as metrics
-labels, or copied into public artifacts.
+Capabilities include the relay session ID, role (`upload` or `fanout`),
+incident ID, stream ID, expiry, max chunk bytes, max chunk count, and allowed
+media types. They do not include raw account sessions, browser cookies, viewer
+tokens, incident tokens, raw keys, wrapped-key ciphertext, object keys, stored
+paths, uploaded bytes, plaintext, GPS/speed/heading values, or user safety
+data. Capability tokens are bearer-like credentials and must not be logged,
+used as metrics labels, or copied into public artifacts.
 
 ## Regional Relay Service Authentication
 
-The core API also has narrow service-authenticated relay preflight and commit
-routes:
+The core API also has narrow service-authenticated relay preflight, commit,
+and fanout authorization routes:
 
 ```http
 POST /v1/relay/preflight
 POST /v1/relay/commit
+POST /v1/relay/fanout-authorize
 ```
 
 These routes are disabled by default and return `503
 relay_service_auth_not_configured` until a relay-to-core service auth token is
 configured. Relay service auth is separate from user bearer sessions, browser
-cookies, viewer tokens, incident tokens, and relay upload capabilities. It is
-sent by the trusted relay in the `X-Proofline-Relay-Service-Token` header, then
-the core route still validates the relay session ID and signed upload
-capability for the requested incident and stream.
+cookies, viewer tokens, incident tokens, and relay upload or fanout
+capabilities. It is sent by the trusted relay in the
+`X-Proofline-Relay-Service-Token` header, then the core route still validates
+the relay session ID and signed upload or fanout capability for the requested
+incident and stream.
 
 | TOML key | Environment variable | Default | Notes |
 |---|---|---|---|
@@ -336,20 +338,21 @@ capability for the requested incident and stream.
 
 Treat the relay service token as a deployment secret. Do not log it, place it
 in URLs, use it as a limiter key or metrics label, copy it into public issues
-or PRs, or share it with clients. The early static token does not add relay
-fanout, metrics, admin access, key access, or broad `/v1` access.
+or PRs, or share it with clients. The early static token does not add metrics,
+admin access, key access, or broad `/v1` access.
 
 The separate `cmd/stream-ingress` command has its own small environment and
-flag surface. It does not use the main API TOML config file yet. Its upload
-route is configured separately from the core API and remains upload-only.
+flag surface. It does not use the main API TOML config file yet. Its upload and
+fanout routes are configured separately from the core API and remain temporary
+and subordinate to the core API.
 
 | Stream-ingress variable | Default | Equivalent flag | Notes |
 |---|---|---|---|
 | `SAFE_STREAM_INGRESS_BIND_ADDR` | `127.0.0.1:8090` | `--bind` | Private bind address for the relay health/readiness and complete-chunk upload listener. Keep it on loopback, LAN, WireGuard, firewall, or a private reverse proxy unless a later deployment issue explicitly reviews exposure. |
 | `SAFE_STREAM_INGRESS_RELAY_ID` | unset | `--relay-id` | Optional relay identity label for future service identity planning. The relay records only whether it is configured and must not expose the label value in readiness output or logs. |
 | `SAFE_STREAM_INGRESS_REGION` | unset | `--region` | Optional coarse region label for future relay planning. The relay records only whether it is configured and must not expose the label value in readiness output or logs. |
-| `SAFE_STREAM_INGRESS_READY` | `false` | `--ready` | Controls whether `GET /health/ready` returns `200 ready` or `503 not_ready`. This readiness flag is only a smoke signal and does not mean fanout, metrics, production deployment hardening, or broad public readiness exists. |
-| `SAFE_STREAM_INGRESS_CORE_BASE_URL` | unset | `--core-url` | Core API base URL used for `/v1/relay/preflight` and `/v1/relay/commit`. Uploads return `503 relay_core_not_configured` until this and the service token are configured. |
+| `SAFE_STREAM_INGRESS_READY` | `false` | `--ready` | Controls whether `GET /health/ready` returns `200 ready` or `503 not_ready`. This readiness flag is only a smoke signal and does not mean confirmation propagation, replay, metrics, production deployment hardening, or broad public readiness exists. |
+| `SAFE_STREAM_INGRESS_CORE_BASE_URL` | unset | `--core-url` | Core API base URL used for `/v1/relay/preflight`, `/v1/relay/commit`, and `/v1/relay/fanout-authorize`. Uploads and fanout subscriptions return `503 relay_core_not_configured` until this and the service token are configured. |
 | `SAFE_STREAM_INGRESS_CORE_SERVICE_AUTH_TOKEN` | unset | none | Static relay-to-core service token sent as `X-Proofline-Relay-Service-Token`. Must be at least 32 bytes when set. Prefer the `_FILE` form for deployments. |
 | `SAFE_STREAM_INGRESS_CORE_SERVICE_AUTH_TOKEN_FILE` | unset | none | File-backed relay-to-core service token. Overrides the direct token. Treat the path and contents as private deployment details. |
 | `SAFE_STREAM_INGRESS_DATA_DIR` | `./data/stream-ingress` | `--data-dir` | Relay-local temp staging root. Staged files are temporary encrypted bytes only and are cleaned after request success or failure where safe. |
@@ -366,9 +369,10 @@ SAFE_STREAM_INGRESS_READY=true go run ./cmd/stream-ingress
 ```
 
 Any later relay settings should continue to use a distinct namespace, keep the
-relay upload-only, and avoid logging service credentials, token fingerprints,
-raw capabilities, request bodies, uploaded bytes, staging paths, object keys,
-private endpoints, or other private deployment details.
+relay temporary and subordinate to the core API, and avoid logging service
+credentials, token fingerprints, raw capabilities, request bodies, uploaded
+bytes, staging paths, object keys, private endpoints, or other private
+deployment details.
 
 ## Backend Selection Scaffold
 

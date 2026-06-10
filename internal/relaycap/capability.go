@@ -15,6 +15,7 @@ import (
 const (
 	Version    = "proofline.relay-capability.v1"
 	RoleUpload = "upload"
+	RoleFanout = "fanout"
 
 	tokenPrefix     = "proofline-relay-capability-v1"
 	minSecretLength = 32

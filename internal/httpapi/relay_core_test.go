@@ -111,6 +111,37 @@ func TestRelayRoutesRequireSeparateServiceAuth(t *testing.T) {
 	assertErrorCode(t, body, "relay_service_auth_not_configured")
 }
 
+func TestRelayFanoutAuthorizeRequiresFanoutCapability(t *testing.T) {
+	app := newRelayCoreTestApp(t)
+	incidentID := createIncident(t, app, `{}`)
+	stream := createMediaStream(t, app, incidentID, incidents.MediaTypeAudio, "relay audio")
+	session := createRelaySessionForTest(t, app, incidentID, stream.ID)
+
+	response, body := relayFanoutAuthorizeRequest(t, app, session, session.RelaySession.FanoutCapability, testRelayServiceAuthToken)
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("relay fanout authorize status = %d, want 200: %s", response.StatusCode, body)
+	}
+	assertMainJSONSecurityHeaders(t, response)
+	assertRelayResponseRedacted(t, body, app.authToken, testRelayServiceAuthToken, session.RelaySession.Capability, session.RelaySession.FanoutCapability)
+	assertJSONField(t, body, "status", "authorized")
+
+	response, body = relayFanoutAuthorizeRequest(t, app, session, session.RelaySession.Capability, testRelayServiceAuthToken)
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusForbidden {
+		t.Fatalf("upload capability fanout status = %d, want 403: %s", response.StatusCode, body)
+	}
+	assertErrorCode(t, body, "relay_capability_wrong_role")
+	assertRelayResponseRedacted(t, body, app.authToken, testRelayServiceAuthToken, session.RelaySession.Capability, session.RelaySession.FanoutCapability)
+
+	response, body = relayFanoutAuthorizeRequest(t, app, session, session.RelaySession.FanoutCapability, "")
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("missing service auth fanout status = %d, want 401: %s", response.StatusCode, body)
+	}
+	assertErrorCode(t, body, "relay_service_auth_required")
+}
+
 func TestRelayPreflightRejectsInvalidCapabilitiesAndLimits(t *testing.T) {
 	app := newRelayCoreTestApp(t)
 	incidentID := createIncident(t, app, `{}`)
@@ -257,6 +288,20 @@ func relayPreflightRequest(t *testing.T, app *testApp, request relayChunkTestReq
 	t.Helper()
 	headers := relayServiceHeaders(serviceToken)
 	return requestWithAuthAndHeaders(t, app.privateHandler, http.MethodPost, "/v1/relay/preflight", "application/json", bytes.NewReader(relayPreflightBody(t, request)), "", headers)
+}
+
+func relayFanoutAuthorizeRequest(t *testing.T, app *testApp, session relaySessionTestResponse, capability, serviceToken string) (*http.Response, []byte) {
+	t.Helper()
+	body, err := json.Marshal(map[string]string{
+		"relay_session_id": session.RelaySession.RelaySessionID,
+		"capability":       capability,
+		"incident_id":      session.RelaySession.IncidentID,
+		"stream_id":        session.RelaySession.StreamID,
+	})
+	if err != nil {
+		t.Fatalf("marshal relay fanout authorize: %v", err)
+	}
+	return requestWithAuthAndHeaders(t, app.privateHandler, http.MethodPost, "/v1/relay/fanout-authorize", "application/json", bytes.NewReader(body), "", relayServiceHeaders(serviceToken))
 }
 
 func relayPreflightBody(t *testing.T, request relayChunkTestRequest) []byte {

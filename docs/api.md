@@ -1907,14 +1907,17 @@ Future upload telemetry remains client-local before v1 preview unless a later
 issue implements the safe coarse-code boundary documented in
 [upload-telemetry-boundary.md](upload-telemetry-boundary.md).
 
-The current API can issue short-lived regional relay upload capabilities for
-authorized open streams and exposes narrow service-authenticated core relay
-preflight/commit routes. The separate `cmd/stream-ingress` relay can accept
-configured complete encrypted chunk uploads at `POST /upload/complete-chunk`,
-stage ciphertext temporarily, verify the declared SHA-256, and forward exact
-bytes to these core routes. It does not implement optimistic fanout, relay
-metrics, production service-identity rotation, or deployment automation. The
-relay upload design is documented in
+The current API can issue short-lived regional relay upload and fanout
+capabilities for authorized open streams and exposes narrow
+service-authenticated core relay preflight, commit, and fanout authorization
+routes. The separate `cmd/stream-ingress` relay can accept configured complete
+encrypted chunk uploads at `POST /upload/complete-chunk`, stage ciphertext
+temporarily, verify the declared SHA-256, forward exact bytes to the core
+routes, and serve optimistic encrypted `GET /fanout/subscribe` SSE events
+marked `near_live_unconfirmed`. It does not implement backend
+confirmation/rejection propagation, replay, relay metrics, production
+service-identity rotation, or deployment automation. The relay upload and
+fanout design is documented in
 [regional-stream-ingress-relay.md](regional-stream-ingress-relay.md).
 Any relay implementation must keep the core API authoritative for
 authorization, idempotency, final blob commits, and metadata, and must not
@@ -2045,6 +2048,49 @@ private deployment details. Hash mismatches return `400 hash_mismatch` without
 committing metadata. Declared byte-size mismatches return `400
 byte_size_mismatch`. Existing direct authenticated chunk upload behavior is
 unchanged.
+
+### `POST /v1/relay/fanout-authorize`
+
+Service-authenticated relay-to-core authorization route for a relay fanout
+subscriber. This route is mounted on the main API mux, not on the public
+incident viewer, not on the private-admin listener, and not on
+`cmd/stream-ingress`.
+
+The trusted relay must send:
+
+```http
+X-Proofline-Relay-Service-Token: <relay-service-token>
+```
+
+Request:
+
+```json
+{
+  "relay_session_id": "Lzhc7ZXZQD6bLztwBBqJ8A",
+  "capability": "proofline-relay-capability-v1...",
+  "incident_id": "inc_...",
+  "stream_id": "str_..."
+}
+```
+
+The core validates relay service auth, capability signature, expiry, `fanout`
+role, relay session binding, incident binding, stream binding, incident state,
+and stream state. A successful response authorizes only optimistic encrypted
+fanout for that relay session/incident/stream context:
+
+```json
+{
+  "relay_fanout": {
+    "status": "authorized",
+    "incident_id": "inc_...",
+    "stream_id": "str_..."
+  }
+}
+```
+
+The response does not commit evidence, create replay state, confirm chunk
+durability, or grant viewer-token, trusted-contact, admin, decryption, or key
+access.
 
 ### `POST /v1/incidents/{incident_id}/chunks/reconcile`
 
@@ -2296,19 +2342,19 @@ instead of treating them as disposable previews.
 
 ### `POST /v1/incidents/{incident_id}/streams/{stream_id}/relay-session`
 
-Issues a short-lived regional relay upload capability for one authorized open
-stream. This route is mounted on the authenticated main API listener and uses
-the same incident write authorization as encrypted chunk upload. It does not
-upload bytes, stage ciphertext, call a relay, commit to storage, fan out live
-chunks, or create a durable evidence record.
+Issues short-lived regional relay upload and fanout capabilities for one
+authorized open stream. This route is mounted on the authenticated main API
+listener and uses the same incident write authorization as encrypted chunk
+upload. It does not upload bytes, stage ciphertext, call a relay, commit to
+storage, fan out live chunks, or create a durable evidence record.
 
 Relay capability issuance is disabled until a secret is configured with
 `SAFE_RELAY_CAPABILITY_SECRET` or `SAFE_RELAY_CAPABILITY_SECRET_FILE`. The
-secret must be at least 32 bytes. The issued capability is HMAC-signed,
-expires after `SAFE_RELAY_CAPABILITY_TTL`, is bound to the returned
-`relay_session_id`, incident ID, stream ID, and `upload` role, and carries
-bounded upload limits. It is a bearer-like credential and must not be logged or
-copied into public artifacts.
+secret must be at least 32 bytes. The issued capabilities are HMAC-signed,
+expire after `SAFE_RELAY_CAPABILITY_TTL`, are bound to the returned
+`relay_session_id`, incident ID, stream ID, and either the `upload` or
+`fanout` role, and carry bounded upload limits. They are bearer-like
+credentials and must not be logged or copied into public artifacts.
 
 Response `201`:
 
@@ -2317,6 +2363,7 @@ Response `201`:
   "relay_session": {
     "relay_session_id": "Lzhc7ZXZQD6bLztwBBqJ8A",
     "capability": "proofline-relay-capability-v1...",
+    "fanout_capability": "proofline-relay-capability-v1...",
     "role": "upload",
     "incident_id": "inc_...",
     "stream_id": "str_...",

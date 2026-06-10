@@ -75,6 +75,30 @@ type relayCommitPayload struct {
 	CreatedAt  time.Time `json:"created_at"`
 }
 
+type relayFanoutAuthorizeRequest struct {
+	RelaySessionID string `json:"relay_session_id"`
+	Capability     string `json:"capability"`
+	IncidentID     string `json:"incident_id"`
+	StreamID       string `json:"stream_id"`
+}
+
+type relayFanoutAuthorizeInput struct {
+	relaySessionID string
+	capability     string
+	incidentID     string
+	streamID       string
+}
+
+type relayFanoutAuthorizeResponse struct {
+	RelayFanout relayFanoutAuthorizePayload `json:"relay_fanout"`
+}
+
+type relayFanoutAuthorizePayload struct {
+	Status     string `json:"status"`
+	IncidentID string `json:"incident_id"`
+	StreamID   string `json:"stream_id"`
+}
+
 func (a *API) relayPreflight(w http.ResponseWriter, r *http.Request) {
 	if !a.requireRelayServiceAuth(w, r) {
 		return
@@ -108,6 +132,24 @@ func (a *API) relayPreflight(w http.ResponseWriter, r *http.Request) {
 		MediaType:     input.mediaType,
 		MaxChunkBytes: capability.MaxChunkBytes,
 		MaxChunks:     capability.MaxChunks,
+	}})
+}
+
+func (a *API) relayFanoutAuthorize(w http.ResponseWriter, r *http.Request) {
+	if !a.requireRelayServiceAuth(w, r) {
+		return
+	}
+	input, ok := parseRelayFanoutAuthorizeJSON(w, r)
+	if !ok {
+		return
+	}
+	if !a.validateRelayFanoutRequest(w, r, input) {
+		return
+	}
+	writeJSON(w, http.StatusOK, relayFanoutAuthorizeResponse{RelayFanout: relayFanoutAuthorizePayload{
+		Status:     "authorized",
+		IncidentID: input.incidentID,
+		StreamID:   input.streamID,
 	}})
 }
 
@@ -258,6 +300,27 @@ func parseRelayChunkJSON(w http.ResponseWriter, r *http.Request) (relayChunkInpu
 		return relayChunkInput{}, false
 	}
 	return parseRelayChunkRequest(w, request, "")
+}
+
+func parseRelayFanoutAuthorizeJSON(w http.ResponseWriter, r *http.Request) (relayFanoutAuthorizeInput, bool) {
+	var request relayFanoutAuthorizeRequest
+	if !decodeJSON(w, r, &request) {
+		return relayFanoutAuthorizeInput{}, false
+	}
+	relaySessionID := strings.TrimSpace(request.RelaySessionID)
+	capability := strings.TrimSpace(request.Capability)
+	incidentID := strings.TrimSpace(request.IncidentID)
+	streamID := strings.TrimSpace(request.StreamID)
+	if relaySessionID == "" || capability == "" || incidentID == "" || streamID == "" {
+		writeError(w, http.StatusBadRequest, "invalid_relay_fanout_request", "relay_session_id, capability, incident_id, and stream_id are required")
+		return relayFanoutAuthorizeInput{}, false
+	}
+	return relayFanoutAuthorizeInput{
+		relaySessionID: relaySessionID,
+		capability:     capability,
+		incidentID:     incidentID,
+		streamID:       streamID,
+	}, true
 }
 
 func (a *API) readRelayCommitUpload(w http.ResponseWriter, r *http.Request) (relayChunkInput, chunkUpload, bool) {
@@ -497,6 +560,61 @@ func (a *API) validateRelayChunkRequest(w http.ResponseWriter, r *http.Request, 
 		return incidents.Incident{}, relaycap.Capability{}, false
 	}
 	return incident, capability, true
+}
+
+func (a *API) validateRelayFanoutRequest(w http.ResponseWriter, r *http.Request, input relayFanoutAuthorizeInput) bool {
+	secret, err := relaycap.SecretBytes(a.relayCapability.Secret)
+	if errors.Is(err, relaycap.ErrInvalidSecret) {
+		writeError(w, http.StatusServiceUnavailable, "relay_capability_not_configured", "relay capability validation is not configured")
+		return false
+	}
+	if err != nil {
+		a.internalError(w, "load relay fanout capability secret", err)
+		return false
+	}
+	if _, err := relaycap.Validate(secret, input.capability, relaycap.ValidationContext{
+		Role:           relaycap.RoleFanout,
+		RelaySessionID: input.relaySessionID,
+		IncidentID:     input.incidentID,
+		StreamID:       input.streamID,
+		Now:            time.Now().UTC(),
+	}); err != nil {
+		writeRelayCapabilityValidationError(w, err)
+		return false
+	}
+
+	incident, err := a.repo.GetIncident(r.Context(), input.incidentID)
+	if errors.Is(err, incidents.ErrNotFound) {
+		writeError(w, http.StatusNotFound, "incident_not_found", "incident was not found")
+		return false
+	}
+	if err != nil {
+		a.internalError(w, "get relay fanout incident", err)
+		return false
+	}
+	if incident.DeletionState != incidents.IncidentDeletionStateActive {
+		writeIncidentDeleting(w)
+		return false
+	}
+	if incident.Status == incidents.StatusClosed {
+		writeError(w, http.StatusConflict, "incident_closed", "incident is closed")
+		return false
+	}
+
+	stream, err := a.repo.GetMediaStream(r.Context(), input.incidentID, input.streamID)
+	if errors.Is(err, incidents.ErrNotFound) {
+		writeError(w, http.StatusNotFound, "stream_not_found", "media stream was not found")
+		return false
+	}
+	if err != nil {
+		a.internalError(w, "get relay fanout media stream", err)
+		return false
+	}
+	if stream.Status != incidents.StreamStatusOpen {
+		writeError(w, http.StatusConflict, "stream_not_open", "media stream is not open")
+		return false
+	}
+	return true
 }
 
 func relayCapabilityAllowsMediaType(capability relaycap.Capability, mediaType string) bool {

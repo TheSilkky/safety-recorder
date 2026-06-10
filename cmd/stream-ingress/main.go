@@ -275,6 +275,17 @@ func newHandler(cfg streamIngressConfig, uploader *relayUploader) http.Handler {
 		}
 		uploader.uploadCompleteChunk(w, r)
 	})
+	mux.HandleFunc("/fanout/subscribe", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			methodNotAllowed(w, http.MethodGet)
+			return
+		}
+		if uploader == nil {
+			writeError(w, http.StatusServiceUnavailable, "relay_fanout_unavailable", "relay fanout is unavailable")
+			return
+		}
+		uploader.fanoutSubscribe(w, r)
+	})
 	return mux
 }
 

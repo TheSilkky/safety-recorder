@@ -523,11 +523,13 @@ Normal file or object removal is not treated as guaranteed secure erasure. Deplo
   is planned in
   [resumable-upload-lease-protocol.md](resumable-upload-lease-protocol.md)
 - The regional stream-ingress relay currently implements health/readiness,
-  core API relay upload capability issuance, service-authenticated core relay
-  preflight/commit endpoints, and a configured complete-chunk upload route with
-  temporary ciphertext staging, hash verification, and core forwarding. Fanout,
-  metrics, production service-identity rotation, durable relay storage, relay
-  Valkey coordination, and production deployment automation remain planned in
+  core API relay upload and fanout capability issuance,
+  service-authenticated core relay preflight/commit/fanout authorization
+  endpoints, a configured complete-chunk upload route with temporary
+  ciphertext staging, hash verification, core forwarding, and optimistic
+  encrypted unconfirmed fanout. Backend confirmation/rejection propagation,
+  replay, metrics, production service-identity rotation, durable relay storage,
+  relay Valkey coordination, and production deployment automation remain planned in
   [regional-stream-ingress-relay.md](regional-stream-ingress-relay.md)
 - No implemented mode-driven access, escalation, retention, key-custody,
   trusted-contact incident delivery, dead-man switch notification, browser

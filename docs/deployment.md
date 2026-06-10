@@ -570,19 +570,24 @@ deployment automation, backend decryption, key escrow, or production readiness.
 ## Regional Stream Ingress Relay
 
 The regional stream-ingress relay currently has a separate `cmd/stream-ingress`
-command plus core API issuance of configured short-lived upload capabilities
-for authorized open streams and service-authenticated core relay
-preflight/commit endpoints. The relay command exposes token-neutral
-`GET /health/live`, token-neutral `GET /health/ready`, and configured
-`POST /upload/complete-chunk` for complete encrypted chunk upload. The upload
-route requires client-supplied relay metadata/capability, calls core preflight
-before accepting the file part when metadata is ordered correctly, stages
-ciphertext temporarily, verifies `sha256_hex`, and returns success only after
-core commit succeeds. The core relay endpoints require the separate
+command plus core API issuance of configured short-lived upload and fanout
+capabilities for authorized open streams and service-authenticated core relay
+preflight/commit/fanout authorization endpoints. The relay command exposes
+token-neutral `GET /health/live`, token-neutral `GET /health/ready`,
+configured `POST /upload/complete-chunk` for complete encrypted chunk upload,
+and configured `GET /fanout/subscribe` for optimistic encrypted SSE fanout.
+The upload route requires client-supplied relay metadata/capability, calls
+core preflight before accepting the file part when metadata is ordered
+correctly, stages ciphertext temporarily, verifies `sha256_hex`, and returns
+success only after core commit succeeds. The fanout route requires relay
+session/fanout capability context in headers, calls core fanout authorization,
+and emits only `near_live_unconfirmed` encrypted chunks without replay or
+durable relay metadata. The core relay endpoints require the separate
 `X-Proofline-Relay-Service-Token` header when `[relay_service]` auth is
 configured; user sessions and relay capabilities are not service identity.
-This does not implement optimistic fanout, metrics, durable relay storage,
-production service-identity rotation, or production deployment automation.
+This does not implement backend confirmation/rejection propagation, replay,
+metrics, durable relay storage, production service-identity rotation, or
+production deployment automation.
 
 The full relay planning boundary is documented in
 [regional-stream-ingress-relay.md](regional-stream-ingress-relay.md).
@@ -611,9 +616,11 @@ go run ./cmd/stream-ingress
 The same token must be configured on the core API with
 `SAFE_RELAY_SERVICE_AUTH_TOKEN_FILE` or `[relay_service].auth_token_file`, and
 the core API must also have relay capability issuance configured. The relay is
-a temporary upload edge only; the core API remains the durable source of truth
-for service-authenticated relay preflight/commit decisions, authorization,
-incident and stream state, idempotency, final blob commits, and metadata.
+a temporary relay edge only; the core API remains the durable source of truth
+for service-authenticated relay preflight/commit/fanout authorization
+decisions, authorization, incident and stream state, idempotency, final blob
+commits, and metadata. Current fanout chunks are optimistic and must remain
+viewer-labeled as unconfirmed until a later backend-confirmed state exists.
 
 Do not route `/admin`, `/v1/admin/...`, public incident viewer routes, bundle
 downloads, deletion, retention, backup, restore, escrow, break-glass,
