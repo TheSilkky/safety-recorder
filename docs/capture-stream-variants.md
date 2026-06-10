@@ -255,7 +255,7 @@ The regional ingress relay remains temporary, ciphertext-only, and subordinate
 to the core API. This variant model gives it future policy inputs without
 making the relay authoritative for evidence.
 
-Future relay behavior should distinguish:
+Current and future relay behavior should distinguish:
 
 - relay-accepted or relay-staged chunks: temporary, encrypted, not durable
   evidence
@@ -272,7 +272,8 @@ Likely fanout direction:
   a background queue as bandwidth allows
 - relay sessions may constrain which variant roles are fanout eligible
 - trusted-contact clients must label relay-fanned chunks as near-live or
-  unconfirmed until backend confirmation is observed
+  unconfirmed until backend confirmation is observed through relay state or
+  another backend-confirmed route
 - core API confirmation remains required before chunks count as preserved
   evidence or before they can supersede another chunk
 

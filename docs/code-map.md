@@ -46,15 +46,18 @@ contact key-sharing boundaries in
 - `.dockerignore`: excludes local runtime, review, and build artifacts from the root Docker build context used by `Dockerfile`.
 - `cmd/api`: starts one main API/viewer HTTP server per main bind address and one private-admin HTTP server per admin bind address, loads config, enforces the local account bootstrap gate, checks the selected coordination backend, opens the selected metadata backend, creates storage, wires shared handlers including main API, private admin JSON API, public viewer rate limiting, upload coordination, and the private `/admin` dashboard, starts the deletion worker, and handles graceful shutdown.
 - `cmd/stream-ingress`: starts a separate regional relay listener with
-  `GET /health/live`, `GET /health/ready`, and
-  `POST /upload/complete-chunk`. It has command-local
+  `GET /health/live`, `GET /health/ready`,
+  `POST /upload/complete-chunk`, and `GET /fanout/subscribe`. It has
+  command-local
   `SAFE_STREAM_INGRESS_*` environment/flag settings for private bind address,
   optional relay identity/region labels, readiness behavior, core API URL,
   relay-to-core service token, temp staging directory, upload size/staging
-  quota, upstream timeout, and in-flight upload limits. It does not mount `/v1`,
-  `/admin`, public viewer routes, bundle/deletion routes, metrics, operator
-  routes, durable relay storage, durable relay coordination, decryption, or
-  raw-key behavior.
+  quota, upstream timeout, and in-flight upload limits. It can send
+  near-live/unconfirmed encrypted fanout chunks and bounded confirmed,
+  rejected, or terminal-failure state after core commit outcomes. It does not
+  mount `/v1`, `/admin`, public viewer routes, bundle/deletion routes, metrics,
+  operator routes, durable relay storage, durable relay coordination,
+  decryption, or raw-key behavior.
 - `cmd/simclient`: simulates future client flows by logging in, creating an incident, creating a media stream, encrypting and uploading complete chunks, completing or failing streams, sending periodic checkins, and optionally testing hash-failure retry, bundle download, local decrypt verification, durable desktop-recorder staging, local file input, ffmpeg segment capture, restart/resume behavior, and poor-network retry controls. Token-bearing viewer URLs are omitted from simulator output.
 - `internal/config`: reads TOML config files, `SAFE_*` environment overrides,
   and `SAFE_*_FILE` secret files for backend selectors, backend-specific
@@ -103,9 +106,10 @@ preflight/commit/fanout authorization handlers. The relay listener can accept
 configured complete encrypted chunk uploads, stage ciphertext temporarily,
 verify declared hashes, forward exact encrypted bytes to the core API, and send
 optimistic encrypted `near_live_unconfirmed` SSE events to authorized
-subscribers. Later relay work should keep the relay listener separate and let
-the core API remain authoritative for authorization, idempotency, durable blob
-commits, and metadata.
+subscribers followed by bounded `confirmed`, `rejected`, or
+`terminal_failure` state after the core commit outcome. Later relay work should
+keep the relay listener separate and let the core API remain authoritative for
+authorization, idempotency, durable blob commits, and metadata.
 
 ## Main Request Flow
 

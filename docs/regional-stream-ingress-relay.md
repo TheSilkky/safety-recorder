@@ -9,11 +9,12 @@ preflight/commit/fanout authorization endpoints for relay-to-core calls, a
 configured complete-chunk upload route that performs metadata-before-file core
 preflight, temporary relay-local ciphertext staging, SHA-256 validation, and
 core commit forwarding, and an optimistic encrypted SSE fanout route that marks
-chunks as near-live/unconfirmed. Confirmation/rejection propagation, replay,
-metrics, deployment automation, relay Valkey counters, production
-service-identity rotation, durable relay storage, decryption, key custody,
-web-client code, mobile-client code, protocol code, and public production
-readiness remain unimplemented.
+chunks as near-live/unconfirmed and then emits bounded confirmation, rejection,
+or terminal-failure state after the core commit outcome. Replay, metrics,
+deployment automation, relay Valkey counters, production service-identity
+rotation, durable relay storage, decryption, key custody, web-client code,
+mobile-client code, protocol code, and public production readiness remain
+unimplemented.
 
 ## Summary
 
@@ -66,7 +67,9 @@ separable from broader cluster work:
   encrypted bytes to the core commit endpoint
 - a configured `cmd/stream-ingress` fanout subscription route that authorizes
   subscribers through the core API and sends encrypted chunks only as
-  `near_live_unconfirmed` SSE events
+  `near_live_unconfirmed` SSE events before sending bounded
+  `relay_chunk_state` confirmation, rejection, or terminal-failure events for
+  the same ciphertext hash when the core commit outcome is known
 
 Those features do not make `/v1` production-ready public infrastructure. The
 relay exposes only `/health/live`, `/health/ready`, and
@@ -79,9 +82,10 @@ implemented-versus-planned documentation. Issue #290 added only backend-issued
 relay upload capabilities for authorized open streams. Issue #291 added only
 the narrow service-authenticated core relay preflight/commit routes. Issue
 #292 added only relay encrypted upload staging and core forwarding. Issue #293
-added only optimistic near-live encrypted fanout. Later slices are expected to
-add, in order, backend confirmation/rejection propagation, operational
-guardrails, and final relay docs/validation alignment.
+added only optimistic near-live encrypted fanout. Issue #294 added only
+bounded backend confirmation/rejection propagation for fanned-out ciphertext
+hashes. Later slices are expected to add, in order, operational guardrails and
+final relay docs/validation alignment.
 
 Future stream variant and supersession behavior is documented in
 [capture-stream-variants.md](capture-stream-variants.md). The relay may use
@@ -108,9 +112,9 @@ for backend confirmation and evidence preservation.
 
 ## Non-Goals
 
-- No backend confirmation/rejection propagation, replay, metrics, deployment
-  automation, relay Valkey counters, production service-identity rotation,
-  notifications, or viewer durable-evidence claims in the current fanout slice.
+- No replay, metrics, deployment automation, relay Valkey counters, production
+  service-identity rotation, notifications, or viewer durable-evidence claims
+  beyond explicit backend-confirmed relay state.
 - No public exposure of the full current `/v1` control plane.
 - No admin routes on the ingress service.
 - No broad API gateway behavior.
@@ -365,21 +369,36 @@ Successful subscriptions use `text/event-stream` and receive:
 - `relay_chunk`: sends the exact encrypted chunk bytes as base64 in
   `payload_b64`, plus safe ciphertext metadata: `incident_id`, `stream_id`,
   `chunk_index`, `media_type`, `byte_size`, and `sha256_hex`.
+- `relay_chunk_state`: sends a bounded state update for the same ciphertext
+  metadata after the core commit outcome is known. It does not include
+  `payload_b64`.
 
-Fanout chunks are optimistic and unconfirmed. They are sent after relay-local
-metadata preflight, temporary ciphertext staging, byte-size validation, and
-SHA-256 validation, but before backend confirmation/rejection propagation
-exists. A fanout event does not mean the core API has durably committed the
-chunk. Trusted clients must label these chunks as `near_live_unconfirmed` and
-must not treat them as durable evidence truth until a later backend-confirmed
-state exists.
+Fanout chunks are optimistic and unconfirmed when first sent. They are sent
+after relay-local metadata preflight, temporary ciphertext staging, byte-size
+validation, and SHA-256 validation, but before the core commit call returns. A
+`relay_chunk` event does not mean the core API has durably committed the chunk.
+Trusted clients must label these chunks as `near_live_unconfirmed` until a
+matching `relay_chunk_state` event reports one of:
+
+- `confirmed`: the core commit route returned `201` or `200` and the relay
+  returned committed/equivalent success to the uploader for the same
+  ciphertext metadata.
+- `rejected`: the core returned a non-retryable rejection for the same
+  ciphertext metadata. The event includes safe `error_code` and controlled
+  `core_error_code` fields when available, `retryable: false`, and
+  `terminal: true`; the relay closes the affected fanout stream/session.
+- `terminal_failure`: the final outcome is ambiguous or retryable because of
+  relay-to-core timeout, network loss, core `429`, core `5xx`, or invalid core
+  commit response. The event includes a safe `error_code`, `retryable: true`,
+  and `terminal: true`; the relay closes the affected fanout stream/session so
+  clients retry the complete encrypted chunk and resubscribe.
 
 The fanout hub is in-memory only. It does not replay old chunks to reconnecting
 subscribers, does not store durable fanout metadata, and is lost on relay
-restart. Reconnect currently receives only future encrypted chunks for the same
-authorized relay session, incident, and stream. Backend confirmation/rejection
-propagation, rejection termination, retry-state signaling, and replay are left
-to later issues.
+restart. Reconnect currently receives only future encrypted chunks and future
+state events for the same authorized relay session, incident, and stream.
+Confirmation/rejection state is not durable relay state, not replay state, and
+not a second evidence source of truth.
 
 The fanout route does not decrypt, inspect, transform, transcode, or rewrite
 the encryption envelope. It must not expose raw upload capabilities, fanout
@@ -410,12 +429,15 @@ The current complete-chunk relay flow is:
    SHA-256.
 8. Compare the computed ciphertext hash with declared `sha256_hex`.
 9. On hash mismatch, delete local staging where safe and return a safe failure
-   without forwarding bytes to the core API.
+   without forwarding bytes to the core API or publishing fanout bytes.
 10. Forward the complete encrypted chunk and upload metadata to the core API
     commit route.
 11. Return success only after the core API confirms committed or equivalent
     success with `201` or `200`.
-12. Delete local temporary staging after success or failure where safe.
+12. If the chunk was optimistically fanned out, publish a matching
+    `relay_chunk_state` event after the core outcome: `confirmed`,
+    `rejected`, or `terminal_failure`.
+13. Delete local temporary staging after success or failure where safe.
 
 The relay must not return success for an accepted-but-not-committed upload. If
 the final core outcome is ambiguous because of timeout, connection loss, or
@@ -425,7 +447,8 @@ the documented idempotency and duplicate reconciliation paths.
 Current relay fanout may optimistically forward encrypted chunks to an
 authorized subscriber before core confirmation, and those chunks are labeled
 `near_live_unconfirmed`. They become preserved evidence only after the core API
-commits the encrypted bytes and metadata.
+commits the encrypted bytes and metadata and a matching confirmed state is
+observed.
 
 ## Preflight And Abuse Controls
 
@@ -525,9 +548,15 @@ Current relay behavior:
 | Core `429` | Return a safe rate-limit response; `Retry-After` mirroring and rate-denial counters remain future hardening work. |
 | Core `5xx` | Return a retryable safe error without poisoning denial counters. |
 | Core timeout or network loss | Return a retryable safe error without poisoning denial counters. |
-| Hash mismatch | Delete local staging where safe and return a safe failure without forwarding bytes. |
+| Hash mismatch | Delete local staging where safe and return a safe failure without forwarding bytes or publishing fanout bytes. |
 | Temp disk pressure | Fail closed before accepting more body bytes. |
 | Ingress process crash | Treat local staging as lost; client retry is the recovery model. |
+
+For fanned-out chunks, core `201` or `200` produces `confirmed`, non-retryable
+core rejection produces `rejected` and closes the affected fanout
+stream/session, and core `429`, core `5xx`, timeout, network loss, or invalid
+core success response produces `terminal_failure` and closes the affected
+fanout stream/session.
 
 Core `5xx`, DNS failure, TLS failure, upstream timeout, and relay-to-core
 network loss should not be interpreted as evidence that the client credential
@@ -627,7 +656,7 @@ Split implementation into small issues:
 4. Implement relay complete-chunk upload staging, hash verification, and core
    forwarding. Completed by #292.
 5. Add optimistic near-live encrypted relay fanout. Completed by #293.
-6. Add backend confirmation/rejection propagation. Planned for #294.
+6. Add backend confirmation/rejection propagation. Completed by #294.
 7. Add operational guardrails for limits, temp pressure, readiness, and safe
    aggregate status. Planned for #295.
 8. Run final relay docs and validation alignment. Planned for #296.
@@ -647,14 +676,17 @@ Expected implementation tests:
 - local in-memory limiter works for single-node/dev
 - core-confirmed success is required before relay success
 
-## Validation For The Current Relay Upload Slice
+## Validation For The Current Relay Implementation
 
-The #292 relay upload slice changes Go and Markdown. Validation is:
+The relay implementation changes Go and Markdown. Validation is:
 
 - stream-ingress tests for config parsing, route surface, valid encrypted
-  upload forwarding, core preflight rejection, hash mismatch, core commit
-  rejection, temp staging pressure, upstream timeout cleanup, duplicate
-  in-flight chunk rejection, and redaction
+  upload forwarding, authorized fanout, unauthorized fanout rejection,
+  unconfirmed encrypted chunk delivery, confirmation propagation, rejection
+  propagation and fanout termination, terminal failure propagation for core
+  `5xx`, network loss, and timeout, hash-mismatch no-fanout behavior, core
+  preflight rejection, temp staging pressure, upstream timeout cleanup,
+  duplicate in-flight chunk rejection, and redaction
 - `gofmt -w ./cmd ./internal ./migrations`
 - `go test ./...`
 - `go vet ./...`
