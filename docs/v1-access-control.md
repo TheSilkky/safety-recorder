@@ -89,7 +89,7 @@ hashed session-token storage, bearer sessions, optional browser cookie sessions
 with CSRF checks for unsafe cookie-authenticated requests, session expiry,
 logout, account password change, admin account creation, configurable
 registration modes with email verification for open self-registration, email
-challenge second-factor setup that blocks main product routes for
+challenge and TOTP second-factor setup that blocks main product routes for
 setup-incomplete accounts, admin session revocation, owner-scoped
 trusted-contact relationship metadata, owner-scoped contact public-key metadata,
 owner-managed sharing grants, owner-managed wrapped-key records, signed-in
@@ -206,9 +206,11 @@ raw token in JSON. Stored session material is hashed. Sessions expire and can
 be revoked. New admin-created, `/admin` bootstrap, and open-registration
 accounts start as setup-incomplete for required second-factor setup; primary
 login can create sessions, but main product routes fail closed until email
-second-factor setup verifies a single-use challenge code and marks setup
-complete. Registration email verification does not count as second-factor setup.
-Existing migrated accounts default to `not_required` for preview compatibility.
+challenge or TOTP setup verifies the account and marks setup complete.
+Registration email verification does not count as second-factor setup. Active
+TOTP factors also require each new primary-authenticated session to verify TOTP
+before product-route access. Existing migrated accounts default to
+`not_required` for preview compatibility.
 
 The first admin account is created through a one-time bootstrap flow:
 

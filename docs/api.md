@@ -71,17 +71,17 @@ Non-upload JSON bodies are limited to 64 KiB. Upload file bytes are limited by `
 Main API route classes are rate limited by default before authentication using
 safe server-controlled keys based on route class and a hash of the socket peer
 identity. Login/logout, public registration, registration email verification,
-and email second-factor challenge routes have separate authentication-related
-route classes. Existing main API limit classes also cover account metadata,
-account/device recipient-key metadata, contact-key metadata, trusted-contact
-relationship metadata, incident metadata reads and writes, sharing-grant
-metadata, wrapped-key metadata, uploads, reconciliation, streams, incident
-tokens, and private encrypted downloads. Rate-limit keys do not include raw
-email addresses, raw usernames, verification tokens, second-factor challenge
-codes, raw session tokens, Authorization headers, raw idempotency keys, request
-bodies, uploaded bytes, incident IDs, stored paths, object keys, plaintext, raw
-keys, wrapped-key ciphertext, or private deployment details. Exhausted limits
-return
+email second-factor challenge routes, and TOTP setup/verification routes have
+separate authentication-related route classes. Existing main API limit classes
+also cover account metadata, account/device recipient-key metadata, contact-key
+metadata, trusted-contact relationship metadata, incident metadata reads and
+writes, sharing-grant metadata, wrapped-key metadata, uploads, reconciliation,
+streams, incident tokens, and private encrypted downloads. Rate-limit keys do
+not include raw email addresses, raw usernames, verification tokens,
+second-factor challenge codes, TOTP codes, TOTP seeds, raw session tokens,
+Authorization headers, raw idempotency keys, request bodies, uploaded bytes,
+incident IDs, stored paths, object keys, plaintext, raw keys, wrapped-key
+ciphertext, or private deployment details. Exhausted limits return
 `429 rate_limited` with `Retry-After`. A configured coordination limiter
 failure returns `503 rate_limit_unavailable` with a generic response. See
 [configuration](configuration.md) for `SAFE_MAIN_API_RATE_LIMIT_*` settings.
@@ -152,16 +152,16 @@ Accounts also carry a factor-neutral `second_factor_setup_state`:
 | State | Meaning |
 |---|---|
 | `not_required` | Product-route access is not blocked by second-factor setup. Existing migrated accounts default to this state for preview compatibility. |
-| `setup_required` | Primary login can create bearer or browser-cookie sessions, but main product routes fail closed until setup is completed by email second-factor verification or a future factor-specific flow. |
+| `setup_required` | Primary login can create bearer or browser-cookie sessions, but main product routes fail closed until setup is completed by email challenge or TOTP second-factor verification. |
 | `complete` | Required second-factor setup is complete for product-route access. |
 
 New accounts created through the private admin API, the `/admin` bootstrap
 surface, or open registration start in `setup_required`. Email verification
 only moves `account_state` from `pending_email_verification` to `active`; it
 does not complete second-factor setup. While setup is required, authenticated
-clients can inspect `GET /v1/account`, obtain browser CSRF metadata for future
-setup flows, request or verify email second-factor setup, and log out. Other
-main product routes return:
+clients can inspect `GET /v1/account`, obtain browser CSRF metadata, request or
+verify email/TOTP second-factor setup, and log out. Other main product routes
+return:
 
 ```json
 {
@@ -172,7 +172,22 @@ main product routes return:
 }
 ```
 
-Email challenge is the first concrete second-factor setup method. TOTP,
+Email challenge and TOTP are the implemented second-factor setup methods.
+Accounts with active TOTP factors also require per-session TOTP verification
+after primary login before product routes are available. Until that challenge
+is satisfied, authenticated sessions can inspect `GET /v1/account`, obtain
+browser CSRF metadata, verify the TOTP challenge, and log out. Other main
+product routes return:
+
+```json
+{
+  "error": {
+    "code": "second_factor_verification_required",
+    "message": "second factor verification is required before account access"
+  }
+}
+```
+
 WebAuthn/passkey, security-key, recovery, and lost-factor flows are not
 implemented.
 
@@ -263,6 +278,133 @@ Expired, reused, wrong-account, or invalid codes all return the same
 destination email addresses, request bodies, session tokens, CSRF tokens, and
 other credential material must not be logged.
 
+### `POST /v1/account/second-factor/totp/enroll`
+
+Authenticated setup route for starting TOTP authenticator-app enrollment after
+primary login. Setup-incomplete sessions may call this route; cookie
+authenticated requests still require the configured CSRF header. Calling enroll
+again while a TOTP factor is still pending refreshes the pending seed and
+invalidates setup codes from the older seed. Accounts with an active TOTP
+factor receive `409 second_factor_already_configured`.
+
+Request:
+
+```json
+{}
+```
+
+Response `201`:
+
+```json
+{
+  "id": "sf_...",
+  "factor_type": "totp",
+  "state": "pending",
+  "secret": "BASE32SECRET...",
+  "otpauth_url": "otpauth://totp/Proofline:user?secret=BASE32SECRET...",
+  "issuer": "Proofline",
+  "account_name": "user",
+  "period_seconds": 30,
+  "digits": 6,
+  "algorithm": "SHA1"
+}
+```
+
+The `secret` and `otpauth_url` are setup credentials. They are returned only in
+this enrollment response and must not be logged, stored in browser storage,
+placed in URLs outside the `otpauth_url`, pasted into support artifacts, or
+included in public issues.
+
+### `POST /v1/account/second-factor/totp/confirm`
+
+Authenticated setup route for confirming a pending TOTP enrollment. The server
+accepts six-digit SHA-1 TOTP codes with a 30-second step and one adjacent step
+of clock skew on either side. Successful confirmation marks the factor active,
+records the used time step to reject replay, sets the account
+`second_factor_setup_state` to `complete`, and marks the current session as
+second-factor verified.
+
+Request:
+
+```json
+{
+  "code": "123456"
+}
+```
+
+Response `200`:
+
+```json
+{
+  "status": "verified",
+  "second_factor": {
+    "id": "sf_...",
+    "factor_type": "totp",
+    "state": "active",
+    "verified_at": "2026-06-10T12:04:00Z"
+  },
+  "account": {
+    "id": "acct_...",
+    "username": "user",
+    "account_state": "active",
+    "second_factor_setup_state": "complete",
+    "second_factor_setup_required": false,
+    "role": "user",
+    "created_at": "2026-06-10T11:00:00Z",
+    "updated_at": "2026-06-10T12:04:00Z",
+    "password_changed_at": "2026-06-10T11:00:00Z"
+  },
+  "session": {
+    "session_id": "ses_...",
+    "second_factor_verified_at": "2026-06-10T12:04:00Z",
+    "second_factor_method": "totp"
+  }
+}
+```
+
+Invalid, stale, wrong-seed, or replayed setup codes return
+`400 totp_challenge_invalid`.
+
+### `POST /v1/account/second-factor/totp/verify`
+
+Authenticated session challenge route for accounts that already have an active
+TOTP factor. Primary login can create a bearer or browser-cookie session, but
+product routes remain blocked with `403 second_factor_verification_required`
+until this route verifies a fresh TOTP code. A code whose time step is equal to
+or older than the last accepted TOTP step is rejected to limit replay.
+
+Request:
+
+```json
+{
+  "code": "123456"
+}
+```
+
+Response `200`:
+
+```json
+{
+  "status": "verified",
+  "second_factor": {
+    "id": "sf_...",
+    "factor_type": "totp",
+    "state": "active",
+    "verified_at": "2026-06-10T12:04:00Z"
+  },
+  "session": {
+    "session_id": "ses_...",
+    "second_factor_verified_at": "2026-06-10T12:09:00Z",
+    "second_factor_method": "totp"
+  }
+}
+```
+
+Invalid, replayed, missing-factor, or wrong-account codes all return
+`400 totp_challenge_invalid`. TOTP codes, seeds, `otpauth_url` values, request
+bodies, session tokens, CSRF tokens, and other credential material must not be
+logged.
+
 ### `POST /v1/auth/login`
 
 Authenticates a local account and returns a raw session token once.
@@ -293,10 +435,15 @@ Response `201`:
     "password_changed_at": "2026-05-31T10:00:00Z"
   },
   "token": "...",
+  "second_factor_verification_required": false,
   "created_at": "2026-05-31T10:00:00Z",
   "expires_at": "2026-05-31T22:00:00Z"
 }
 ```
+
+For accounts with an active TOTP factor, primary login still returns a session
+token, but `second_factor_verification_required` is `true` and product routes
+fail closed until `POST /v1/account/second-factor/totp/verify` succeeds.
 
 ### `POST /v1/auth/register`
 
@@ -386,6 +533,12 @@ Enabled only when `SAFE_WEB_AUTH_ENABLED=true`. Authenticates a local account,
 creates a normal hashed server-side session, sets the browser session cookie,
 and returns safe session metadata without returning the raw session token in
 JSON.
+
+Response metadata includes `second_factor_verification_required`,
+`second_factor_verified_at`, and `second_factor_method` with the same meaning
+as bearer login. For accounts with an active TOTP factor,
+`second_factor_verification_required` is `true` until
+`POST /v1/account/second-factor/totp/verify` succeeds with a valid CSRF header.
 
 The preferred production cookie is `__Host-proofline_session` with `HttpOnly`,
 `Secure`, `SameSite=Lax`, `Path=/`, no `Domain` attribute, and expiry aligned

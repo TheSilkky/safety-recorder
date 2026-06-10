@@ -195,7 +195,7 @@ func (r *Repository) CreateSession(ctx context.Context, accountID string, expire
 func (r *Repository) LookupSession(ctx context.Context, rawToken string) (auth.Session, error) {
 	tokenHash := auth.SessionTokenHash(rawToken)
 	row := r.db.QueryRowContext(ctx, `
-		SELECT id, account_id, token_hash, created_at, expires_at, revoked_at
+		SELECT id, account_id, token_hash, second_factor_verified_at, second_factor_factor_id, second_factor_method, created_at, expires_at, revoked_at
 		FROM auth_sessions
 		WHERE token_hash = $1`,
 		tokenHash,
@@ -211,6 +211,35 @@ func (r *Repository) LookupSession(ctx context.Context, rawToken string) (auth.S
 		return auth.Session{}, auth.ErrNotFound
 	}
 	return session, nil
+}
+
+func (r *Repository) MarkSessionSecondFactorVerified(ctx context.Context, sessionID, factorID, method string, verifiedAt time.Time) (auth.Session, error) {
+	result, err := r.db.ExecContext(ctx, `
+		UPDATE auth_sessions
+		SET second_factor_verified_at = $1, second_factor_factor_id = $2, second_factor_method = $3
+		WHERE id = $4 AND revoked_at IS NULL`,
+		verifiedAt.UTC(),
+		factorID,
+		method,
+		sessionID,
+	)
+	if err != nil {
+		return auth.Session{}, fmt.Errorf("mark postgres session second factor verified: %w", err)
+	}
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return auth.Session{}, fmt.Errorf("mark postgres session second factor verified rows affected: %w", err)
+	}
+	if rowsAffected == 0 {
+		return auth.Session{}, auth.ErrNotFound
+	}
+	row := r.db.QueryRowContext(ctx, `
+		SELECT id, account_id, token_hash, second_factor_verified_at, second_factor_factor_id, second_factor_method, created_at, expires_at, revoked_at
+		FROM auth_sessions
+		WHERE id = $1`,
+		sessionID,
+	)
+	return scanSession(row)
 }
 
 func (r *Repository) RevokeSession(ctx context.Context, sessionID string) error {
@@ -289,11 +318,17 @@ func scanAccount(s scanner) (auth.Account, error) {
 
 func scanSession(s scanner) (auth.Session, error) {
 	var session auth.Session
+	var secondFactorVerifiedAt sql.NullTime
+	var secondFactorFactorID sql.NullString
+	var secondFactorMethod sql.NullString
 	var revokedAt sql.NullTime
 	if err := s.Scan(
 		&session.ID,
 		&session.AccountID,
 		&session.TokenHash,
+		&secondFactorVerifiedAt,
+		&secondFactorFactorID,
+		&secondFactorMethod,
 		&session.CreatedAt,
 		&session.ExpiresAt,
 		&revokedAt,
@@ -302,6 +337,13 @@ func scanSession(s scanner) (auth.Session, error) {
 			return auth.Session{}, auth.ErrNotFound
 		}
 		return auth.Session{}, err
+	}
+	session.SecondFactorVerifiedAt = nullableDBTime(secondFactorVerifiedAt)
+	if secondFactorFactorID.Valid {
+		session.SecondFactorFactorID = secondFactorFactorID.String
+	}
+	if secondFactorMethod.Valid {
+		session.SecondFactorMethod = secondFactorMethod.String
 	}
 	session.CreatedAt = session.CreatedAt.UTC()
 	session.ExpiresAt = session.ExpiresAt.UTC()

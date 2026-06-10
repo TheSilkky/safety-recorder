@@ -259,6 +259,104 @@ func TestEmailSecondFactorChallengesCompleteSetup(t *testing.T) {
 	}
 }
 
+func TestTOTPSecondFactorsCompleteSetupAndSessionVerification(t *testing.T) {
+	ctx := context.Background()
+	repo := newRepository(t, ctx)
+
+	account, err := repo.CreateAccount(ctx, auth.CreateAccountParams{
+		Username:          "totp-factor-user",
+		SecondFactorSetup: auth.SecondFactorSetupStateSetupRequired,
+		PasswordHash:      "hash",
+		Role:              auth.RoleUser,
+	})
+	if err != nil {
+		t.Fatalf("create account: %v", err)
+	}
+
+	factor, err := repo.CreateTOTPSecondFactorEnrollment(ctx, auth.CreateTOTPSecondFactorEnrollmentParams{
+		AccountID:     account.ID,
+		Secret:        "JBSWY3DPEHPK3PXP",
+		PeriodSeconds: auth.TOTPDefaultPeriodSeconds,
+		Digits:        auth.TOTPDefaultDigits,
+		Algorithm:     auth.TOTPAlgorithmSHA1,
+	})
+	if err != nil {
+		t.Fatalf("create TOTP enrollment: %v", err)
+	}
+	if factor.FactorType != auth.SecondFactorTypeTOTP || factor.FactorState != auth.SecondFactorStatePending {
+		t.Fatalf("unexpected TOTP enrollment factor: %+v", factor)
+	}
+	if factor.TOTPSecret != "JBSWY3DPEHPK3PXP" {
+		t.Fatal("TOTP secret was not stored for verification")
+	}
+
+	refreshed, err := repo.CreateTOTPSecondFactorEnrollment(ctx, auth.CreateTOTPSecondFactorEnrollmentParams{
+		AccountID:     account.ID,
+		Secret:        "JBSWY3DPEHPK3PXQ",
+		PeriodSeconds: auth.TOTPDefaultPeriodSeconds,
+		Digits:        auth.TOTPDefaultDigits,
+		Algorithm:     auth.TOTPAlgorithmSHA1,
+	})
+	if err != nil {
+		t.Fatalf("refresh TOTP enrollment: %v", err)
+	}
+	if refreshed.ID != factor.ID || refreshed.TOTPSecret != "JBSWY3DPEHPK3PXQ" {
+		t.Fatalf("pending TOTP enrollment was not refreshed: %+v", refreshed)
+	}
+
+	activated, updated, err := repo.ActivateTOTPSecondFactor(ctx, account.ID, factor.ID, time.Now().UTC(), 100)
+	if err != nil {
+		t.Fatalf("activate TOTP factor: %v", err)
+	}
+	if activated.FactorState != auth.SecondFactorStateActive || activated.VerifiedAt == nil {
+		t.Fatalf("unexpected active TOTP factor: %+v", activated)
+	}
+	if activated.TOTPLastUsedTimeStep == nil || *activated.TOTPLastUsedTimeStep != 100 {
+		t.Fatalf("last used time step = %v, want 100", activated.TOTPLastUsedTimeStep)
+	}
+	if updated.SecondFactorSetup != auth.SecondFactorSetupStateComplete {
+		t.Fatalf("account setup state = %q, want complete", updated.SecondFactorSetup)
+	}
+	if _, err := repo.MarkTOTPSecondFactorUsed(ctx, activated.ID, time.Now().UTC(), 100); !errors.Is(err, auth.ErrNotFound) {
+		t.Fatalf("reused TOTP step error = %v, want ErrNotFound", err)
+	}
+	used, err := repo.MarkTOTPSecondFactorUsed(ctx, activated.ID, time.Now().UTC(), 101)
+	if err != nil {
+		t.Fatalf("mark TOTP factor used: %v", err)
+	}
+	if used.TOTPLastUsedTimeStep == nil || *used.TOTPLastUsedTimeStep != 101 {
+		t.Fatalf("last used time step after mark = %v, want 101", used.TOTPLastUsedTimeStep)
+	}
+	if _, err := repo.CreateTOTPSecondFactorEnrollment(ctx, auth.CreateTOTPSecondFactorEnrollmentParams{
+		AccountID:     account.ID,
+		Secret:        "JBSWY3DPEHPK3PXR",
+		PeriodSeconds: auth.TOTPDefaultPeriodSeconds,
+		Digits:        auth.TOTPDefaultDigits,
+		Algorithm:     auth.TOTPAlgorithmSHA1,
+	}); !errors.Is(err, auth.ErrDuplicate) {
+		t.Fatalf("configured TOTP enrollment error = %v, want ErrDuplicate", err)
+	}
+
+	session, rawToken, err := repo.CreateSession(ctx, account.ID, time.Now().UTC().Add(time.Hour))
+	if err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+	verifiedSession, err := repo.MarkSessionSecondFactorVerified(ctx, session.ID, activated.ID, auth.SecondFactorTypeTOTP, time.Now().UTC())
+	if err != nil {
+		t.Fatalf("mark session TOTP verified: %v", err)
+	}
+	if verifiedSession.SecondFactorVerifiedAt == nil || verifiedSession.SecondFactorFactorID != activated.ID || verifiedSession.SecondFactorMethod != auth.SecondFactorTypeTOTP {
+		t.Fatalf("unexpected verified session: %+v", verifiedSession)
+	}
+	lookedUp, err := repo.LookupSession(ctx, rawToken)
+	if err != nil {
+		t.Fatalf("lookup verified session: %v", err)
+	}
+	if lookedUp.SecondFactorVerifiedAt == nil || lookedUp.SecondFactorMethod != auth.SecondFactorTypeTOTP {
+		t.Fatalf("lookup lost session second-factor fields: %+v", lookedUp)
+	}
+}
+
 func TestContactPublicKeysAndSharingGrants(t *testing.T) {
 	ctx := context.Background()
 	repo := newRepository(t, ctx)
