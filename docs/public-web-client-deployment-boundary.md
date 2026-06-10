@@ -73,7 +73,7 @@ Use deployment classes so a preview does not accidentally widen route exposure.
 |---|---|---|
 | Metadata account portal | Login, account read/change, owner incident metadata reads, contact/key/grant metadata review. | Smallest public web-client surface. No upload, chunk read, encrypted bundle download, viewer replacement, or decryption. |
 | Evidence capture/review preview | Browser client may create incidents, upload encrypted chunks, manage streams, check in, and download encrypted bundles for client-side review. | Requires explicit upload/download/body-size/quota/abuse/logging review before exposure. |
-| No-account viewer replacement | Public token viewer moves to the web client. | Depends on the viewer routing decision in issue #223. Viewer tokens remain bearer secrets. |
+| No-account viewer replacement | Public token viewer moves to the web client. | Use the fragment-token route decision in [web-client viewer routing](web-client-viewer-routing.md). Viewer tokens remain bearer secrets. |
 | Browser decrypting viewer | Browser decrypts evidence locally. | Depends on the trust gate in [browser-decryption.md](browser-decryption.md). A dynamic same-origin decrypting viewer is not enough for production trusted-contact access. |
 
 Do not mix these classes in release notes or deployment claims. A metadata
@@ -193,10 +193,19 @@ Current token viewer routes remain their own public-shaped route group:
 - legacy `/e/{token}` aliases
 - token-neutral `/static/...`
 
-The web-client viewer replacement and route/link decision belong to issue #223.
-Until that lands, do not route token viewer behavior through the public web
-client by assumption. If a public web-client origin receives a viewer token, the
-token remains a bearer secret and must not be sent to analytics, referrers, map
+The web-client viewer replacement route/link decision is documented in
+[web-client-viewer-routing.md](web-client-viewer-routing.md). Future canonical
+no-account viewer links should point at the web-client origin using:
+
+```text
+https://<web-client-origin>/viewer#token=<raw-viewer-token>
+```
+
+Current `/i/{token}` server-rendered pages and `/e/{token}` aliases are
+prototype/local compatibility routes until a later runtime issue removes or
+gates them. Do not route token viewer behavior through the public web client by
+assumption. If a public web-client origin receives a viewer token, the token
+remains a bearer secret and must not be sent to analytics, referrers, map
 providers, logs, public issue text, unrelated origins, or third-party widgets.
 
 ## Route Groups That Must Remain Private
@@ -350,7 +359,8 @@ routes, or runtime behavior.
 - No web-client implementation in this repository.
 - No React, Node, npm, mobile-client, or protocol-repository work.
 - No route, schema, handler, CORS, CSRF, cookie, or header runtime change.
-- No viewer routing replacement from issue #223.
+- No runtime removal, redirect, or replacement of current built-in viewer
+  routes.
 - No browser decryption, browser recording, trusted-contact UX, backend
   decryption, server escrow, break-glass, or playable export.
 - No notification delivery, emergency-services integration, public admin

@@ -1,6 +1,6 @@
 # API
 
-This is the current backend-only HTTP surface for Proofline. The API binary starts a main API/viewer listener and a private-admin listener on one or more configured bind addresses. Main `/v1` routes require local account authentication except for login and the disabled-by-default registration/email-verification routes, and they use app-level route-class rate limits. Existing `/v1/admin/...` JSON routes require an admin account and are mounted only on the private-admin listener. The private-admin listener also serves the `/admin` dashboard route tree. Incident viewer routes are token-gated, read-only, and mounted on the main listener. Planned web, iOS, and Android clients are not part of this repository yet.
+This is the current backend-only HTTP surface for Proofline. The API binary starts a main API/viewer listener and a private-admin listener on one or more configured bind addresses. Main `/v1` routes require local account authentication except for login and the disabled-by-default registration/email-verification routes, and they use app-level route-class rate limits. Existing `/v1/admin/...` JSON routes require an admin account and are mounted only on the private-admin listener. The private-admin listener also serves the `/admin` dashboard route tree. Incident viewer routes are token-gated, read-only, and mounted on the main listener. The future canonical no-account viewer link belongs to the web-client origin as documented in [web-client-viewer-routing.md](web-client-viewer-routing.md); planned web, iOS, and Android clients are not part of this repository yet.
 
 Media bundle downloads are encrypted chunk bundles. The backend does not
 decrypt, merge, or produce playable media. Current encrypted uploads use the
@@ -1859,10 +1859,18 @@ Response `200`:
 
 ## Incident Viewer
 
-Incident viewer routes are mounted on the main API/viewer listener.
-`/i/{token}` is the canonical path for new links. The pre-rename `/e/{token}`
-paths remain as compatibility aliases for already shared viewer URLs, including
-the `/data`, stream download, and incident download variants.
+Incident viewer routes are mounted on the main API/viewer listener. The current
+server-rendered `/i/{token}` page and pre-rename `/e/{token}` aliases are
+implemented prototype/local compatibility routes, not the long-term canonical
+viewer surface. Proofline has no current public deployments that require a
+long-lived compatibility window for these route shapes. Future no-account
+viewer links should point at the web-client origin using the fragment-token
+shape documented in [web-client-viewer-routing.md](web-client-viewer-routing.md).
+
+The backend may still keep token-scoped data and encrypted download primitives
+that a web-client viewer needs. Do not treat this section as approval for broad
+public `/v1` exposure or for routing private write/admin routes from public
+viewer edges.
 
 ### `GET /i/{token}`
 

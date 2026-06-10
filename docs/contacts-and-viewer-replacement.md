@@ -69,8 +69,9 @@ documented scheme and suite identifiers.
 The server has separate listener groups and muxes:
 
 - the main API/viewer listener for authenticated non-admin `/v1` routes,
-  canonical `/i/{token}` incident viewer routes, legacy `/e/{token}`
-  compatibility aliases, and token-neutral `/static/...` viewer assets; and
+  current prototype/local `/i/{token}` incident viewer routes, legacy
+  `/e/{token}` aliases only when explicit local/test compatibility needs them,
+  and token-neutral `/static/...` viewer assets; and
 - the private admin listener for `/admin`, `/admin/static/...`, and
   authenticated admin-only `/v1/admin/...` JSON routes.
 
@@ -112,10 +113,11 @@ The current viewer download routes serve completed encrypted ZIP evidence
 bundles only. Completed bundles are encrypted chunk bundles, not decrypted or
 playable media exports. Generated ZIP entry names are controlled by the server.
 
-A non-secret owner API for listing or reading viewer-token metadata was not
-found in the current backend or sibling web-client docs during this pass. Later
-viewer-management UI work should treat that as a likely missing API contract,
-not as an implemented capability.
+The backend includes owner-authenticated viewer-token metadata list/read routes
+for owned incidents. They expose token IDs, labels, active/expired/revoked
+state, and timestamps only. They do not return raw viewer tokens, token hashes,
+public token lookup by token ID, token replay capability, trusted-contact
+access, wrapped-key ciphertext, plaintext, raw keys, or decryption material.
 
 ### Accounts, Contacts, Grants, And Wrapped Keys
 
@@ -495,11 +497,17 @@ or user safety data.
 ## Viewer Replacement API
 
 The web-client viewer replacement should be designed as a stable API contract
-before changing route ownership. Likely decisions:
+before changing route ownership. The accepted routing decision is that future
+canonical no-account viewer links should point at the web-client origin with a
+fragment token, as documented in
+[web-client-viewer-routing.md](web-client-viewer-routing.md). Remaining
+implementation decisions:
 
-- whether existing `/i/{token}` remains temporarily, redirects to a web-client
-  origin, serves a minimal fallback, or becomes legacy-only;
-- whether legacy `/e/{token}` aliases remain during a compatibility window;
+- whether existing `/i/{token}` is removed from production paths, redirected to
+  a web-client origin, or kept as an explicitly configured local-development
+  fallback;
+- when legacy `/e/{token}` aliases are removed or kept only for explicit
+  local/test compatibility;
 - whether the web-client viewer needs token-scoped JSON endpoints separate from
   authenticated owner/trusted-contact endpoints;
 - how token-bearing paths avoid logging, referrer, analytics, browser history,
@@ -705,8 +713,12 @@ are not backlog drafts and they are not GitHub issues.
     `/i/{token}`, `/e/{token}`, viewer origin config, web-client viewer, reverse
     proxy guidance. Dependencies: family 9. Non-goals: no broad public `/v1`
     exposure and no analytics/referrer leakage. Sensitive data: token-bearing
-    paths and links. Validation: route/redirect tests, log redaction,
-    no-referrer/no-store checks, web-client smoke tests.
+    paths and links. Current decision: future canonical no-account viewer links
+    should point at the web-client origin with a fragment token, while
+    server-rendered `/i` and legacy `/e` routes are prototype/local
+    compatibility only until a later runtime issue removes, gates, or redirects
+    them. Validation: route/redirect tests, log redaction, no-referrer/no-store
+    checks, web-client smoke tests.
 
 12. **GPS/location per-chunk encrypted evidence model.**
     Reasoning: very high. Type: design/protocol/API implementation. Areas:
@@ -814,8 +826,9 @@ draft files, public GitHub issue creation, commits, and PRs.
 
 ## Open Decisions
 
-- Whether `/i/{token}` redirects to the web client, serves a minimal fallback,
-  or remains server-rendered during a compatibility window.
+- Which later runtime issue removes, gates, or redirects the current
+  server-rendered `/i/{token}` page after the web-client viewer exists, and
+  whether any local-development fallback remains enabled by configuration.
 - Whether `SAFE_PUBLIC_WEB_ORIGIN` should stay email-verification-only or be
   split from future viewer/public-web origin configuration.
 - Which basic no-account viewer fields are acceptable after the GPS privacy

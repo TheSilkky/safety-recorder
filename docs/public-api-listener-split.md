@@ -45,7 +45,7 @@ The current server starts two handler trees:
 
 | Listener group | Default address | Current routes | Current exposure |
 |---|---:|---|---|
-| Main API and viewer | `127.0.0.1:8080` | Authenticated non-admin `/v1/...` routes, `/i/{token}`, `/i/{token}/data`, viewer bundle downloads, legacy `/e/{token}` aliases, `/static/...` | Public HTTPS/reverse proxy only after deployment-specific TLS, path routing, abuse controls, browser credential review, logging review, and operations are complete. Public edges must not route `/v1/admin/...`. |
+| Main API and viewer | `127.0.0.1:8080` | Authenticated non-admin `/v1/...` routes, current prototype/local `/i/{token}` viewer routes, viewer bundle downloads, `/e/{token}` aliases only when explicit local/test compatibility needs them, `/static/...` | Public HTTPS/reverse proxy only after deployment-specific TLS, path routing, abuse controls, browser credential review, logging review, and operations are complete. Public edges must not route `/v1/admin/...`. Future canonical no-account viewer links belong to the web-client origin. |
 | Private admin listener | `127.0.0.1:8081` | Authenticated admin-only `/v1/admin/...` JSON routes, `/admin`, `/admin/...`, `/admin/static/...` | Localhost, LAN, WireGuard, firewall, or strict private reverse proxy only. |
 
 Current `/v1` routes use local username/password accounts, opaque server-side
@@ -77,8 +77,8 @@ deployment review:
 
 | Route group | Target placement | Required controls before exposure |
 |---|---|---|
-| `/i/{token}`, `/i/{token}/data`, `/i/{token}/streams/{stream_id}/download`, `/i/{token}/incident/download` | Main listener. | Keep read-only, bearer-token scoped, fail-closed, no-store, strict browser headers, route-pattern logging, and viewer rate limits. |
-| Legacy `/e/{token}` aliases | Main listener while compatibility is retained. | Same as `/i/...`; prefer canonical `/i/...` for new links. |
+| `/i/{token}`, `/i/{token}/data`, `/i/{token}/viewer-payload`, `/i/{token}/streams/{stream_id}/download`, `/i/{token}/incident/download` | Main listener. | Keep read-only, bearer-token scoped, fail-closed, no-store, strict browser headers, route-pattern logging, and viewer rate limits. Treat the server-rendered `/i/{token}` page as prototype/local compatibility once the web-client viewer exists. |
+| Legacy `/e/{token}` aliases | Main listener only while explicit local/test compatibility is retained. | Same controls as `/i/...`; do not generate new `/e/...` links. |
 | `/static/...` incident viewer assets | Main listener. | Token-neutral static assets only; no incident data, tokens, keys, or private deployment details. |
 | `/v1/auth/login`, `/v1/auth/logout` | Main listener only if treated as public product authentication. | Per-route login abuse limits, audit, redacted errors, TLS, browser credential decision, and tests that the returned session cannot reach absent admin routes on the main listener. |
 | `/v1/account`, `/v1/account/password` | Main listener as account-owner product routes. | Authenticated account scope, password-change rate limits, session revocation behavior, and CSRF protection if browser cookies are used. |
@@ -188,7 +188,7 @@ The main listener will receive public traffic, so implementation must preserve
 and extend the current redaction posture:
 
 - Log route patterns instead of token-bearing paths.
-- Redact canonical `/i/{token}` and legacy `/e/{token}` paths before token
+- Redact current `/i/{token}` and any retained `/e/{token}` paths before token
   lookup.
 - Do not log request bodies, uploaded bytes, Authorization headers, raw session
   tokens, raw viewer tokens, raw incident tokens, raw idempotency keys,

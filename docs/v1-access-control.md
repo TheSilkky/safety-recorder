@@ -81,7 +81,7 @@ Today the backend has two listener groups:
 
 | Listener group | Current routes | Exposure |
 |---|---|---|
-| Main API and viewer | Non-admin `/v1/...` with local account/session auth except login, disabled-by-default registration, email verification, and app-level route-class limits; owner-only public-safe incident list/detail reads; `/i/{token}` plus legacy `/e/{token}` aliases and `/static/...` | Reviewed main API deployment boundary; viewer paths may be routed publicly when only viewer paths are forwarded. Public edges must not route `/v1/admin/...`. |
+| Main API and viewer | Non-admin `/v1/...` with local account/session auth except login, disabled-by-default registration, email verification, and app-level route-class limits; owner-only public-safe incident list/detail reads; current prototype/local `/i/{token}` viewer routes plus `/e/{token}` aliases only when explicit local/test compatibility needs them and `/static/...` | Reviewed main API deployment boundary; viewer paths may be routed publicly when only reviewed viewer paths are forwarded. Future canonical no-account viewer links belong to the web-client origin. Public edges must not route `/v1/admin/...`. |
 | Private admin listener | `/v1/admin/...`, `/admin`, `/admin/...`, `/admin/static/...` | Localhost, LAN, WireGuard, firewall, or strict private reverse proxy only. |
 
 Current non-admin `/v1` routes are on the main handler. The implemented local auth model has admin and user roles, incident ownership, hashed password storage,
