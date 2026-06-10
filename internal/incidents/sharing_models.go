@@ -37,6 +37,7 @@ type ContactPublicKey struct {
 	ID                    string     `json:"public_key_id"`
 	OwnerAccountID        string     `json:"owner_account_id"`
 	ContactID             string     `json:"contact_id"`
+	RecipientAccountID    string     `json:"recipient_account_id,omitempty"`
 	Version               int        `json:"version"`
 	DisplayLabel          string     `json:"display_label,omitempty"`
 	WrappingAlgorithm     string     `json:"wrapping_algorithm"`
@@ -55,6 +56,7 @@ type ContactPublicKey struct {
 type CreateContactPublicKeyParams struct {
 	OwnerAccountID       string
 	ContactID            string
+	RecipientAccountID   string
 	DisplayLabel         string
 	WrappingAlgorithm    string
 	PublicKey            string

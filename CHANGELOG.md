@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Added authenticated trusted-contact wrapped-key read routes that deliver
+  grant-scoped wrapped-key ciphertext only to signed-in accepted trusted
+  contacts with a bound active contact key, active unexpired ciphertext grant,
+  and active wrapped-key record, while keeping public viewer routes and bundle
+  manifests key-free.
 - Added private repository-level audit metadata for trusted-contact public-key,
   sharing-grant, wrapped-key, and incident deletion-pruning lifecycle events,
   with SQLite/PostgreSQL parity and tests confirming controlled fields only and

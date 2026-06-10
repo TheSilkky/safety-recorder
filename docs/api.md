@@ -22,11 +22,13 @@ Authenticated account-owner routes can store account/device recipient public-key
 metadata, trusted-contact relationship lifecycle metadata, trusted-contact
 public-key metadata, owner-scoped sharing-grant records, and wrapped
 CEK/media-key metadata for active trusted-contact grants. Trusted-contact
-relationship records do not grant keys, wrapped-key delivery, plaintext,
-notifications, emergency dispatch, or viewer-token privileges by themselves.
-Account/device wrapped-key delivery, trusted-contact wrapped-key delivery,
-browser or backend decryption, notifications, raw key storage, and key escrow
-do not exist yet. The main API does include a narrow public-safe owner incident
+relationship records do not grant keys, plaintext, notifications, emergency
+dispatch, or viewer-token privileges by themselves. Authenticated
+trusted-contact wrapped-key reads require an accepted relationship, a
+recipient-bound active contact public key, an active unexpired ciphertext grant,
+and an active wrapped-key record. Account/device wrapped-key delivery, browser
+or backend decryption, notifications, raw key storage, and key escrow do not
+exist yet. The main API does include a narrow public-safe owner incident
 list/detail read surface for the future web client, but this does not make
 every `/v1` route group public-ready without route-level deployment review.
 
@@ -361,11 +363,11 @@ review, and production operations are explicitly designed and reviewed.
 Contact public-key routes are mounted on the main API listener and require a
 valid local account session. They are scoped to the authenticated account only;
 admins do not use these routes to manage another account's contact keys. The
-server stores public-key metadata, wrapping algorithm names, fingerprints,
-state, and optional display labels. It does not store contact private keys, raw
-CEKs, raw media keys, wrapped CEKs/media keys, browser fragment secrets,
-plaintext, request bodies, uploaded bytes, stored paths, staging paths, object
-keys, or private deployment details.
+server stores public-key metadata, optional `recipient_account_id` binding,
+wrapping algorithm names, fingerprints, state, and optional display labels. It
+does not store contact private keys, raw CEKs, raw media keys, wrapped
+CEKs/media keys, browser fragment secrets, plaintext, request bodies, uploaded
+bytes, stored paths, staging paths, object keys, or private deployment details.
 
 Contact key states are:
 
@@ -396,11 +398,15 @@ creation validates the accepted PQ wrapping profile.
 
 Registers trusted-contact public-key metadata for the authenticated account.
 The optional `key_state` defaults to `pending_verification`.
+`recipient_account_id` is optional for legacy or unbound contact-key metadata,
+but trusted-contact wrapped-key read routes require it to match the signed-in
+recipient account.
 
 Request:
 
 ```json
 {
+  "recipient_account_id": "acct_contact...",
   "display_label": "Trusted contact",
   "wrapping_algorithm": "proofline-pq-mlkem768-hkdfsha384-aes256gcm",
   "public_key": "base64url-or-profile-encoded-public-key",
@@ -417,6 +423,7 @@ Response `201`:
     "public_key_id": "cpk_...",
     "owner_account_id": "acct_...",
     "contact_id": "ctc_...",
+    "recipient_account_id": "acct_contact...",
     "version": 1,
     "display_label": "Trusted contact",
     "wrapping_algorithm": "proofline-pq-mlkem768-hkdfsha384-aes256gcm",
@@ -496,9 +503,10 @@ them while the referenced key is no longer active.
 
 Trusted-contact relationship routes are mounted on the main API listener and
 require a valid local account session. They model the account-to-account
-relationship lifecycle needed before future trusted-contact access can be
-implemented. They are separate from public viewer tokens, contact public-key
-records, sharing grants, and wrapped-key records.
+relationship lifecycle used by signed-in trusted-contact authorization. They
+are separate from public viewer tokens, contact public-key records, sharing
+grants, and wrapped-key records; relationship state alone does not deliver
+wrapped keys.
 
 A trusted-contact relationship records owner account, recipient account, role,
 state, timestamps, optional display label, and revocation or replacement
@@ -855,6 +863,10 @@ Wrapped-key routes are mounted on the main API listener and require a valid
 local account session. They are account-owner routes: admins are not allowed to
 store, list, read, or revoke another account's wrapped-key records through
 these product routes unless the admin account owns the incident or record.
+Separate trusted-contact read-only routes deliver wrapped-key records only to
+the authenticated recipient account authorized by an accepted relationship,
+recipient-bound active contact key, active unexpired ciphertext grant, and
+active wrapped-key record.
 
 The backend stores encrypted CEK/media-key material only when it is bound to an
 active sharing grant that authorizes ciphertext access. The record includes the
@@ -956,6 +968,30 @@ wrapped-key record itself is revoked or rotated.
 
 Returns one active wrapped-key record owned by the authenticated account,
 subject to the same delivery filter as the incident list route.
+
+### `GET /v1/trusted-contact/incidents/{incident_id}/wrapped-keys`
+
+Lists active wrapped-key records for the authenticated trusted-contact account.
+The response includes only records where all of the following are true:
+
+- an active accepted trusted-contact relationship links the owner account to
+  the authenticated recipient account
+- the wrapped-key record uses a contact public key whose
+  `recipient_account_id` matches the authenticated recipient account
+- the sharing grant is active, unexpired, and authorizes `ciphertext` or
+  `metadata_ciphertext`
+- the contact public key is active
+- the wrapped-key record is active
+
+Unrelated accounts receive an empty list. Public viewer-token routes do not
+mount this endpoint.
+
+### `GET /v1/trusted-contact/wrapped-keys/{wrapped_key_id}`
+
+Returns one active wrapped-key record authorized for the authenticated
+trusted-contact account under the same filters as the incident trusted-contact
+list route. Unauthorized, expired, revoked, replaced, lost, rotated, or
+unbound records return `404 wrapped_key_not_found`.
 
 ### `POST /v1/wrapped-keys/{wrapped_key_id}/revoke`
 

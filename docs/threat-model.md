@@ -219,15 +219,19 @@ encrypted evidence bundles.
   change. Trusted-contact public keys can be marked replaced, revoked, or lost;
   those terminal states prevent future grant and wrapped-key eligibility and do
   not rewrite older wrapped-key records that are already bound to the original
-  contact public-key ID and version. Current sharing-grant and wrapped-key
-  routes are owner-only: users and admins can create, list, read, or revoke
-  records only for incidents, grants, or wrapped-key records owned by the
-  authenticated account. New grants require an active contact public key owned
-  by the same account and can be scoped to an incident or one stream. New
-  wrapped-key records currently require an active, unexpired trusted-contact
-  grant that authorizes ciphertext access and an active contact public key. The
-  routes do not store or return recipient private keys, raw CEKs, raw media
-  keys, ML-KEM shared secrets, derived KEKs, plaintext, decrypted caches,
+  contact public-key ID and version. Current sharing-grant and owner
+  wrapped-key management routes are owner-only: users and admins can create,
+  list, read, or revoke records only for incidents, grants, or wrapped-key
+  records owned by the authenticated account. Trusted-contact wrapped-key read
+  routes are read-only and require an accepted relationship, a contact public
+  key bound to the authenticated recipient account, an active unexpired
+  ciphertext grant, and an active wrapped-key record. New grants require an
+  active contact public key owned by the same account and can be scoped to an
+  incident or one stream. New wrapped-key records currently require an active,
+  unexpired trusted-contact grant that authorizes ciphertext access and an
+  active contact public key. The routes do not store or return recipient
+  private keys, raw CEKs, raw media keys, ML-KEM shared secrets, derived KEKs,
+  plaintext, decrypted caches,
   browser fragment secrets, request bodies, uploaded bytes, stored paths,
   staging paths, object keys, or private deployment details.
   Private sharing-audit records capture controlled lifecycle fields such as
@@ -355,7 +359,7 @@ The current backend does not implement incident-mode-specific controls yet, so f
   registration is explicitly enabled.
 - Viewer links are bearer tokens and must be shared carefully.
 - No implemented production key recovery, Keychain storage, trusted-contact
-  account access, browser decryption, break-glass key access, or playable
+  incident access, browser decryption, break-glass key access, or playable
   export. The current backend validates accepted PQ envelope metadata and stores
   encrypted wrapped-key records without raw key custody. The future key custody
   and emergency access design is documented in

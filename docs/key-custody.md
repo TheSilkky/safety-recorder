@@ -7,8 +7,10 @@ account-owner contact public-key metadata, sharing-grant metadata, and
 grant-bound wrapped-key record storage and delivery, but this document remains
 the security boundary for production custody. The current implementation does
 not add browser decryption, backend decryption, server escrow,
-trusted-contact wrapped-key delivery, account/device wrapped-key delivery, or
-production key custody behavior.
+account/device wrapped-key delivery, trusted-contact incident reads, or
+production key custody behavior. Signed-in trusted-contact wrapped-key delivery
+is limited to encrypted wrapped-key ciphertext under active relationship, key,
+grant, and record filters.
 
 ## Summary
 
@@ -66,15 +68,16 @@ ciphertext-only by default.
 - No server-side decryption implementation.
 - The account/device recipient-key routes are metadata lifecycle routes only;
   they do not add decryption or key custody by themselves.
-- No browser, trusted-contact, or account/device wrapped-key delivery
-  implementation.
+- No browser decryption or account/device wrapped-key delivery implementation.
+  Trusted-contact wrapped-key delivery is encrypted metadata only and remains
+  relationship, key, grant, and record scoped.
 - No key-custody, wrapped-key, decryption, or emergency-access behavior tied to
   incident-mode, capture-profile, escalation-policy, or sharing-state metadata.
 - No playable media export.
 - No push, SMS, or Messenger delivery.
 - No new account-system implementation beyond local account relationship
-  metadata, no trusted-contact wrapped-key delivery, and no public account
-  portal.
+  metadata and signed-in trusted-contact wrapped-key reads, and no public
+  account portal.
 
 ## Incident Mode Implications
 

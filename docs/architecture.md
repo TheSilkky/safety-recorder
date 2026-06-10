@@ -22,9 +22,11 @@ routes, exposes owner-only public-safe incident list/detail metadata for future
 web-client reads, and has local username/password accounts with opaque
 server-side sessions for the main `/v1` API, private-admin JSON routes under
 `/v1/admin/...`, plus a private admin web surface under `/admin`.
-Mode-driven access, escalation, retention, sharing, key custody,
-trusted-contact wrapped-key delivery, notification delivery, and mobile/web
-clients are not implemented yet. Planned mode behavior, escalation, migration, and
+Sharing metadata, owner wrapped-key records, and signed-in trusted-contact
+wrapped-key reads are implemented behind authenticated `/v1` routes.
+Mode-driven access, escalation, retention, key custody, trusted-contact
+incident delivery, notification delivery, and mobile/web clients are not
+implemented yet. Planned mode behavior, escalation, migration, and
 viewer-wording boundaries are documented in [incident-modes.md](incident-modes.md),
 and current local session behavior plus future public product API, separately
 bound private admin API, role, and grant boundaries are documented in

@@ -5,10 +5,13 @@ backend implements the server metadata steps for this model: account owners can
 create account-to-account trusted-contact relationship invites, register
 trusted-contact public-key metadata, replace or mark contact keys revoked/lost,
 create or revoke incident/stream-scoped sharing grants, and store or revoke
-grant-bound wrapped-key records through authenticated private `/v1` routes. It
-does not add bundle wrapped-key fields, trusted-contact wrapped-key delivery,
-browser decryption, backend decryption, server escrow, public account
-workflows, notifications, client code, or production key custody behavior.
+grant-bound wrapped-key records through authenticated private `/v1` routes.
+Signed-in accepted trusted contacts can read wrapped-key records only when an
+active relationship, recipient-bound active contact key, active unexpired
+ciphertext grant, and active wrapped-key record all authorize the request. It
+does not add bundle wrapped-key fields, browser decryption, backend decryption,
+server escrow, public account workflows, notifications, client code, or
+production key custody behavior.
 
 The design connects the long-term key custody direction in
 [key-custody.md](key-custody.md), the role and grant boundaries in
@@ -230,6 +233,9 @@ Current implementation:
 
 - authenticated owner API responses deliver only active records for the
   authenticated account's owned incident
+- authenticated trusted-contact API responses deliver only active records whose
+  owner relationship, recipient-bound contact key, grant, and wrapped-key record
+  authorize the signed-in recipient account
 - records are omitted when the sharing grant is revoked or expired, the contact
   public key is no longer active, or the wrapped-key record is revoked or
   rotated
@@ -344,13 +350,17 @@ Implementation should stay split into narrow issues:
 5. Implemented: add account-to-account trusted-contact relationship lifecycle
    metadata for owner invite/revoke/replace and recipient accept/decline
    without granting key delivery.
-6. Future: add trusted-contact authentication and grant-scoped read routes only
-   after the public product API exposure model is explicitly reviewed.
-7. Future: optionally add grant-scoped bundle manifests only after a separate
+6. Implemented: add signed-in trusted-contact grant-scoped wrapped-key read
+   routes without changing token-only viewer routes, bundle manifests, or
+   decryption behavior.
+7. Future: add trusted-contact incident metadata, ciphertext bundle, and full
+   viewer read routes only after the public product API exposure model is
+   explicitly reviewed.
+8. Future: optionally add grant-scoped bundle manifests only after a separate
    design and tests prove unauthorized actors do not receive wrapped-key records.
-8. Update simulator/client tooling to generate production-shaped wrapped-key
+9. Update simulator/client tooling to generate production-shaped wrapped-key
    records using a reviewed wrapping profile.
-9. Update deployment, security, threat-model, API, and retention docs before
+10. Update deployment, security, threat-model, API, and retention docs before
    any public-authenticated contact route is exposed.
 
 Each implementation issue must include tests for:

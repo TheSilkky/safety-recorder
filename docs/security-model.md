@@ -14,11 +14,14 @@ custody, expose trusted-contact workflows, or change public viewer and bundle
 behavior. The backend implements account/device recipient public-key metadata,
 account-to-account trusted-contact relationship metadata, account-owner contact
 public-key metadata, and owner-scoped sharing-grant records and wrapped-key
-records for owned incidents, but it does not yet implement trusted-contact
-wrapped-key delivery, account/device wrapped-key delivery, dead-man switch
-notifications, mode-driven sharing, browser decryption, backend decryption, or
-public account-based product access beyond the narrow owner incident metadata
-list/detail read surface for the future web client.
+records for owned incidents. It also implements read-only signed-in
+trusted-contact wrapped-key delivery when an accepted relationship,
+recipient-bound active contact key, active unexpired ciphertext grant, and
+active wrapped-key record all authorize the request. It does not yet implement
+account/device wrapped-key delivery, trusted-contact incident reads,
+dead-man-switch notifications, mode-driven sharing, browser decryption, backend
+decryption, or public account-based product access beyond the narrow owner
+incident metadata list/detail read surface for the future web client.
 
 The `/v1` access-control direction is documented in
 [v1-access-control.md](v1-access-control.md). The current implementation covers
@@ -207,11 +210,15 @@ Viewer URLs contain bearer tokens and should be treated as secrets. Reverse prox
   lookup, and revocation require the authenticated account to own the incident
   or record; admins do not manage another account's sharing grants or
   wrapped-key records through the product routes unless the admin account also
-  owns that incident. New grants require an active contact public key owned by
-  the same account and can be scoped to an incident or one stream. Current
-  wrapped-key records remain trusted-contact grant scoped and require an active,
-  unexpired grant that authorizes ciphertext access and an active contact
-  public key. Wrapped-key record creation validates the accepted PQ wrapping
+  owns that incident. Read-only trusted-contact wrapped-key routes require the
+  authenticated recipient account to match the contact public-key
+  `recipient_account_id`, have an active accepted relationship with the owner,
+  and satisfy the active grant and active record filters. New grants require an
+  active contact public key owned by the same account and can be scoped to an
+  incident or one stream. Current wrapped-key records remain trusted-contact
+  grant scoped and require an active, unexpired grant that authorizes ciphertext
+  access and an active contact public key. Wrapped-key record creation validates
+  the accepted PQ wrapping
   profile and public metadata without unwrapping CEKs. In the future key model,
   wrapped-key records connect recipient public-key versions to CEKs scoped to
   incidents, streams, or bounded chunk groups; current `media_key_id` fields
@@ -404,14 +411,14 @@ Normal file or object removal is not treated as guaranteed secure erasure. Deplo
   in
   [regional-stream-ingress-relay.md](regional-stream-ingress-relay.md)
 - No implemented mode-driven access, escalation, retention, key-custody,
-  trusted-contact delivery, dead-man switch notification, browser decryption,
-  backend decryption, payment-gated registration, password recovery, or public
-  account portal behavior
+  trusted-contact incident delivery, dead-man switch notification, browser
+  decryption, backend decryption, payment-gated registration, password
+  recovery, or public account portal behavior
 - No implemented production client key storage, browser decryption, server-assisted break-glass key access, or emergency-contact key access model; the future designs are documented in [key-custody.md](key-custody.md), [contact-key-sharing-grants.md](contact-key-sharing-grants.md), [browser-decryption.md](browser-decryption.md), and [break-glass-key-access.md](break-glass-key-access.md)
-- No implemented production trusted-contact wrapped-key delivery, browser
-  decryption, or client key-custody UX. Current wrapped-key metadata routes
-  validate and store encrypted PQ key metadata only and do not introduce
-  recipient private-key custody, raw CEK storage, or decryption
+- No implemented production browser decryption or client key-custody UX.
+  Current wrapped-key metadata routes validate and store encrypted PQ key
+  metadata only and do not introduce recipient private-key custody, raw CEK
+  storage, or decryption
 - No implemented live or partial stream access beyond current read-only stream
   metadata summaries and completed encrypted bundle downloads; the future
   boundary is documented in

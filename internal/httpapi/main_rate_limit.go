@@ -131,6 +131,8 @@ func classifyMainAPIRateLimit(r *http.Request) (mainRateLimitClass, bool) {
 		return classifyMainAPIContactPublicKeyRateLimit(r, segments)
 	case "trusted-contact-relationships":
 		return classifyMainAPITrustedContactRelationshipRateLimit(r, segments)
+	case "trusted-contact":
+		return classifyMainAPITrustedContactDeliveryRateLimit(r, segments)
 	case "incidents":
 		return classifyMainAPIIncidentRateLimit(r, segments)
 	case "incident-tokens":
@@ -212,6 +214,20 @@ func classifyMainAPITrustedContactRelationshipRateLimit(r *http.Request, segment
 		}
 	}
 	return "", false
+}
+
+func classifyMainAPITrustedContactDeliveryRateLimit(r *http.Request, segments []string) (mainRateLimitClass, bool) {
+	if r.Method != http.MethodGet {
+		return "", false
+	}
+	switch {
+	case len(segments) == 5 && segments[2] == "incidents" && segments[4] == "wrapped-keys":
+		return mainRateLimitIncidentRead, true
+	case len(segments) == 4 && segments[2] == "wrapped-keys":
+		return mainRateLimitIncidentRead, true
+	default:
+		return "", false
+	}
 }
 
 func classifyMainAPIIncidentRateLimit(r *http.Request, segments []string) (mainRateLimitClass, bool) {
