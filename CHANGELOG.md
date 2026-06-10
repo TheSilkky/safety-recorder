@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Aligned the final regional relay documentation pass with the implemented
+  Stop J relay slices, including relay smoke guidance, simulator scope,
+  current-versus-future guardrails, and private/public exposure boundaries.
+
 - Added regional relay operational readiness guardrails, with safe aggregate
   `/health/ready` categories for upload readiness, core forwarding
   configuration, and temp-staging pressure, plus tests confirming readiness

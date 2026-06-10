@@ -107,7 +107,8 @@ The simulator:
 
 The simulator exercises the current generic incident API. It does not set the
 optional incident-mode metadata fields for emergency incidents, interaction
-records, safety checks, or evidence notes.
+records, safety checks, or evidence notes. It uploads directly to the main API;
+it does not exercise the separate regional stream-ingress relay.
 
 ## Useful Next Reads
 

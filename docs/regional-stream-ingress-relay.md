@@ -164,7 +164,7 @@ credentials, upstream endpoints, data directories, temp paths, object keys,
 tokens, uploaded bytes, aggregate counts, per-session counters, per-client
 counters, user safety data, or per-upload state.
 
-Future upload slices may continue to expose only:
+Any future relay route additions should continue to expose only:
 
 - a narrow complete-chunk upload route family
 - token-neutral liveness/readiness routes that reveal only coarse relay status
@@ -427,32 +427,31 @@ or public artifacts.
 
 The current complete-chunk relay flow is:
 
-1. Classify the request by route class before authentication and before
-   reading a large body.
-2. Apply anonymous pre-body limits using a safe client identity signal, such as
-   reviewed proxy client identity or socket peer hash.
-3. Parse only cheap metadata needed for preflight, such as incident ID, stream
-   ID, chunk index, media type, declared byte size if provided, declared
-   `sha256_hex`, and idempotency-key presence.
-4. Call the core API preflight over authenticated service-to-service HTTP(S).
-5. If preflight denies the upload, return a small safe error without accepting
-   the large body.
-6. If preflight allows staging, enforce body size, per-session/per-client
-   in-flight limits, duplicate in-flight chunk identity limits, and temp disk
-   pressure limits.
+1. Enforce method and configured multipart body-size limits.
+2. Parse bounded metadata fields before the `file` part; metadata sent after
+   the file part is rejected.
+3. Validate required relay metadata, timestamps, media type, declared byte
+   size, and lowercase ciphertext SHA-256.
+4. Acquire local in-memory per-session, per-client, and duplicate chunk
+   in-flight slots.
+5. Call the core API preflight over authenticated service-to-service HTTP(S).
+6. If preflight denies the upload, return a small safe error without accepting
+   the file body.
 7. Stream the uploaded ciphertext to local temporary storage while computing
-   SHA-256.
-8. Compare the computed ciphertext hash with declared `sha256_hex`.
-9. On hash mismatch, delete local staging where safe and return a safe failure
+   SHA-256 and enforcing relay-local temp-staging quota.
+8. Compare computed byte size and ciphertext hash with the declared metadata.
+9. On mismatch, delete local staging where safe and return a safe failure
    without forwarding bytes to the core API or publishing fanout bytes.
-10. Forward the complete encrypted chunk and upload metadata to the core API
+10. After successful local ciphertext validation, publish optimistic encrypted
+    fanout if authorized subscribers are present.
+11. Forward the exact encrypted chunk and upload metadata to the core API
     commit route.
-11. Return success only after the core API confirms committed or equivalent
+12. Return success only after the core API confirms committed or equivalent
     success with `201` or `200`.
-12. If the chunk was optimistically fanned out, publish a matching
+13. If the chunk was optimistically fanned out, publish a matching
     `relay_chunk_state` event after the core outcome: `confirmed`,
     `rejected`, or `terminal_failure`.
-13. Delete local temporary staging after success or failure where safe.
+14. Delete local temporary staging after success or failure where safe.
 
 The relay must not return success for an accepted-but-not-committed upload. If
 the final core outcome is ambiguous because of timeout, connection loss, or
@@ -470,24 +469,23 @@ observed.
 The relay uses layered controls because it cannot fully know whether an upload
 credential is valid without asking the core API.
 
-Required layers:
+Current implemented layers:
 
-1. Anonymous pre-body limits by route class and safe client identity signal.
-2. Core upload preflight using only cheap metadata before accepting large
+1. Multipart body-size limits at the relay listener.
+2. Bounded metadata parsing before accepting the file body when the client
+   orders fields correctly.
+3. Core upload preflight using only cheap metadata before accepting large
    bodies.
-3. Body and staging limits for max bytes, temp disk pressure, concurrent
-   uploads, and per-client in-flight uploads.
-4. Backend-denial feedback counters when the core returns `401`, `403`, or
-   `429`.
-5. No punishment of clients for core `5xx` or infrastructure timeouts.
-6. Optional future Valkey/Redis-compatible counters for multi-node relay
-   deployments.
-7. Local in-memory counters for single-node and development deployments.
+4. Body and staging limits for max bytes and temp disk pressure.
+5. Local in-memory per-session, per-client, and duplicate chunk in-flight
+   limits.
+6. Safe retryable behavior for core `5xx` and infrastructure timeouts.
 
-The current relay slice implements local in-memory per-session, per-client,
-and duplicate chunk in-flight limits. Backend-denial feedback counters,
-anonymous denial throttling, and Valkey/Redis-compatible relay counters remain
-future slices.
+Future hardening layers may add anonymous pre-body route-class limits,
+backend-denial feedback counters for core `401`, `403`, or `429`, `Retry-After`
+mirroring, and optional Valkey/Redis-compatible relay counters for multi-node
+relay deployments. Those counters must not punish clients for core `5xx` or
+infrastructure timeouts.
 
 Denial feedback counters should be short-lived. They may help slow repeated
 invalid credentials, repeated denied users, or repeated core rate-limit
@@ -639,9 +637,9 @@ Any real public deployment still needs deployment-specific TLS, firewall or
 reverse-proxy policy, credential handling, abuse controls, logging review,
 monitoring, retention, backup, restore, and operational hardening.
 
-## Documentation Updates For Implementation
+## Documentation Updates For Future Relay Changes
 
-When implementation work begins, update these source-of-truth docs together as
+Future relay changes should update these source-of-truth docs together as
 applicable:
 
 - `README.md`
@@ -674,12 +672,10 @@ Split implementation into small issues:
 6. Add backend confirmation/rejection propagation. Completed by #294.
 7. Add operational guardrails for limits, temp pressure, readiness, and safe
    aggregate status. Completed by #295.
-8. Run final relay docs and validation alignment. Planned for #296.
+8. Run final relay docs and validation alignment. Completed by #296.
 
-Expected implementation tests:
+Current implementation validation covers:
 
-- invalid-token spray is rejected before large body read
-- denied-token feedback counters block repeated attempts
 - valid upload credential passes through to core
 - core `5xx` and timeouts do not poison deny counters
 - hash mismatch does not forward to core and cleans staging
@@ -687,9 +683,12 @@ Expected implementation tests:
 - no raw token, body, path, key, staging path, object key, or secret logging
 - relay-fanned near-live chunks remain unconfirmed until core commit
 - variant-role fanout does not make the relay authoritative for supersession
-- Valkey counter keys use safe non-reversible keys only
 - local in-memory limiter works for single-node/dev
 - core-confirmed success is required before relay success
+
+Future relay hardening should add tests for anonymous pre-body limiter
+behavior, denied-token feedback counters, `Retry-After` handling, and any
+Valkey counter keys using safe non-reversible keys.
 
 ## Validation For The Current Relay Implementation
 

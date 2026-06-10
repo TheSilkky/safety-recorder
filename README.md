@@ -180,8 +180,9 @@ escrow.
   in-memory counters by default and optional Valkey/Redis-compatible counters
   when coordination is explicitly configured
 - Validated backend-selection config defaults for SQLite metadata, optional PostgreSQL metadata, local encrypted blobs, optional S3-compatible encrypted blobs, no coordination by default, and optional Valkey/Redis-compatible coordination
-- Simulator CLI for encrypted upload, check-in, stream completion, bundle
-  download/decrypt-verification, and durable desktop-recorder staging flows
+- Simulator CLI for direct main-API encrypted upload, check-in, stream
+  completion, bundle download/decrypt-verification, and durable
+  desktop-recorder staging flows
 - Docker image build and GitHub Actions / GHCR publishing
 
 ## What It Is Not Yet

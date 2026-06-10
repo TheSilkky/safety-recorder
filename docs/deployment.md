@@ -593,10 +593,10 @@ service-identity rotation, or production deployment automation.
 The full relay planning boundary is documented in
 [regional-stream-ingress-relay.md](regional-stream-ingress-relay.md).
 
-For a private smoke check, run the relay explicitly:
+For a private listener smoke check, run the relay explicitly:
 
 ```bash
-SAFE_STREAM_INGRESS_READY=true go run ./cmd/stream-ingress
+go run ./cmd/stream-ingress
 ```
 
 The default bind is `127.0.0.1:8090`. Keep the relay on loopback, LAN,
@@ -608,7 +608,10 @@ counts, per-session counters, per-client counters, or per-upload state. It
 reports only bounded categories for manual ready state, upload readiness, core
 forwarding configuration, and temp-staging pressure; `core: configured` means
 the relay has core forwarding settings, not that it performed a live upstream
-health probe.
+health probe. `GET /health/live` should return `200` for the listener smoke
+check. `GET /health/ready` remains `503 not_ready` with
+`uploads: core_unconfigured` until core forwarding settings and the manual
+ready flag are configured.
 
 To exercise the upload route locally, configure at least:
 

@@ -12,6 +12,12 @@ The simulator covers generic incidents only. It does not set optional
 incident-mode metadata for emergency incidents, interaction records, safety
 checks, or evidence notes.
 
+The current simulator uploads complete encrypted chunks directly to the main
+API. It does not issue relay sessions, upload through `cmd/stream-ingress`,
+subscribe to relay fanout, or verify relay readiness; relay smoke checks are
+documented separately in [deployment](deployment.md) and
+[regional-stream-ingress-relay.md](regional-stream-ingress-relay.md).
+
 ## Desktop Recorder Simulator
 
 The desktop recorder simulator is an expanded `simclient` mode for backend

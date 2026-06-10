@@ -57,10 +57,9 @@ contact key-sharing boundaries in
   rejected, or terminal-failure state after core commit outcomes. Readiness
   reports only bounded aggregate categories for manual ready state, core
   forwarding configuration, upload readiness, and temp-staging pressure. It
-  does not
-  mount `/v1`, `/admin`, public viewer routes, bundle/deletion routes, metrics,
-  operator routes, durable relay storage, durable relay coordination,
-  decryption, or raw-key behavior.
+  does not mount `/v1`, `/admin`, public viewer routes, bundle/deletion
+  routes, metrics, operator routes, durable relay storage, durable relay
+  coordination, decryption, or raw-key behavior.
 - `cmd/simclient`: simulates future client flows by logging in, creating an incident, creating a media stream, encrypting and uploading complete chunks, completing or failing streams, sending periodic checkins, and optionally testing hash-failure retry, bundle download, local decrypt verification, durable desktop-recorder staging, local file input, ffmpeg segment capture, restart/resume behavior, and poor-network retry controls. Token-bearing viewer URLs are omitted from simulator output.
 - `internal/config`: reads TOML config files, `SAFE_*` environment overrides,
   and `SAFE_*_FILE` secret files for backend selectors, backend-specific
