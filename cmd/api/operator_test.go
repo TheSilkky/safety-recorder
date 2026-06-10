@@ -69,6 +69,106 @@ func TestRunOperatorRetentionPreviewRequiresRetentionWindow(t *testing.T) {
 	}
 }
 
+func TestRunOperatorModeAwareRetentionPreviewOutputsSafeDryRun(t *testing.T) {
+	ctx := context.Background()
+	repo := &fakeOperatorRepository{
+		modeAwareIncidents: []incidents.ModeAwareRetentionPreviewIncident{
+			{
+				IncidentID:       "inc_candidate",
+				UpdatedAt:        time.Date(2026, 5, 30, 9, 0, 0, 0, time.UTC),
+				IncidentMode:     incidents.IncidentModeInteractionRecord,
+				CaptureProfile:   incidents.CaptureProfileAudioLocation,
+				EscalationPolicy: incidents.EscalationPolicyNone,
+				SharingState:     incidents.SharingStatePrivate,
+			},
+			{
+				IncidentID: "inc_missing",
+				UpdatedAt:  time.Date(2026, 5, 30, 10, 0, 0, 0, time.UTC),
+			},
+			{
+				IncidentID:       "inc_recent",
+				UpdatedAt:        time.Date(2026, 6, 1, 9, 30, 0, 0, time.UTC),
+				IncidentMode:     incidents.IncidentModeEvidenceNote,
+				CaptureProfile:   incidents.CaptureProfileNoteOrAttachment,
+				EscalationPolicy: incidents.EscalationPolicyNone,
+				SharingState:     incidents.SharingStatePrivate,
+			},
+		},
+	}
+	var out bytes.Buffer
+
+	err := runOperatorModeAwareRetentionPreview(ctx, []string{
+		"--interaction-record-retention", "24h",
+		"--evidence-note-retention", "24h",
+		"--limit", "11",
+		"--now", "2026-06-01T10:00:00Z",
+	}, &out, config.Config{
+		Backends: config.BackendSelection{Metadata: config.MetadataBackendSQLite},
+	}, repo)
+	if err != nil {
+		t.Fatalf("run mode-aware retention preview: %v", err)
+	}
+
+	var decoded operatorModeAwareRetentionPreviewOutput
+	if err := json.Unmarshal(out.Bytes(), &decoded); err != nil {
+		t.Fatalf("decode output: %v", err)
+	}
+	if decoded.Type != "mode_retention_preview" ||
+		!decoded.ReadOnly ||
+		decoded.LiveDeletion ||
+		decoded.CandidateCount != 1 ||
+		decoded.IneligibleCount != 2 ||
+		len(decoded.CandidatesByMode[incidents.IncidentModeInteractionRecord]) != 1 ||
+		decoded.CandidatesByMode[incidents.IncidentModeInteractionRecord][0].IncidentID != "inc_candidate" {
+		t.Fatalf("unexpected mode-aware preview output: %+v", decoded)
+	}
+	if decoded.Ineligible[0].Reason != "missing_policy_input" ||
+		decoded.Ineligible[1].Reason != "not_past_policy_cutoff" {
+		t.Fatalf("unexpected ineligible reasons: %+v", decoded.Ineligible)
+	}
+	if repo.limit != 11 {
+		t.Fatalf("repo limit = %d, want 11", repo.limit)
+	}
+	assertOperatorOutputSafe(t, out.String())
+}
+
+func TestRunOperatorModeAwareRetentionPreviewDisabledByDefault(t *testing.T) {
+	ctx := context.Background()
+	repo := &fakeOperatorRepository{
+		modeAwareIncidents: []incidents.ModeAwareRetentionPreviewIncident{
+			{
+				IncidentID:       "inc_disabled",
+				UpdatedAt:        time.Date(2026, 5, 30, 9, 0, 0, 0, time.UTC),
+				IncidentMode:     incidents.IncidentModeEmergency,
+				CaptureProfile:   incidents.CaptureProfileAudioVideoLocation,
+				EscalationPolicy: incidents.EscalationPolicyTrustedContactsOnStart,
+				SharingState:     incidents.SharingStatePrivate,
+			},
+		},
+	}
+	var out bytes.Buffer
+
+	err := runOperatorModeAwareRetentionPreview(ctx, []string{
+		"--now", "2026-06-01T10:00:00Z",
+	}, &out, config.Config{
+		Backends: config.BackendSelection{Metadata: config.MetadataBackendSQLite},
+	}, repo)
+	if err != nil {
+		t.Fatalf("run default mode-aware preview: %v", err)
+	}
+
+	var decoded operatorModeAwareRetentionPreviewOutput
+	if err := json.Unmarshal(out.Bytes(), &decoded); err != nil {
+		t.Fatalf("decode output: %v", err)
+	}
+	if decoded.CandidateCount != 0 ||
+		decoded.IneligibleCount != 1 ||
+		decoded.Ineligible[0].Reason != "policy_class_disabled" ||
+		decoded.PolicyWindows[incidents.IncidentModeEmergency] != "0s" {
+		t.Fatalf("unexpected disabled preview output: %+v", decoded)
+	}
+}
+
 func TestOperatorErrorLogUsesSafeOperatorFields(t *testing.T) {
 	ctx := context.Background()
 	repo := &fakeOperatorRepository{
@@ -168,6 +268,7 @@ func TestRunOperatorDeletionStatusOutputsSafeRetryCategories(t *testing.T) {
 
 type fakeOperatorRepository struct {
 	candidates          []incidents.RetentionDeletionCandidate
+	modeAwareIncidents  []incidents.ModeAwareRetentionPreviewIncident
 	status              incidents.IncidentDeletionJobStatus
 	err                 error
 	cutoff              time.Time
@@ -186,6 +287,14 @@ func (r *fakeOperatorRepository) ListRetentionDeletionCandidates(_ context.Conte
 	r.cutoff = cutoff
 	r.limit = limit
 	return r.candidates, nil
+}
+
+func (r *fakeOperatorRepository) ListModeAwareRetentionPreviewIncidents(_ context.Context, limit int) ([]incidents.ModeAwareRetentionPreviewIncident, error) {
+	if r.err != nil {
+		return nil, r.err
+	}
+	r.limit = limit
+	return r.modeAwareIncidents, nil
 }
 
 func (r *fakeOperatorRepository) GetIncidentDeletionJobStatus(_ context.Context, limit int, staleDeletingBefore time.Time) (incidents.IncidentDeletionJobStatus, error) {

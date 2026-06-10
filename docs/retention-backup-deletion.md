@@ -185,6 +185,9 @@ Deletion behavior:
   `proofline-server operator deletion-status`
 - local read-only closed-incident retention preview is available through
   `proofline-server operator retention-preview --closed-incident-retention <duration>`
+- local read-only mode-aware retention preview is available through
+  `proofline-server operator mode-retention-preview --<mode>-retention <duration>`
+  as a disabled-by-default scaffold that does not create deletion decisions
 - encrypted blob files or objects are removed by server-controlled stored paths only
 - client-provided filesystem paths, object keys, and object-store URLs are never accepted for deletion
 - repeated deletion requests return the existing deletion status instead of creating competing work
@@ -205,9 +208,9 @@ Current deletion policy still distinguishes:
   audit window through `SAFE_TOKEN_METADATA_RETENTION`
 - pruning completed minimal deletion tombstones after an operator-defined
   window through `SAFE_DELETION_TOMBSTONE_RETENTION`
-- applying different retention to emergency incidents, interaction records,
-  safety checks, and evidence notes after incident-mode, capture-profile,
-  escalation-policy, and sharing-state fields exist
+- applying live different retention to emergency incidents, interaction
+  records, safety checks, and evidence notes after the disabled mode-aware
+  preview scaffold is promoted through a separately reviewed implementation
 - account-level recipient-key, trusted-contact relationship, and contact-key
   cleanup, account deletion, and key tombstone retention after those account
   lifecycle workflows are explicitly designed

@@ -23,6 +23,7 @@ const (
 type operatorRepository interface {
 	Check(ctx context.Context) error
 	ListRetentionDeletionCandidates(ctx context.Context, cutoff time.Time, limit int) ([]incidents.RetentionDeletionCandidate, error)
+	ListModeAwareRetentionPreviewIncidents(ctx context.Context, limit int) ([]incidents.ModeAwareRetentionPreviewIncident, error)
 	GetIncidentDeletionJobStatus(ctx context.Context, limit int, staleDeletingBefore time.Time) (incidents.IncidentDeletionJobStatus, error)
 }
 
@@ -35,6 +36,19 @@ type operatorRetentionPreviewOutput struct {
 	Limit                   int                                    `json:"limit"`
 	CandidateCount          int                                    `json:"candidate_count"`
 	Candidates              []incidents.RetentionDeletionCandidate `json:"candidates"`
+}
+
+type operatorModeAwareRetentionPreviewOutput struct {
+	Type             string                                             `json:"type"`
+	MetadataBackend  string                                             `json:"metadata_backend"`
+	ReadOnly         bool                                               `json:"read_only"`
+	LiveDeletion     bool                                               `json:"live_deletion"`
+	PolicyWindows    map[string]string                                  `json:"policy_windows"`
+	Limit            int                                                `json:"limit"`
+	CandidateCount   int                                                `json:"candidate_count"`
+	IneligibleCount  int                                                `json:"ineligible_count"`
+	CandidatesByMode map[string][]incidents.ModeAwareRetentionCandidate `json:"candidates_by_policy_class"`
+	Ineligible       []incidents.ModeAwareRetentionIneligible           `json:"ineligible"`
 }
 
 type operatorDeletionStatusOutput struct {
@@ -106,7 +120,7 @@ func runOperatorCommand(ctx context.Context, args []string, stdout io.Writer, co
 		return withStartupStage(startupStageArgsParse, err)
 	}
 	if len(args) == 0 {
-		return withStartupStage(startupStageArgsParse, fmt.Errorf("operator command required: retention-preview or deletion-status"))
+		return withStartupStage(startupStageArgsParse, fmt.Errorf("operator command required: retention-preview, mode-retention-preview, or deletion-status"))
 	}
 
 	cfg, err := config.LoadWithOptions(config.LoadOptions{ConfigFilePath: configFilePath})
@@ -122,6 +136,8 @@ func runOperatorCommand(ctx context.Context, args []string, stdout io.Writer, co
 	switch args[0] {
 	case "retention-preview":
 		return runOperatorRetentionPreview(ctx, args[1:], stdout, cfg, repo)
+	case "mode-retention-preview":
+		return runOperatorModeAwareRetentionPreview(ctx, args[1:], stdout, cfg, repo)
 	case "deletion-status":
 		return runOperatorDeletionStatus(ctx, args[1:], stdout, cfg, repo)
 	default:
@@ -220,6 +236,60 @@ func runOperatorRetentionPreview(ctx context.Context, args []string, stdout io.W
 	}))
 }
 
+func runOperatorModeAwareRetentionPreview(ctx context.Context, args []string, stdout io.Writer, cfg config.Config, repo operatorRepository) error {
+	limit := operatorDefaultLimit
+	nowText := ""
+	var emergencyRetention time.Duration
+	var interactionRecordRetention time.Duration
+	var safetyCheckRetention time.Duration
+	var evidenceNoteRetention time.Duration
+	flags := flag.NewFlagSet("operator mode-retention-preview", flag.ContinueOnError)
+	flags.SetOutput(io.Discard)
+	flags.DurationVar(&emergencyRetention, "emergency-retention", 0, "dry-run retention window for emergency incidents")
+	flags.DurationVar(&interactionRecordRetention, "interaction-record-retention", 0, "dry-run retention window for interaction records")
+	flags.DurationVar(&safetyCheckRetention, "safety-check-retention", 0, "dry-run retention window for safety checks")
+	flags.DurationVar(&evidenceNoteRetention, "evidence-note-retention", 0, "dry-run retention window for evidence notes")
+	flags.IntVar(&limit, "limit", limit, "maximum closed active incidents to inspect")
+	flags.StringVar(&nowText, "now", nowText, "RFC3339 time override for deterministic previews")
+	if err := flags.Parse(args); err != nil {
+		return withOperatorError("mode_retention_preview", "invalid_config_value", err)
+	}
+	if flags.NArg() != 0 {
+		return withOperatorError("mode_retention_preview", "invalid_config_value", fmt.Errorf("operator mode-retention-preview does not accept positional arguments"))
+	}
+	if limit <= 0 {
+		return withOperatorError("mode_retention_preview", "invalid_config_value", fmt.Errorf("operator mode-retention-preview requires a positive --limit"))
+	}
+	now, err := operatorNow(nowText)
+	if err != nil {
+		return withOperatorError("mode_retention_preview", "invalid_config_value", err)
+	}
+	policyWindows := map[string]time.Duration{
+		incidents.IncidentModeEmergency:         emergencyRetention,
+		incidents.IncidentModeInteractionRecord: interactionRecordRetention,
+		incidents.IncidentModeSafetyCheck:       safetyCheckRetention,
+		incidents.IncidentModeEvidenceNote:      evidenceNoteRetention,
+	}
+
+	items, err := repo.ListModeAwareRetentionPreviewIncidents(ctx, limit)
+	if err != nil {
+		return withOperatorError("mode_retention_preview", "metadata", err)
+	}
+	candidates, ineligible := classifyModeAwareRetentionPreview(items, policyWindows, now)
+	return withOperatorError("mode_retention_preview", "unknown", writeOperatorJSON(stdout, operatorModeAwareRetentionPreviewOutput{
+		Type:             "mode_retention_preview",
+		MetadataBackend:  cfg.Backends.Metadata,
+		ReadOnly:         true,
+		LiveDeletion:     false,
+		PolicyWindows:    safePolicyWindowStrings(policyWindows),
+		Limit:            limit,
+		CandidateCount:   countModeAwareRetentionCandidates(candidates),
+		IneligibleCount:  len(ineligible),
+		CandidatesByMode: candidates,
+		Ineligible:       ineligible,
+	}))
+}
+
 func runOperatorDeletionStatus(ctx context.Context, args []string, stdout io.Writer, cfg config.Config, repo operatorRepository) error {
 	limit := operatorDefaultLimit
 	deletingRetryAfter := operatorDefaultDeletingRetryAfter
@@ -273,6 +343,85 @@ func operatorNow(value string) (time.Time, error) {
 		return time.Time{}, fmt.Errorf("parse --now: %w", err)
 	}
 	return parsed.UTC(), nil
+}
+
+func classifyModeAwareRetentionPreview(items []incidents.ModeAwareRetentionPreviewIncident, policyWindows map[string]time.Duration, now time.Time) (map[string][]incidents.ModeAwareRetentionCandidate, []incidents.ModeAwareRetentionIneligible) {
+	candidates := map[string][]incidents.ModeAwareRetentionCandidate{}
+	ineligible := []incidents.ModeAwareRetentionIneligible{}
+	for _, item := range items {
+		reason := modeAwareRetentionIneligibleReason(item, policyWindows)
+		if reason != "" {
+			ineligible = append(ineligible, modeAwareRetentionIneligible(item, reason))
+			continue
+		}
+		window := policyWindows[item.IncidentMode]
+		cutoff := now.Add(-window)
+		if item.UpdatedAt.After(cutoff) {
+			ineligible = append(ineligible, modeAwareRetentionIneligible(item, "not_past_policy_cutoff"))
+			continue
+		}
+		candidate := incidents.ModeAwareRetentionCandidate{
+			IncidentID:       item.IncidentID,
+			PolicyClass:      item.IncidentMode,
+			IncidentMode:     item.IncidentMode,
+			CaptureProfile:   item.CaptureProfile,
+			EscalationPolicy: item.EscalationPolicy,
+			SharingState:     item.SharingState,
+			UpdatedAt:        item.UpdatedAt,
+			Cutoff:           cutoff,
+		}
+		candidates[item.IncidentMode] = append(candidates[item.IncidentMode], candidate)
+	}
+	return candidates, ineligible
+}
+
+func modeAwareRetentionIneligibleReason(item incidents.ModeAwareRetentionPreviewIncident, policyWindows map[string]time.Duration) string {
+	if item.IncidentMode == "" || item.CaptureProfile == "" || item.EscalationPolicy == "" || item.SharingState == "" {
+		return "missing_policy_input"
+	}
+	if !incidents.ValidIncidentMode(item.IncidentMode) ||
+		!incidents.ValidCaptureProfile(item.CaptureProfile) ||
+		!incidents.ValidEscalationPolicy(item.EscalationPolicy) ||
+		!incidents.ValidSharingState(item.SharingState) {
+		return "invalid_policy_input"
+	}
+	if policyWindows[item.IncidentMode] <= 0 {
+		return "policy_class_disabled"
+	}
+	return ""
+}
+
+func modeAwareRetentionIneligible(item incidents.ModeAwareRetentionPreviewIncident, reason string) incidents.ModeAwareRetentionIneligible {
+	return incidents.ModeAwareRetentionIneligible{
+		IncidentID:       item.IncidentID,
+		Reason:           reason,
+		IncidentMode:     item.IncidentMode,
+		CaptureProfile:   item.CaptureProfile,
+		EscalationPolicy: item.EscalationPolicy,
+		SharingState:     item.SharingState,
+		UpdatedAt:        item.UpdatedAt,
+	}
+}
+
+func countModeAwareRetentionCandidates(candidates map[string][]incidents.ModeAwareRetentionCandidate) int {
+	count := 0
+	for _, group := range candidates {
+		count += len(group)
+	}
+	return count
+}
+
+func safePolicyWindowStrings(policyWindows map[string]time.Duration) map[string]string {
+	values := make(map[string]string, len(policyWindows))
+	for _, mode := range []string{
+		incidents.IncidentModeEmergency,
+		incidents.IncidentModeInteractionRecord,
+		incidents.IncidentModeSafetyCheck,
+		incidents.IncidentModeEvidenceNote,
+	} {
+		values[mode] = policyWindows[mode].String()
+	}
+	return values
 }
 
 func writeOperatorJSON(stdout io.Writer, value any) error {

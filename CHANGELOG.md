@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Added a disabled-by-default local `operator mode-retention-preview` scaffold
+  that groups closed active incidents by explicit mode-aware policy class for
+  private dry runs, reports missing or ineligible policy inputs instead of
+  guessing from labels, preserves SQLite/PostgreSQL parity, and does not change
+  `SAFE_CLOSED_INCIDENT_RETENTION` or create live deletion decisions.
 - Added a private-admin account second-factor recovery reset policy and API,
   with controlled lost-factor reason codes, SQLite/PostgreSQL audit metadata,
   removal of enrolled email/TOTP/WebAuthn factors, target-session revocation,
