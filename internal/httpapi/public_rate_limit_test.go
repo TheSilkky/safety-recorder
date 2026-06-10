@@ -30,6 +30,7 @@ func TestPublicViewerRateLimitGroupsRoutesWithSafeKeys(t *testing.T) {
 	for _, target := range []string{
 		"/i/raw-viewer-token-secret",
 		"/e/raw-viewer-token-secret/data",
+		"/i/raw-viewer-token-secret/viewer-payload",
 		"/i/raw-viewer-token-secret/streams/str_secret/download",
 		"/static/styles.css",
 	} {
@@ -37,13 +38,14 @@ func TestPublicViewerRateLimitGroupsRoutesWithSafeKeys(t *testing.T) {
 		response.Body.Close()
 	}
 
-	if len(limiter.calls) != 4 {
-		t.Fatalf("limiter calls = %d, want 4", len(limiter.calls))
+	if len(limiter.calls) != 5 {
+		t.Fatalf("limiter calls = %d, want 5", len(limiter.calls))
 	}
 	assertRateLimitCall(t, limiter.calls[0], ":page:", 11)
 	assertRateLimitCall(t, limiter.calls[1], ":data:", 22)
-	assertRateLimitCall(t, limiter.calls[2], ":download:", 33)
-	assertRateLimitCall(t, limiter.calls[3], ":static:", 44)
+	assertRateLimitCall(t, limiter.calls[2], ":data:", 22)
+	assertRateLimitCall(t, limiter.calls[3], ":download:", 33)
+	assertRateLimitCall(t, limiter.calls[4], ":static:", 44)
 	for _, call := range limiter.calls {
 		if call.window != time.Minute {
 			t.Fatalf("window = %s, want 1m", call.window)

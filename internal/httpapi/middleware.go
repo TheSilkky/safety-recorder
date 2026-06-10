@@ -111,6 +111,9 @@ func redactedViewerPath(path, prefix string) string {
 	if strings.HasSuffix(path, "/data") {
 		return prefix + "/{token}/data"
 	}
+	if strings.HasSuffix(path, "/viewer-payload") {
+		return prefix + "/{token}/viewer-payload"
+	}
 	if strings.HasSuffix(path, "/incident/download") {
 		return prefix + "/{token}/incident/download"
 	}

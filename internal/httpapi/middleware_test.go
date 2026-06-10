@@ -110,6 +110,15 @@ func TestSafeLogPathRedactsMainAPIPathsWithoutMuxPattern(t *testing.T) {
 				"raw_token_like_value",
 			},
 		},
+		{
+			name:   "viewer payload",
+			method: http.MethodPost,
+			target: "/i/raw_viewer_token_secret/viewer-payload",
+			want:   "/i/{token}/viewer-payload",
+			disallowed: []string{
+				"raw_viewer_token_secret",
+			},
+		},
 	}
 
 	for _, tt := range tests {
