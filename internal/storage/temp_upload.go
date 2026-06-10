@@ -36,6 +36,22 @@ func (s *Store) SaveTemp(ctx context.Context, reader io.Reader, maxBytes int64) 
 	return saveTempToDir(ctx, s.tempDir, reader, maxBytes, s.tempQuota)
 }
 
+// TempStagingUsage returns aggregate temporary upload staging usage when a
+// quota is configured. It never returns file names or paths.
+func (s *Store) TempStagingUsage(ctx context.Context) (usedBytes, quotaBytes int64, quotaConfigured bool, err error) {
+	if err := ctx.Err(); err != nil {
+		return 0, 0, false, err
+	}
+	if s.tempQuota == nil {
+		return 0, 0, false, nil
+	}
+	usedBytes, err = tempStagingUsedBytes(s.tempDir)
+	if err != nil {
+		return 0, 0, true, err
+	}
+	return usedBytes, s.tempQuota.maxBytes, true, ctx.Err()
+}
+
 func saveTempToDir(ctx context.Context, tempDir string, reader io.Reader, maxBytes int64, quota *tempStagingQuota) (*TempUpload, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err

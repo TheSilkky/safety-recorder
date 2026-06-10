@@ -403,9 +403,10 @@ The current backend does not implement incident-mode-specific controls yet, so f
   Capabilities are signed bearer-like role artifacts bound to one relay
   session, incident, and stream. Core relay commit remains the durable source of
   truth for accepted ciphertext hashes and metadata; relay-local staging and
-  fanout are temporary and recoverable by client retry. Replay, metrics,
-  production service identity, relay Valkey coordination, and deployment
-  hardening are planned in
+  fanout are temporary and recoverable by client retry. Relay readiness reports
+  only safe aggregate categories for upload readiness, core forwarding
+  configuration, and temp-staging pressure. Replay, metrics, production service
+  identity, relay Valkey coordination, and deployment hardening are planned in
   [regional-stream-ingress-relay.md](regional-stream-ingress-relay.md).
 - Retention, backup, restore, and deletion policy is documented in
   [retention-backup-deletion.md](retention-backup-deletion.md), with enforcement

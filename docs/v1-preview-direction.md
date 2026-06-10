@@ -193,7 +193,7 @@ prefer neutral user-facing language like `Interaction record`.
 | Browser decryption | Not implemented. | In scope for authorized account-owner or trusted-contact review after browser trust model, key custody, and deployment-integrity decisions are accepted. |
 | Trusted contacts | Owner-scoped metadata for contact public keys, grants, and wrapped keys. | Account-based trusted-contact invite/accept, grant-scoped review, wrapped-key delivery, and client-side decrypt UX. |
 | Device sharing | Not implemented. | Each device should have its own key material. Existing trusted devices or a recovery flow should approve new devices, then rewrap relevant CEKs to the new device recipient key. |
-| Regional relay | Health/readiness routes, configured backend-issued upload and fanout capabilities for authorized open streams, service-authenticated core relay preflight/commit/fanout authorization endpoints, configured complete-chunk upload forwarding with temporary ciphertext staging, optimistic encrypted fanout marked unconfirmed, and bounded backend confirmation/rejection state. | Optional temporary, ciphertext-only relay listener subordinate to the core API, with replay, metrics, production service identity, and deployment hardening only after separate review. |
+| Regional relay | Health/readiness routes with safe aggregate readiness categories, configured backend-issued upload and fanout capabilities for authorized open streams, service-authenticated core relay preflight/commit/fanout authorization endpoints, configured complete-chunk upload forwarding with temporary ciphertext staging, optimistic encrypted fanout marked unconfirmed, and bounded backend confirmation/rejection state. | Optional temporary, ciphertext-only relay listener subordinate to the core API, with replay, metrics, production service identity, and deployment hardening only after separate review. |
 | Public registration and required setup | Disabled by default; open mode requires SMTP verification; paid mode fails closed. New admin-created and open-registration accounts carry required setup state that blocks main product routes until email challenge, TOTP, or configured WebAuthn setup is completed. Active TOTP and WebAuthn factors require per-session verification. | Explicit preview deployments may enable open registration with email verification, rate limits, deployment controls, account-scoped committed blob quota, configured WebAuthn/passkey factors, and a reviewed recovery policy. |
 | Billing | Future Stripe-hosted service boundary exists as planning context. | Payment providers, subscriptions, account plans, and hosted entitlements are out of default v1 preview scope unless separately scoped. |
 
@@ -481,10 +481,12 @@ capabilities for authorized open streams, service-authenticated core relay
 preflight/commit/fanout authorization endpoints, a configured complete-chunk
 upload route with temporary ciphertext staging, hash verification, core
 forwarding, and optimistic encrypted fanout marked
-`near_live_unconfirmed`. Future relay slices should keep it temporary,
+`near_live_unconfirmed`. Its readiness route reports only safe aggregate
+categories for upload readiness, core forwarding configuration, and
+temp-staging pressure. Future relay slices should keep it temporary,
 ciphertext-only, and subordinate to the core API. It should not be a durable
 evidence store, broad API gateway, GPS inspection service, admin route host,
-decryption service, or public viewer edge.
+decryption service, metrics endpoint, or public viewer edge.
 
 The core API remains authoritative for:
 

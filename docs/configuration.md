@@ -351,7 +351,7 @@ and subordinate to the core API.
 | `SAFE_STREAM_INGRESS_BIND_ADDR` | `127.0.0.1:8090` | `--bind` | Private bind address for the relay health/readiness and complete-chunk upload listener. Keep it on loopback, LAN, WireGuard, firewall, or a private reverse proxy unless a later deployment issue explicitly reviews exposure. |
 | `SAFE_STREAM_INGRESS_RELAY_ID` | unset | `--relay-id` | Optional relay identity label for future service identity planning. The relay records only whether it is configured and must not expose the label value in readiness output or logs. |
 | `SAFE_STREAM_INGRESS_REGION` | unset | `--region` | Optional coarse region label for future relay planning. The relay records only whether it is configured and must not expose the label value in readiness output or logs. |
-| `SAFE_STREAM_INGRESS_READY` | `false` | `--ready` | Controls whether `GET /health/ready` returns `200 ready` or `503 not_ready`. This readiness flag is only a smoke signal and does not mean replay, metrics, production deployment hardening, or broad public readiness exists. |
+| `SAFE_STREAM_INGRESS_READY` | `false` | `--ready` | Manual readiness gate for `GET /health/ready`. A ready response also requires configured core forwarding and no relay temp-staging pressure. This flag does not mean replay, metrics, production deployment hardening, or broad public readiness exists. |
 | `SAFE_STREAM_INGRESS_CORE_BASE_URL` | unset | `--core-url` | Core API base URL used for `/v1/relay/preflight`, `/v1/relay/commit`, and `/v1/relay/fanout-authorize`. Uploads and fanout subscriptions return `503 relay_core_not_configured` until this and the service token are configured. |
 | `SAFE_STREAM_INGRESS_CORE_SERVICE_AUTH_TOKEN` | unset | none | Static relay-to-core service token sent as `X-Proofline-Relay-Service-Token`. Must be at least 32 bytes when set. Prefer the `_FILE` form for deployments. |
 | `SAFE_STREAM_INGRESS_CORE_SERVICE_AUTH_TOKEN_FILE` | unset | none | File-backed relay-to-core service token. Overrides the direct token. Treat the path and contents as private deployment details. |
@@ -361,6 +361,20 @@ and subordinate to the core API.
 | `SAFE_STREAM_INGRESS_CORE_REQUEST_TIMEOUT` | `30s` | `--core-request-timeout` | Timeout for relay-to-core preflight and commit requests. Core timeouts return safe retryable relay errors. |
 | `SAFE_STREAM_INGRESS_MAX_IN_FLIGHT_PER_SESSION` | `2` | `--max-in-flight-per-session` | Local in-memory in-flight upload limit per relay session. |
 | `SAFE_STREAM_INGRESS_MAX_IN_FLIGHT_PER_CLIENT` | `4` | `--max-in-flight-per-client` | Local in-memory in-flight upload limit per hashed socket client identity. |
+
+`GET /health/ready` returns only bounded aggregate categories:
+
+- `status`: `ready` or `not_ready`
+- `uploads`: `ready`, `core_unconfigured`, `temp_staging_pressure`,
+  `storage_unavailable`, or `unavailable`
+- `core`: `configured` or `unconfigured`; this is configuration state, not a
+  live upstream health probe
+- `temp_staging`: `ok`, `pressure`, or `unavailable`
+- `relay_identity_configured` and `region_configured`: booleans only
+
+It does not return relay labels, core URLs, service tokens, data directories,
+temp paths, object keys, uploaded bytes, per-session counters, per-client
+counters, private deployment details, or user safety data.
 
 Run the relay locally with explicit readiness for a private smoke check:
 

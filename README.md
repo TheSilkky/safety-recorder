@@ -139,14 +139,14 @@ escrow.
 - Optional Valkey/Redis-compatible short-lived complete-upload leases and
   `upload_in_progress` retry hints when coordination is explicitly configured
 - Separate `cmd/stream-ingress` regional relay with token-neutral
-  liveness/readiness routes, configured complete encrypted chunk upload,
-  temporary local ciphertext staging, hash validation, and forwarding to
-  service-authenticated core relay preflight/commit endpoints, plus main-API
-  issuance of configured short-lived relay upload and fanout capabilities for
-  authorized open streams, optimistic near-live encrypted SSE fanout marked
-  unconfirmed until the core backend commits exact ciphertext, and bounded
-  `confirmed`, `rejected`, or `terminal_failure` fanout state after the core
-  commit outcome
+  liveness/readiness routes, safe aggregate readiness categories, configured
+  complete encrypted chunk upload, temporary local ciphertext staging, hash
+  validation, and forwarding to service-authenticated core relay
+  preflight/commit endpoints, plus main-API issuance of configured short-lived
+  relay upload and fanout capabilities for authorized open streams, optimistic
+  near-live encrypted SSE fanout marked unconfirmed until the core backend
+  commits exact ciphertext, and bounded `confirmed`, `rejected`, or
+  `terminal_failure` fanout state after the core commit outcome
 - Authenticated duplicate chunk reconciliation for comparing accepted metadata with
   an expected chunk fingerprint
 - Optional incident-mode, capture-profile, escalation-policy, and sharing-state
@@ -200,7 +200,8 @@ escrow.
   leases are short-lived complete-upload hints, not durable evidence truth
 - No implemented regional relay replay, metrics endpoint, production relay
   deployment automation, relay Valkey counters, or production service-identity
-  rotation beyond the early static relay-to-core token
+  rotation beyond the early static relay-to-core token; relay readiness reports
+  only safe aggregate categories
 - No implemented live or partial stream chunk access before stream completion
 - No backend/browser decryption, raw key handling, server escrow, break-glass
   key access, or playable media export
@@ -426,7 +427,8 @@ Please see [SECURITY.md](SECURITY.md) for supported versions and vulnerability r
   service identity, and deployment hardening are added later. Current relay
   fanout is optimistic, encrypted-only, explicitly unconfirmed until core
   commit succeeds, and followed by bounded confirmation, rejection, or terminal
-  failure state when the commit outcome is known
+  failure state when the commit outcome is known. Current relay readiness is
+  safe aggregate status only
 - WireGuard-only bind/firewall deployment guidance
 - Mode-driven access, escalation, retention, sharing, viewer, and key-custody
   behavior after protocol and security design

@@ -10,11 +10,12 @@ configured complete-chunk upload route that performs metadata-before-file core
 preflight, temporary relay-local ciphertext staging, SHA-256 validation, and
 core commit forwarding, and an optimistic encrypted SSE fanout route that marks
 chunks as near-live/unconfirmed and then emits bounded confirmation, rejection,
-or terminal-failure state after the core commit outcome. Replay, metrics,
-deployment automation, relay Valkey counters, production service-identity
-rotation, durable relay storage, decryption, key custody, web-client code,
-mobile-client code, protocol code, and public production readiness remain
-unimplemented.
+or terminal-failure state after the core commit outcome. Readiness now reports
+only bounded aggregate categories for upload readiness, core forwarding
+configuration, and temp-staging pressure. Replay, metrics, deployment
+automation, relay Valkey counters, production service-identity rotation,
+durable relay storage, decryption, key custody, web-client code, mobile-client
+code, protocol code, and public production readiness remain unimplemented.
 
 ## Summary
 
@@ -70,6 +71,9 @@ separable from broader cluster work:
   `near_live_unconfirmed` SSE events before sending bounded
   `relay_chunk_state` confirmation, rejection, or terminal-failure events for
   the same ciphertext hash when the core commit outcome is known
+- relay readiness categories that report only manual ready state, core
+  forwarding configuration, upload readiness, and temp-staging pressure without
+  exposing labels, URLs, paths, counts, credentials, or per-user state
 
 Those features do not make `/v1` production-ready public infrastructure. The
 relay exposes only `/health/live`, `/health/ready`, and
@@ -84,8 +88,9 @@ the narrow service-authenticated core relay preflight/commit routes. Issue
 #292 added only relay encrypted upload staging and core forwarding. Issue #293
 added only optimistic near-live encrypted fanout. Issue #294 added only
 bounded backend confirmation/rejection propagation for fanned-out ciphertext
-hashes. Later slices are expected to add, in order, operational guardrails and
-final relay docs/validation alignment.
+hashes. Issue #295 added only bounded operational readiness categories and
+temp-staging pressure handling. The remaining slice is final relay
+docs/validation alignment.
 
 Future stream variant and supersession behavior is documented in
 [capture-stream-variants.md](capture-stream-variants.md). The relay may use
@@ -144,10 +149,20 @@ The current relay command exposes only:
 - `POST /upload/complete-chunk`
 - `GET /fanout/subscribe`
 
-The readiness response reports coarse relay state and whether optional relay
-identity and region labels are configured. It does not return the configured
-label values, private bind address, service credentials, upstream endpoints,
-paths, object keys, tokens, user safety data, or upload state.
+The readiness response reports only bounded aggregate state:
+
+- `status`: `ready` or `not_ready`
+- `uploads`: `ready`, `core_unconfigured`, `temp_staging_pressure`,
+  `storage_unavailable`, or `unavailable`
+- `core`: `configured` or `unconfigured`; this is configuration state, not a
+  live upstream health probe
+- `temp_staging`: `ok`, `pressure`, or `unavailable`
+- `relay_identity_configured` and `region_configured`: booleans only
+
+It does not return configured label values, private bind addresses, service
+credentials, upstream endpoints, data directories, temp paths, object keys,
+tokens, uploaded bytes, aggregate counts, per-session counters, per-client
+counters, user safety data, or per-upload state.
 
 Future upload slices may continue to expose only:
 
@@ -549,7 +564,7 @@ Current relay behavior:
 | Core `5xx` | Return a retryable safe error without poisoning denial counters. |
 | Core timeout or network loss | Return a retryable safe error without poisoning denial counters. |
 | Hash mismatch | Delete local staging where safe and return a safe failure without forwarding bytes or publishing fanout bytes. |
-| Temp disk pressure | Fail closed before accepting more body bytes. |
+| Temp disk pressure | Fail closed before accepting more body bytes and report bounded `temp_staging: pressure` / `uploads: temp_staging_pressure` readiness. |
 | Ingress process crash | Treat local staging as lost; client retry is the recovery model. |
 
 For fanned-out chunks, core `201` or `200` produces `confirmed`, non-retryable
@@ -658,7 +673,7 @@ Split implementation into small issues:
 5. Add optimistic near-live encrypted relay fanout. Completed by #293.
 6. Add backend confirmation/rejection propagation. Completed by #294.
 7. Add operational guardrails for limits, temp pressure, readiness, and safe
-   aggregate status. Planned for #295.
+   aggregate status. Completed by #295.
 8. Run final relay docs and validation alignment. Planned for #296.
 
 Expected implementation tests:
@@ -685,8 +700,9 @@ The relay implementation changes Go and Markdown. Validation is:
   unconfirmed encrypted chunk delivery, confirmation propagation, rejection
   propagation and fanout termination, terminal failure propagation for core
   `5xx`, network loss, and timeout, hash-mismatch no-fanout behavior, core
-  preflight rejection, temp staging pressure, upstream timeout cleanup,
-  duplicate in-flight chunk rejection, and redaction
+  preflight rejection, temp staging pressure readiness, upstream timeout
+  cleanup, duplicate in-flight chunk rejection, safe bounded readiness
+  categories, and redaction
 - `gofmt -w ./cmd ./internal ./migrations`
 - `go test ./...`
 - `go vet ./...`

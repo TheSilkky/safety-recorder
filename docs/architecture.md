@@ -13,7 +13,9 @@ service-authenticated core relay preflight, commit, and fanout authorization
 endpoints, relay complete-chunk upload handling with relay-local temporary
 ciphertext staging and core forwarding, and optimistic encrypted unconfirmed
 fanout followed by bounded backend confirmation, rejection, or terminal-failure
-state. Replay, metrics, relay Valkey counters, production service-identity
+state. Its readiness route reports only safe aggregate categories for manual
+ready state, core forwarding configuration, upload readiness, and temp-staging
+pressure. Replay, metrics, relay Valkey counters, production service-identity
 rotation, and deployment automation remain planned in
 [regional-stream-ingress-relay.md](regional-stream-ingress-relay.md).
 
@@ -214,8 +216,10 @@ They are not decrypted, playable, or merged media exports.
 The regional stream-ingress relay boundary is separate from the main API and
 private-admin listeners. The current `cmd/stream-ingress` command exposes only
 coarse health/readiness routes, a narrow complete-chunk upload route, and a
-narrow fanout subscription route; it is not a durable evidence store and not a
-broad API gateway. The core API can issue signed, expiring upload and fanout
+narrow fanout subscription route; readiness categories are bounded and do not
+include labels, URLs, credentials, paths, counts, or per-user state. It is not
+a durable evidence store and not a broad API gateway. The core API can issue
+signed, expiring upload and fanout
 capabilities bound to one authorized open stream and can accept
 service-authenticated relay preflight/commit/fanout authorization calls for
 that bound stream context. A relay capability or unconfirmed fanout event by

@@ -1916,7 +1916,9 @@ temporarily, verify the declared SHA-256, forward exact bytes to the core
 routes, and serve optimistic encrypted `GET /fanout/subscribe` SSE events
 marked `near_live_unconfirmed` before emitting bounded `relay_chunk_state`
 events for `confirmed`, `rejected`, or `terminal_failure` core commit
-outcomes. It does not implement replay, relay metrics, production
+outcomes. Its token-neutral readiness route reports only safe aggregate
+categories for upload readiness, core forwarding configuration, and
+temp-staging pressure. It does not implement replay, relay metrics, production
 service-identity rotation, or deployment automation. The relay upload and
 fanout design is documented in
 [regional-stream-ingress-relay.md](regional-stream-ingress-relay.md).

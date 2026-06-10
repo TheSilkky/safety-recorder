@@ -603,7 +603,12 @@ The default bind is `127.0.0.1:8090`. Keep the relay on loopback, LAN,
 WireGuard, firewall, or a private reverse proxy unless a later deployment
 issue explicitly reviews relay exposure. The readiness response intentionally
 does not return configured relay identity, region labels, core URLs, service
-tokens, data directories, temp paths, or upload state.
+tokens, data directories, temp paths, object keys, uploaded bytes, aggregate
+counts, per-session counters, per-client counters, or per-upload state. It
+reports only bounded categories for manual ready state, upload readiness, core
+forwarding configuration, and temp-staging pressure; `core: configured` means
+the relay has core forwarding settings, not that it performed a live upstream
+health probe.
 
 To exercise the upload route locally, configure at least:
 

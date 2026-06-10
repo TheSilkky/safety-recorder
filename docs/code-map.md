@@ -54,7 +54,10 @@ contact key-sharing boundaries in
   relay-to-core service token, temp staging directory, upload size/staging
   quota, upstream timeout, and in-flight upload limits. It can send
   near-live/unconfirmed encrypted fanout chunks and bounded confirmed,
-  rejected, or terminal-failure state after core commit outcomes. It does not
+  rejected, or terminal-failure state after core commit outcomes. Readiness
+  reports only bounded aggregate categories for manual ready state, core
+  forwarding configuration, upload readiness, and temp-staging pressure. It
+  does not
   mount `/v1`, `/admin`, public viewer routes, bundle/deletion routes, metrics,
   operator routes, durable relay storage, durable relay coordination,
   decryption, or raw-key behavior.
@@ -107,7 +110,9 @@ configured complete encrypted chunk uploads, stage ciphertext temporarily,
 verify declared hashes, forward exact encrypted bytes to the core API, and send
 optimistic encrypted `near_live_unconfirmed` SSE events to authorized
 subscribers followed by bounded `confirmed`, `rejected`, or
-`terminal_failure` state after the core commit outcome. Later relay work should
+`terminal_failure` state after the core commit outcome. Its readiness output is
+safe aggregate status only and does not expose labels, URLs, credentials,
+paths, counts, or per-user state. Later relay work should
 keep the relay listener separate and let the core API remain authoritative for
 authorization, idempotency, durable blob commits, and metadata.
 

@@ -145,6 +145,34 @@ func TestLocalStoreTempStagingQuota(t *testing.T) {
 	next.Cleanup()
 }
 
+func TestLocalStoreTempStagingUsage(t *testing.T) {
+	store, err := NewWithOptions(t.TempDir(), Options{TempStagingQuotaBytes: 10})
+	if err != nil {
+		t.Fatalf("new store: %v", err)
+	}
+	ctx := context.Background()
+	used, quota, configured, err := store.TempStagingUsage(ctx)
+	if err != nil {
+		t.Fatalf("initial temp staging usage: %v", err)
+	}
+	if used != 0 || quota != 10 || !configured {
+		t.Fatalf("initial temp staging usage = used %d quota %d configured %v, want 0/10/true", used, quota, configured)
+	}
+
+	upload, err := store.SaveTemp(ctx, strings.NewReader("abcd"), 4)
+	if err != nil {
+		t.Fatalf("save temp: %v", err)
+	}
+	defer upload.Cleanup()
+	used, quota, configured, err = store.TempStagingUsage(ctx)
+	if err != nil {
+		t.Fatalf("temp staging usage after save: %v", err)
+	}
+	if used != 4 || quota != 10 || !configured {
+		t.Fatalf("temp staging usage after save = used %d quota %d configured %v, want 4/10/true", used, quota, configured)
+	}
+}
+
 func TestLocalStoreTempStagingQuotaRejectsConcurrentPressure(t *testing.T) {
 	store, err := NewWithOptions(t.TempDir(), Options{TempStagingQuotaBytes: 10})
 	if err != nil {

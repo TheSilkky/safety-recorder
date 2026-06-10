@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- Added regional relay operational readiness guardrails, with safe aggregate
+  `/health/ready` categories for upload readiness, core forwarding
+  configuration, and temp-staging pressure, plus tests confirming readiness
+  redaction and docs preserving the boundary that metrics, dashboards, relay
+  Valkey coordination, notifications, decryption, and production deployment
+  automation remain separately scoped.
+
 - Added backend confirmation, rejection, and terminal-failure propagation for
   regional relay fanout, with `relay_chunk_state` SSE events tied to exact
   ciphertext metadata, fanout termination on core rejection or ambiguous
