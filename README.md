@@ -8,7 +8,7 @@
 [![Security Policy](https://img.shields.io/badge/security-policy-blue.svg)](SECURITY.md)
 [![GHCR](https://img.shields.io/static/v1?label=GHCR&message=ghcr.io%2Fopen-proofline%2Fserver&color=blue&logo=github)](https://github.com/orgs/open-proofline/packages/container/package/server)
 
-Proofline Server is the experimental Go server backend for encrypted incident capture. It receives already-encrypted recording chunks through authenticated main `/v1` routes, stores metadata in SQLite by default or optional PostgreSQL, keeps encrypted blobs on local disk by default or in optional S3-compatible object storage, enforces default local staging and account-scoped committed blob quotas, serves a private admin dashboard under `/admin`, uses optional Valkey/Redis-compatible coordination for startup checks, route-class counters, and short-lived complete-upload leases when explicitly configured, supports optional browser cookie sessions for a future web client, supports disabled-by-default configurable account registration with SMTP-backed email verification for open self-hosted registration, stores a factor-neutral second-factor setup state for account gating, and exposes a token-scoped read-only viewer for incident review.
+Proofline Server is the experimental Go server backend for encrypted incident capture. It receives already-encrypted recording chunks through authenticated main `/v1` routes, stores metadata in SQLite by default or optional PostgreSQL, keeps encrypted blobs on local disk by default or in optional S3-compatible object storage, enforces default local staging and account-scoped committed blob quotas, serves a private admin dashboard under `/admin`, uses optional Valkey/Redis-compatible coordination for startup checks, route-class counters, and short-lived complete-upload leases when explicitly configured, supports optional browser cookie sessions for a future web client, supports disabled-by-default configurable account registration with SMTP-backed email verification for open self-hosted registration, supports email challenge second-factor setup for account gating, and exposes a token-scoped read-only viewer for incident review.
 
 > Repository role: this repository is the server/backend component only. In the multi-repo layout it is `open-proofline/server`, not the full Proofline product suite.
 >
@@ -104,11 +104,11 @@ escrow.
 - Configurable account registration modes: disabled, admin-created accounts
   only, open self-registration with email verification, and a paid-registration
   placeholder that fails closed until billing is implemented
-- Factor-neutral second-factor setup state. New admin-created and
-  open-registration accounts require setup before main product-route access;
-  existing migrated accounts default to `not_required` for preview
-  compatibility. Concrete email challenge, TOTP, WebAuthn/passkey, and
-  recovery flows remain future work.
+- Email challenge second-factor setup. New admin-created and open-registration
+  accounts require setup before main product-route access; existing migrated
+  accounts default to `not_required` for preview compatibility. Challenge codes
+  are single-use, expiring, emailed through the configured sender, and stored
+  only as hashes. TOTP, WebAuthn/passkey, and recovery flows remain future work.
 - Opaque server-side sessions with expiry and revocation
 - Optional main `/v1` browser cookie-session login/logout, session recovery,
   CSRF protection for cookie-authenticated unsafe requests, and credentialed
@@ -182,8 +182,9 @@ escrow.
 - No implemented live or partial stream chunk access before stream completion
 - No backend/browser decryption, raw key handling, server escrow, break-glass
   key access, or playable media export
-- No implemented second-factor methods, password recovery, payment processing,
-  subscriptions, checkout sessions, billing webhooks, OAuth, or JWT
+- No TOTP, WebAuthn/passkey/security-key, lost-factor recovery, password
+  recovery, payment processing, subscriptions, checkout sessions, billing
+  webhooks, OAuth, or JWT
 - No push notifications, SMS, or Messenger integration
 - No public account portal or public admin dashboard
 - No built-in TLS, mode-specific retention policy, backup lifecycle enforcement, or production deployment hardening

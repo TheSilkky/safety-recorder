@@ -49,8 +49,8 @@ The current server starts two handler trees:
 | Private admin listener | `127.0.0.1:8081` | Authenticated admin-only `/v1/admin/...` JSON routes, `/admin`, `/admin/...`, `/admin/static/...` | Localhost, LAN, WireGuard, firewall, or strict private reverse proxy only. |
 
 Current `/v1` routes use local username/password accounts, opaque server-side
-sessions, and app-level route-class rate limits. That is not a complete public
-product API security model.
+sessions, email challenge second-factor setup gating, and app-level route-class
+rate limits. That is not a complete public product API security model.
 
 ## Listener Topology
 
@@ -81,7 +81,7 @@ deployment review:
 | Legacy `/e/{token}` aliases | Main listener only while explicit local/test compatibility is retained. | Same controls as `/i/...`; do not generate new `/e/...` links. |
 | `/static/...` incident viewer assets | Main listener. | Token-neutral static assets only; no incident data, tokens, keys, or private deployment details. |
 | `/v1/auth/login`, `/v1/auth/logout` | Main listener only if treated as public product authentication. | Per-route login abuse limits, audit, redacted errors, TLS, browser credential decision, and tests that the returned session cannot reach absent admin routes on the main listener. |
-| `/v1/account`, `/v1/account/password` | Main listener as account-owner product routes. `GET /v1/account` remains available to setup-incomplete accounts so clients can inspect account/setup state; password changes remain behind the product-route gate. | Authenticated account scope, required setup gating, password-change rate limits, session revocation behavior, and CSRF protection if browser cookies are used. |
+| `/v1/account`, `/v1/account/password`, `/v1/account/second-factor/email/challenge`, `/v1/account/second-factor/email/verify` | Main listener as account-owner product/setup routes. `GET /v1/account` and email second-factor setup remain available to setup-incomplete accounts so clients can inspect account/setup state and complete setup; password changes remain behind the product-route gate. | Authenticated account scope, required setup gating, challenge-code hash storage and expiry, password-change rate limits, session revocation behavior, and CSRF protection if browser cookies are used. |
 | `/v1/incidents`, `/v1/incidents/{incident_id}`, `/v1/incidents/{incident_id}/close`, owner-scoped `/v1/incidents/{incident_id}/deletion` | Main listener as account-owner product routes. | Owner/admin authorization review for public use, action/data-class policy, incident-mode non-escalation guarantees, audit, route limits, and deletion fail-closed tests. |
 | `/v1/incidents/{incident_id}/chunks`, `/v1/incidents/{incident_id}/chunks/reconcile`, chunk metadata and authenticated chunk byte reads | Main listener as capture/account-owner product routes. | Body-size limits, upload rate limits, idempotency-key redaction, reconciliation response limits, immutable chunk guards, and slow-upload timeout review. |
 | `/v1/incidents/{incident_id}/streams`, stream state routes, authenticated stream/incident encrypted bundle downloads | Main listener as account-owner product routes. | State-transition authorization, download limits, no-store ZIP headers, server-controlled ZIP entry names, and encrypted-bundle wording. |
@@ -145,6 +145,7 @@ minimum:
 | Viewer download | Viewer stream and incident ZIP downloads | Protect bundle generation and storage reads. |
 | Static asset | `/static/...` | Keep asset floods from bypassing route accounting. |
 | Login/auth | `/v1/auth/login`, `/v1/auth/logout`, browser cookie login/logout/CSRF routes | Slow password guessing, session churn, and browser credential probes. |
+| Email verification/challenge | `/v1/auth/email/verify`, `/v1/account/second-factor/email/challenge`, `/v1/account/second-factor/email/verify` | Bound registration verification and email second-factor challenge attempts without logging raw tokens, codes, emails, or request bodies. |
 | Account/password/recipient keys | `/v1/account`, `/v1/account/password`, `/v1/account-recipient-keys...`, `/v1/contact-public-keys...` | Bound password change, account self-service, owner account/device recipient-key metadata, and owner contact-key metadata traffic. |
 | Incident metadata write | Incident create, close, deletion, sharing-grant writes, wrapped-key writes, token creation/revocation | Bound state changes and grant or wrapped-key metadata creation. |
 | Incident metadata read | Incident, stream, chunk, check-in, sharing-grant, and wrapped-key metadata reads | Bound authenticated metadata scraping. |

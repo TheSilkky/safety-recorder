@@ -44,6 +44,8 @@ func TestPostgresMigrateCreatesSchemaAndRejectsChecksumMismatch(t *testing.T) {
 	assertPostgresTable(t, ctx, conn, "wrapped_key_records")
 	assertPostgresTable(t, ctx, conn, "sharing_audit_events")
 	assertPostgresTable(t, ctx, conn, "legacy_incident_reassignment_events")
+	assertPostgresTable(t, ctx, conn, "account_second_factors")
+	assertPostgresTable(t, ctx, conn, "account_second_factor_challenges")
 
 	if err := Migrate(ctx, conn); err != nil {
 		t.Fatalf("second Migrate: %v", err)
@@ -269,6 +271,66 @@ func TestPostgresSchemaConstraints(t *testing.T) {
 		now,
 		now,
 		now,
+	)))
+	if _, err := conn.ExecContext(ctx, `
+		INSERT INTO account_second_factors (
+			id, account_id, factor_type, email_normalized, factor_state, created_at, updated_at
+		)
+		VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+		"sf_valid",
+		"acct_default_2fa",
+		auth.SecondFactorTypeEmailChallenge,
+		"user@example.invalid",
+		auth.SecondFactorStatePending,
+		now,
+		now,
+	); err != nil {
+		t.Fatalf("insert valid second factor: %v", err)
+	}
+	if _, err := conn.ExecContext(ctx, `
+		INSERT INTO account_second_factor_challenges (
+			id, account_id, factor_id, challenge_type, token_hash,
+			email_normalized, created_at, expires_at
+		)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+		"sfc_valid",
+		"acct_default_2fa",
+		"sf_valid",
+		auth.SecondFactorChallengeTypeEmailSetup,
+		strings.Repeat("c", 64),
+		"user@example.invalid",
+		now,
+		now.Add(time.Minute),
+	); err != nil {
+		t.Fatalf("insert valid second-factor challenge: %v", err)
+	}
+	assertPostgresConstraint(t, execErr(conn.ExecContext(ctx, `
+		INSERT INTO account_second_factors (
+			id, account_id, factor_type, email_normalized, factor_state, created_at, updated_at
+		)
+		VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+		"sf_bad_state",
+		"acct_default_2fa",
+		auth.SecondFactorTypeEmailChallenge,
+		"user2@example.invalid",
+		"verified",
+		now,
+		now,
+	)))
+	assertPostgresConstraint(t, execErr(conn.ExecContext(ctx, `
+		INSERT INTO account_second_factor_challenges (
+			id, account_id, factor_id, challenge_type, token_hash,
+			email_normalized, created_at, expires_at
+		)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+		"sfc_bad_hash",
+		"acct_default_2fa",
+		"sf_valid",
+		auth.SecondFactorChallengeTypeEmailSetup,
+		"not-a-hash",
+		"user@example.invalid",
+		now,
+		now.Add(time.Minute),
 	)))
 }
 
@@ -1421,6 +1483,82 @@ func TestPostgresRepositoryAccountRegistrationAndVerificationTokens(t *testing.T
 	}
 	if _, err := repo.ConsumeAccountVerificationToken(ctx, rawToken, auth.VerificationPurposeEmail, time.Now().UTC()); !errors.Is(err, auth.ErrNotFound) {
 		t.Fatalf("reused token error = %v, want ErrNotFound", err)
+	}
+}
+
+func TestPostgresRepositoryEmailSecondFactorChallengesCompleteSetup(t *testing.T) {
+	ctx := context.Background()
+	conn := openPostgresTestDB(t, ctx)
+	if err := Migrate(ctx, conn); err != nil {
+		t.Fatalf("Migrate: %v", err)
+	}
+	repo := NewRepository(conn)
+
+	account, err := repo.CreateAccount(ctx, auth.CreateAccountParams{
+		Username:          "email-factor-user",
+		SecondFactorSetup: auth.SecondFactorSetupStateSetupRequired,
+		PasswordHash:      "hash",
+		Role:              auth.RoleUser,
+	})
+	if err != nil {
+		t.Fatalf("create account: %v", err)
+	}
+
+	expired, expiredRaw, err := repo.CreateEmailSecondFactorChallenge(ctx, auth.CreateEmailSecondFactorChallengeParams{
+		AccountID:       account.ID,
+		EmailNormalized: "factor@example.invalid",
+		ExpiresAt:       time.Now().UTC().Add(-time.Second),
+	})
+	if err != nil {
+		t.Fatalf("create expired challenge: %v", err)
+	}
+	if expired.TokenHash == expiredRaw || len(expired.TokenHash) != 64 {
+		t.Fatalf("expired challenge did not use hash storage: raw=%q hash=%q", expiredRaw, expired.TokenHash)
+	}
+	if _, _, err := repo.ConsumeEmailSecondFactorChallenge(ctx, account.ID, expiredRaw, time.Now().UTC()); !errors.Is(err, auth.ErrNotFound) {
+		t.Fatalf("expired challenge consume error = %v, want ErrNotFound", err)
+	}
+
+	challenge, rawCode, err := repo.CreateEmailSecondFactorChallenge(ctx, auth.CreateEmailSecondFactorChallengeParams{
+		AccountID:       account.ID,
+		EmailNormalized: "Factor@Example.Invalid",
+		ExpiresAt:       time.Now().UTC().Add(time.Minute),
+	})
+	if err != nil {
+		t.Fatalf("create challenge: %v", err)
+	}
+	if rawCode == "" || challenge.TokenHash == rawCode || len(challenge.TokenHash) != 64 {
+		t.Fatalf("challenge did not use hash storage: raw=%q hash=%q", rawCode, challenge.TokenHash)
+	}
+	if challenge.EmailNormalized != "factor@example.invalid" {
+		t.Fatalf("challenge email normalized = %q, want factor@example.invalid", challenge.EmailNormalized)
+	}
+	if _, _, err := repo.ConsumeEmailSecondFactorChallenge(ctx, account.ID, "not-a-real-code", time.Now().UTC()); !errors.Is(err, auth.ErrNotFound) {
+		t.Fatalf("invalid challenge consume error = %v, want ErrNotFound", err)
+	}
+
+	factor, updated, err := repo.ConsumeEmailSecondFactorChallenge(ctx, account.ID, rawCode, time.Now().UTC())
+	if err != nil {
+		t.Fatalf("consume challenge: %v", err)
+	}
+	if factor.FactorType != auth.SecondFactorTypeEmailChallenge || factor.FactorState != auth.SecondFactorStateActive {
+		t.Fatalf("unexpected second factor after consume: %+v", factor)
+	}
+	if factor.VerifiedAt == nil {
+		t.Fatal("verified second factor missing verified_at")
+	}
+	if updated.SecondFactorSetup != auth.SecondFactorSetupStateComplete {
+		t.Fatalf("account setup state = %q, want complete", updated.SecondFactorSetup)
+	}
+	if _, _, err := repo.ConsumeEmailSecondFactorChallenge(ctx, account.ID, rawCode, time.Now().UTC()); !errors.Is(err, auth.ErrNotFound) {
+		t.Fatalf("reused challenge consume error = %v, want ErrNotFound", err)
+	}
+	if _, _, err := repo.CreateEmailSecondFactorChallenge(ctx, auth.CreateEmailSecondFactorChallengeParams{
+		AccountID:       account.ID,
+		EmailNormalized: "factor@example.invalid",
+		ExpiresAt:       time.Now().UTC().Add(time.Minute),
+	}); !errors.Is(err, auth.ErrDuplicate) {
+		t.Fatalf("configured factor challenge error = %v, want ErrDuplicate", err)
 	}
 }
 

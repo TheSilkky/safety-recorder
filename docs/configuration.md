@@ -109,6 +109,7 @@ values for the same field. Within TOML, set either the direct secret key or the
 | `[auth].session_ttl` | `SAFE_SESSION_TTL` |
 | `[auth].bootstrap_secret` | `SAFE_AUTH_BOOTSTRAP_SECRET` |
 | `[auth].bootstrap_secret_file` | `SAFE_AUTH_BOOTSTRAP_SECRET_FILE` |
+| `[auth].second_factor_email_challenge_ttl` | `SAFE_SECOND_FACTOR_EMAIL_CHALLENGE_TTL` |
 | `[account_registration].mode` | `SAFE_ACCOUNT_REGISTRATION_MODE` |
 | `[account_registration].email_verification_ttl` | `SAFE_EMAIL_VERIFICATION_TTL` |
 | `[account_registration].public_web_origin` | `SAFE_PUBLIC_WEB_ORIGIN` |
@@ -205,6 +206,7 @@ values for the same field. Within TOML, set either the direct secret key or the
 | `SAFE_TEMP_UPLOAD_STAGING_QUOTA_BYTES` | `1GB` | Maximum regular `upload-*` temp staging bytes under the local temp directory before new upload bytes fail closed with a generic staging-quota error. Applies to local blob storage and S3-compatible blob staging. |
 | `SAFE_DEFAULT_INCIDENT_TOKEN_TTL` | `24h` | Default lifetime for viewer tokens created without `expires_at`. Set to `0` to disable the default for omitted `expires_at` values. |
 | `SAFE_SESSION_TTL` | `12h` | Lifetime for local account sessions created by `/v1/auth/login`. |
+| `SAFE_SECOND_FACTOR_EMAIL_CHALLENGE_TTL` | `10m` | Lifetime for single-use email second-factor setup challenge codes. Must be positive. |
 | `SAFE_ACCOUNT_REGISTRATION_MODE` | `disabled` | Public account registration mode. Supported values are `disabled`, `admin_only`, `open`, and `paid`. `open` requires SMTP email verification; `paid` is a fail-closed placeholder. |
 | `SAFE_EMAIL_VERIFICATION_TTL` | `24h` | Lifetime for single-use email verification tokens. Must be positive. |
 | `SAFE_PUBLIC_WEB_ORIGIN` | unset | Web-client origin used to build email verification links such as `/verify-email#token=...`. Required when `SAFE_ACCOUNT_REGISTRATION_MODE=open`. |
@@ -235,7 +237,7 @@ values for the same field. Within TOML, set either the direct secret key or the
 | `SAFE_MAIN_API_RATE_LIMIT_WINDOW` | `1m` | Fixed-window duration for app-level main API limits. |
 | `SAFE_MAIN_API_RATE_LIMIT_AUTH` | `30` | Main API bearer login/logout and browser cookie login/logout/CSRF requests allowed per window per hashed socket peer. Set to `0` to disable this route-class limit. |
 | `SAFE_MAIN_API_RATE_LIMIT_AUTH_REGISTER` | `10` | Public registration requests allowed per window per hashed socket peer. Set to `0` to disable this route-class limit. |
-| `SAFE_MAIN_API_RATE_LIMIT_AUTH_EMAIL_VERIFY` | `30` | Email verification requests allowed per window per hashed socket peer. Set to `0` to disable this route-class limit. |
+| `SAFE_MAIN_API_RATE_LIMIT_AUTH_EMAIL_VERIFY` | `30` | Registration email verification and email second-factor challenge/verify requests allowed per window per hashed socket peer. Set to `0` to disable this route-class limit. |
 | `SAFE_MAIN_API_RATE_LIMIT_BOOTSTRAP` | `5` | Compatibility setting for the legacy JSON bootstrap route class. The current first-admin bootstrap flow is the private `/admin/bootstrap` form. |
 | `SAFE_MAIN_API_RATE_LIMIT_ACCOUNT` | `120` | Account self-service, owner account/device recipient-key metadata, trusted-contact relationship metadata, and owner contact public-key metadata requests allowed per window per hashed socket peer. Set to `0` to disable this route-class limit. |
 | `SAFE_MAIN_API_RATE_LIMIT_INCIDENT_READ` | `300` | Incident metadata, sharing-grant metadata, and wrapped-key metadata read requests allowed per window per hashed socket peer. Set to `0` to disable this route-class limit. |
@@ -658,10 +660,12 @@ New admin-created, `/admin` bootstrap, and open-registration accounts are
 created with `second_factor_setup_state=setup_required`; existing migrated
 accounts default to `not_required` for preview compatibility. Password login
 and browser-cookie login can create a primary-authenticated session for an
-active setup-incomplete account, but main product routes fail closed until a
-future factor-specific setup flow marks the account `complete`. There is no
-`SAFE_*` setting in this foundation to choose email challenge, TOTP, WebAuthn,
-passkeys, recovery codes, or lost-factor behavior.
+active setup-incomplete account, but main product routes fail closed until
+email second-factor setup verifies a single-use challenge code and marks the
+account `complete`. Email challenge uses the configured SMTP sender, stores
+only challenge-code hashes, and remains distinct from registration email
+verification. There is no `SAFE_*` setting in this foundation to choose TOTP,
+WebAuthn, passkeys, recovery codes, or lost-factor behavior.
 
 `SAFE_ACCOUNT_REGISTRATION_MODE=paid` is accepted only as a future
 hosted-service placeholder. `POST /v1/auth/register` returns

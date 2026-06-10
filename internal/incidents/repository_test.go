@@ -187,6 +187,78 @@ func TestAccountRegistrationAndVerificationTokens(t *testing.T) {
 	}
 }
 
+func TestEmailSecondFactorChallengesCompleteSetup(t *testing.T) {
+	ctx := context.Background()
+	repo := newRepository(t, ctx)
+
+	account, err := repo.CreateAccount(ctx, auth.CreateAccountParams{
+		Username:          "email-factor-user",
+		SecondFactorSetup: auth.SecondFactorSetupStateSetupRequired,
+		PasswordHash:      "hash",
+		Role:              auth.RoleUser,
+	})
+	if err != nil {
+		t.Fatalf("create account: %v", err)
+	}
+
+	expired, expiredRaw, err := repo.CreateEmailSecondFactorChallenge(ctx, auth.CreateEmailSecondFactorChallengeParams{
+		AccountID:       account.ID,
+		EmailNormalized: "factor@example.invalid",
+		ExpiresAt:       time.Now().UTC().Add(-time.Second),
+	})
+	if err != nil {
+		t.Fatalf("create expired challenge: %v", err)
+	}
+	if expired.TokenHash == expiredRaw || len(expired.TokenHash) != 64 {
+		t.Fatalf("expired challenge did not use hash storage: raw=%q hash=%q", expiredRaw, expired.TokenHash)
+	}
+	if _, _, err := repo.ConsumeEmailSecondFactorChallenge(ctx, account.ID, expiredRaw, time.Now().UTC()); !errors.Is(err, auth.ErrNotFound) {
+		t.Fatalf("expired challenge consume error = %v, want ErrNotFound", err)
+	}
+
+	challenge, rawCode, err := repo.CreateEmailSecondFactorChallenge(ctx, auth.CreateEmailSecondFactorChallengeParams{
+		AccountID:       account.ID,
+		EmailNormalized: "Factor@Example.Invalid",
+		ExpiresAt:       time.Now().UTC().Add(time.Minute),
+	})
+	if err != nil {
+		t.Fatalf("create challenge: %v", err)
+	}
+	if rawCode == "" || challenge.TokenHash == rawCode || len(challenge.TokenHash) != 64 {
+		t.Fatalf("challenge did not use hash storage: raw=%q hash=%q", rawCode, challenge.TokenHash)
+	}
+	if challenge.EmailNormalized != "factor@example.invalid" {
+		t.Fatalf("challenge email normalized = %q, want factor@example.invalid", challenge.EmailNormalized)
+	}
+	if _, _, err := repo.ConsumeEmailSecondFactorChallenge(ctx, account.ID, "not-a-real-code", time.Now().UTC()); !errors.Is(err, auth.ErrNotFound) {
+		t.Fatalf("invalid challenge consume error = %v, want ErrNotFound", err)
+	}
+
+	factor, updated, err := repo.ConsumeEmailSecondFactorChallenge(ctx, account.ID, rawCode, time.Now().UTC())
+	if err != nil {
+		t.Fatalf("consume challenge: %v", err)
+	}
+	if factor.FactorType != auth.SecondFactorTypeEmailChallenge || factor.FactorState != auth.SecondFactorStateActive {
+		t.Fatalf("unexpected second factor after consume: %+v", factor)
+	}
+	if factor.VerifiedAt == nil {
+		t.Fatal("verified second factor missing verified_at")
+	}
+	if updated.SecondFactorSetup != auth.SecondFactorSetupStateComplete {
+		t.Fatalf("account setup state = %q, want complete", updated.SecondFactorSetup)
+	}
+	if _, _, err := repo.ConsumeEmailSecondFactorChallenge(ctx, account.ID, rawCode, time.Now().UTC()); !errors.Is(err, auth.ErrNotFound) {
+		t.Fatalf("reused challenge consume error = %v, want ErrNotFound", err)
+	}
+	if _, _, err := repo.CreateEmailSecondFactorChallenge(ctx, auth.CreateEmailSecondFactorChallengeParams{
+		AccountID:       account.ID,
+		EmailNormalized: "factor@example.invalid",
+		ExpiresAt:       time.Now().UTC().Add(time.Minute),
+	}); !errors.Is(err, auth.ErrDuplicate) {
+		t.Fatalf("configured factor challenge error = %v, want ErrDuplicate", err)
+	}
+}
+
 func TestContactPublicKeysAndSharingGrants(t *testing.T) {
 	ctx := context.Background()
 	repo := newRepository(t, ctx)

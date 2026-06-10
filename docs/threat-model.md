@@ -88,8 +88,9 @@ encrypted evidence bundles.
   headers
 - Optional account email addresses, email verification timestamps, and
   single-use email verification token hashes when open registration is enabled
-- Factor-neutral account `second_factor_setup_state` values used to block main
-  product-route access until required setup is complete
+- Account `second_factor_setup_state` values, email second-factor metadata, and
+  single-use email challenge-code hashes used to block main product-route
+  access until required setup is complete
 - Raw viewer/incident tokens returned once at creation time
 - Owner-visible viewer-token metadata for owned incidents: token IDs, labels,
   active/expired/revoked state, and creation/expiry/revocation timestamps.
@@ -190,7 +191,8 @@ encrypted evidence bundles.
   leases return `409 upload_in_progress` with a retry hint, while runtime
   coordination failures return a retryable safe error.
 - Route-class rate limiting groups main API authentication, browser-cookie
-  auth, public registration, email verification, account metadata,
+  auth, public registration, email verification, email second-factor setup,
+  account metadata,
   account/device recipient-key metadata, trusted-contact relationship metadata,
   contact-key metadata, incident metadata, sharing-grant metadata,
   wrapped-key metadata, upload,
@@ -198,10 +200,11 @@ encrypted evidence bundles.
   a hash of the socket peer identity. The legacy main-handler admin limit
   setting is retained only as a compatibility setting because current
   `/v1/admin/...` JSON routes are on the private-admin listener. Limiter keys
-  do not include raw email addresses, raw usernames, verification tokens, raw
-  session tokens, Authorization headers, raw idempotency keys, request bodies,
-  uploaded bytes, incident IDs, stored paths, object keys, plaintext, raw keys,
-  wrapped-key ciphertext, or private deployment details.
+  do not include raw email addresses, raw usernames, verification tokens,
+  second-factor challenge codes, raw session tokens, Authorization headers, raw
+  idempotency keys, request bodies, uploaded bytes, incident IDs, stored paths,
+  object keys, plaintext, raw keys, wrapped-key ciphertext, or private
+  deployment details.
 - The current listener split does not expose `/v1/health/live` or
   `/v1/health/ready`; operator readiness details should not be published on
   the main API/viewer origin or on the private-admin listener.
@@ -218,10 +221,11 @@ encrypted evidence bundles.
   verification token hashes, and activates accounts only after one successful
   token consumption. New admin-created, `/admin` bootstrap, and
   open-registration accounts start with required second-factor setup state; this
-  state blocks main product routes after primary login until a future
-  factor-specific setup flow completes it. Existing migrated accounts default to
-  `not_required` for preview compatibility. Paid registration fails closed and
-  does not create active accounts.
+  state blocks main product routes after primary login until email
+  second-factor setup verifies a single-use challenge code. Registration email
+  verification does not count as second-factor setup. Existing migrated accounts
+  default to `not_required` for preview compatibility. Paid registration fails
+  closed and does not create active accounts.
 - Cookie-authenticated unsafe `/v1` requests require a session-bound HMAC CSRF
   token in the configured header. Bearer-authenticated requests keep their
   existing behavior. Credentialed CORS is emitted only for exact configured web
@@ -396,11 +400,10 @@ The current backend does not implement incident-mode-specific controls yet, so f
   full-fidelity location evidence binding. Future implementation must test
   encrypted field handling, token-viewer allowlists, relay/log redaction, and
   envelope or authenticated metadata mismatch failures.
-- No account self-service recovery, concrete second-factor method, delegated
-  identity provider, or public account portal. The current backend has only a
-  factor-neutral setup-required account state and product-route gate. The only
-  implemented email delivery path is SMTP-backed registration email verification
-  when open registration is explicitly enabled.
+- No account self-service recovery, TOTP, WebAuthn/passkey, delegated identity
+  provider, or public account portal. The current backend has only email
+  challenge second-factor setup; it does not implement recovery codes,
+  lost-factor handling, passkeys, security keys, or delegated identity.
 - Viewer links are bearer tokens and must be shared carefully.
 - No implemented production key recovery, Keychain storage, trusted-contact
   incident access, browser decryption, break-glass key access, or playable

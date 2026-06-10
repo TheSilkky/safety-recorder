@@ -4,7 +4,7 @@ This document summarizes the current Proofline backend security assumptions and 
 
 ## Maturity
 
-Proofline is experimental and not production-ready public infrastructure. The main `/v1` API has local username/password accounts, opaque server-side sessions, factor-neutral second-factor setup state for account gating, and app-level route-class rate limits. Public self-registration is disabled by default and, when explicitly enabled for self-hosted deployments, requires SMTP-backed email verification before login. Proofline still has no implemented second-factor method, no OAuth, no JWT protection, no complete public product deployment model, no password recovery, and no public account portal.
+Proofline is experimental and not production-ready public infrastructure. The main `/v1` API has local username/password accounts, opaque server-side sessions, email challenge second-factor setup for account gating, and app-level route-class rate limits. Public self-registration is disabled by default and, when explicitly enabled for self-hosted deployments, requires SMTP-backed email verification before login. Proofline still has no TOTP, WebAuthn/passkey, lost-factor recovery, OAuth, JWT protection, complete public product deployment model, password recovery, or public account portal.
 
 The current backend stores incidents owned by local accounts. Incidents are
 generic by default and may include optional incident-mode, capture-profile,
@@ -78,12 +78,15 @@ New admin-created accounts, `/admin` bootstrap accounts, and open-registration
 accounts start with `second_factor_setup_state=setup_required`. Password login
 and browser-cookie login can still create primary-authenticated sessions for
 active setup-incomplete accounts, but main product routes fail closed with
-`403 second_factor_setup_required` until a future factor-specific setup flow
-marks the state `complete`. `GET /v1/account`, browser CSRF metadata for future
-setup flows, logout, and private-admin listener routes remain available. Existing
-migrated accounts default to `not_required` for preview compatibility, which
-must be revisited before real required-2FA preview deployments. Email
-verification is distinct from second-factor setup and does not complete it.
+`403 second_factor_setup_required` until email second-factor setup verifies a
+single-use challenge code and marks the state `complete`. `GET /v1/account`,
+browser CSRF metadata, email second-factor setup routes, logout, and
+private-admin listener routes remain available. Existing migrated accounts
+default to `not_required` for preview compatibility, which must be revisited
+before real required-2FA preview deployments. Registration email verification
+is distinct from second-factor setup and does not complete it. Email challenge
+codes are sent only through the configured email sender, stored only as hashes,
+expire, and are consumed once.
 
 When enabled, main `/v1` browser cookie auth uses a dedicated session cookie
 for future web-client calls. Bearer auth remains supported for CLI, simulator,
@@ -189,7 +192,8 @@ paths are also token-bearing and must be redacted.
   keys and errors do not include raw tokens, raw idempotency keys, request
   bodies, uploaded bytes, stored paths, object keys, plaintext, or raw keys.
 - Main API route-class rate limiting is enabled by default for authentication,
-  public registration, email verification, bootstrap, account metadata,
+  public registration, email verification, email second-factor setup,
+  bootstrap, account metadata,
   account/device recipient-key metadata, trusted-contact relationship metadata,
   contact-key metadata, incident metadata, sharing-grant metadata,
   wrapped-key metadata, upload,
@@ -198,10 +202,10 @@ paths are also token-bearing and must be redacted.
   current `/v1/admin/...` JSON routes are on the private-admin listener. Limiter
   keys use server-controlled class labels and a hash of the socket peer
   identity. They do not include raw email addresses, raw usernames,
-  verification tokens, raw session tokens, Authorization headers, raw
-  idempotency keys, request bodies, uploaded bytes, incident IDs, stored paths,
-  object keys, plaintext, raw keys, wrapped-key ciphertext, or private
-  deployment details.
+  verification tokens, second-factor challenge codes, raw session tokens,
+  Authorization headers, raw idempotency keys, request bodies, uploaded bytes,
+  incident IDs, stored paths, object keys, plaintext, raw keys,
+  wrapped-key ciphertext, or private deployment details.
 - The authenticated duplicate chunk reconciliation route compares a requested
   normalized chunk identity and expected immutable fingerprint against accepted
   chunk metadata without re-uploading ciphertext, reading stored bytes, or
@@ -517,8 +521,7 @@ Normal file or object removal is not treated as guaranteed secure erasure. Deplo
   and future policy boundaries in
   [mode-aware retention policy](mode-aware-retention-policy.md)
 - No malware/content scanning for uploaded encrypted blobs
-- No implemented account self-service recovery, concrete second-factor method,
+- No implemented account self-service recovery, TOTP, WebAuthn/passkey,
   delegated identity provider, or public account portal. The current backend
-  only has a factor-neutral setup-required account state and product-route gate.
-  The only implemented email delivery path is SMTP-backed registration email
-  verification when open registration is explicitly enabled.
+  has email challenge second-factor setup only; it does not implement recovery
+  codes, lost-factor handling, passkeys, security keys, or delegated identity.

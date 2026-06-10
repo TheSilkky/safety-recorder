@@ -31,3 +31,4 @@ valkey_password_file = "/run/proofline-secrets/valkey-password.example"
 
 [auth]
 bootstrap_secret_file = "/run/proofline-secrets/auth-bootstrap-secret.example"
+second_factor_email_challenge_ttl = "10m"

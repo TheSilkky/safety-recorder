@@ -92,6 +92,7 @@ func run(logger *slog.Logger, configFilePath string) error {
 		BootstrapSecret:            cfg.AuthBootstrapSecret,
 		WebAuth:                    webAuthConfig(cfg.WebAuth),
 		AccountRegistration:        accountRegistrationConfig(cfg.AccountRegistration),
+		SecondFactorEmailTTL:       cfg.SecondFactorEmailChallengeTTL,
 		EmailSender:                newEmailSender(cfg.Email),
 		MainRateLimit:              mainRateLimitConfig(cfg.MainAPIRateLimit),
 		MainRateLimiter:            newMainRateLimiter(cfg, coord),

@@ -90,8 +90,10 @@ idempotency, durable blob commits, and metadata.
 
 Main `/v1` routes require `Authorization: Bearer <session_token>` except for
 login, disabled-by-default registration, and email verification; authenticated
-routes can also use a browser session cookie when `SAFE_WEB_AUTH_ENABLED=true`
-and no bearer token is present. Browser login uses `POST /v1/auth/web/login`,
+setup routes also include email second-factor challenge and verification.
+Authenticated routes can also use a browser session cookie when
+`SAFE_WEB_AUTH_ENABLED=true` and no bearer token is present. Browser login uses
+`POST /v1/auth/web/login`,
 returns safe session metadata without a raw token, and sets an HttpOnly session cookie.
 `GET /v1/auth/web/csrf` returns a session-bound CSRF token for unsafe
 cookie-authenticated requests, and `POST /v1/auth/web/logout` revokes the

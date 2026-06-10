@@ -49,6 +49,8 @@ func TestMainAPIRateLimitGroupsRoutesWithSafeKeys(t *testing.T) {
 		{http.MethodPost, "/v1/auth/email/verify", ":auth_email_verify:", 23},
 		{http.MethodGet, "/v1/account", ":account:", 13},
 		{http.MethodPost, "/v1/account/password", ":account:", 13},
+		{http.MethodPost, "/v1/account/second-factor/email/challenge", ":auth_email_verify:", 23},
+		{http.MethodPost, "/v1/account/second-factor/email/verify", ":auth_email_verify:", 23},
 		{http.MethodPost, "/v1/account-recipient-keys", ":account:", 13},
 		{http.MethodGet, "/v1/account-recipient-keys", ":account:", 13},
 		{http.MethodGet, "/v1/account-recipient-keys/recipient_key_secret", ":account:", 13},

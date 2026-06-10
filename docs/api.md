@@ -70,16 +70,18 @@ Non-upload JSON bodies are limited to 64 KiB. Upload file bytes are limited by `
 
 Main API route classes are rate limited by default before authentication using
 safe server-controlled keys based on route class and a hash of the socket peer
-identity. Login/logout, public registration, and email verification have
-separate authentication-related route classes. Existing main API limit classes
-also cover account metadata, account/device recipient-key metadata, contact-key
-metadata, trusted-contact relationship metadata, incident metadata reads and
-writes, sharing-grant metadata, wrapped-key metadata, uploads, reconciliation,
-streams, incident tokens, and private encrypted downloads. Rate-limit keys do not
-include raw email addresses, raw usernames, verification tokens, raw session
-tokens, Authorization headers, raw idempotency keys, request bodies, uploaded
-bytes, incident IDs, stored paths, object keys, plaintext, raw keys, wrapped-key
-ciphertext, or private deployment details. Exhausted limits return
+identity. Login/logout, public registration, registration email verification,
+and email second-factor challenge routes have separate authentication-related
+route classes. Existing main API limit classes also cover account metadata,
+account/device recipient-key metadata, contact-key metadata, trusted-contact
+relationship metadata, incident metadata reads and writes, sharing-grant
+metadata, wrapped-key metadata, uploads, reconciliation, streams, incident
+tokens, and private encrypted downloads. Rate-limit keys do not include raw
+email addresses, raw usernames, verification tokens, second-factor challenge
+codes, raw session tokens, Authorization headers, raw idempotency keys, request
+bodies, uploaded bytes, incident IDs, stored paths, object keys, plaintext, raw
+keys, wrapped-key ciphertext, or private deployment details. Exhausted limits
+return
 `429 rate_limited` with `Retry-After`. A configured coordination limiter
 failure returns `503 rate_limit_unavailable` with a generic response. See
 [configuration](configuration.md) for `SAFE_MAIN_API_RATE_LIMIT_*` settings.
@@ -150,7 +152,7 @@ Accounts also carry a factor-neutral `second_factor_setup_state`:
 | State | Meaning |
 |---|---|
 | `not_required` | Product-route access is not blocked by second-factor setup. Existing migrated accounts default to this state for preview compatibility. |
-| `setup_required` | Primary login can create bearer or browser-cookie sessions, but main product routes fail closed until setup is completed by a future factor-specific flow. |
+| `setup_required` | Primary login can create bearer or browser-cookie sessions, but main product routes fail closed until setup is completed by email second-factor verification or a future factor-specific flow. |
 | `complete` | Required second-factor setup is complete for product-route access. |
 
 New accounts created through the private admin API, the `/admin` bootstrap
@@ -158,7 +160,8 @@ surface, or open registration start in `setup_required`. Email verification
 only moves `account_state` from `pending_email_verification` to `active`; it
 does not complete second-factor setup. While setup is required, authenticated
 clients can inspect `GET /v1/account`, obtain browser CSRF metadata for future
-setup flows, and log out. Other main product routes return:
+setup flows, request or verify email second-factor setup, and log out. Other
+main product routes return:
 
 ```json
 {
@@ -169,8 +172,96 @@ setup flows, and log out. Other main product routes return:
 }
 ```
 
-No concrete email challenge, TOTP, WebAuthn/passkey, security-key, recovery, or
-lost-factor flow is implemented by this foundation.
+Email challenge is the first concrete second-factor setup method. TOTP,
+WebAuthn/passkey, security-key, recovery, and lost-factor flows are not
+implemented.
+
+### `POST /v1/account/second-factor/email/challenge`
+
+Authenticated setup route for starting email second-factor setup after primary
+login. Setup-incomplete bearer and browser-cookie sessions may call this route;
+cookie-authenticated requests still require the configured CSRF header.
+
+Request:
+
+```json
+{
+  "email": "user@example.com"
+}
+```
+
+If `email` is omitted, the server uses the account's already verified
+registration email address when one exists. The registration email verification
+record itself is not a second factor. Admin-created accounts without a verified
+account email must provide an email address here. The server validates and
+normalizes the address, creates or refreshes a pending `email_challenge`
+second-factor record, stores only a challenge-code hash, and sends the raw code
+only through the configured email sender. The response never includes the raw
+code or destination email address.
+
+Response `202`:
+
+```json
+{
+  "status": "challenge_sent",
+  "message": "If the email challenge can be completed, a verification email will be sent.",
+  "expires_at": "2026-06-10T12:10:00Z"
+}
+```
+
+Challenge codes use `SAFE_SECOND_FACTOR_EMAIL_CHALLENGE_TTL`, defaulting to
+`10m`. The request and verification routes use the
+`SAFE_MAIN_API_RATE_LIMIT_AUTH_EMAIL_VERIFY` route class. Email delivery
+failures return `503 email_unavailable`; invalid or missing email input returns
+`400 email_required` or `400 invalid_email`; an account that already has an
+active email factor returns `409 second_factor_already_configured`.
+
+### `POST /v1/account/second-factor/email/verify`
+
+Authenticated setup route for consuming an email second-factor challenge code.
+The code is account-bound, single-use, expires, and is looked up by hash.
+
+Request:
+
+```json
+{
+  "code": "challenge-code-from-email"
+}
+```
+
+`token` is accepted as a compatibility alias for `code`. Successful verification
+marks the email factor active, consumes other pending challenges for that
+factor, and sets the account `second_factor_setup_state` to `complete`.
+
+Response `200`:
+
+```json
+{
+  "status": "verified",
+  "second_factor": {
+    "id": "sf_...",
+    "factor_type": "email_challenge",
+    "state": "active",
+    "verified_at": "2026-06-10T12:04:00Z"
+  },
+  "account": {
+    "id": "acct_...",
+    "username": "user",
+    "account_state": "active",
+    "second_factor_setup_state": "complete",
+    "second_factor_setup_required": false,
+    "role": "user",
+    "created_at": "2026-06-10T11:00:00Z",
+    "updated_at": "2026-06-10T12:04:00Z",
+    "password_changed_at": "2026-06-10T11:00:00Z"
+  }
+}
+```
+
+Expired, reused, wrong-account, or invalid codes all return the same
+`400 second_factor_challenge_invalid` response. Challenge codes, token hashes,
+destination email addresses, request bodies, session tokens, CSRF tokens, and
+other credential material must not be logged.
 
 ### `POST /v1/auth/login`
 
