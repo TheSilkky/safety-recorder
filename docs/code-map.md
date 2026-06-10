@@ -45,6 +45,13 @@ contact key-sharing boundaries in
 - `.github/workflows/ci.yml`: runs Go tests with a coverage signal on pull requests and pushes, runs `govulncheck`, builds the `proofline-server-linux-amd64` binary artifact, gates release binary attestation and trusted GHCR publishing on the vulnerability scan, uploads the binary as a GitHub Release asset on `v*` tag pushes, builds the Docker image, and publishes attested images to GitHub Container Registry from a trusted job limited to `main`, `develop`, and `v*` tag pushes.
 - `.dockerignore`: excludes local runtime, review, and build artifacts from the root Docker build context used by `Dockerfile`.
 - `cmd/api`: starts one main API/viewer HTTP server per main bind address and one private-admin HTTP server per admin bind address, loads config, enforces the local account bootstrap gate, checks the selected coordination backend, opens the selected metadata backend, creates storage, wires shared handlers including main API, private admin JSON API, public viewer rate limiting, upload coordination, and the private `/admin` dashboard, starts the deletion worker, and handles graceful shutdown.
+- `cmd/stream-ingress`: starts a separate regional relay skeleton listener with
+  only `GET /health/live` and `GET /health/ready`. It has command-local
+  `SAFE_STREAM_INGRESS_*` environment/flag settings for private bind address,
+  optional relay identity/region labels, and readiness behavior. It does not
+  mount `/v1`, `/admin`, public viewer routes, upload routes, bundle/deletion
+  routes, metrics, operator routes, storage, coordination, decryption, raw-key,
+  or core relay preflight/commit behavior.
 - `cmd/simclient`: simulates future client flows by logging in, creating an incident, creating a media stream, encrypting and uploading complete chunks, completing or failing streams, sending periodic checkins, and optionally testing hash-failure retry, bundle download, local decrypt verification, durable desktop-recorder staging, local file input, ffmpeg segment capture, restart/resume behavior, and poor-network retry controls. Token-bearing viewer URLs are omitted from simulator output.
 - `internal/config`: reads TOML config files, `SAFE_*` environment overrides,
   and `SAFE_*_FILE` secret files for backend selectors, backend-specific
@@ -79,10 +86,10 @@ contact key-sharing boundaries in
   loading and fake secret-file mounts. These files are local release-smoke
   helpers, not production deployment manifests.
 
-There is no implemented `cmd/stream-ingress` package. The future regional
-stream-ingress relay is planning-only in
-[regional-stream-ingress-relay.md](regional-stream-ingress-relay.md). If added
-later, it should be a separate upload-only edge that stages ciphertext
+The implemented `cmd/stream-ingress` package is a skeleton only. The future
+regional stream-ingress relay upload path remains planned in
+[regional-stream-ingress-relay.md](regional-stream-ingress-relay.md). Later
+upload work should keep it a separate upload-only edge that stages ciphertext
 temporarily and lets the core API remain authoritative for authorization,
 idempotency, durable blob commits, and metadata.
 

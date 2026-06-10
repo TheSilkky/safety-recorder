@@ -1,10 +1,12 @@
 # Regional Stream Ingress Relay Design
 
 This document defines a future optional regional stream-ingress relay for
-complete encrypted chunk uploads. It is a design document only. It does not add
-routes, binaries, configuration, deployment automation, schema, storage
-backends, decryption, key custody, web-client code, mobile-client code,
-protocol code, or public production readiness.
+complete encrypted chunk uploads. The current implementation adds only a
+separate `cmd/stream-ingress` service skeleton with token-neutral liveness and
+readiness routes. Relay upload, relay session, core preflight, core commit,
+fanout, metrics, deployment automation, schema, storage backends, decryption,
+key custody, web-client code, mobile-client code, protocol code, and public
+production readiness remain unimplemented.
 
 ## Summary
 
@@ -45,10 +47,20 @@ separable from broader cluster work:
   in-progress leases
 - main API and public viewer rate limiting
 - main API/viewer and private `/admin` listener separation
+- a separate `cmd/stream-ingress` skeleton that can be run and tested without
+  changing main API behavior
 
 Those features do not make `/v1` production-ready public infrastructure. The
-relay design is an optional future upload edge, not a reason to expose the
-whole main API or private admin surfaces.
+relay skeleton exposes only `/health/live` and `/health/ready`; it does not
+implement an upload edge and is not a reason to expose the whole main API or
+private admin surfaces.
+
+Parent epic #202 is split into child implementation issues. Issue #289 adds
+only the service boundary, config surface, route-surface tests, and
+implemented-versus-planned documentation. Later slices are expected to add, in
+order, narrow core relay preflight/commit routes, relay upload staging and
+forwarding, relay abuse controls, optional Valkey/Redis-compatible counters,
+service identity, deployment docs, and any explicitly scoped smoke validation.
 
 Future stream variant and supersession behavior is documented in
 [capture-stream-variants.md](capture-stream-variants.md). The relay may use
@@ -75,7 +87,7 @@ for backend confirmation and evidence preservation.
 
 ## Non-Goals
 
-- No implementation in this issue.
+- No relay upload implementation in this issue.
 - No public exposure of the full current `/v1` control plane.
 - No admin routes on the ingress service.
 - No broad API gateway behavior.
@@ -94,12 +106,21 @@ for backend confirmation and evidence preservation.
 
 ## Service Boundary
 
-The future relay should be a separate binary or service, not a new route tree
-mounted into the existing private-admin listener. A future implementation might
-use `cmd/stream-ingress`, but the exact package shape should be decided in the
-implementation issue.
+The relay boundary is a separate `cmd/stream-ingress` command, not a new route
+tree mounted into the existing main API/viewer listener or private-admin
+listener.
 
-The ingress service may expose only:
+The current skeleton exposes only:
+
+- `GET /health/live`
+- `GET /health/ready`
+
+The readiness response reports coarse skeleton state and whether optional relay
+identity and region labels are configured. It does not return the configured
+label values, private bind address, service credentials, upstream endpoints,
+paths, object keys, tokens, user safety data, or upload state.
+
+Future upload slices may expose only:
 
 - a narrow complete-chunk upload route family
 - token-neutral liveness/readiness routes that reveal only coarse relay status
@@ -114,6 +135,8 @@ The ingress service must not expose:
 - bundle download routes
 - deletion, retention, backup, restore, migration, support, escrow,
   break-glass, decryption, raw-key, or operator routes
+- metrics routes, unless a later issue explicitly designs a safe low-cardinality
+  metrics boundary
 
 The relay is not an authorization authority. A trusted ingress service identity
 may let it call narrow core preflight and commit endpoints, but it must not
@@ -343,7 +366,8 @@ behavior changed.
 
 Split implementation into small issues:
 
-1. Add a `cmd/stream-ingress` skeleton with no upload behavior yet.
+1. Add a `cmd/stream-ingress` skeleton with no upload behavior yet. Completed
+   by #289.
 2. Add narrow core service-authenticated preflight and commit endpoints.
 3. Implement relay complete-chunk upload staging, hash verification, and core
    forwarding.
@@ -371,13 +395,16 @@ Expected implementation tests:
 - local in-memory limiter works for single-node/dev
 - core-confirmed success is required before relay success
 
-## Validation For This Design
+## Validation For This Slice
 
-This design issue should remain Markdown-only. Validation is:
+The #289 skeleton slice changes Go and Markdown. Validation is:
 
+- route-surface tests that verify only health/readiness routes are mounted
+- `gofmt -w ./cmd ./internal ./migrations`
+- `go test ./...`
+- `go vet ./...`
 - `git diff --check`
 - manual review against `README.md`, `AGENTS.md`, `docs/api.md`,
   `docs/architecture.md`, `docs/configuration.md`, `docs/deployment.md`,
   `docs/production-cluster-scope.md`, `docs/security-model.md`,
   `docs/threat-model.md`, and `docs/code-map.md`
-- no Go code, migrations, workflows, Dockerfiles, or Compose files changed

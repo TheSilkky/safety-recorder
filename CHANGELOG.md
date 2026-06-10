@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Added a separate `cmd/stream-ingress` regional relay skeleton with private
+  bind/readiness config, token-neutral health/readiness routes only, route
+  surface tests, and docs clarifying that relay upload, core commit, fanout,
+  metrics, service identity, storage, and production readiness remain
+  unimplemented.
+
 - Added a planning-only upload telemetry boundary that keeps client upload
   telemetry local before v1 preview and defines safe constraints for any future
   authenticated coarse-code telemetry endpoint.

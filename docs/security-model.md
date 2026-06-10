@@ -522,8 +522,9 @@ Normal file or object removal is not treated as guaranteed secure erasure. Deplo
 - No implemented resumable upload or upload lease protocol; the future design
   is planned in
   [resumable-upload-lease-protocol.md](resumable-upload-lease-protocol.md)
-- No implemented regional stream-ingress relay; the future design is planned
-  in
+- Only a regional stream-ingress relay health/readiness skeleton is
+  implemented. Relay upload, relay sessions, core preflight/commit, fanout,
+  metrics, service identity, storage, and coordination remain planned in
   [regional-stream-ingress-relay.md](regional-stream-ingress-relay.md)
 - No implemented mode-driven access, escalation, retention, key-custody,
   trusted-contact incident delivery, dead-man switch notification, browser

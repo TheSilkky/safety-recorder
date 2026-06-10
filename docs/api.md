@@ -1907,9 +1907,11 @@ Future upload telemetry remains client-local before v1 preview unless a later
 issue implements the safe coarse-code boundary documented in
 [upload-telemetry-boundary.md](upload-telemetry-boundary.md).
 
-The current API does not implement a regional stream-ingress relay or
-service-authenticated relay preflight/commit endpoints. The future relay design
-is documented in [regional-stream-ingress-relay.md](regional-stream-ingress-relay.md).
+The current API does not implement regional stream-ingress upload routes or
+service-authenticated relay preflight/commit endpoints. A separate
+`cmd/stream-ingress` skeleton exposes only `/health/live` and `/health/ready`;
+the future relay upload design is documented in
+[regional-stream-ingress-relay.md](regional-stream-ingress-relay.md).
 Any implementation must keep the core API authoritative for authorization,
 idempotency, final blob commits, and metadata, and must not expose the full
 `/v1` control plane or admin routes through the relay.
