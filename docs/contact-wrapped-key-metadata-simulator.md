@@ -126,6 +126,18 @@ reading the artifact and unwrapping through the development contact key. If
 `proofline-sim-contact.key.json` next to the wrapped-key artifact. Both files are
 local development state and should stay in ignored paths.
 
+This `age-v1-x25519` artifact is a simulator prototype only. The accepted first
+production v1 preview wrapping profile is documented in
+[post-quantum-envelope.md](post-quantum-envelope.md) with:
+
+```text
+wrapping_algorithm = proofline-pq-mlkem768-hkdfsha384-aes256gcm
+wrapping_algorithm_version = 1
+```
+
+Do not treat the simulator artifact as a production PQ test vector, runtime
+default, or compatibility fallback for real-user preview evidence.
+
 ## Development Manifest Shape
 
 A local simulator manifest can use a shape like this:
@@ -189,20 +201,17 @@ message layout, authentication, encoding, and random generation used by the
 wrapped-key ciphertext. The simulator records the profile as `age-v1-x25519` and
 rejects unsupported algorithms when reading artifacts.
 
-Other candidate directions for future production work remain:
+The accepted first production direction is now the pure post-quantum
+`ML-KEM-768 + HKDF-SHA384 + AES-256-GCM` profile. Future simulator PQ work
+should generate separate conformance fixtures for that profile instead of
+mutating the existing `age-v1-x25519` development artifact in place.
 
-- HPKE using a maintained implementation and a documented ciphersuite.
-- An `age`-style recipient stanza for development artifacts if the prototype
-  favors a file-oriented format.
-- A platform-compatible ECDH plus HKDF plus AEAD or key-wrap profile only if it
-  is a reviewed standard profile implemented through stable libraries or
-  platform APIs.
-
-The current Go toolchain provides documented primitives such as `crypto/ecdh`,
+The current Go toolchain provides documented primitives such as `crypto/mlkem`,
 `crypto/hkdf`, `crypto/rand`, and the existing AES-GCM code path. Those
-primitives are not enough by themselves to justify an ad hoc wrapping protocol.
-The design should choose or reference a reviewed profile rather than inventing
-message layout, key derivation context, or authentication rules locally.
+primitives are still not enough by themselves to justify an ad hoc wrapping
+protocol. Simulator or runtime PQ work must follow the accepted message layout,
+key derivation context, authentication rules, limits, and fail-closed behavior
+in [post-quantum-envelope.md](post-quantum-envelope.md).
 
 For future browser or mobile compatibility, the prototype should record:
 

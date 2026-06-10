@@ -36,10 +36,11 @@ be designed separately from the encryption envelope itself.
 The contact public-key lifecycle, trusted-contact grants, and wrapped-key
 metadata boundary are designed in
 [contact-key-sharing-grants.md](contact-key-sharing-grants.md).
-The v1-required first pure post-quantum contact-wrapping profile is documented
-in [post-quantum-envelope.md](post-quantum-envelope.md). That design uses
-ML-KEM-768, HKDF-SHA384, SHA-384 metadata digests, and AES-256-GCM while keeping
-the backend ciphertext-only by default.
+The v1-required first pure post-quantum contact-wrapping profile is accepted in
+[post-quantum-envelope.md](post-quantum-envelope.md). That profile uses
+`proofline-pq-mlkem768-hkdfsha384-aes256gcm-v1` with ML-KEM-768,
+HKDF-SHA384, SHA-384 metadata digests, and AES-256-GCM while keeping the backend
+ciphertext-only by default.
 
 ## Goals
 
@@ -57,9 +58,12 @@ the backend ciphertext-only by default.
 
 ## Non-Goals For This Milestone
 
+- No implementation.
 - No iOS, Android, or web-client code.
 - No browser decryption implementation.
 - No server-side decryption implementation.
+- No new API routes.
+- No database schema changes.
 - No key-custody, wrapped-key, decryption, or emergency-access behavior tied to
   incident-mode, capture-profile, escalation-policy, or sharing-state metadata.
 - No playable media export.
@@ -325,6 +329,38 @@ Initial production direction:
 - Treat [post-quantum-envelope.md](post-quantum-envelope.md) as the required
   first pure post-quantum wrapping profile for v1 preview contact-wrapped CEKs
   until an explicit protocol decision replaces it.
+
+## Device Loss, Rotation, And Recovery
+
+Production clients must assume that an owner device can disappear during the
+incident when access is needed. A lost, damaged, powered-off, seized, destroyed,
+or otherwise unavailable device must not be the only holder of usable key
+material.
+
+Future owner-device behavior should follow these rules:
+
+- each account device should have its own recipient key material
+- long-term private keys should not be copied between devices as the normal
+  pairing flow
+- adding a device should require approval from an existing trusted device,
+  trusted contact, recovery credential, or separately designed recovery policy
+- once a new device is trusted, an authorized client that still has CEK access
+  should wrap relevant CEKs to that device's active recipient key
+- the backend must not create replacement wrapped keys by decrypting existing
+  wrapped-key ciphertext in the default mode
+- lost or revoked devices must stop receiving new wrapped keys
+- revocation cannot claw back CEKs, wrapped keys, ciphertext bundles, or
+  plaintext already downloaded by an authorized actor
+- recovery UX must distinguish account recovery, device replacement,
+  trusted-contact key replacement, grant revocation, CEK rotation, and optional
+  break-glass policy
+
+Future implementation should record recipient key versions and key states
+explicitly enough that clients can stop wrapping to lost or revoked keys without
+mutating historical records. Older wrapped-key records may need to remain for
+audit, restore consistency, or already-granted access, but delivery policy should
+fail closed when a grant, recipient key, or wrapped-key record is revoked,
+expired, lost, or rotated out of active use.
 
 ## Trusted Contact Access
 

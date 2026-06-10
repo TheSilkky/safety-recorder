@@ -194,12 +194,27 @@ Server-stored wrapped-key records must not include:
 - request bodies, uploaded bytes, stored paths, staging paths, object keys, or
   private deployment details
 
+The first production wrapping format for v1 preview is the accepted
+post-quantum profile in [post-quantum-envelope.md](post-quantum-envelope.md).
+Future runtime code should store profile records through the existing fields
+with:
+
+```text
+wrapping_algorithm = proofline-pq-mlkem768-hkdfsha384-aes256gcm
+wrapping_algorithm_version = 1
+```
+
+The current routes remain generic metadata storage and delivery routes until
+runtime implementation adds profile validation. They must not be described as
+cryptographic validators merely because they can already store those strings.
+
 The wrapping format must use stable, documented cryptographic libraries or
 platform APIs. Do not implement custom public-key encryption, KDF, AEAD,
-padding, MAC, random generator, or secret-sharing primitives in this
-repository. A future implementation issue should choose a reviewed profile,
-such as HPKE with a maintained library or another documented recipient format,
-and document compatibility with future mobile or trusted-contact clients.
+padding, MAC, random generator, or secret-sharing primitives in this repository.
+Do not invent alternate undocumented encodings for wrapped-key records. Any
+future suite that replaces the accepted PQ profile needs explicit identifiers,
+compatibility tests, migration notes, and future mobile or trusted-contact
+client review.
 
 ## Delivery
 

@@ -370,6 +370,11 @@ Contact key states are:
 New sharing grants require an `active` contact public key. The API can register
 a new contact by omitting `contact_id`, or rotate an existing contact by
 providing an account-owned `contact_id`; rotated keys receive the next version.
+The examples below use the current simulator-development `age-v1-x25519`
+profile. The accepted v1 preview production profile is documented in
+[post-quantum-envelope.md](post-quantum-envelope.md) and uses
+`proofline-pq-mlkem768-hkdfsha384-aes256gcm-v1`; current routes store metadata
+and do not yet perform production PQ cryptographic validation.
 
 ### `POST /v1/contact-public-keys`
 
@@ -542,6 +547,19 @@ or server escrow material.
 Bundle manifests remain key-free. The current public incident viewer does not
 deliver wrapped keys, and public viewer bundle downloads keep their existing
 ciphertext-only behavior.
+
+The examples below use the current simulator-development `age-v1-x25519`
+profile. Future v1 preview runtime-default wrapped-key records should use the
+accepted post-quantum profile in [post-quantum-envelope.md](post-quantum-envelope.md)
+with these field values:
+
+```text
+wrapping_algorithm = proofline-pq-mlkem768-hkdfsha384-aes256gcm
+wrapping_algorithm_version = 1
+```
+
+The current API is a metadata storage and delivery boundary, not a runtime PQ
+profile validator.
 
 ### `POST /v1/incidents/{incident_id}/wrapped-keys`
 

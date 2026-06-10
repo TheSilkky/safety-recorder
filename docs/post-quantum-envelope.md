@@ -7,7 +7,7 @@ model.
 
 This document defines the required v1 preview pure post-quantum encryption
 envelope for Proofline evidence media and wrapped media-key metadata. The
-proposed suite is:
+accepted first production profile uses:
 
 ```text
 ML-KEM-768 + HKDF-SHA384 + AES-256-GCM
@@ -47,12 +47,12 @@ This envelope keeps the same backend posture:
 - bundle and viewer flows must remain explicit about whether key-wrapping
   metadata is present and who can use it
 
-The post-quantum envelope must become the documented and tested default before
-v1 preview. It is not a transparent in-place replacement for
-`safety-recorder-chunk-encryption-v1`; it should be introduced as an explicit
-new scheme with compatibility tests and migration notes. Legacy or simulator
-envelopes may remain for development, migration, or test compatibility, but
-they must not be the real-user v1 preview default.
+The post-quantum envelope must be fully implemented, documented, tested, and
+made the default before v1 preview. It is not a transparent in-place replacement
+for `safety-recorder-chunk-encryption-v1`; it should be introduced as an
+explicit new scheme with compatibility tests and migration notes. Legacy or
+simulator envelopes may remain for development, migration, or test compatibility,
+but they must not be the real-user v1 preview default.
 
 ## Goals
 
@@ -156,22 +156,45 @@ than to all user evidence.
 | AAD | Additional authenticated data passed to AES-GCM. |
 | Suite ID | Stable identifier for algorithm choices and serialization rules. |
 
-## Proposed Suite Identifiers
+## Accepted Production Profile
 
-Use explicit identifiers. Do not infer behavior from partial algorithm names.
+This is the accepted first production wrapping profile for v1 preview
+runtime-default implementation. Runtime code must not land a different
+post-quantum wrapping profile unless this document, compatibility tests, and
+migration notes are updated first.
+
+Use explicit identifiers. Do not infer behavior from partial algorithm names or
+from caller-provided compatibility flags.
 
 ```text
 Scheme: proofline-pq-envelope-v1
 Suite: proofline-pq-mlkem768-hkdfsha384-aes256gcm-v1
+Wrapping algorithm: proofline-pq-mlkem768-hkdfsha384-aes256gcm
+Wrapping algorithm version: 1
 KEM: ML-KEM-768
 KDF: HKDF-SHA384
 AEAD: AES-256-GCM
 Digest: SHA-384
+Payload envelope magic: PLPQENC1
+Wrapped-key ciphertext magic: PLPQWK1
+Maximum recipients per CEK scope: 16
 ```
 
 The implementation must reject unknown mandatory schemes, unknown suite IDs,
 unknown KEM identifiers, unknown KDF identifiers, unknown AEAD identifiers, and
 unknown digest identifiers. It must not silently fall back to older algorithms.
+
+Current server wrapped-key metadata routes are generic storage and delivery
+routes. The first production PQ runtime implementation must use these values in
+the existing fields:
+
+```text
+wrapping_algorithm = proofline-pq-mlkem768-hkdfsha384-aes256gcm
+wrapping_algorithm_version = 1
+```
+
+The older `age-v1-x25519` value remains a simulator-development profile only.
+It must not be advertised as the v1 preview default.
 
 ## Key Encoding And Key IDs
 
@@ -197,7 +220,7 @@ unknown key types.
 
 Recipient key IDs are non-secret identifiers derived only from the canonical
 recipient public-key record, never from a decapsulation key or shared secret.
-The proposed initial key ID format is:
+The accepted initial key ID format is:
 
 ```text
 recipient_key_id = "pqk1_" || base64url_no_padding(SHA384(canonical_public_key_record))
@@ -212,6 +235,11 @@ digest = SHA-384
 encoded_encapsulation_key = <1184-byte ML-KEM-768 public key>
 key_version = <monotonic recipient-key version or creation identifier>
 ```
+
+The canonical public-key record uses the field order shown above. Each field is
+encoded as `uint16 field_name_length`, UTF-8 field name bytes,
+`uint32 value_length`, and value bytes. String values are UTF-8. Binary values
+are raw bytes, not base64, inside canonical profile bytes.
 
 The key ID is a lookup and audit identifier. It does not grant access and must not
 be treated as proof that a recipient controls the corresponding private key.
@@ -241,11 +269,12 @@ For streaming media, prefer one CEK per stream or per bounded chunk group. Avoid
 using one CEK for every incident forever. This limits blast radius if one key or
 nonce domain is compromised.
 
-## Envelope Structure
+## Envelope And Wrapped-Key Record Shape
 
-A future serialized envelope should contain a compact binary framing or a
-canonical JSON/CBOR header followed by ciphertext. The exact serialization can be
-chosen later, but the logical model should be stable.
+The accepted profile uses fixed-order binary encodings for cryptographic inputs
+and binary ciphertext containers. JSON API fields are transport wrappers around
+those profile values; implementations must not authenticate ad hoc JSON
+stringification.
 
 ```text
 Envelope
@@ -284,6 +313,91 @@ separate authenticated metadata rows, or delivered through grant-scoped API
 responses. The storage choice must not change the cryptographic boundary: the
 backend may store wrapped CEKs but not raw CEKs or recipient private keys.
 
+Initial v1 preview server placement is:
+
+- payload chunks use the new PQ payload envelope only after the runtime-default
+  implementation lands
+- server-stored wrapped-key records use authenticated owner or future
+  grant-scoped `/v1` API responses
+- current evidence bundle manifests remain key-free until a separate
+  grant-scoped bundle-manifest design is accepted
+- public token-only viewer responses must not deliver trusted-contact wrapped
+  keys by default
+
+The payload envelope container uses:
+
+```text
+magic = "PLPQENC1\n"
+version = 1
+header_length = uint32 big-endian
+payload_header = canonical profile header bytes
+payload_ciphertext_and_tag = AES-256-GCM output
+```
+
+The header length limit is 16 KiB. Header bytes are authenticated as payload
+AEAD AAD and are also digested with SHA-384 for CEK wrapping records.
+
+The `wrapped_key_ciphertext` API field is URL-safe base64 without padding over
+this binary profile frame:
+
+```text
+magic = "PLPQWK1\n"
+version = 1
+kem_ciphertext_length = uint16 big-endian, value 1088
+kem_ciphertext = 1088-byte ML-KEM-768 ciphertext
+cek_wrap_nonce_length = uint8, value 12
+cek_wrap_nonce = 96-bit AES-GCM nonce
+wrapped_cek_length = uint16 big-endian
+wrapped_cek_ciphertext_and_tag = AES-256-GCM output over the CEK
+```
+
+For the first profile the wrapped CEK plaintext is exactly 32 bytes, so the
+AES-GCM wrapped CEK ciphertext and tag is expected to be 48 bytes. Decoders must
+still parse the explicit length and reject unsupported sizes.
+
+The `public_wrapping_metadata` API field is a JSON object used for routing,
+validation, auditing, and re-creating the canonical AAD. For the first profile
+it must contain only these top-level fields unless a future extension rule is
+accepted:
+
+```json
+{
+  "profile": "proofline-pq-mlkem768-hkdfsha384-aes256gcm-v1",
+  "scheme": "proofline-pq-envelope-v1",
+  "suite_id": "proofline-pq-mlkem768-hkdfsha384-aes256gcm-v1",
+  "mandatory": [
+    "profile",
+    "scheme",
+    "suite_id",
+    "recipient_key_id",
+    "recipient_key_version",
+    "recipient_role",
+    "media_key_id",
+    "envelope_id",
+    "payload_header_digest_b64u",
+    "kem_ciphertext_digest_b64u",
+    "hkdf_salt_b64u",
+    "hkdf_info_id",
+    "cek_wrap_aad_digest_b64u"
+  ],
+  "recipient_key_id": "pqk1_...",
+  "recipient_key_version": 1,
+  "recipient_role": "trusted_contact",
+  "media_key_id": "media-key-...",
+  "envelope_id": "env_...",
+  "payload_header_digest_b64u": "base64url-no-padding-sha384",
+  "kem_ciphertext_digest_b64u": "base64url-no-padding-sha384",
+  "hkdf_salt_b64u": "base64url-no-padding-48-byte-salt",
+  "hkdf_info_id": "proofline-cek-wrap-v1",
+  "cek_wrap_aad_digest_b64u": "base64url-no-padding-sha384"
+}
+```
+
+The metadata object must not contain raw CEKs, raw media keys, recipient private
+keys, unwrapped shared secrets, derived KEKs, plaintext, browser fragment
+secrets, server escrow material, request bodies, uploaded bytes, stored paths,
+object keys, private deployment details, or user safety data.
+
 ## Associated Data
 
 Every AES-GCM operation must authenticate the relevant non-secret metadata.
@@ -313,18 +427,30 @@ CEK-wrap AEAD AAD must include a canonical encoding of:
 - scheme
 - suite ID
 - digest algorithm
+- wrapping algorithm
+- wrapping algorithm version
 - envelope ID
 - recipient key ID
 - recipient role
+- `media_key_id`
+- grant ID when the wrapped-key record is grant-bound
 - KEM algorithm
 - KDF algorithm
 - wrapping purpose, for example `proofline-cek-wrap-v1`
 - SHA-384 digest of the canonical payload header or payload context
 
 AAD must be derived from canonical structured fields, not from ad hoc string
-concatenation in new formats. If JSON is used, use a strict canonical JSON
-profile. If CBOR is used, use deterministic encoding. The current v1 string AAD
-is acceptable only for the compatibility envelope it already defines.
+concatenation in new formats. The accepted PQ profile uses a fixed field order,
+UTF-8 strings with explicit byte lengths, big-endian integer lengths, and raw
+binary values for digests, nonces, salts, KEM ciphertexts, and ciphertext bytes.
+For each canonical AAD structure, encode fields in the order listed above as
+`uint16 field_name_length`, UTF-8 field name bytes, `uint32 value_length`, and
+value bytes. String values are UTF-8. Integers use their shortest decimal ASCII
+form unless a binary length field is explicitly specified. Binary values are raw
+bytes, not base64, before hashing or AEAD use.
+If a future JSON or CBOR transport is added, it must map into these canonical
+profile bytes before hashing or AEAD use. The current v1 string AAD is
+acceptable only for the compatibility envelope it already defines.
 
 ## Derivation Rules
 
@@ -417,6 +543,39 @@ payload tag failure may be useful internal test or authenticated owner-tooling
 errors, but they must not be exposed to unauthorised callers as distinct public
 viewer or API responses.
 
+## Validation, Limits, And Fail-Closed Rules
+
+Runtime-default implementation must fail closed for this profile:
+
+- reject unknown schemes, suites, KEMs, KDFs, AEADs, digests, wrapping
+  algorithms, and wrapping algorithm versions
+- reject unknown top-level public metadata fields unless a later extension rule
+  explicitly allows them
+- reject any field listed in `mandatory` that the implementation does not
+  understand
+- reject missing required fields, duplicate fields, malformed JSON metadata,
+  malformed binary frames, non-canonical base64url, wrong fixed lengths, empty
+  salts or nonces, and oversized headers or records
+- reject more than 16 recipient wrapping records for one CEK scope
+- reject public wrapping metadata larger than 4096 bytes and wrapped-key
+  ciphertext transport strings larger than 16384 bytes unless a schema and API
+  migration deliberately changes those limits
+- reject payload envelopes whose magic, scheme, suite, or authenticated header
+  does not match the advertised metadata
+- reject `SRCENC1` compatibility envelopes, `age-v1-x25519` simulator artifacts,
+  or any classical-only wrapping profile as a v1 preview default
+- reject automatic downgrade from the PQ suite to the compatibility v1 envelope;
+  migration windows must be explicit and authenticated by envelope metadata
+- treat unsupported algorithms, malformed metadata, missing recipient keys,
+  lost contact private keys, contact-key revocation, CEK unwrap failure, and
+  payload authentication failure as no-decrypt outcomes
+
+If a trusted contact loses the matching private key, the backend must not
+decrypt, rewrap, or synthesize a replacement wrapped key. Future clients may
+wrap future CEKs to a replacement key and may rewrap older CEKs only if an
+authorized client or separately approved escrow mode still has access to the raw
+CEK. The default server path remains ciphertext-only.
+
 ## Server Storage And API Boundary
 
 The server may store:
@@ -450,40 +609,85 @@ logging, and bundle-manifest behavior.
 
 ## Serialization Requirements
 
-Before implementation, choose and document a concrete wire format. It must define:
+Before implementation, code and tests must enforce the concrete profile
+constraints defined above:
 
-- magic bytes
-- version number
-- byte order for length fields
-- maximum header size
-- maximum recipient count
-- maximum wrapping-record size
-- canonical metadata encoding
-- binary/base64 encoding rules
-- strict duplicate-field rejection
-- unknown-field behavior
-- required versus optional fields
-- SHA-384 digest encoding rules
-- conformance test vectors
+- magic bytes: `PLPQENC1\n` for payload envelopes and `PLPQWK1\n` for wrapped
+  CEK ciphertext frames
+- version number: `1`
+- byte order for length fields: big-endian
+- maximum header size: 16 KiB
+- maximum recipient count: 16 wrapping records per CEK scope
+- maximum public wrapping metadata size: 4096 bytes
+- maximum wrapped-key ciphertext transport string size: 16384 bytes
+- canonical metadata encoding: fixed-order profile fields with explicit byte
+  lengths, not ad hoc JSON string concatenation
+- binary/base64 encoding: URL-safe base64 without padding at JSON/API
+  boundaries, raw bytes inside canonical profile frames
+- strict duplicate-field rejection for any JSON transport metadata
+- unknown-field behavior: reject unknown top-level fields in v1 metadata, and
+  reject unknown fields named in `mandatory`
+- required versus optional fields: no optional top-level fields in the first
+  production profile except future extension containers accepted by a new suite
+- SHA-384 digest encoding: raw 48-byte digest in canonical bytes, base64url
+  without padding in JSON/API fields
+- conformance test vectors: single-recipient, multi-recipient, and negative
+  tamper cases before runtime use
 
-Prefer binary fields for keys, nonces, salts, ciphertexts, tags, and digests. If
-JSON is used for early simulator work, base64url without padding should match the
-current repository convention.
+Prefer binary fields for keys, nonces, salts, ciphertexts, tags, and digests
+inside the profile. If JSON is used for fixtures or API transport, base64url
+without padding must match the current repository convention.
 
-## Go Implementation Notes
+## Implementation Compatibility Requirements
 
-The server repository currently targets Go and already uses standard-library
-AES-GCM for the v1 compatibility envelope. A future implementation should prefer
-standard-library packages where available:
+### Go
+
+The server repository currently targets Go 1.26.4 and already uses
+standard-library AES-GCM for the v1 compatibility envelope. Runtime
+implementation should prefer:
 
 - `crypto/mlkem` for ML-KEM-768
-- `crypto/hkdf` or the accepted Go version's HKDF API for HKDF-SHA384
+- `crypto/hkdf` for HKDF-SHA384
 - `crypto/aes` and `crypto/cipher` for AES-256-GCM
 - `crypto/rand` for CEKs, salts, and nonces
 - `crypto/sha512` with `sha512.New384` for SHA-384 digests and HKDF hash input
 
-Do not implement ML-KEM, HKDF, AES-GCM, random generation, canonical encoding, or
-secret sharing manually.
+Do not implement ML-KEM, HKDF, AES-GCM, random generation, or secret sharing
+manually. Implement the profile encoder and parser as ordinary, heavily tested
+serialization code that follows this document exactly; do not create alternate
+undocumented encodings.
+
+Use `crypto/mlkem/mlkemtest` or equivalent deterministic hooks only for tests.
+Production encapsulation, CEK creation, salts, and nonces must use secure
+randomness.
+
+### Browser And Web Client
+
+Browser support must not assume that Web Crypto provides ML-KEM. A web-client
+implementation must either use a maintained, reviewed ML-KEM implementation or a
+standard browser/platform API once one is available and reviewed. It may use Web
+Crypto for AES-GCM and HKDF only when key extractability, import/export,
+encoding, worker, memory, and failure behavior match this profile.
+
+Browser decrypt code remains out of this server issue. Before any preview claim,
+the web-client trust model must still address same-origin malicious JavaScript,
+static asset integrity, CSP, plaintext lifetime, service-worker/cache behavior,
+debug output, analytics, extension risk, and user guidance.
+
+### Native Mobile And Trusted-Contact Clients
+
+Native clients should use platform cryptography or maintained libraries for
+ML-KEM, HKDF-SHA384, AES-256-GCM, SHA-384, and secure randomness. The profile
+must not require exporting long-term decapsulation keys from platform key
+storage. A client may publish the 1184-byte encapsulation key and retain a
+non-exportable private key when the platform supports that model.
+
+Trusted-contact clients must treat the recipient private key, ML-KEM shared
+secret, derived KEK, unwrapped CEK, and plaintext as local secrets. They must
+not place those values in API requests, logs, crash reports, URLs, local
+plaintext caches, or public issue/test artifacts.
+
+## Go Package Boundary
 
 Implementation should live in a new package or subpackage rather than mutating the
 v1 compatibility envelope in place, for example:
@@ -504,7 +708,7 @@ internal/envelope/pq
 └── envelope_test.go   # round trips, tampering, vectors, limits
 ```
 
-## Test Requirements
+## Conformance And Test Vector Requirements
 
 Minimum tests before runtime use:
 
@@ -530,9 +734,29 @@ Minimum tests before runtime use:
 - Malformed base64/binary field rejection.
 - Golden test vectors for at least one single-recipient and one multi-recipient
   envelope.
+- Negative vectors for wrong magic, unknown suite, unknown mandatory field,
+  malformed public metadata, downgrade attempt, missing recipient key, wrong
+  recipient key, lost/revoked contact key state, wrong `media_key_id`, and
+  modified `wrapped_key_ciphertext`.
+- Fixture checks proving raw production keys, raw production CEKs, plaintext,
+  ML-KEM shared secrets, derived KEKs, recipient private keys, request bodies,
+  uploaded bytes, stored paths, object keys, and private deployment details are
+  absent from committed vectors, logs, API examples, bundle manifests, and public
+  documentation.
 
 Use deterministic test hooks only in tests. Production encapsulation, CEK
 creation, salts, and nonces must come from secure randomness.
+
+Conformance vectors may include deterministic test-only decapsulation seeds,
+test CEKs, and expected plaintext only when the fixture path, metadata, and
+comments mark them as non-production conformance material. They must not be
+reused as simulator defaults, sample user keys, deployment secrets, or runtime
+fallback keys.
+
+Existing simulator `age-v1-x25519` artifacts are prototype vectors for the local
+development companion flow. They are not conformance vectors for this production
+PQ profile. Future PQ simulator vectors must use the accepted identifiers and
+must remain clearly separate from later runtime-default implementation fixtures.
 
 ## Compatibility And Migration
 
@@ -611,36 +835,36 @@ Implementation work must verify current references before code is merged:
 - Go `crypto/hkdf` package documentation:
   <https://pkg.go.dev/crypto/hkdf>
 
-Before implementation, check the current FIPS 203 page and Go release notes for
-errata, revisions, package API changes, size constants, and test-vector guidance.
+As of 2026-06-10, the NIST FIPS 203 page includes a 2025-11-17 planning note
+for future errata. Before implementation, check the current FIPS 203 page, the
+errata spreadsheet, and Go release notes for revisions, package API changes,
+size constants, and test-vector guidance.
 
 ## Open Questions
 
 - Should PQ envelopes be chunk-scoped, stream-scoped, or both?
-- Should wrapping records be embedded in bundle manifests, delivered only through
-  authenticated API responses, or both depending on grant type?
 - Should a separate immutable export format bind an embedded wrapping-record
   manifest into payload AAD, or should all wrapping records remain bound only to
   the payload header digest?
 - Should high-security users be offered ML-KEM-1024 in a separate suite?
-- What exact canonical encoding should be used: deterministic CBOR, canonical
-  JSON, or a custom binary frame?
-- What maximum recipient count is acceptable for emergency incident sharing?
 - How should recipient public-key verification be represented in metadata?
-- How should lost or rotated recipient keys affect old wrapping records?
+- How should lost or rotated recipient keys affect product UX and old wrapping
+  record retention after the fail-closed cryptographic behavior is enforced?
 
 ## Proposed Implementation Phases
 
-Phase 1: documentation and review.
+Phase 1: accepted production profile.
 
-- Add this design document.
-- Link it from encryption and key-custody documentation.
+- Define the accepted production wrapping profile in this document.
+- Link it from encryption, key-custody, contact-sharing, and simulator
+  documentation.
 - Keep existing runtime behavior unchanged.
 
-Phase 2: test-only prototype.
+Phase 2: test-only implementation package.
 
 - Add a new package for the PQ envelope.
-- Implement in-memory round trips and tamper tests only.
+- Implement in-memory round trips, canonical encoding, limits, vectors, and
+  tamper tests only.
 - Do not expose new API routes or bundle behavior yet.
 
 Phase 3: simulator prototype.
@@ -649,11 +873,14 @@ Phase 3: simulator prototype.
 - Generate local ML-KEM recipient keys for development only.
 - Produce local test vectors and encrypted bundles.
 
-Phase 4: API and storage design.
+Phase 4: API and storage integration.
 
-- Decide where wrapped CEK records live.
-- Update access-control and bundle-manifest docs.
-- Add schema/API changes only after access boundaries are accepted.
+- Map PQ wrapped-key records onto the existing authenticated wrapped-key
+  metadata routes.
+- Keep bundle manifests key-free unless a separate grant-scoped manifest design
+  is accepted.
+- Add schema/API changes only if the accepted profile cannot fit the existing
+  fields and limits.
 
 Phase 5: production client planning.
 
