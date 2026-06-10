@@ -520,6 +520,151 @@ func TestWebAuthnSecondFactorsCompleteSetupChallengesAndSessionVerification(t *t
 	}
 }
 
+func TestAccountSecondFactorRecoveryResetRemovesFactorsAndRevokesSessions(t *testing.T) {
+	ctx := context.Background()
+	repo := newRepository(t, ctx)
+
+	admin, err := repo.CreateAccount(ctx, auth.CreateAccountParams{
+		Username:     "recovery-admin",
+		PasswordHash: "hash",
+		Role:         auth.RoleAdmin,
+	})
+	if err != nil {
+		t.Fatalf("create admin account: %v", err)
+	}
+	_, adminRawToken, err := repo.CreateSession(ctx, admin.ID, time.Now().UTC().Add(time.Hour))
+	if err != nil {
+		t.Fatalf("create admin session: %v", err)
+	}
+	account, err := repo.CreateAccount(ctx, auth.CreateAccountParams{
+		Username:          "recovery-user",
+		SecondFactorSetup: auth.SecondFactorSetupStateSetupRequired,
+		PasswordHash:      "hash",
+		Role:              auth.RoleUser,
+	})
+	if err != nil {
+		t.Fatalf("create account: %v", err)
+	}
+	firstSession, firstRawToken, err := repo.CreateSession(ctx, account.ID, time.Now().UTC().Add(time.Hour))
+	if err != nil {
+		t.Fatalf("create first account session: %v", err)
+	}
+	_, secondRawToken, err := repo.CreateSession(ctx, account.ID, time.Now().UTC().Add(time.Hour))
+	if err != nil {
+		t.Fatalf("create second account session: %v", err)
+	}
+
+	_, rawEmailCode, err := repo.CreateEmailSecondFactorChallenge(ctx, auth.CreateEmailSecondFactorChallengeParams{
+		AccountID:       account.ID,
+		EmailNormalized: "recovery-factor@example.invalid",
+		ExpiresAt:       time.Now().UTC().Add(time.Minute),
+	})
+	if err != nil {
+		t.Fatalf("create email challenge: %v", err)
+	}
+	if _, _, err := repo.ConsumeEmailSecondFactorChallenge(ctx, account.ID, rawEmailCode, time.Now().UTC()); err != nil {
+		t.Fatalf("consume email challenge: %v", err)
+	}
+	totpFactor, err := repo.CreateTOTPSecondFactorEnrollment(ctx, auth.CreateTOTPSecondFactorEnrollmentParams{
+		AccountID:     account.ID,
+		Secret:        "JBSWY3DPEHPK3PXP",
+		PeriodSeconds: auth.TOTPDefaultPeriodSeconds,
+		Digits:        auth.TOTPDefaultDigits,
+		Algorithm:     auth.TOTPAlgorithmSHA1,
+	})
+	if err != nil {
+		t.Fatalf("create TOTP enrollment: %v", err)
+	}
+	if _, _, err := repo.ActivateTOTPSecondFactor(ctx, account.ID, totpFactor.ID, time.Now().UTC(), 100); err != nil {
+		t.Fatalf("activate TOTP factor: %v", err)
+	}
+	if _, err := repo.GetOrCreateWebAuthnUser(ctx, account.ID, "example.org"); err != nil {
+		t.Fatalf("create WebAuthn user: %v", err)
+	}
+	if _, err := repo.CreateWebAuthnChallenge(ctx, auth.CreateWebAuthnChallengeParams{
+		AccountID:       account.ID,
+		SessionID:       firstSession.ID,
+		RPID:            "example.org",
+		ChallengeType:   auth.SecondFactorChallengeTypeWebAuthnRegistration,
+		SessionDataJSON: []byte(`{"challenge":"recovery"}`),
+		ExpiresAt:       time.Now().UTC().Add(time.Minute),
+	}); err != nil {
+		t.Fatalf("create WebAuthn challenge: %v", err)
+	}
+	if _, _, err := repo.CreateWebAuthnCredential(ctx, auth.CreateWebAuthnCredentialParams{
+		AccountID:         account.ID,
+		RPID:              "example.org",
+		CredentialID:      []byte("recovery-credential-id"),
+		PublicKey:         []byte("recovery-public-key"),
+		AttestationType:   "none",
+		AttestationFormat: "none",
+		VerifiedAt:        time.Now().UTC(),
+	}); err != nil {
+		t.Fatalf("create WebAuthn credential: %v", err)
+	}
+
+	event, updated, err := repo.ResetAccountSecondFactorRecovery(ctx, auth.ResetAccountSecondFactorRecoveryParams{
+		AccountID:      account.ID,
+		AdminAccountID: admin.ID,
+		Reason:         auth.AccountRecoveryReasonLostAllFactors,
+	})
+	if err != nil {
+		t.Fatalf("reset account recovery factors: %v", err)
+	}
+	if event.Action != auth.AccountRecoveryActionSecondFactorReset ||
+		event.Reason != auth.AccountRecoveryReasonLostAllFactors ||
+		event.PreviousSecondFactorSetupState != auth.SecondFactorSetupStateComplete ||
+		event.NewSecondFactorSetupState != auth.SecondFactorSetupStateSetupRequired {
+		t.Fatalf("unexpected recovery event metadata: %+v", event)
+	}
+	if event.SessionsRevoked != 2 || event.EmailFactorsRemoved != 1 || event.TOTPFactorsRemoved != 1 || event.WebAuthnCredentialsRemoved != 1 {
+		t.Fatalf("unexpected recovery event counts: %+v", event)
+	}
+	if updated.SecondFactorSetup != auth.SecondFactorSetupStateSetupRequired {
+		t.Fatalf("account setup state = %q, want setup_required", updated.SecondFactorSetup)
+	}
+	if _, err := repo.LookupSession(ctx, firstRawToken); !errors.Is(err, auth.ErrNotFound) {
+		t.Fatalf("first account session lookup error = %v, want ErrNotFound", err)
+	}
+	if _, err := repo.LookupSession(ctx, secondRawToken); !errors.Is(err, auth.ErrNotFound) {
+		t.Fatalf("second account session lookup error = %v, want ErrNotFound", err)
+	}
+	if _, err := repo.LookupSession(ctx, adminRawToken); err != nil {
+		t.Fatalf("admin session was revoked: %v", err)
+	}
+	if _, err := repo.GetActiveTOTPSecondFactor(ctx, account.ID); !errors.Is(err, auth.ErrNotFound) {
+		t.Fatalf("active TOTP lookup error = %v, want ErrNotFound", err)
+	}
+	hasCredential, err := repo.HasActiveWebAuthnCredential(ctx, account.ID)
+	if err != nil {
+		t.Fatalf("check active WebAuthn credential: %v", err)
+	}
+	if hasCredential {
+		t.Fatal("WebAuthn credential survived recovery reset")
+	}
+	if credentials, err := repo.ListWebAuthnCredentials(ctx, account.ID, "example.org"); err != nil {
+		t.Fatalf("list WebAuthn credentials after recovery: %v", err)
+	} else if len(credentials) != 0 {
+		t.Fatalf("WebAuthn credentials survived recovery reset: %+v", credentials)
+	}
+	if _, _, err := repo.CreateEmailSecondFactorChallenge(ctx, auth.CreateEmailSecondFactorChallengeParams{
+		AccountID:       account.ID,
+		EmailNormalized: "recovery-factor@example.invalid",
+		ExpiresAt:       time.Now().UTC().Add(time.Minute),
+	}); err != nil {
+		t.Fatalf("create email challenge after recovery: %v", err)
+	}
+	if _, err := repo.CreateTOTPSecondFactorEnrollment(ctx, auth.CreateTOTPSecondFactorEnrollmentParams{
+		AccountID:     account.ID,
+		Secret:        "JBSWY3DPEHPK3PXQ",
+		PeriodSeconds: auth.TOTPDefaultPeriodSeconds,
+		Digits:        auth.TOTPDefaultDigits,
+		Algorithm:     auth.TOTPAlgorithmSHA1,
+	}); err != nil {
+		t.Fatalf("create TOTP enrollment after recovery: %v", err)
+	}
+}
+
 func TestContactPublicKeysAndSharingGrants(t *testing.T) {
 	ctx := context.Background()
 	repo := newRepository(t, ctx)

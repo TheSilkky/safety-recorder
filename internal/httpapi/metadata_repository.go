@@ -68,6 +68,7 @@ type MetadataRepository interface {
 	GetAccountByID(ctx context.Context, accountID string) (auth.Account, error)
 	ListAccounts(ctx context.Context) ([]auth.Account, error)
 	UpdateAccountPassword(ctx context.Context, accountID, passwordHash string) (auth.Account, error)
+	ResetAccountSecondFactorRecovery(ctx context.Context, params auth.ResetAccountSecondFactorRecoveryParams) (auth.AccountRecoveryEvent, auth.Account, error)
 	CreateAccountVerificationToken(ctx context.Context, params auth.CreateAccountVerificationTokenParams) (auth.AccountVerificationToken, string, error)
 	ConsumeAccountVerificationToken(ctx context.Context, rawToken, purpose string, now time.Time) (auth.Account, error)
 	CreateEmailSecondFactorChallenge(ctx context.Context, params auth.CreateEmailSecondFactorChallengeParams) (auth.SecondFactorChallenge, string, error)

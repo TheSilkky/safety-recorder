@@ -92,6 +92,13 @@ encrypted evidence bundles.
   TOTP second-factor metadata, TOTP seeds, WebAuthn public credential metadata,
   WebAuthn challenge session data, and single-use email challenge-code hashes
   used to block main product-route access until required setup is complete
+- Account recovery audit metadata for private-admin assisted second-factor
+  resets, including controlled action and reason codes, account/admin account
+  IDs, safe removal counts, session revocation counts, and timestamps. These
+  rows do not contain free-text notes, raw challenge codes, TOTP seeds,
+  WebAuthn challenge material, raw tokens, request bodies, plaintext, raw keys,
+  wrapped-key ciphertext, stored paths, object keys, or private deployment
+  details.
 - Raw viewer/incident tokens returned once at creation time
 - Owner-visible viewer-token metadata for owned incidents: token IDs, labels,
   active/expired/revoked state, and creation/expiry/revocation timestamps.
@@ -134,7 +141,8 @@ encrypted evidence bundles.
 - Existing `/v1/admin/...` JSON routes require an admin account, are mounted on
   the private-admin server, and must not be routed from public entry points.
   This includes legacy unowned incident candidate review, reassignment, and
-  keep-unowned audit decisions.
+  keep-unowned audit decisions, account password/session management, and
+  account second-factor recovery resets.
 - `/v1/bootstrap/admin`, `/v1/health/live`, and `/v1/health/ready` are not
   mounted on either listener.
 - `/admin`, `/admin/login`, `/admin/bootstrap`, `/admin/logout`,
@@ -405,9 +413,10 @@ The current backend does not implement incident-mode-specific controls yet, so f
   encrypted field handling, token-viewer allowlists, relay/log redaction, and
   envelope or authenticated metadata mismatch failures.
 - No account self-service recovery, delegated identity provider, or public
-  account portal. The current backend has email challenge, TOTP, and
-  disabled-by-default WebAuthn second-factor setup; it does not implement
-  recovery codes, lost-factor handling, or delegated identity.
+  account portal. The current backend has email challenge, TOTP,
+  disabled-by-default WebAuthn second-factor setup, and private-admin assisted
+  second-factor reset; it does not implement recovery codes, public
+  lost-factor workflows, password recovery, or delegated identity.
 - Viewer links are bearer tokens and must be shared carefully.
 - No implemented production key recovery, Keychain storage, trusted-contact
   incident access, browser decryption, break-glass key access, or playable

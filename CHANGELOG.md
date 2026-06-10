@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Added a private-admin account second-factor recovery reset policy and API,
+  with controlled lost-factor reason codes, SQLite/PostgreSQL audit metadata,
+  removal of enrolled email/TOTP/WebAuthn factors, target-session revocation,
+  route redaction, tests, and docs clarifying that the reset does not add
+  self-service recovery codes, key escrow, raw-key access, or decryption.
 - Added disabled-by-default WebAuthn/FIDO2 passkey and roaming security-key
   second-factor setup and session verification, with approved go-webauthn
   integration, fail-closed RP/origin config, SQLite/PostgreSQL credential and

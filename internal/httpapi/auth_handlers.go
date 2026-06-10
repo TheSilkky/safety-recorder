@@ -36,6 +36,21 @@ type authSessionResponse struct {
 	ExpiresAt                        time.Time       `json:"expires_at"`
 }
 
+type accountRecoveryEventResponse struct {
+	ID                             string    `json:"id"`
+	AccountID                      string    `json:"account_id"`
+	AdminAccountID                 string    `json:"admin_account_id"`
+	Action                         string    `json:"action"`
+	Reason                         string    `json:"reason"`
+	PreviousSecondFactorSetupState string    `json:"previous_second_factor_setup_state"`
+	NewSecondFactorSetupState      string    `json:"new_second_factor_setup_state"`
+	SessionsRevoked                int64     `json:"sessions_revoked"`
+	EmailFactorsRemoved            int64     `json:"email_factors_removed"`
+	TOTPFactorsRemoved             int64     `json:"totp_factors_removed"`
+	WebAuthnCredentialsRemoved     int64     `json:"webauthn_credentials_removed"`
+	CreatedAt                      time.Time `json:"created_at"`
+}
+
 func (a *API) login(w http.ResponseWriter, r *http.Request) {
 	var request struct {
 		Username string `json:"username"`
@@ -224,6 +239,46 @@ func (a *API) revokeAccountSessions(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+func (a *API) resetAccountSecondFactorRecovery(w http.ResponseWriter, r *http.Request) {
+	if !a.requireAdmin(w, r) {
+		return
+	}
+	principal, ok := principalFromContext(r.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "authentication_required", "authentication is required")
+		return
+	}
+	var request struct {
+		Reason string `json:"reason"`
+	}
+	if !decodeJSON(w, r, &request) {
+		return
+	}
+	reason := strings.TrimSpace(request.Reason)
+	if !auth.ValidAccountRecoveryReason(reason) {
+		writeError(w, http.StatusBadRequest, "invalid_recovery_reason", "recovery reason is not supported")
+		return
+	}
+	event, account, err := a.repo.ResetAccountSecondFactorRecovery(r.Context(), auth.ResetAccountSecondFactorRecoveryParams{
+		AccountID:      r.PathValue("account_id"),
+		AdminAccountID: principal.Account.ID,
+		Reason:         reason,
+	})
+	if errors.Is(err, auth.ErrNotFound) {
+		writeError(w, http.StatusNotFound, "account_not_found", "account was not found")
+		return
+	}
+	if err != nil {
+		a.internalError(w, "reset account second-factor recovery", err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"account":  makeAccountResponse(account),
+		"recovery": makeAccountRecoveryEventResponse(event),
+		"status":   auth.AccountRecoveryActionSecondFactorReset,
+	})
+}
+
 func (a *API) requireAdmin(w http.ResponseWriter, r *http.Request) bool {
 	principal, ok := principalFromContext(r.Context())
 	if !ok {
@@ -295,6 +350,23 @@ func sameSecret(want, got string) bool {
 	wantHash := sha256.Sum256([]byte(want))
 	gotHash := sha256.Sum256([]byte(got))
 	return subtle.ConstantTimeCompare(wantHash[:], gotHash[:]) == 1
+}
+
+func makeAccountRecoveryEventResponse(event auth.AccountRecoveryEvent) accountRecoveryEventResponse {
+	return accountRecoveryEventResponse{
+		ID:                             event.ID,
+		AccountID:                      event.AccountID,
+		AdminAccountID:                 event.AdminAccountID,
+		Action:                         event.Action,
+		Reason:                         event.Reason,
+		PreviousSecondFactorSetupState: event.PreviousSecondFactorSetupState,
+		NewSecondFactorSetupState:      event.NewSecondFactorSetupState,
+		SessionsRevoked:                event.SessionsRevoked,
+		EmailFactorsRemoved:            event.EmailFactorsRemoved,
+		TOTPFactorsRemoved:             event.TOTPFactorsRemoved,
+		WebAuthnCredentialsRemoved:     event.WebAuthnCredentialsRemoved,
+		CreatedAt:                      event.CreatedAt,
+	}
 }
 
 func makeAccountResponse(account auth.Account) accountResponse {

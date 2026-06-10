@@ -234,8 +234,9 @@ These route groups must not be exposed from a public web-client origin:
 - `/admin/...`
 - `/admin/static/...` from public entry points
 - `/v1/admin/...`
-- private admin bootstrap, account creation, session revocation, unowned
-  incident reassignment, and admin-global deletion routes
+- private admin bootstrap, account creation, session revocation, second-factor
+  recovery reset, unowned incident reassignment, and admin-global deletion
+  routes
 - operator diagnostics, readiness, migration, backup, restore, support,
   escrow, break-glass, raw-key, decryption, or private maintenance routes
 - public wildcard routing to the main API

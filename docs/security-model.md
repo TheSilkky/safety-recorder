@@ -4,7 +4,7 @@ This document summarizes the current Proofline backend security assumptions and 
 
 ## Maturity
 
-Proofline is experimental and not production-ready public infrastructure. The main `/v1` API has local username/password accounts, opaque server-side sessions, email challenge, TOTP, and disabled-by-default WebAuthn/FIDO2 second-factor setup for account gating, and app-level route-class rate limits. Public self-registration is disabled by default and, when explicitly enabled for self-hosted deployments, requires SMTP-backed email verification before login. Proofline still has no lost-factor recovery, OAuth, JWT protection, complete public product deployment model, password recovery, or public account portal.
+Proofline is experimental and not production-ready public infrastructure. The main `/v1` API has local username/password accounts, opaque server-side sessions, email challenge, TOTP, disabled-by-default WebAuthn/FIDO2 second-factor setup for account gating, private-admin assisted second-factor reset for lost-factor recovery, and app-level route-class rate limits. Public self-registration is disabled by default and, when explicitly enabled for self-hosted deployments, requires SMTP-backed email verification before login. Proofline still has no self-service recovery codes, OAuth, JWT protection, complete public product deployment model, password recovery, or public account portal.
 
 The current backend stores incidents owned by local accounts. Incidents are
 generic by default and may include optional incident-mode, capture-profile,
@@ -100,6 +100,17 @@ private keys or add backend decryption. Accounts with active TOTP or WebAuthn
 factors can create primary-authenticated sessions after password login, but
 product routes fail closed with `403 second_factor_verification_required` until
 the session verifies an active factor.
+
+Lost-factor recovery is limited to an authenticated private-admin
+`POST /v1/admin/accounts/{account_id}/second-factor/recovery/reset` route. The
+route accepts controlled reason codes only, removes enrolled email, TOTP, and
+WebAuthn factors and pending second-factor challenges for the target account,
+marks the account `setup_required`, revokes that account's active sessions, and
+records an `account_recovery_events` audit row with safe counts. It is not a
+self-service bypass and does not change password hashes, account/device
+recipient keys, contact keys, sharing grants, wrapped-key records, incidents,
+encrypted blobs, key custody, backend decryption, browser decryption, raw-key
+access, or key escrow.
 
 When enabled, main `/v1` browser cookie auth uses a dedicated session cookie
 for future web-client calls. Bearer auth remains supported for CLI, simulator,
@@ -536,6 +547,7 @@ Normal file or object removal is not treated as guaranteed secure erasure. Deplo
   [mode-aware retention policy](mode-aware-retention-policy.md)
 - No malware/content scanning for uploaded encrypted blobs
 - No implemented account self-service recovery, delegated identity provider,
-  or public account portal. The current backend has email challenge, TOTP, and
-  disabled-by-default WebAuthn second-factor setup; it does not implement
-  recovery codes, lost-factor handling, or delegated identity.
+  or public account portal. The current backend has email challenge, TOTP,
+  disabled-by-default WebAuthn second-factor setup, and private-admin assisted
+  second-factor reset; it does not implement recovery codes, public
+  lost-factor workflows, password recovery, or delegated identity.

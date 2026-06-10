@@ -173,6 +173,108 @@ func TestAdminCanUseAccountRoutesOnPrivateAdminListener(t *testing.T) {
 	loginForTest(t, app, "private-admin-user", "replacement-password")
 }
 
+func TestAdminCanResetAccountSecondFactorRecoveryOnPrivateAdminListener(t *testing.T) {
+	app := newTestApp(t)
+	userToken := createAccountAndLogin(t, app, "recovery-admin-route-user", "original-password", auth.RoleUser)
+	account := mustGetRegistrationAccount(t, app, "recovery-admin-route-user")
+	if account.SecondFactorSetup != auth.SecondFactorSetupStateComplete {
+		t.Fatalf("test account setup state = %q, want complete", account.SecondFactorSetup)
+	}
+
+	target := "/v1/admin/accounts/" + account.ID + "/second-factor/recovery/reset"
+	response, body := requestWithAuth(t, app.mainHandler, http.MethodPost, target, "application/json", bytes.NewBufferString(`{"reason":"lost_all_factors"}`), app.authToken)
+	response.Body.Close()
+	if response.StatusCode != http.StatusNotFound {
+		t.Fatalf("expected main handler recovery reset status 404, got %d: %s", response.StatusCode, body)
+	}
+	assertErrorCode(t, body, "not_found")
+
+	response, body = requestWithAuth(t, app.adminHandler, http.MethodPost, target, "application/json", bytes.NewBufferString(`{"reason":"lost_all_factors"}`), userToken)
+	response.Body.Close()
+	if response.StatusCode != http.StatusForbidden {
+		t.Fatalf("expected user recovery reset status 403, got %d: %s", response.StatusCode, body)
+	}
+	assertErrorCode(t, body, "forbidden")
+
+	response, body = requestWithAuth(t, app.adminHandler, http.MethodPost, target, "application/json", bytes.NewBufferString(`{"reason":"raw operator note"}`), app.authToken)
+	response.Body.Close()
+	if response.StatusCode != http.StatusBadRequest {
+		t.Fatalf("expected invalid recovery reason status 400, got %d: %s", response.StatusCode, body)
+	}
+	assertErrorCode(t, body, "invalid_recovery_reason")
+
+	response, body = requestWithAuth(t, app.adminHandler, http.MethodPost, target, "application/json", bytes.NewBufferString(`{"reason":"lost_all_factors"}`), app.authToken)
+	response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("expected recovery reset status 200, got %d: %s", response.StatusCode, body)
+	}
+	var result struct {
+		Status  string `json:"status"`
+		Account struct {
+			ID                string `json:"id"`
+			SecondFactorSetup string `json:"second_factor_setup_state"`
+			RequiresSetup     bool   `json:"second_factor_setup_required"`
+		} `json:"account"`
+		Recovery struct {
+			Action                     string `json:"action"`
+			Reason                     string `json:"reason"`
+			SessionsRevoked            int64  `json:"sessions_revoked"`
+			EmailFactorsRemoved        int64  `json:"email_factors_removed"`
+			TOTPFactorsRemoved         int64  `json:"totp_factors_removed"`
+			WebAuthnCredentialsRemoved int64  `json:"webauthn_credentials_removed"`
+		} `json:"recovery"`
+	}
+	if err := json.Unmarshal(body, &result); err != nil {
+		t.Fatalf("decode recovery reset response: %v", err)
+	}
+	if result.Status != auth.AccountRecoveryActionSecondFactorReset ||
+		result.Recovery.Action != auth.AccountRecoveryActionSecondFactorReset ||
+		result.Recovery.Reason != auth.AccountRecoveryReasonLostAllFactors {
+		t.Fatalf("unexpected recovery response metadata: %+v", result)
+	}
+	if result.Account.ID != account.ID || result.Account.SecondFactorSetup != auth.SecondFactorSetupStateSetupRequired || !result.Account.RequiresSetup {
+		t.Fatalf("unexpected recovery account state: %+v", result.Account)
+	}
+	if result.Recovery.SessionsRevoked != 1 ||
+		result.Recovery.EmailFactorsRemoved != 0 ||
+		result.Recovery.TOTPFactorsRemoved != 0 ||
+		result.Recovery.WebAuthnCredentialsRemoved != 0 {
+		t.Fatalf("unexpected recovery response counts: %+v", result.Recovery)
+	}
+	var auditRows int
+	if err := app.db.QueryRowContext(context.Background(), `
+		SELECT COUNT(*)
+		FROM account_recovery_events
+		WHERE account_id = ? AND action = ? AND reason = ?`,
+		account.ID,
+		auth.AccountRecoveryActionSecondFactorReset,
+		auth.AccountRecoveryReasonLostAllFactors,
+	).Scan(&auditRows); err != nil {
+		t.Fatalf("count account recovery events: %v", err)
+	}
+	if auditRows != 1 {
+		t.Fatalf("account recovery event rows = %d, want 1", auditRows)
+	}
+
+	response, body = requestWithAuth(t, app.privateHandler, http.MethodGet, "/v1/account", "", nil, userToken)
+	response.Body.Close()
+	if response.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("expected old user session status 401, got %d: %s", response.StatusCode, body)
+	}
+	assertErrorCode(t, body, "authentication_required")
+
+	newToken, loginAccount := loginWithAccountForTest(t, app, "recovery-admin-route-user", "original-password")
+	if loginAccount.SecondFactorSetup != auth.SecondFactorSetupStateSetupRequired || !loginAccount.RequiresSetup {
+		t.Fatalf("login account did not require setup after recovery reset: %+v", loginAccount)
+	}
+	response, body = requestWithAuth(t, app.privateHandler, http.MethodPost, "/v1/incidents", "application/json", bytes.NewBufferString(`{}`), newToken)
+	response.Body.Close()
+	if response.StatusCode != http.StatusForbidden {
+		t.Fatalf("expected setup-required product status 403, got %d: %s", response.StatusCode, body)
+	}
+	assertErrorCode(t, body, "second_factor_setup_required")
+}
+
 func TestCrossAccountIncidentAccessIsDenied(t *testing.T) {
 	app := newTestApp(t)
 	ownerToken := createAccountAndLogin(t, app, "owner-user", "owner-password", auth.RoleUser)

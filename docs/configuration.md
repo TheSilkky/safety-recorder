@@ -686,7 +686,9 @@ matches, wildcards are rejected, non-local origins must use HTTPS, and local
 plain-HTTP origins are accepted only for explicit localhost or loopback
 development. WebAuthn stores public credential material, sign counters,
 transports, attachment and backup flags, plus single-use expiring challenge
-session data. It does not add recovery codes or lost-factor behavior.
+session data. It does not add recovery codes or self-service lost-factor
+behavior; private-admin assisted second-factor reset remains a separate
+operational recovery path.
 
 Example WebAuthn configuration:
 
