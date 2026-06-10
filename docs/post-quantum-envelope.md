@@ -56,10 +56,12 @@ This envelope keeps the same backend posture:
 
 The post-quantum envelope must be fully implemented, documented, tested, and
 made the default before v1 preview. It is not a transparent in-place replacement
-for `safety-recorder-chunk-encryption-v1`; it should be introduced as an
-explicit new scheme with compatibility tests and migration notes. Legacy or
-simulator envelopes may remain for development, migration, or test compatibility,
-but they must not be the real-user v1 preview default.
+for `proofline-chunk-encryption-v1`; it should be introduced as an explicit new
+scheme with compatibility tests and migration notes. The older
+`safety-recorder-chunk-encryption-v1` identifier is a pre-reset legacy value and
+should remain only in explicit fail-closed tests or historical documentation.
+Compatibility or simulator envelopes may remain for development, migration, or
+test compatibility, but they must not be the real-user v1 preview default.
 
 ## Goals
 
@@ -569,8 +571,9 @@ Runtime-default implementation must fail closed for this profile:
   migration deliberately changes those limits
 - reject payload envelopes whose magic, scheme, suite, or authenticated header
   does not match the advertised metadata
-- reject `SRCENC1` compatibility envelopes, `age-v1-x25519` simulator artifacts,
-  or any classical-only wrapping profile as a v1 preview default
+- reject `PLCHNK1` compatibility envelopes, legacy `SRCENC1` envelopes,
+  `age-v1-x25519` simulator artifacts, or any classical-only wrapping profile
+  as a v1 preview default
 - reject automatic downgrade from the PQ suite to the compatibility v1 envelope;
   migration windows must be explicit and authenticated by envelope metadata
 - treat unsupported algorithms, malformed metadata, missing recipient keys,
@@ -778,7 +781,8 @@ The future PQ envelope must be additive:
   actually uses it
 - reject mismatched scheme and envelope bytes
 - keep evidence bundles explicit about which envelope scheme protects each chunk
-- do not reinterpret old `SRCENC1` envelopes as PQ envelopes
+- do not reinterpret `PLCHNK1` compatibility envelopes or old `SRCENC1`
+  envelopes as PQ envelopes
 - avoid automatic downgrade from PQ envelope to v1 envelope
 
 A migration may support both schemes during a transition window, but decrypting

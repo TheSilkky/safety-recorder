@@ -248,7 +248,7 @@ func TestMigrateRejectsRecordedChecksumMismatch(t *testing.T) {
 
 func TestOpenCreatesMigrationTableAndEnablesWAL(t *testing.T) {
 	ctx := context.Background()
-	conn, err := Open(ctx, filepath.Join(t.TempDir(), "safety.db"))
+	conn, err := Open(ctx, filepath.Join(t.TempDir(), "proofline.db"))
 	if err != nil {
 		t.Fatalf("Open: %v", err)
 	}

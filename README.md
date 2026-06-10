@@ -12,7 +12,7 @@ Proofline Server is the experimental Go server backend for encrypted incident ca
 
 > Repository role: this repository is the server/backend component only. In the multi-repo layout it is `open-proofline/server`, not the full Proofline product suite.
 >
-> Artifact note: the Go module path is `github.com/open-proofline/server`, the published GHCR image is `ghcr.io/open-proofline/server`, and release binaries use `proofline-server-*` names. Compatibility identifiers such as the v1 encryption envelope scheme and default SQLite filename may still use earlier `safety-recorder` names until separate protocol or data-layout migrations are explicitly designed.
+> Artifact note: the Go module path is `github.com/open-proofline/server`, the published GHCR image is `ghcr.io/open-proofline/server`, and release binaries use `proofline-server-*` names. Current runtime protocol and default data-layout identifiers use Proofline names. Historical reports and archived prompts may still mention earlier `safety-recorder` identifiers.
 
 ## Security Warning
 

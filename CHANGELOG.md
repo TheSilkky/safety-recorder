@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Reset the current v1 compatibility chunk envelope, associated-data prefix,
+  default SQLite filename, container user, and local/container config examples
+  to Proofline-named identifiers. Old `safety-recorder` envelope identifiers
+  are now limited to explicit fail-closed tests and historical documentation.
 - Accepted the v1 preview production post-quantum wrapped-key profile, including
   concrete suite identifiers, API field values, metadata shape, canonical
   encoding constraints, recipient limits, fail-closed behavior, compatibility

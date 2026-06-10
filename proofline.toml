@@ -8,7 +8,7 @@ admin_bind_addrs = ["127.0.0.1:8081"]
 
 [paths]
 data_dir = "./data"
-sqlite_db_path = "./data/safety.db"
+sqlite_db_path = "./data/proofline.db"
 
 [metadata]
 backend = "sqlite"

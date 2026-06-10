@@ -20,7 +20,7 @@ func BuildAssociatedData(ctx ChunkContext) ([]byte, error) {
 		return nil, fmt.Errorf("chunk_index must be positive")
 	}
 	return []byte(fmt.Sprintf(
-		"SafetyRecorderChunk:v1\nincident_id=%s\nstream_id=%s\nmedia_type=%s\nchunk_index=%d\n",
+		"ProoflineChunk:v1\nincident_id=%s\nstream_id=%s\nmedia_type=%s\nchunk_index=%d\n",
 		ctx.IncidentID,
 		ctx.StreamID,
 		ctx.MediaType,

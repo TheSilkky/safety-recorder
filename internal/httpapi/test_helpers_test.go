@@ -93,7 +93,7 @@ func newTestAppWithOptionsAndTestAccount(t *testing.T, options httpapi.Options, 
 	t.Helper()
 
 	dataDir := t.TempDir()
-	conn, err := db.Open(context.Background(), filepath.Join(dataDir, "safety.db"))
+	conn, err := db.Open(context.Background(), filepath.Join(dataDir, "proofline.db"))
 	if err != nil {
 		t.Fatalf("open db: %v", err)
 	}

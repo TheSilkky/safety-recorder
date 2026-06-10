@@ -168,7 +168,7 @@ values for the same field. Within TOML, set either the direct secret key or the
 | `SAFE_MAIN_BIND_ADDRS` | `127.0.0.1:8080` | Comma-separated main listener addresses for authenticated non-admin `/v1` routes and the read-only incident viewer. |
 | `SAFE_ADMIN_BIND_ADDRS` | `127.0.0.1:8081` | Comma-separated private-admin listener addresses for admin-only `/v1/admin/...` JSON routes and the `/admin` dashboard route tree. |
 | `SAFE_DATA_DIR` | `./data` | Local directory for SQLite, temp uploads, and encrypted blobs unless `SAFE_DB_PATH` points elsewhere. |
-| `SAFE_DB_PATH` | `./data/safety.db` | SQLite database path. The default file name still uses `safety.db` until a separate data-layout migration is performed. |
+| `SAFE_DB_PATH` | `./data/proofline.db` | SQLite database path. |
 | `SAFE_METADATA_BACKEND` | `sqlite` | Metadata backend selector. Supported values are `sqlite` and `postgresql`. |
 | `SAFE_BLOB_BACKEND` | `local` | Encrypted blob backend selector. Supported values are `local` and `s3`. |
 | `SAFE_COORDINATION_BACKEND` | `none` | Coordination backend selector. Supported values are `none`, `valkey`, and `redis`. |
@@ -849,15 +849,15 @@ By default:
 
 ```text
 data/
-  safety.db
-  safety.db-wal
-  safety.db-shm
+  proofline.db
+  proofline.db-wal
+  proofline.db-shm
   tmp/
   incidents/{incident_id}/streams/{stream_id}/{media_type}_{zero_padded_chunk_index}.enc
   incidents/{incident_id}/{media_type}_{zero_padded_chunk_index}.enc
 ```
 
-The `safety.db-wal` and `safety.db-shm` sidecar files appear while SQLite is
+The `proofline.db-wal` and `proofline.db-shm` sidecar files appear while SQLite is
 running in WAL mode. Keep them on the same local filesystem as the main
 database and include them when making a direct live copy. See
 [SQLite WAL operations](deployment.md#sqlite-wal-operations) for deployment,

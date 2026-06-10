@@ -220,7 +220,7 @@ AES-GCM compatibility:
 
 Parsing requirements:
 
-- verify the `SRCENC1\n` magic bytes
+- verify the `PLCHNK1\n` magic bytes for the current compatibility envelope
 - read the 32-bit big-endian header length
 - reject missing, truncated, oversized, or non-UTF-8 headers
 - parse the JSON header

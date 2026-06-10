@@ -118,12 +118,11 @@ Use one of these consistency strategies:
 - use SQLite's backup mechanism for the database and coordinate it with a blob snapshot taken while uploads are paused
 - pause uploads, back up SQLite with its live state, and take an S3 bucket or prefix inventory/copy for the matching committed objects
 
-Do not copy only `safety.db` from a running WAL-mode database and assume that
+Do not copy only `proofline.db` from a running WAL-mode database and assume that
 is a complete backup. Include the live SQLite state correctly, including WAL
 sidecar files when using a direct live copy, or use a database backup
-operation. The file name still uses `safety.db` until a separate data-layout
-migration is performed. SQLite WAL operational notes, same-host storage
-expectations, and simple local size checks are documented in
+operation. SQLite WAL operational notes, same-host storage expectations, and
+simple local size checks are documented in
 [deployment.md](deployment.md#sqlite-wal-operations).
 
 Backups should be encrypted at rest and access-controlled. Backup logs, filenames, tickets, and monitoring should not contain raw viewer tokens, private deployment details, request bodies, uploaded bytes, plaintext, or raw keys.
