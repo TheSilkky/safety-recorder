@@ -449,6 +449,9 @@ and supersession state.
 GPS and context data can be evidence. Full GPS, speed, heading, route history,
 detailed safety state, device state, and private notes must not become server,
 relay, edge, log, metric, public issue, or public viewer metadata by accident.
+The detailed encrypted evidence, viewer-context, relay, binding, and validation
+model is documented in
+[encrypted-location-context.md](encrypted-location-context.md).
 
 Preferred layers:
 

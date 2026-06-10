@@ -165,6 +165,7 @@ Request logs must not include:
 - raw viewer, incident, session, verification, CSRF, or idempotency tokens
 - usernames, emails, notes, original filenames, location values, or user safety
   narratives
+- full GPS, speed, heading, route history, or location freshness values
 - plaintext, raw keys, raw media keys, wrapped-key ciphertext, browser fragment
   secrets, stored paths, staging paths, or object keys
 

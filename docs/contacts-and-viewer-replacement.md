@@ -10,6 +10,10 @@ trusted-contact access, break-glass/dead-man-switch escalation, GPS privacy
 boundary, and post-quantum recipient alignment. It exists so later backlog scans
 can produce narrower design and implementation issues.
 
+The encrypted GPS/location evidence model is defined in
+[encrypted-location-context.md](encrypted-location-context.md). This document
+keeps the product and access-boundary context for that model.
+
 Referenced product direction:
 [Proofline Android iOS Concepts](https://www.figma.com/design/C7ojEm3GNfZ7zfFP7jPK4z/Proofline-Android---iOS-Concepts).
 The Figma file metadata was accessible during this pass. The inspected page,
@@ -444,6 +448,10 @@ Class C: Server/relay operational metadata
 - no heading
 - safe opaque routing/status fields only
 ```
+
+The detailed field taxonomy, binding requirements, and validation expectations
+for this model live in
+[encrypted-location-context.md](encrypted-location-context.md).
 
 Full GPS evidence should be captured as stream/chunk context. Each media chunk,
 for example every few seconds, should be able to carry its own available

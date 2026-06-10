@@ -34,9 +34,11 @@ every `/v1` route group public-ready without route-level deployment review.
 
 Future capture stream groups, stream variant roles, source-timeline identity,
 and evidence supersession are planning-only in
-[capture-stream-variants.md](capture-stream-variants.md). The current API still
-treats each media stream as one concrete upload lane and does not select
-canonical evidence across variants.
+[capture-stream-variants.md](capture-stream-variants.md). Future full-fidelity
+GPS, speed, heading, and location freshness context is planning-only in
+[encrypted-location-context.md](encrypted-location-context.md). The current API
+still treats each media stream as one concrete upload lane and does not select
+canonical evidence across variants or implement encrypted location sidecars.
 
 Default bind addresses:
 
@@ -1733,7 +1735,10 @@ Checkin routes are mounted on the main API listener.
 
 ### `POST /v1/incidents/{incident_id}/checkins`
 
-Adds optional device status and location metadata.
+Adds optional device status and location metadata. These fields are existing
+server-visible check-in metadata. They are not the future full-fidelity
+encrypted GPS/location evidence model documented in
+[encrypted-location-context.md](encrypted-location-context.md).
 
 Request:
 

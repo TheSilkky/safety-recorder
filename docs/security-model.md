@@ -1,6 +1,6 @@
 # Security Model
 
-This document summarizes the current Proofline backend security assumptions and controls. For a threat-oriented view, see [threat-model.md](threat-model.md). For planned incident-mode behavior, see [incident-modes.md](incident-modes.md). For `/v1` role and grant boundaries, see [v1-access-control.md](v1-access-control.md). For future production key custody and emergency access design, see [key-custody.md](key-custody.md), the contact key-sharing and wrapped-key grant design in [contact-key-sharing-grants.md](contact-key-sharing-grants.md), the simulator-only wrapped-key metadata prototype in [contact-wrapped-key-metadata-simulator.md](contact-wrapped-key-metadata-simulator.md), [browser-decryption.md](browser-decryption.md), [live-partial-stream-access-boundary.md](live-partial-stream-access-boundary.md), [regional-stream-ingress-relay.md](regional-stream-ingress-relay.md), and [break-glass-key-access.md](break-glass-key-access.md). For vulnerability reporting, see [../SECURITY.md](../SECURITY.md).
+This document summarizes the current Proofline backend security assumptions and controls. For a threat-oriented view, see [threat-model.md](threat-model.md). For planned incident-mode behavior, see [incident-modes.md](incident-modes.md). For `/v1` role and grant boundaries, see [v1-access-control.md](v1-access-control.md). For future production key custody and emergency access design, see [key-custody.md](key-custody.md), the contact key-sharing and wrapped-key grant design in [contact-key-sharing-grants.md](contact-key-sharing-grants.md), the simulator-only wrapped-key metadata prototype in [contact-wrapped-key-metadata-simulator.md](contact-wrapped-key-metadata-simulator.md), [browser-decryption.md](browser-decryption.md), [live-partial-stream-access-boundary.md](live-partial-stream-access-boundary.md), [encrypted-location-context.md](encrypted-location-context.md), [regional-stream-ingress-relay.md](regional-stream-ingress-relay.md), and [break-glass-key-access.md](break-glass-key-access.md). For vulnerability reporting, see [../SECURITY.md](../SECURITY.md).
 
 ## Maturity
 
@@ -317,6 +317,27 @@ Future incident-mode access must follow the role and grant boundaries in
 [v1-access-control.md](v1-access-control.md). Incident labels, capture profiles,
 or sharing-state summaries must not silently grant trusted-contact, public-link,
 admin/operator, escrow, key, or plaintext access.
+
+## Location Privacy Boundary
+
+Full-fidelity GPS, speed, heading, route history, and freshness context are
+high-sensitivity user safety data. Future location context should be Class A
+encrypted evidence by default, bound to chunks, streams, source segments, or
+bounded chunk groups as documented in
+[encrypted-location-context.md](encrypted-location-context.md). The current
+backend does not implement encrypted location sidecars, live tracking, browser
+decryption, trusted-contact incident reads, or map-provider backend
+integration.
+
+Basic no-account token viewers must not receive full routes, chunk-by-chunk GPS
+samples, speed histories, heading histories, or live tracking claims by default.
+Signed-in trusted-contact access must remain account-authenticated and
+grant-scoped rather than inferred from a bearer viewer link.
+
+Future implementation tests should cover token-viewer field allowlists,
+redaction assertions, location-context envelope or authenticated metadata
+binding, relay/logging omissions, and indistinguishable invalid, expired, and
+revoked token behavior.
 
 ## Logging And Headers
 
