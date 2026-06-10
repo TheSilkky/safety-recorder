@@ -19,6 +19,18 @@ func maxUploadBytesFromSource(source configSource) (int64, error) {
 	return maxUploadBytes, nil
 }
 
+func accountDefaultBlobQuotaBytesFromSource(source configSource) (int64, error) {
+	quotaBytes := defaultAccountDefaultBlobQuotaBytes
+	if raw := source.Get("SAFE_ACCOUNT_DEFAULT_BLOB_QUOTA_BYTES"); raw != "" {
+		parsed, err := parseBytes(raw)
+		if err != nil {
+			return 0, fmt.Errorf("parse SAFE_ACCOUNT_DEFAULT_BLOB_QUOTA_BYTES: %w", err)
+		}
+		quotaBytes = parsed
+	}
+	return quotaBytes, nil
+}
+
 func parseBytes(raw string) (int64, error) {
 	value := strings.TrimSpace(strings.ToUpper(raw))
 	if value == "" {

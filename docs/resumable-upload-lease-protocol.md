@@ -200,14 +200,18 @@ should not expose uploaded bytes or plaintext, and should not become public
 ## Size Limits And Expiry
 
 The current complete-chunk API applies `SAFE_MAX_UPLOAD_BYTES` to the uploaded
-file bytes. A future resumable protocol should preserve a final ciphertext size
-limit at least as strict as the current complete upload limit unless an
-explicit configuration change is designed and documented.
+file bytes and `SAFE_ACCOUNT_DEFAULT_BLOB_QUOTA_BYTES` to committed encrypted
+chunk bytes per owner account. A future resumable protocol should preserve a
+final ciphertext size limit and committed account quota at least as strict as
+the current complete upload limits unless an explicit configuration change is
+designed and documented.
 
 For a future resumable session:
 
 - the declared or accumulated total ciphertext size must stay within the
   configured upload limit
+- committing the final ciphertext must respect the account's committed blob
+  quota without counting abandoned temporary parts as durable evidence
 - range or part uploads may have additional per-request limits, but those
   limits must not allow a final oversized chunk to be committed
 - expiry should apply to incomplete upload sessions and short-lived leases

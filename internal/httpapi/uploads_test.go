@@ -13,9 +13,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/open-proofline/server/internal/auth"
 	"github.com/open-proofline/server/internal/coordination"
+	"github.com/open-proofline/server/internal/db"
 	"github.com/open-proofline/server/internal/httpapi"
 	"github.com/open-proofline/server/internal/incidents"
+	"github.com/open-proofline/server/internal/storage"
 )
 
 func TestUploadValidChunk(t *testing.T) {
@@ -224,6 +227,77 @@ func TestDuplicateChunkWithoutIdempotencyKeyKeepsExistingBehavior(t *testing.T) 
 	}
 	if operations != 0 {
 		t.Fatalf("unexpected upload operation rows for no-key upload: %d", operations)
+	}
+}
+
+func TestRejectAccountBlobQuotaExceeded(t *testing.T) {
+	ctx := context.Background()
+	dataDir := t.TempDir()
+	conn, err := db.Open(ctx, filepath.Join(dataDir, "proofline.db"))
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = conn.Close()
+	})
+	blobStore, err := storage.New(dataDir)
+	if err != nil {
+		t.Fatalf("create storage: %v", err)
+	}
+	repo := incidents.NewRepository(conn)
+	account, err := repo.CreateAccount(ctx, auth.CreateAccountParams{
+		Username:     "quota-owner",
+		PasswordHash: "hash",
+		Role:         auth.RoleAdmin,
+		AccountState: auth.AccountStateActive,
+	})
+	if err != nil {
+		t.Fatalf("create account: %v", err)
+	}
+	_, authToken, err := repo.CreateSession(ctx, account.ID, time.Now().UTC().Add(time.Hour))
+	if err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+	incident, err := repo.CreateIncidentForAccount(ctx, account.ID, incidents.CreateIncidentParams{})
+	if err != nil {
+		t.Fatalf("create incident: %v", err)
+	}
+	stream, err := repo.CreateMediaStream(ctx, incident.ID, incidents.MediaTypeAudio, "audio recording")
+	if err != nil {
+		t.Fatalf("create media stream: %v", err)
+	}
+
+	firstPayload := testPQPayload(t, incident.ID, stream.ID, 1, incidents.MediaTypeAudio, []byte("first encrypted audio data"))
+	secondPayload := testPQPayload(t, incident.ID, stream.ID, 2, incidents.MediaTypeAudio, []byte("second encrypted audio data"))
+	quotaBytes := int64(len(firstPayload) + len(secondPayload) - 1)
+	mainHandler := httpapi.NewMain(repo, blobStore, httpapi.Options{
+		MaxUploadBytes:        int64(len(firstPayload)+len(secondPayload)) + 1024*1024,
+		AccountBlobQuotaBytes: quotaBytes,
+	})
+	app := &testApp{
+		mainHandler:    mainHandler,
+		privateHandler: mainHandler,
+		dataDir:        dataDir,
+		db:             conn,
+		authToken:      authToken,
+	}
+
+	response, body := uploadRawChunkWithOptions(t, app, incident.ID, stream.ID, 1, incidents.MediaTypeAudio, firstPayload, sha256Hex(firstPayload), "chunk-1.enc", "")
+	response.Body.Close()
+	if response.StatusCode != http.StatusCreated {
+		t.Fatalf("expected first upload status 201, got %d: %s", response.StatusCode, body)
+	}
+
+	response, body = uploadRawChunkWithOptions(t, app, incident.ID, stream.ID, 2, incidents.MediaTypeAudio, secondPayload, sha256Hex(secondPayload), "chunk-2.enc", "")
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusInsufficientStorage {
+		t.Fatalf("expected quota status 507, got %d: %s", response.StatusCode, body)
+	}
+	assertErrorCode(t, body, "account_storage_quota_exceeded")
+	assertNoStoredFile(t, app, incident.ID, filepath.Join("streams", stream.ID, "audio_000002.enc"))
+	assertTempDirEmpty(t, app)
+	if usage, err := repo.AccountCommittedBlobBytes(ctx, account.ID); err != nil || usage != int64(len(firstPayload)) {
+		t.Fatalf("account committed bytes = %d, err %v; want %d", usage, err, len(firstPayload))
 	}
 }
 

@@ -253,16 +253,17 @@ type CreateIncidentParams struct {
 // CreateChunkParams contains metadata saved after a chunk file has been safely
 // written and hash-verified.
 type CreateChunkParams struct {
-	IncidentID       string
-	StreamID         string
-	ChunkIndex       int
-	MediaType        string
-	StartedAt        time.Time
-	EndedAt          time.Time
-	OriginalFilename string
-	StoredPath       string
-	ByteSize         int64
-	SHA256Hex        string
+	IncidentID            string
+	StreamID              string
+	ChunkIndex            int
+	MediaType             string
+	StartedAt             time.Time
+	EndedAt               time.Time
+	OriginalFilename      string
+	StoredPath            string
+	ByteSize              int64
+	SHA256Hex             string
+	AccountBlobQuotaBytes int64
 }
 
 // UploadOperation records durable idempotency state for one authenticated write

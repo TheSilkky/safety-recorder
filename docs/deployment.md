@@ -141,6 +141,13 @@ private-admin listener and review uploads, chunk reads, bundle downloads,
 diagnostics, operator routes, raw error/debug endpoints, key custody, and any
 write routes separately before placing them on a public edge.
 
+Account-scoped committed blob quota is enabled by default as a preview
+abuse/cost control. `[uploads].account_default_blob_quota_bytes` defaults to
+`10GB` per owner account and applies to accepted encrypted chunk bytes for both
+local and S3-compatible committed blobs. It does not add billing, account
+plans, payment-gated access, temp upload staging limits, public admin routes,
+or blanket evidence-capture route approval.
+
 Public self-registration is disabled by default. If a self-hosted deployment
 sets `[account_registration].mode = "open"` or uses the equivalent
 `SAFE_ACCOUNT_REGISTRATION_MODE=open` environment override, configure SMTP and
@@ -297,6 +304,7 @@ Container TOML defaults:
 | `[paths].data_dir` | `/var/lib/proofline` |
 | `[paths].sqlite_db_path` | `/var/lib/proofline/proofline.db` |
 | `[uploads].max_upload_bytes` | `250MB` |
+| `[uploads].account_default_blob_quota_bytes` | `10GB` |
 | `[retention].deletion_worker_interval` | `1m` |
 | `[retention].closed_incident_retention` | `0` |
 

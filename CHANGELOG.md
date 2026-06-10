@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Added account-scoped committed encrypted blob quota enforcement, defaulting
+  to 10 GB per owner account, with SQLite/PostgreSQL metadata-backed usage
+  checks, safe `507 account_storage_quota_exceeded` upload responses, local/S3
+  backend coverage through chunk metadata, and docs confirming no billing,
+  temp-upload quota, key escrow, decryption, or public-admin behavior.
 - Documented the future no-account web-client viewer routing decision:
   canonical links should point at the web-client origin with a fragment token,
   while current `/i` and `/e` server routes are prototype/local compatibility

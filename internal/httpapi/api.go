@@ -13,19 +13,21 @@ import (
 )
 
 const (
-	defaultMaxUploadBytes   = int64(250 * 1024 * 1024)
-	defaultIncidentTokenTTL = 24 * time.Hour
-	defaultSessionTTL       = 12 * time.Hour
-	defaultVerificationTTL  = 24 * time.Hour
-	jsonBodyLimit           = int64(64 * 1024)
-	fieldLimit              = int64(64 * 1024)
-	multipartOverhead       = int64(1024 * 1024)
-	maxSafeUploadBytes      = int64(1<<63 - 1 - multipartOverhead)
+	defaultMaxUploadBytes        = int64(250 * 1024 * 1024)
+	defaultAccountBlobQuotaBytes = int64(10 * 1024 * 1024 * 1024)
+	defaultIncidentTokenTTL      = 24 * time.Hour
+	defaultSessionTTL            = 12 * time.Hour
+	defaultVerificationTTL       = 24 * time.Hour
+	jsonBodyLimit                = int64(64 * 1024)
+	fieldLimit                   = int64(64 * 1024)
+	multipartOverhead            = int64(1024 * 1024)
+	maxSafeUploadBytes           = int64(1<<63 - 1 - multipartOverhead)
 )
 
 // Options configures API construction.
 type Options struct {
 	MaxUploadBytes             int64
+	AccountBlobQuotaBytes      int64
 	DefaultIncidentTokenTTL    *time.Duration
 	SessionTTL                 time.Duration
 	BootstrapSecret            string
@@ -111,6 +113,7 @@ type API struct {
 	repo                       MetadataRepository
 	store                      storage.BlobStore
 	maxUploadBytes             int64
+	accountBlobQuotaBytes      int64
 	defaultIncidentTokenTTL    time.Duration
 	sessionTTL                 time.Duration
 	bootstrapSecret            string
@@ -165,6 +168,10 @@ func newAPI(repo MetadataRepository, store storage.BlobStore, opts Options) *API
 	if maxUploadBytes > maxSafeUploadBytes {
 		maxUploadBytes = maxSafeUploadBytes
 	}
+	accountBlobQuotaBytes := opts.AccountBlobQuotaBytes
+	if accountBlobQuotaBytes <= 0 {
+		accountBlobQuotaBytes = defaultAccountBlobQuotaBytes
+	}
 	incidentTokenTTL := defaultIncidentTokenTTL
 	if opts.DefaultIncidentTokenTTL != nil {
 		incidentTokenTTL = *opts.DefaultIncidentTokenTTL
@@ -214,6 +221,7 @@ func newAPI(repo MetadataRepository, store storage.BlobStore, opts Options) *API
 		repo:                       repo,
 		store:                      store,
 		maxUploadBytes:             maxUploadBytes,
+		accountBlobQuotaBytes:      accountBlobQuotaBytes,
 		defaultIncidentTokenTTL:    incidentTokenTTL,
 		sessionTTL:                 sessionTTL,
 		bootstrapSecret:            opts.BootstrapSecret,

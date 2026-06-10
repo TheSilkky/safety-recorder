@@ -26,6 +26,9 @@ var (
 	// ErrIncidentDeleting indicates that a write raced with an incident deletion
 	// decision and the incident no longer accepts metadata or ciphertext writes.
 	ErrIncidentDeleting = errors.New("incident deleting")
+	// ErrAccountBlobQuotaExceeded indicates that committed encrypted blob bytes
+	// for an account would exceed the configured limit.
+	ErrAccountBlobQuotaExceeded = errors.New("account blob quota exceeded")
 )
 
 // Repository stores incident metadata and related rows in SQLite.

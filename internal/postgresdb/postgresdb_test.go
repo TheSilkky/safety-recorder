@@ -363,6 +363,75 @@ func TestPostgresRepositoryPreservesCoreSemantics(t *testing.T) {
 	}
 }
 
+func TestPostgresAccountCommittedBlobQuotaUsesOwnedCommittedChunks(t *testing.T) {
+	ctx := context.Background()
+	conn := openPostgresTestDB(t, ctx)
+	if err := Migrate(ctx, conn); err != nil {
+		t.Fatalf("Migrate: %v", err)
+	}
+	repo := NewRepository(conn)
+
+	owner, err := repo.CreateAccount(ctx, auth.CreateAccountParams{
+		Username:     "pg-quota-owner",
+		PasswordHash: "hash",
+		Role:         auth.RoleUser,
+		AccountState: auth.AccountStateActive,
+	})
+	if err != nil {
+		t.Fatalf("create owner account: %v", err)
+	}
+	other, err := repo.CreateAccount(ctx, auth.CreateAccountParams{
+		Username:     "pg-quota-other",
+		PasswordHash: "hash",
+		Role:         auth.RoleUser,
+		AccountState: auth.AccountStateActive,
+	})
+	if err != nil {
+		t.Fatalf("create other account: %v", err)
+	}
+	firstIncident, err := repo.CreateIncidentForAccount(ctx, owner.ID, incidents.CreateIncidentParams{})
+	if err != nil {
+		t.Fatalf("create first owned incident: %v", err)
+	}
+	secondIncident, err := repo.CreateIncidentForAccount(ctx, owner.ID, incidents.CreateIncidentParams{})
+	if err != nil {
+		t.Fatalf("create second owned incident: %v", err)
+	}
+	otherIncident, err := repo.CreateIncidentForAccount(ctx, other.ID, incidents.CreateIncidentParams{})
+	if err != nil {
+		t.Fatalf("create other incident: %v", err)
+	}
+
+	firstChunk := testChunkParams(firstIncident.ID, "", incidents.MediaTypeAudio, 1)
+	firstChunk.ByteSize = 6
+	firstChunk.AccountBlobQuotaBytes = 10
+	if _, err := repo.CreateChunk(ctx, firstChunk); err != nil {
+		t.Fatalf("create first owned chunk: %v", err)
+	}
+	otherChunk := testChunkParams(otherIncident.ID, "", incidents.MediaTypeAudio, 1)
+	otherChunk.ByteSize = 9
+	otherChunk.AccountBlobQuotaBytes = 10
+	if _, err := repo.CreateChunk(ctx, otherChunk); err != nil {
+		t.Fatalf("create other account chunk: %v", err)
+	}
+	if usage, err := repo.AccountCommittedBlobBytes(ctx, owner.ID); err != nil || usage != 6 {
+		t.Fatalf("owner usage = %d, err %v; want 6", usage, err)
+	}
+
+	tooLarge := testChunkParams(secondIncident.ID, "", incidents.MediaTypeAudio, 1)
+	tooLarge.ByteSize = 5
+	tooLarge.AccountBlobQuotaBytes = 10
+	if _, err := repo.CreateChunk(ctx, tooLarge); !errors.Is(err, incidents.ErrAccountBlobQuotaExceeded) {
+		t.Fatalf("quota rejection error = %v, want ErrAccountBlobQuotaExceeded", err)
+	}
+	if usage, err := repo.AccountCommittedBlobBytes(ctx, owner.ID); err != nil || usage != 6 {
+		t.Fatalf("owner usage after rejected chunk = %d, err %v; want 6", usage, err)
+	}
+	if _, err := repo.CreateChunk(ctx, firstChunk); !errors.Is(err, incidents.ErrDuplicate) {
+		t.Fatalf("duplicate with quota enabled error = %v, want ErrDuplicate", err)
+	}
+}
+
 func TestPostgresDeletionOperatorStatusAndPreview(t *testing.T) {
 	ctx := context.Background()
 	conn := openPostgresTestDB(t, ctx)

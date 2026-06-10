@@ -150,6 +150,11 @@ encrypted evidence bundles.
 
 - Uploads stream to `data/tmp` while computing SHA-256 and enforcing `SAFE_MAX_UPLOAD_BYTES`.
 - Upload-limit configuration rejects non-positive, sub-byte, invalid, and oversized values before request-size limits are applied.
+- Account-scoped committed blob quota defaults to 10 GB per owner account via
+  `SAFE_ACCOUNT_DEFAULT_BLOB_QUOTA_BYTES`. It counts accepted encrypted chunk
+  byte sizes from metadata across owned incidents for local and S3-compatible
+  blob backends, and it returns a generic `507 account_storage_quota_exceeded`
+  when a new chunk would exceed the limit.
 - Uploaded bytes are committed only after hash verification.
 - Final local chunk storage uses no-overwrite hard links. Optional S3-compatible storage uses conditional no-overwrite final object writes.
 - The simulator encrypts generated test bytes, local pre-recorded files, or

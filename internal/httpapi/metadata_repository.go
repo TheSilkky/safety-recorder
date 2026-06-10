@@ -39,6 +39,7 @@ type MetadataRepository interface {
 
 	ChunkExists(ctx context.Context, incidentID, streamID, mediaType string, chunkIndex int) (bool, error)
 	GetChunkByIdentity(ctx context.Context, incidentID, streamID, mediaType string, chunkIndex int) (incidents.Chunk, error)
+	AccountCommittedBlobBytes(ctx context.Context, ownerAccountID string) (int64, error)
 	CreateChunk(ctx context.Context, params incidents.CreateChunkParams) (incidents.Chunk, error)
 	ListChunks(ctx context.Context, incidentID string) ([]incidents.Chunk, error)
 	GetChunkByKey(ctx context.Context, incidentID, mediaType string, chunkIndex int) (incidents.Chunk, error)

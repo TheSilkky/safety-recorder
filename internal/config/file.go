@@ -82,10 +82,11 @@ type configFileCoordination struct {
 }
 
 type configFileUploads struct {
-	MaxUploadBytes             *string `toml:"max_upload_bytes"`
-	UploadCoordinationLeaseTTL *string `toml:"upload_coordination_lease_ttl"`
-	TempUploadCleanupAge       *string `toml:"temp_upload_cleanup_age"`
-	TempUploadCleanupDryRun    *bool   `toml:"temp_upload_cleanup_dry_run"`
+	MaxUploadBytes               *string `toml:"max_upload_bytes"`
+	AccountDefaultBlobQuotaBytes *string `toml:"account_default_blob_quota_bytes"`
+	UploadCoordinationLeaseTTL   *string `toml:"upload_coordination_lease_ttl"`
+	TempUploadCleanupAge         *string `toml:"temp_upload_cleanup_age"`
+	TempUploadCleanupDryRun      *bool   `toml:"temp_upload_cleanup_dry_run"`
 }
 
 type configFileAuth struct {
@@ -279,6 +280,7 @@ func (file configFile) toValues() (map[string]string, error) {
 	setString(values, "SAFE_VALKEY_WRITE_TIMEOUT", file.Coordination.ValkeyWriteTimeout)
 
 	setString(values, "SAFE_MAX_UPLOAD_BYTES", file.Uploads.MaxUploadBytes)
+	setString(values, "SAFE_ACCOUNT_DEFAULT_BLOB_QUOTA_BYTES", file.Uploads.AccountDefaultBlobQuotaBytes)
 	setString(values, "SAFE_UPLOAD_COORDINATION_LEASE_TTL", file.Uploads.UploadCoordinationLeaseTTL)
 	setString(values, "SAFE_TEMP_UPLOAD_CLEANUP_AGE", file.Uploads.TempUploadCleanupAge)
 	setBool(values, "SAFE_TEMP_UPLOAD_CLEANUP_DRY_RUN", file.Uploads.TempUploadCleanupDryRun)
