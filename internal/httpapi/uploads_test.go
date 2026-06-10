@@ -301,6 +301,75 @@ func TestRejectAccountBlobQuotaExceeded(t *testing.T) {
 	}
 }
 
+func TestRejectUploadStagingQuotaExceeded(t *testing.T) {
+	ctx := context.Background()
+	dataDir := t.TempDir()
+	conn, err := db.Open(ctx, filepath.Join(dataDir, "proofline.db"))
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = conn.Close()
+	})
+	blobStore, err := storage.NewWithOptions(dataDir, storage.Options{TempStagingQuotaBytes: 8})
+	if err != nil {
+		t.Fatalf("create storage: %v", err)
+	}
+	repo := incidents.NewRepository(conn)
+	account, err := repo.CreateAccount(ctx, auth.CreateAccountParams{
+		Username:     "staging-quota-owner",
+		PasswordHash: "hash",
+		Role:         auth.RoleAdmin,
+		AccountState: auth.AccountStateActive,
+	})
+	if err != nil {
+		t.Fatalf("create account: %v", err)
+	}
+	_, authToken, err := repo.CreateSession(ctx, account.ID, time.Now().UTC().Add(time.Hour))
+	if err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+	incident, err := repo.CreateIncidentForAccount(ctx, account.ID, incidents.CreateIncidentParams{})
+	if err != nil {
+		t.Fatalf("create incident: %v", err)
+	}
+	stream, err := repo.CreateMediaStream(ctx, incident.ID, incidents.MediaTypeAudio, "audio recording")
+	if err != nil {
+		t.Fatalf("create media stream: %v", err)
+	}
+
+	var logs bytes.Buffer
+	mainHandler := httpapi.NewMain(repo, blobStore, httpapi.Options{
+		MaxUploadBytes:        1024 * 1024,
+		AccountBlobQuotaBytes: 1024 * 1024,
+		Logger:                slog.New(slog.NewTextHandler(&logs, nil)),
+	})
+	app := &testApp{
+		mainHandler:    mainHandler,
+		privateHandler: mainHandler,
+		dataDir:        dataDir,
+		db:             conn,
+		authToken:      authToken,
+	}
+	payload := []byte("encrypted audio data that exceeds local staging quota")
+	pqPayload := testPQPayload(t, incident.ID, stream.ID, 1, incidents.MediaTypeAudio, payload)
+
+	response, body := uploadRawChunkWithOptions(t, app, incident.ID, stream.ID, 1, incidents.MediaTypeAudio, pqPayload, sha256Hex(pqPayload), "chunk.enc", "")
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusInsufficientStorage {
+		t.Fatalf("expected staging quota status 507, got %d: %s", response.StatusCode, body)
+	}
+	assertErrorCode(t, body, "upload_staging_quota_exceeded")
+	assertNoStoredFile(t, app, incident.ID, filepath.Join("streams", stream.ID, "audio_000001.enc"))
+	assertTempDirEmpty(t, app)
+	if bytes.Contains(body, []byte(app.dataDir)) || bytes.Contains(logs.Bytes(), []byte(app.dataDir)) {
+		t.Fatalf("staging quota response or logs exposed data dir: body=%s logs=%s", body, logs.String())
+	}
+	if bytes.Contains(body, payload) || bytes.Contains(logs.Bytes(), payload) {
+		t.Fatalf("staging quota response or logs exposed upload bytes: body=%s logs=%s", body, logs.String())
+	}
+}
+
 func TestUploadCoordinationUsesSafeLeaseKey(t *testing.T) {
 	coord := &recordingUploadCoordinator{
 		lease: coordination.UploadLease{Acquired: true, Token: "server-generated-lease-token"},

@@ -12,6 +12,7 @@ const (
 	defaultDBPath                             = "./data/proofline.db"
 	defaultMaxUploadBytes                     = int64(250 * 1024 * 1024)
 	defaultAccountDefaultBlobQuotaBytes       = int64(10 * 1024 * 1024 * 1024)
+	defaultTempUploadStagingQuotaBytes        = int64(1024 * 1024 * 1024)
 	defaultIncidentTokenTTL                   = 24 * time.Hour
 	defaultSessionTTL                         = 12 * time.Hour
 	defaultEmailVerificationTTL               = 24 * time.Hour
@@ -81,6 +82,7 @@ type Config struct {
 	DBPath                       string
 	MaxUploadBytes               int64
 	AccountDefaultBlobQuotaBytes int64
+	TempUploadStagingQuotaBytes  int64
 	DefaultIncidentTokenTTL      time.Duration
 	SessionTTL                   time.Duration
 	AccountRegistration          AccountRegistrationConfig
@@ -272,6 +274,10 @@ func loadFromSource(source configSource) (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
+	tempUploadStagingQuotaBytes, err := tempUploadStagingQuotaBytesFromSource(source)
+	if err != nil {
+		return Config{}, err
+	}
 	incidentTokenTTL, err := durationFromSource(source, "SAFE_DEFAULT_INCIDENT_TOKEN_TTL", defaultIncidentTokenTTL)
 	if err != nil {
 		return Config{}, err
@@ -361,6 +367,7 @@ func loadFromSource(source configSource) (Config, error) {
 		DBPath:                       envOrDefault(source, "SAFE_DB_PATH", defaultDBPath),
 		MaxUploadBytes:               maxUploadBytes,
 		AccountDefaultBlobQuotaBytes: accountDefaultBlobQuotaBytes,
+		TempUploadStagingQuotaBytes:  tempUploadStagingQuotaBytes,
 		DefaultIncidentTokenTTL:      incidentTokenTTL,
 		SessionTTL:                   sessionTTL,
 		AccountRegistration:          accountRegistration,

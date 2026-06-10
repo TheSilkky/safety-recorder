@@ -8,7 +8,7 @@
 [![Security Policy](https://img.shields.io/badge/security-policy-blue.svg)](SECURITY.md)
 [![GHCR](https://img.shields.io/static/v1?label=GHCR&message=ghcr.io%2Fopen-proofline%2Fserver&color=blue&logo=github)](https://github.com/orgs/open-proofline/packages/container/package/server)
 
-Proofline Server is the experimental Go server backend for encrypted incident capture. It receives already-encrypted recording chunks through authenticated main `/v1` routes, stores metadata in SQLite by default or optional PostgreSQL, keeps encrypted blobs on local disk by default or in optional S3-compatible object storage, enforces a default account-scoped committed blob quota, serves a private admin dashboard under `/admin`, uses optional Valkey/Redis-compatible coordination for startup checks, route-class counters, and short-lived complete-upload leases when explicitly configured, supports optional browser cookie sessions for a future web client, supports disabled-by-default configurable account registration with SMTP-backed email verification for open self-hosted registration, and exposes a token-scoped read-only viewer for incident review.
+Proofline Server is the experimental Go server backend for encrypted incident capture. It receives already-encrypted recording chunks through authenticated main `/v1` routes, stores metadata in SQLite by default or optional PostgreSQL, keeps encrypted blobs on local disk by default or in optional S3-compatible object storage, enforces default local staging and account-scoped committed blob quotas, serves a private admin dashboard under `/admin`, uses optional Valkey/Redis-compatible coordination for startup checks, route-class counters, and short-lived complete-upload leases when explicitly configured, supports optional browser cookie sessions for a future web client, supports disabled-by-default configurable account registration with SMTP-backed email verification for open self-hosted registration, and exposes a token-scoped read-only viewer for incident review.
 
 > Repository role: this repository is the server/backend component only. In the multi-repo layout it is `open-proofline/server`, not the full Proofline product suite.
 >
@@ -117,6 +117,8 @@ escrow.
 - Optional S3-compatible encrypted blob storage for committed chunks
 - Account-scoped committed encrypted blob quota, defaulting to 10 GB per owner
   account as a preview abuse/cost control
+- Local temp-upload staging quota, defaulting to 1 GB for both local and
+  S3-compatible blob backends before final chunk commit
 - Immutable chunk uploads with SHA-256 verification
 - `Idempotency-Key` support for equivalent complete chunk upload retries
 - Optional Valkey/Redis-compatible short-lived complete-upload leases and

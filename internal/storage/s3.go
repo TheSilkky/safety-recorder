@@ -18,25 +18,27 @@ import (
 
 // S3Options configures the optional S3-compatible blob backend.
 type S3Options struct {
-	Endpoint        string
-	Region          string
-	Bucket          string
-	Prefix          string
-	AccessKeyID     string
-	SecretAccessKey string
-	SessionToken    string
-	ForcePathStyle  bool
-	TempDir         string
+	Endpoint              string
+	Region                string
+	Bucket                string
+	Prefix                string
+	AccessKeyID           string
+	SecretAccessKey       string
+	SessionToken          string
+	ForcePathStyle        bool
+	TempDir               string
+	TempStagingQuotaBytes int64
 }
 
 // S3Store stores committed encrypted blobs in an S3-compatible object store.
 // Upload bytes are still staged in a local temp directory so hash verification
 // happens before any final object write.
 type S3Store struct {
-	client  s3ObjectClient
-	bucket  string
-	prefix  string
-	tempDir string
+	client    s3ObjectClient
+	bucket    string
+	prefix    string
+	tempDir   string
+	tempQuota *tempStagingQuota
 }
 
 type s3ObjectClient interface {
@@ -119,10 +121,11 @@ func newS3Store(client s3ObjectClient, opts S3Options) (*S3Store, error) {
 		return nil, fmt.Errorf("create s3 temp directory: %w", err)
 	}
 	return &S3Store{
-		client:  client,
-		bucket:  strings.TrimSpace(opts.Bucket),
-		prefix:  prefix,
-		tempDir: opts.TempDir,
+		client:    client,
+		bucket:    strings.TrimSpace(opts.Bucket),
+		prefix:    prefix,
+		tempDir:   opts.TempDir,
+		tempQuota: newTempStagingQuota(opts.TempStagingQuotaBytes),
 	}, nil
 }
 
@@ -145,8 +148,8 @@ func (s *S3Store) Check(ctx context.Context) error {
 
 // SaveTemp streams reader into a local temporary file, enforcing maxBytes and
 // computing SHA-256 before an object is committed to S3.
-func (s *S3Store) SaveTemp(_ context.Context, reader io.Reader, maxBytes int64) (*TempUpload, error) {
-	return saveTempToDir(s.tempDir, reader, maxBytes)
+func (s *S3Store) SaveTemp(ctx context.Context, reader io.Reader, maxBytes int64) (*TempUpload, error) {
+	return saveTempToDir(ctx, s.tempDir, reader, maxBytes, s.tempQuota)
 }
 
 // CommitTemp writes a verified temp upload to a server-controlled immutable S3

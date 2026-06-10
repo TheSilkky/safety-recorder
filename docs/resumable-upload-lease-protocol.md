@@ -200,11 +200,12 @@ should not expose uploaded bytes or plaintext, and should not become public
 ## Size Limits And Expiry
 
 The current complete-chunk API applies `SAFE_MAX_UPLOAD_BYTES` to the uploaded
-file bytes and `SAFE_ACCOUNT_DEFAULT_BLOB_QUOTA_BYTES` to committed encrypted
+file bytes, `SAFE_TEMP_UPLOAD_STAGING_QUOTA_BYTES` to local temp staging
+pressure, and `SAFE_ACCOUNT_DEFAULT_BLOB_QUOTA_BYTES` to committed encrypted
 chunk bytes per owner account. A future resumable protocol should preserve a
-final ciphertext size limit and committed account quota at least as strict as
-the current complete upload limits unless an explicit configuration change is
-designed and documented.
+final ciphertext size limit, staging pressure control, and committed account
+quota at least as strict as the current complete upload limits unless an
+explicit configuration change is designed and documented.
 
 For a future resumable session:
 

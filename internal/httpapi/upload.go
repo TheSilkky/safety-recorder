@@ -105,6 +105,10 @@ func (a *API) readFilePart(ctx context.Context, w http.ResponseWriter, part *mul
 		writeError(w, http.StatusRequestEntityTooLarge, "upload_too_large", "upload exceeded SAFE_MAX_UPLOAD_BYTES")
 		return nil, "", false
 	}
+	if errors.Is(err, storage.ErrTempStagingQuotaExceeded) {
+		writeError(w, http.StatusInsufficientStorage, "upload_staging_quota_exceeded", "upload staging quota exceeded")
+		return nil, "", false
+	}
 	if err != nil {
 		a.internalError(w, "save temp upload", err)
 		return nil, "", false

@@ -102,6 +102,7 @@ values for the same field. Within TOML, set either the direct secret key or the
 | `[coordination].valkey_write_timeout` | `SAFE_VALKEY_WRITE_TIMEOUT` |
 | `[uploads].max_upload_bytes` | `SAFE_MAX_UPLOAD_BYTES` |
 | `[uploads].account_default_blob_quota_bytes` | `SAFE_ACCOUNT_DEFAULT_BLOB_QUOTA_BYTES` |
+| `[uploads].temp_upload_staging_quota_bytes` | `SAFE_TEMP_UPLOAD_STAGING_QUOTA_BYTES` |
 | `[uploads].upload_coordination_lease_ttl` | `SAFE_UPLOAD_COORDINATION_LEASE_TTL` |
 | `[uploads].temp_upload_cleanup_age` | `SAFE_TEMP_UPLOAD_CLEANUP_AGE` |
 | `[uploads].temp_upload_cleanup_dry_run` | `SAFE_TEMP_UPLOAD_CLEANUP_DRY_RUN` |
@@ -201,6 +202,7 @@ values for the same field. Within TOML, set either the direct secret key or the
 | `SAFE_UPLOAD_COORDINATION_LEASE_TTL` | `2m` | Short TTL for Valkey-backed complete-upload in-progress leases and retry hints. Must be positive. |
 | `SAFE_MAX_UPLOAD_BYTES` | `250MB` | Maximum encrypted file bytes per upload. |
 | `SAFE_ACCOUNT_DEFAULT_BLOB_QUOTA_BYTES` | `10GB` | Default committed encrypted blob quota per owner account. Counted from accepted chunk metadata across owned incidents for both local and S3-compatible blob backends. |
+| `SAFE_TEMP_UPLOAD_STAGING_QUOTA_BYTES` | `1GB` | Maximum regular `upload-*` temp staging bytes under the local temp directory before new upload bytes fail closed with a generic staging-quota error. Applies to local blob storage and S3-compatible blob staging. |
 | `SAFE_DEFAULT_INCIDENT_TOKEN_TTL` | `24h` | Default lifetime for viewer tokens created without `expires_at`. Set to `0` to disable the default for omitted `expires_at` values. |
 | `SAFE_SESSION_TTL` | `12h` | Lifetime for local account sessions created by `/v1/auth/login`. |
 | `SAFE_ACCOUNT_REGISTRATION_MODE` | `disabled` | Public account registration mode. Supported values are `disabled`, `admin_only`, `open`, and `paid`. `open` requires SMTP email verification; `paid` is a fail-closed placeholder. |
@@ -403,7 +405,8 @@ key listing. `[uploads].account_default_blob_quota_bytes` counts accepted
 encrypted chunk `byte_size` values for incidents owned by the account. Chunks
 continue to count while deletion is pending or retrying and stop counting only
 after durable deletion completes and chunk metadata is pruned. Failed, staged,
-or orphan temp uploads are separate from committed quota.
+or orphan temp uploads are separate from committed quota and are bounded by the
+local temp-upload staging quota.
 
 Use HTTPS for S3-compatible endpoints unless the endpoint is limited to a local
 or private test network. Plain HTTP object-storage traffic can expose
@@ -417,6 +420,10 @@ hash mismatches clean up local temp files through the normal upload path. If
 the process crashes, abandoned local temp files under the configured data
 directory's `tmp` subdirectory may remain and should be cleaned only by a
 conservative operator policy that never deletes committed objects.
+`[uploads].temp_upload_staging_quota_bytes` applies to the same local staging
+directory for both local and S3-compatible blob backends and rejects additional
+upload bytes with a generic `507 upload_staging_quota_exceeded` response when
+regular `upload-*` staging files reach the configured limit.
 `[uploads].temp_upload_cleanup_age` applies to this local staging directory for
 both local and S3-compatible blob backends. Object-store lifecycle cleanup for
 staging prefixes is not needed unless a future resumable or multipart S3
@@ -517,7 +524,7 @@ SAFE_ADMIN_BIND_ADDRS=127.0.0.1:8081 \
 go run ./cmd/api
 ```
 
-## Upload Size And Account Blob Quota
+## Upload Size And Blob Quotas
 
 `SAFE_MAX_UPLOAD_BYTES` accepts a positive byte count or binary unit suffix:
 
@@ -534,6 +541,7 @@ Using TOML:
 [uploads]
 max_upload_bytes = "250MB"
 account_default_blob_quota_bytes = "10GB"
+temp_upload_staging_quota_bytes = "1GB"
 ```
 
 Environment override:
@@ -541,6 +549,7 @@ Environment override:
 ```bash
 SAFE_MAX_UPLOAD_BYTES=250MB \
 SAFE_ACCOUNT_DEFAULT_BLOB_QUOTA_BYTES=10GB \
+SAFE_TEMP_UPLOAD_STAGING_QUOTA_BYTES=1GB \
 go run ./cmd/api
 ```
 
@@ -551,6 +560,16 @@ committed bytes. Deletion frees quota only after blob deletion has completed
 and the associated chunk metadata has been removed. The setting is an
 abuse/cost control for preview deployments, not billing, subscription, account
 plan, or payment-gating logic.
+
+`SAFE_TEMP_UPLOAD_STAGING_QUOTA_BYTES` uses the same byte parser and defaults
+to 1 GB. It limits regular local `upload-*` staging files under the configured
+data directory's `tmp` subdirectory before final chunk commit. The limit applies
+to both local blob storage and S3-compatible blob staging because both paths
+stage upload bytes locally before hash verification and final commit. It is
+separate from `SAFE_MAX_UPLOAD_BYTES`, committed account quota, and conservative
+orphan temp cleanup. When staging pressure reaches the configured limit, chunk
+upload returns a generic `507 upload_staging_quota_exceeded` response without
+exposing temp paths, stored paths, object keys, bucket names, or uploaded bytes.
 
 ## Viewer Token Expiry
 

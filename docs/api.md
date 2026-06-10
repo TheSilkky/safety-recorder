@@ -66,7 +66,7 @@ Errors use:
 }
 ```
 
-Non-upload JSON bodies are limited to 64 KiB. Upload file bytes are limited by `SAFE_MAX_UPLOAD_BYTES`; multipart metadata has a small fixed overhead allowance. Accepted encrypted chunk bytes are also limited by the account-scoped committed blob quota configured with `SAFE_ACCOUNT_DEFAULT_BLOB_QUOTA_BYTES`, which defaults to 10 GB per owner account. Both byte settings accept a positive byte count or binary unit suffixes `B`, `K`/`KB`, `M`/`MB`, and `G`/`GB`. Fractional unit values are allowed when they resolve to at least one byte. Non-positive, sub-byte, invalid, and oversized values are rejected during startup.
+Non-upload JSON bodies are limited to 64 KiB. Upload file bytes are limited by `SAFE_MAX_UPLOAD_BYTES`; multipart metadata has a small fixed overhead allowance. Accepted encrypted chunk bytes are also limited by the account-scoped committed blob quota configured with `SAFE_ACCOUNT_DEFAULT_BLOB_QUOTA_BYTES`, which defaults to 10 GB per owner account. Local temp-upload staging bytes are limited by `SAFE_TEMP_UPLOAD_STAGING_QUOTA_BYTES`, which defaults to 1 GB and applies to regular `upload-*` staging files before local or S3-compatible final commit. These byte settings accept a positive byte count or binary unit suffixes `B`, `K`/`KB`, `M`/`MB`, and `G`/`GB`. Fractional unit values are allowed when they resolve to at least one byte. Non-positive, sub-byte, invalid, and oversized values are rejected during startup.
 
 Main API route classes are rate limited by default before authentication using
 safe server-controlled keys based on route class and a hash of the socket peer
@@ -1356,6 +1356,11 @@ while incident deletion is pending or retrying and stop counting only after
 durable blob deletion completes and chunk metadata is removed. Failed, staged,
 or orphan temp uploads are not committed quota and are handled by separate temp
 upload controls.
+
+When regular local temp-upload staging files reach
+`SAFE_TEMP_UPLOAD_STAGING_QUOTA_BYTES`, chunk upload returns
+`507 upload_staging_quota_exceeded` with a generic error. The response does not
+include temp paths, stored paths, object keys, bucket names, or uploaded bytes.
 
 When `Idempotency-Key` is supplied, the server hashes the key and stores durable
 upload-operation state in the configured metadata backend. The key is bound to

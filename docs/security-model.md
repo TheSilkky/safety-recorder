@@ -142,6 +142,9 @@ paths are also token-bearing and must be redacted.
   account. Usage is calculated from accepted chunk metadata across the
   account's incidents and applies to both local and S3-compatible blob
   backends.
+- Local temp-upload staging bytes are limited by
+  `SAFE_TEMP_UPLOAD_STAGING_QUOTA_BYTES`, which defaults to 1 GB and applies to
+  regular `upload-*` staging files before local or S3-compatible final commit.
 - Final chunk storage happens only after hash verification.
 - Stored chunks are immutable and never overwritten.
 - Local storage commits use no-overwrite hard links. Optional S3-compatible storage commits final objects with conditional no-overwrite writes.

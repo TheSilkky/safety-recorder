@@ -31,6 +31,18 @@ func accountDefaultBlobQuotaBytesFromSource(source configSource) (int64, error) 
 	return quotaBytes, nil
 }
 
+func tempUploadStagingQuotaBytesFromSource(source configSource) (int64, error) {
+	quotaBytes := defaultTempUploadStagingQuotaBytes
+	if raw := source.Get("SAFE_TEMP_UPLOAD_STAGING_QUOTA_BYTES"); raw != "" {
+		parsed, err := parseBytes(raw)
+		if err != nil {
+			return 0, fmt.Errorf("parse SAFE_TEMP_UPLOAD_STAGING_QUOTA_BYTES: %w", err)
+		}
+		quotaBytes = parsed
+	}
+	return quotaBytes, nil
+}
+
 func parseBytes(raw string) (int64, error) {
 	value := strings.TrimSpace(strings.ToUpper(raw))
 	if value == "" {

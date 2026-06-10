@@ -42,6 +42,7 @@ valkey_write_timeout = "5s"
 [uploads]
 max_upload_bytes = "250MB"
 account_default_blob_quota_bytes = "10GB"
+temp_upload_staging_quota_bytes = "1GB"
 upload_coordination_lease_ttl = "2m"
 temp_upload_cleanup_age = "0"
 temp_upload_cleanup_dry_run = false

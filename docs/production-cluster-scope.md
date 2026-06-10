@@ -107,10 +107,16 @@ Object-storage support includes:
 - final immutable object keys for committed encrypted chunks
 - conditional no-overwrite writes for final objects
 - local temp-file staging before final object writes
+- staging quota enforcement before final object writes
 - cleanup guidance for abandoned local staging files
 - backup and restore guidance that keeps metadata and blobs consistent
 
-The implementation stages upload bytes under `SAFE_DATA_DIR/tmp`, computes SHA-256 over the uploaded ciphertext, verifies the client-provided hash, and then writes the final S3 object with `If-None-Match: *`. It does not create S3 staging objects. The local filesystem backend remains supported and continues to use relative server-controlled stored paths.
+The implementation stages upload bytes under `SAFE_DATA_DIR/tmp`, enforces the
+local temp staging quota, computes SHA-256 over the uploaded ciphertext,
+verifies the client-provided hash, and then writes the final S3 object with
+`If-None-Match: *`. It does not create S3 staging objects. The local filesystem
+backend remains supported and continues to use relative server-controlled
+stored paths.
 
 Account-scoped committed blob quota is implemented in metadata and applies to
 both local filesystem and S3-compatible committed chunks. The server sums
@@ -118,7 +124,8 @@ accepted chunk `byte_size` values through incident ownership, checks the quota
 before final commit, and rechecks it when chunk metadata is inserted. Pending
 or retrying deletion still counts because chunk metadata is removed only after
 durable blob deletion completes. Temp/staged upload pressure is separate and
-must not be treated as committed evidence quota.
+is bounded by `SAFE_TEMP_UPLOAD_STAGING_QUOTA_BYTES`; it must not be treated as
+committed evidence quota.
 
 Backup, restore, and failure-mode guidance for PostgreSQL metadata plus
 S3-compatible encrypted blobs is documented in the
@@ -166,7 +173,7 @@ chunk retries while deferring resumable uploads and partial-upload sessions.
 A safe cluster upload flow should be designed around these steps:
 
 1. Reserve or identify the upload operation using stable incident, stream, chunk index, media type, and idempotency metadata.
-2. Stage encrypted bytes while computing SHA-256 over the uploaded ciphertext.
+2. Stage encrypted bytes while enforcing staging pressure limits and computing SHA-256 over the uploaded ciphertext.
 3. Verify the computed hash against the client-provided hash.
 4. Check committed account quota from authoritative metadata before final commit.
 5. Commit encrypted bytes to the final immutable blob location.
