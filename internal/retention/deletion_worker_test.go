@@ -403,7 +403,7 @@ func (s *fakeBlobStore) Remove(_ context.Context, storedPath string) error {
 
 func newDeletionTestRepository(t *testing.T, ctx context.Context) (*incidents.Repository, *sql.DB) {
 	t.Helper()
-	conn, err := db.Open(ctx, filepath.Join(t.TempDir(), "safety.db"))
+	conn, err := db.Open(ctx, filepath.Join(t.TempDir(), "proofline.db"))
 	if err != nil {
 		t.Fatalf("open db: %v", err)
 	}

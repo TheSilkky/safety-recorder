@@ -57,7 +57,7 @@ or in optional S3-compatible object storage, supports optional
 Valkey/Redis-compatible short-lived coordination, and exposes a token-scoped
 read-only incident viewer.
 
-The product documentation now uses the name Proofline. Repository URLs, the Go module path, Docker image names, GHCR package names, and release binary names use the `open-proofline/server` repository namespace. Compatibility identifiers such as the v1 simulator encryption envelope, default SQLite filename, legacy `/e/{token}` aliases, and historical migration names may still use `safety-recorder` or `emergency` until separate protocol or data-layout migrations are explicitly performed.
+The product documentation now uses the name Proofline. Repository URLs, the Go module path, Docker image names, GHCR package names, release binary names, runtime protocol identifiers, and default data-layout identifiers use the `open-proofline/server` repository namespace and Proofline names. Historical reports, archived prompts, legacy `/e/{token}` aliases, and historical migration names may still mention `safety-recorder` or `emergency`.
 
 The long-term product direction is broader than emergency-only recording. Planned modes include emergency incidents, non-emergency interaction records, timed safety checks, and evidence notes. These are planning direction unless the reviewed tree contains first-class implementation.
 
@@ -301,7 +301,7 @@ Do not recommend public GitHub issues for private vulnerabilities, raw tokens, s
 - Do not describe Proofline as ready for v1 preview, v1.0.0, or real-user
   evidence upload unless the reviewed tree satisfies the v1 preview readiness
   checklist hard blockers.
-- Do not treat remaining `safety-recorder` or `emergency` compatibility identifiers as stale when docs explicitly state those names remain for protocol, data-layout, route-alias, or migration compatibility.
+- Do not treat historical `safety-recorder` or `emergency` references in reports, archived prompts, legacy route aliases, or historical migration names as stale product naming by themselves.
 - Do not claim emergency-services integration exists.
 - Do not imply Proofline reports crimes, contacts police, guarantees legal admissibility, or provides legal advice.
 - Do not treat planned interaction records as police-specific surveillance features; use neutral incident-capture framing.

@@ -9,7 +9,7 @@ const (
 	defaultMainBindAddr                       = "127.0.0.1:8080"
 	defaultAdminBindAddr                      = "127.0.0.1:8081"
 	defaultDataDir                            = "./data"
-	defaultDBPath                             = "./data/safety.db"
+	defaultDBPath                             = "./data/proofline.db"
 	defaultMaxUploadBytes                     = int64(250 * 1024 * 1024)
 	defaultIncidentTokenTTL                   = 24 * time.Hour
 	defaultSessionTTL                         = 12 * time.Hour

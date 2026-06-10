@@ -8,7 +8,7 @@ admin_bind_addrs = ["0.0.0.0:8081"]
 
 [paths]
 data_dir = "/var/lib/proofline"
-sqlite_db_path = "/var/lib/proofline/safety.db"
+sqlite_db_path = "/var/lib/proofline/proofline.db"
 
 [metadata]
 backend = "sqlite"

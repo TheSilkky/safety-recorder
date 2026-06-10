@@ -4,9 +4,12 @@ Proofline currently stores opaque encrypted chunk bytes. This document describes
 
 This milestone does not add backend decryption. The server still validates SHA-256 over uploaded ciphertext bytes, stores those bytes in the configured blob backend, and emits encrypted ZIP evidence bundles.
 
-## Naming Compatibility
+## Naming
 
-The current envelope scheme and associated-data prefix still use `safety-recorder` / `SafetyRecorderChunk` names for compatibility with existing simulator and test data. A future protocol migration may introduce a Proofline-named envelope version, but that must be explicit protocol work with test vectors and compatibility notes.
+The current compatibility envelope uses Proofline-named identifiers. Earlier
+experimental `safety-recorder` envelope identifiers are not accepted by the
+current parser except in explicit negative tests that prove fail-closed
+behavior.
 
 ## Threat Model
 
@@ -25,7 +28,7 @@ implementation and are designed separately in [key-custody.md](key-custody.md),
 
 | Field | Value |
 |---|---|
-| Scheme | `safety-recorder-chunk-encryption-v1` |
+| Scheme | `proofline-chunk-encryption-v1` |
 | Algorithm | `AES-256-GCM` |
 | Key size | 32 bytes |
 | Nonce size | 12 bytes |
@@ -41,7 +44,7 @@ Generate a fresh random nonce for every encrypted chunk. Never reuse a nonce wit
 The AEAD associated data is an exact UTF-8 string:
 
 ```text
-SafetyRecorderChunk:v1
+ProoflineChunk:v1
 incident_id=<incident_id>
 stream_id=<stream_id>
 media_type=<media_type>
@@ -51,7 +54,7 @@ chunk_index=<chunk_index>
 There is a trailing newline after the `chunk_index` line. Example:
 
 ```text
-SafetyRecorderChunk:v1
+ProoflineChunk:v1
 incident_id=inc_abc
 stream_id=str_def
 media_type=audio
@@ -80,7 +83,7 @@ AES-GCM ciphertext including authentication tag
 Magic bytes are exactly:
 
 ```text
-SRCENC1
+PLCHNK1
 ```
 
 The JSON header is non-secret:
@@ -88,11 +91,11 @@ The JSON header is non-secret:
 ```json
 {
   "version": 1,
-  "scheme": "safety-recorder-chunk-encryption-v1",
+  "scheme": "proofline-chunk-encryption-v1",
   "algorithm": "AES-256-GCM",
   "key_id": "kid_...",
   "nonce_b64": "base64url-no-padding-12-byte-nonce",
-  "aad": "SafetyRecorderChunk:v1\nincident_id=inc_...\nstream_id=str_...\nmedia_type=audio\nchunk_index=1\n"
+  "aad": "ProoflineChunk:v1\nincident_id=inc_...\nstream_id=str_...\nmedia_type=audio\nchunk_index=1\n"
 }
 ```
 
@@ -107,7 +110,7 @@ The simulator can load or create a local development key file:
 ```json
 {
   "version": 1,
-  "scheme": "safety-recorder-chunk-encryption-v1",
+  "scheme": "proofline-chunk-encryption-v1",
   "algorithm": "AES-256-GCM",
   "key_id": "kid_...",
   "key_b64": "base64url-no-padding-32-byte-key"
@@ -146,7 +149,9 @@ PROOFLINE_SIM_PASSWORD='replace-with-a-long-local-password' \
 go run ./cmd/simclient --chunks 2 --interval 1s --download-bundle --key-file /tmp/proofline-sim.key.json
 ```
 
-Older examples may use `/tmp/safety-recorder-sim.key.json`; the file name is not part of the encryption protocol.
+Older local examples may have used `/tmp/safety-recorder-sim.key.json`; that
+name is historical and is not part of the current protocol or default
+simulator artifact layout.
 
 To preserve the old raw fake chunk behavior for development compatibility:
 

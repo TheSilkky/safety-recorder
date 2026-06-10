@@ -138,7 +138,7 @@ func TestExtractConfigFlag(t *testing.T) {
 
 func TestCheckAuthBootstrapFailsWithoutAdminOrBootstrapSecret(t *testing.T) {
 	ctx := context.Background()
-	conn, err := db.Open(ctx, filepath.Join(t.TempDir(), "safety.db"))
+	conn, err := db.Open(ctx, filepath.Join(t.TempDir(), "proofline.db"))
 	if err != nil {
 		t.Fatalf("open db: %v", err)
 	}
@@ -153,7 +153,7 @@ func TestCheckAuthBootstrapFailsWithoutAdminOrBootstrapSecret(t *testing.T) {
 
 func TestCheckAuthBootstrapAllowsBootstrapSecretOrExistingAdmin(t *testing.T) {
 	ctx := context.Background()
-	conn, err := db.Open(ctx, filepath.Join(t.TempDir(), "safety.db"))
+	conn, err := db.Open(ctx, filepath.Join(t.TempDir(), "proofline.db"))
 	if err != nil {
 		t.Fatalf("open db: %v", err)
 	}

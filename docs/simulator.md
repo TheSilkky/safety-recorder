@@ -316,7 +316,9 @@ go run ./cmd/simclient --chunks 5 --interval 1s --download-bundle --key-file /tm
 
 If the key file exists, the simulator loads it. If it does not exist, the simulator creates it with restrictive permissions where practical. Do not upload or commit simulator key files.
 
-Older examples may use `/tmp/safety-recorder-sim.key.json`; the file name is not part of the encryption protocol.
+Older local examples may have used `/tmp/safety-recorder-sim.key.json`; that
+name is historical and is not part of the current protocol or default
+simulator artifact layout.
 
 To preserve the old raw fake chunk behavior:
 

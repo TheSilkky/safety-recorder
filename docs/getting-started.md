@@ -56,13 +56,14 @@ The backend writes local data under `./data` by default:
 
 ```text
 data/
-  safety.db
+  proofline.db
   tmp/
   incidents/{incident_id}/streams/{stream_id}/{media_type}_{zero_padded_chunk_index}.enc
   incidents/{incident_id}/{media_type}_{zero_padded_chunk_index}.enc
 ```
 
-The database file name still uses `safety.db` until a separate artifact/data-layout migration is performed.
+The default database file name uses the Proofline data-layout identifier
+`proofline.db`.
 
 Uploads are staged in `tmp/`, hashed while streaming, and then hard-linked into the final incident path without overwriting existing chunk files. Streamed uploads use the stream-scoped path; the incident-level path remains for legacy unstreamed chunks.
 

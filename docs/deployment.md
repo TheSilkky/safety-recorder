@@ -17,7 +17,7 @@ or a private reverse proxy. Private placement must not replace admin
 authentication. The main API/public viewer listener split is documented in
 [public-api-listener-split.md](public-api-listener-split.md).
 
-The current module and artifact names use the `open-proofline/server` repository namespace. The published GHCR image is `ghcr.io/open-proofline/server`, local examples use the `proofline-server` image name, and release binaries use `proofline-server-*` names. Compatibility identifiers such as the v1 encryption envelope scheme and default SQLite filename may still use earlier `safety-recorder` names until separate protocol or data-layout migrations are explicitly performed.
+The current module and artifact names use the `open-proofline/server` repository namespace. The published GHCR image is `ghcr.io/open-proofline/server`, local examples use the `proofline-server` image name, and release binaries use `proofline-server-*` names. Current runtime protocol and default data-layout identifiers use Proofline names. Historical reports and archived prompts may still mention earlier `safety-recorder` identifiers.
 
 ## Local Development
 
@@ -281,7 +281,7 @@ Container TOML defaults:
 | `[server].main_bind_addrs` | `["0.0.0.0:8080"]` |
 | `[server].admin_bind_addrs` | `["0.0.0.0:8081"]` |
 | `[paths].data_dir` | `/var/lib/proofline` |
-| `[paths].sqlite_db_path` | `/var/lib/proofline/safety.db` |
+| `[paths].sqlite_db_path` | `/var/lib/proofline/proofline.db` |
 | `[uploads].max_upload_bytes` | `250MB` |
 | `[retention].deletion_worker_interval` | `1m` |
 | `[retention].closed_incident_retention` | `0` |
@@ -312,9 +312,8 @@ foreign-key enforcement and verifies that SQLite accepted WAL journal mode.
 This is a local-disk deployment shape, not a cluster database mode.
 
 For SQLite deployments, `SAFE_DB_PATH` is the main database file. The default
-path is `./data/safety.db` locally and `/var/lib/proofline/safety.db` in the
-container. The default file name still uses `safety.db` until a separate
-data-layout migration is explicitly designed.
+path is `./data/proofline.db` locally and `/var/lib/proofline/proofline.db` in the
+container.
 
 While the server is running in WAL mode, SQLite may also create sidecar files
 next to the database:
@@ -336,7 +335,7 @@ For backups, prefer one of the consistency strategies in
 [retention, backup, and deletion](retention-backup-deletion.md): stop the API
 process, take an atomic filesystem or volume snapshot that includes SQLite and
 encrypted blobs together, or use SQLite's backup mechanism while coordinating
-with a paused blob snapshot. Do not copy only the main `safety.db` file from a
+with a paused blob snapshot. Do not copy only the main `proofline.db` file from a
 running WAL-mode database and assume it is complete.
 
 Growing deployments should watch for WAL/checkpoint pressure. Useful symptoms
@@ -349,7 +348,7 @@ Simple local checks can inspect file sizes and free space without exposing
 incident contents:
 
 ```bash
-db=${SAFE_DB_PATH:-./data/safety.db}
+db=${SAFE_DB_PATH:-./data/proofline.db}
 ls -lh "$db" "$db-wal" "$db-shm" 2>/dev/null || true
 df -h "$(dirname "$db")"
 ```

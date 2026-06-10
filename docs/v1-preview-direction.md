@@ -697,9 +697,10 @@ Current docs are broadly aligned, but future work should watch these seams:
   be treated as a v1 preview requirement, not optional later hardening.
 - Current billing docs describe a future Stripe-hosted service boundary. That
   should not become a default v1 preview requirement unless separately scoped.
-- Some current route and envelope identifiers intentionally retain older
-  `safety-recorder` compatibility names. Do not rename them opportunistically
-  without a protocol or data-layout migration task.
+- Current runtime protocol and default data-layout identifiers use Proofline
+  names. Historical reports and archived prompts may still mention earlier
+  `safety-recorder` identifiers; keep any old runtime identifiers limited to
+  explicit fail-closed test fixtures.
 - Sibling web-client docs may use product-language direction that depends on
   future server behavior. Server truth remains authoritative for implemented
   backend claims.

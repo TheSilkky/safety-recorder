@@ -8,7 +8,7 @@ services:
       SAFE_ADMIN_BIND_ADDRS: 0.0.0.0:8081
       SAFE_AUTH_BOOTSTRAP_SECRET: ${PROOFLINE_SMOKE_BOOTSTRAP_SECRET:-replace-with-local-compose-bootstrap-secret}
       SAFE_DATA_DIR: /data
-      SAFE_DB_PATH: /data/safety.db
+      SAFE_DB_PATH: /data/proofline.db
       SAFE_METADATA_BACKEND: postgresql
       SAFE_POSTGRES_DSN: postgres://proofline:proofline@postgres:5432/proofline?sslmode=disable
       SAFE_BLOB_BACKEND: local

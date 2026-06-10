@@ -15,15 +15,15 @@ RUN CGO_ENABLED=1 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/proofli
 FROM alpine:3.23@sha256:5b10f432ef3da1b8d4c7eb6c487f2f5a8f096bc91145e68878dd4a5019afde11
 
 RUN apk add --no-cache ca-certificates tzdata \
-	&& addgroup -S safety \
-	&& adduser -S -G safety -h /nonexistent -s /sbin/nologin safety \
+	&& addgroup -S proofline \
+	&& adduser -S -G proofline -h /nonexistent -s /sbin/nologin proofline \
 	&& mkdir -p /var/lib/proofline /etc/proofline \
-	&& chown -R safety:safety /var/lib/proofline
+	&& chown -R proofline:proofline /var/lib/proofline
 
 COPY --from=builder /out/proofline-server /usr/local/bin/proofline-server
 COPY docker-default-config.toml /etc/proofline/proofline.toml
 
-USER safety
+USER proofline
 WORKDIR /var/lib/proofline
 VOLUME ["/var/lib/proofline"]
 EXPOSE 8080 8081
