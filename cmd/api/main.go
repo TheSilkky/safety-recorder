@@ -86,6 +86,7 @@ func run(logger *slog.Logger, configFilePath string) error {
 
 	apiOptions := httpapi.Options{
 		MaxUploadBytes:             cfg.MaxUploadBytes,
+		AccountBlobQuotaBytes:      cfg.AccountDefaultBlobQuotaBytes,
 		DefaultIncidentTokenTTL:    &cfg.DefaultIncidentTokenTTL,
 		SessionTTL:                 cfg.SessionTTL,
 		BootstrapSecret:            cfg.AuthBootstrapSecret,

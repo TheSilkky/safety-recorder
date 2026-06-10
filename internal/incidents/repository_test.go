@@ -1464,6 +1464,123 @@ func TestCreateChunkRejectsCompletedStream(t *testing.T) {
 	}
 }
 
+func TestAccountCommittedBlobQuotaUsesOwnedCommittedChunks(t *testing.T) {
+	ctx := context.Background()
+	repo := newRepository(t, ctx)
+	owner, err := repo.CreateAccount(ctx, auth.CreateAccountParams{
+		Username:     "quota-owner",
+		PasswordHash: "hash",
+		Role:         auth.RoleUser,
+		AccountState: auth.AccountStateActive,
+	})
+	if err != nil {
+		t.Fatalf("create owner account: %v", err)
+	}
+	other, err := repo.CreateAccount(ctx, auth.CreateAccountParams{
+		Username:     "quota-other",
+		PasswordHash: "hash",
+		Role:         auth.RoleUser,
+		AccountState: auth.AccountStateActive,
+	})
+	if err != nil {
+		t.Fatalf("create other account: %v", err)
+	}
+	firstIncident, err := repo.CreateIncidentForAccount(ctx, owner.ID, incidents.CreateIncidentParams{})
+	if err != nil {
+		t.Fatalf("create first owned incident: %v", err)
+	}
+	secondIncident, err := repo.CreateIncidentForAccount(ctx, owner.ID, incidents.CreateIncidentParams{})
+	if err != nil {
+		t.Fatalf("create second owned incident: %v", err)
+	}
+	otherIncident, err := repo.CreateIncidentForAccount(ctx, other.ID, incidents.CreateIncidentParams{})
+	if err != nil {
+		t.Fatalf("create other incident: %v", err)
+	}
+	legacyIncident, err := repo.CreateIncident(ctx, "legacy", "")
+	if err != nil {
+		t.Fatalf("create legacy incident: %v", err)
+	}
+
+	firstChunk := testChunkParams(firstIncident.ID, "", incidents.MediaTypeAudio, 1)
+	firstChunk.ByteSize = 6
+	firstChunk.AccountBlobQuotaBytes = 10
+	if _, err := repo.CreateChunk(ctx, firstChunk); err != nil {
+		t.Fatalf("create first owned chunk: %v", err)
+	}
+	if usage, err := repo.AccountCommittedBlobBytes(ctx, owner.ID); err != nil || usage != 6 {
+		t.Fatalf("owner usage = %d, err %v; want 6", usage, err)
+	}
+
+	otherChunk := testChunkParams(otherIncident.ID, "", incidents.MediaTypeAudio, 1)
+	otherChunk.ByteSize = 9
+	otherChunk.AccountBlobQuotaBytes = 10
+	if _, err := repo.CreateChunk(ctx, otherChunk); err != nil {
+		t.Fatalf("create other account chunk: %v", err)
+	}
+	legacyChunk := testChunkParams(legacyIncident.ID, "", incidents.MediaTypeAudio, 1)
+	legacyChunk.ByteSize = 9
+	legacyChunk.AccountBlobQuotaBytes = 10
+	if _, err := repo.CreateChunk(ctx, legacyChunk); err != nil {
+		t.Fatalf("create legacy chunk: %v", err)
+	}
+	if usage, err := repo.AccountCommittedBlobBytes(ctx, owner.ID); err != nil || usage != 6 {
+		t.Fatalf("owner usage after other chunks = %d, err %v; want 6", usage, err)
+	}
+
+	tooLarge := testChunkParams(secondIncident.ID, "", incidents.MediaTypeAudio, 1)
+	tooLarge.ByteSize = 5
+	tooLarge.AccountBlobQuotaBytes = 10
+	if _, err := repo.CreateChunk(ctx, tooLarge); !errors.Is(err, incidents.ErrAccountBlobQuotaExceeded) {
+		t.Fatalf("quota rejection error = %v, want ErrAccountBlobQuotaExceeded", err)
+	}
+	if usage, err := repo.AccountCommittedBlobBytes(ctx, owner.ID); err != nil || usage != 6 {
+		t.Fatalf("owner usage after rejected chunk = %d, err %v; want 6", usage, err)
+	}
+
+	secondChunk := testChunkParams(secondIncident.ID, "", incidents.MediaTypeAudio, 2)
+	secondChunk.ByteSize = 4
+	secondChunk.AccountBlobQuotaBytes = 10
+	if _, err := repo.CreateChunk(ctx, secondChunk); err != nil {
+		t.Fatalf("create second owned chunk: %v", err)
+	}
+	if usage, err := repo.AccountCommittedBlobBytes(ctx, owner.ID); err != nil || usage != 10 {
+		t.Fatalf("owner usage at quota = %d, err %v; want 10", usage, err)
+	}
+	if _, err := repo.CreateChunk(ctx, firstChunk); !errors.Is(err, incidents.ErrDuplicate) {
+		t.Fatalf("duplicate at quota error = %v, want ErrDuplicate", err)
+	}
+
+	status, err := repo.RequestIncidentDeletion(ctx, incidents.IncidentDeletionRequest{
+		IncidentID:     firstIncident.ID,
+		Source:         incidents.IncidentDeletionSourceAccountRequest,
+		ActorAccountID: owner.ID,
+		AllowOpen:      true,
+		RequireOwnerID: owner.ID,
+	})
+	if err != nil {
+		t.Fatalf("request incident deletion: %v", err)
+	}
+	if usage, err := repo.AccountCommittedBlobBytes(ctx, owner.ID); err != nil || usage != 10 {
+		t.Fatalf("owner usage while deletion pending = %d, err %v; want 10", usage, err)
+	}
+	items, err := repo.ListIncidentDeletionItems(ctx, status.DecisionID)
+	if err != nil {
+		t.Fatalf("list deletion items: %v", err)
+	}
+	for _, item := range items {
+		if err := repo.MarkIncidentDeletionItemDeleted(ctx, item.ID); err != nil {
+			t.Fatalf("mark deletion item deleted: %v", err)
+		}
+	}
+	if _, err := repo.CompleteIncidentDeletion(ctx, status.DecisionID); err != nil {
+		t.Fatalf("complete incident deletion: %v", err)
+	}
+	if usage, err := repo.AccountCommittedBlobBytes(ctx, owner.ID); err != nil || usage != 4 {
+		t.Fatalf("owner usage after durable deletion = %d, err %v; want 4", usage, err)
+	}
+}
+
 func TestCreateChunkUsesStreamScopedDuplicateIdentity(t *testing.T) {
 	ctx := context.Background()
 	repo := newRepository(t, ctx)

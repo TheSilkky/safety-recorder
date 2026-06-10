@@ -66,7 +66,7 @@ Errors use:
 }
 ```
 
-Non-upload JSON bodies are limited to 64 KiB. Upload file bytes are limited by `SAFE_MAX_UPLOAD_BYTES`; multipart metadata has a small fixed overhead allowance. `SAFE_MAX_UPLOAD_BYTES` accepts a positive byte count or binary unit suffixes `B`, `K`/`KB`, `M`/`MB`, and `G`/`GB`. Fractional unit values are allowed when they resolve to at least one byte. Non-positive, sub-byte, invalid, and oversized values are rejected during startup.
+Non-upload JSON bodies are limited to 64 KiB. Upload file bytes are limited by `SAFE_MAX_UPLOAD_BYTES`; multipart metadata has a small fixed overhead allowance. Accepted encrypted chunk bytes are also limited by the account-scoped committed blob quota configured with `SAFE_ACCOUNT_DEFAULT_BLOB_QUOTA_BYTES`, which defaults to 10 GB per owner account. Both byte settings accept a positive byte count or binary unit suffixes `B`, `K`/`KB`, `M`/`MB`, and `G`/`GB`. Fractional unit values are allowed when they resolve to at least one byte. Non-positive, sub-byte, invalid, and oversized values are rejected during startup.
 
 Main API route classes are rate limited by default before authentication using
 safe server-controlled keys based on route class and a hash of the socket peer
@@ -1347,6 +1347,16 @@ Duplicate streamed `(incident_id, stream_id, chunk_index)` uploads without an
 idempotency key return `409 duplicate_chunk`. Hash mismatches return
 `400 hash_mismatch` and do not commit a final file.
 
+Before committing a new encrypted chunk, the server checks the owning account's
+committed encrypted blob usage from accepted chunk metadata. If the additional
+chunk would exceed `SAFE_ACCOUNT_DEFAULT_BLOB_QUOTA_BYTES`, the route returns
+`507 account_storage_quota_exceeded` with a generic error. Equivalent duplicate
+or idempotent retries do not add new committed bytes. Chunks continue to count
+while incident deletion is pending or retrying and stop counting only after
+durable blob deletion completes and chunk metadata is removed. Failed, staged,
+or orphan temp uploads are not committed quota and are handled by separate temp
+upload controls.
+
 When `Idempotency-Key` is supplied, the server hashes the key and stores durable
 upload-operation state in the configured metadata backend. The key is bound to
 the `upload_chunk` operation and a request fingerprint covering normalized
@@ -1392,7 +1402,10 @@ bodies, uploaded bytes, stored paths, object keys, plaintext, or raw keys.
 These leases are in-progress hints only. Metadata uniqueness constraints,
 upload-operation rows, and blob no-overwrite behavior remain final truth.
 
-The repository rechecks incident and stream state when chunk metadata is inserted. If an upload races with incident close or stream completion, the final metadata insert is rejected and the committed blob path is removed.
+The repository rechecks incident state, stream state, and committed account
+quota when chunk metadata is inserted. If an upload races with incident close,
+stream completion, or quota exhaustion, the final metadata insert is rejected
+and the committed blob path is removed.
 
 For clients using the PQ envelope, `sha256_hex` is the SHA-256 of the complete
 uploaded `PLPQENC1` payload frame bytes, not the plaintext. Missing, legacy,

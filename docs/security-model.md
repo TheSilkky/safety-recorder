@@ -137,6 +137,11 @@ paths are also token-bearing and must be redacted.
 
 - Uploads are streamed to a temp directory while SHA-256 is computed.
 - Upload file bytes are limited by `SAFE_MAX_UPLOAD_BYTES`.
+- Committed encrypted chunk bytes are limited by
+  `SAFE_ACCOUNT_DEFAULT_BLOB_QUOTA_BYTES`, which defaults to 10 GB per owner
+  account. Usage is calculated from accepted chunk metadata across the
+  account's incidents and applies to both local and S3-compatible blob
+  backends.
 - Final chunk storage happens only after hash verification.
 - Stored chunks are immutable and never overwritten.
 - Local storage commits use no-overwrite hard links. Optional S3-compatible storage commits final objects with conditional no-overwrite writes.
@@ -159,6 +164,10 @@ paths are also token-bearing and must be redacted.
   normalized chunk identity and immutable request fingerprint, and can return
   `200 OK` with `Idempotency-Replayed: true` for equivalent retries without
   overwriting chunks or evidence metadata.
+- Equivalent duplicate or idempotent retries do not add committed quota.
+  Pending or retrying incident deletion continues to count against quota until
+  durable blob deletion has completed and chunk metadata is pruned. Failed,
+  staged, or orphan temp uploads are separate from committed quota.
 - When Valkey/Redis-compatible coordination is configured, complete chunk
   uploads use a short-lived server-controlled lease key derived from a hash of
   normalized chunk identity. Busy leases return `409 upload_in_progress` with

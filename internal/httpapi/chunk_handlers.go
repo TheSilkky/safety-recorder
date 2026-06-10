@@ -153,6 +153,10 @@ func (a *API) uploadChunk(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if !a.checkAccountBlobQuota(w, r, incident, upload.temp.ByteSize) {
+		return
+	}
+
 	storedPath, err := a.store.CommitTemp(r.Context(), upload.temp, incidentID, upload.streamID, upload.mediaType, upload.chunkIndex)
 	if errors.Is(err, storage.ErrAlreadyExists) {
 		if hasIdempotencyKey {
@@ -170,16 +174,17 @@ func (a *API) uploadChunk(w http.ResponseWriter, r *http.Request) {
 	}
 
 	chunk, err := a.repo.CreateChunk(r.Context(), incidents.CreateChunkParams{
-		IncidentID:       incidentID,
-		StreamID:         upload.streamID,
-		ChunkIndex:       upload.chunkIndex,
-		MediaType:        upload.mediaType,
-		StartedAt:        upload.startedAt,
-		EndedAt:          upload.endedAt,
-		OriginalFilename: upload.originalFilename,
-		StoredPath:       storedPath,
-		ByteSize:         upload.temp.ByteSize,
-		SHA256Hex:        upload.sha256Hex,
+		IncidentID:            incidentID,
+		StreamID:              upload.streamID,
+		ChunkIndex:            upload.chunkIndex,
+		MediaType:             upload.mediaType,
+		StartedAt:             upload.startedAt,
+		EndedAt:               upload.endedAt,
+		OriginalFilename:      upload.originalFilename,
+		StoredPath:            storedPath,
+		ByteSize:              upload.temp.ByteSize,
+		SHA256Hex:             upload.sha256Hex,
+		AccountBlobQuotaBytes: a.accountBlobQuotaBytes,
 	})
 	if errors.Is(err, incidents.ErrDuplicate) {
 		a.removeCommittedBlobAfterMetadataFailure(storedPath)
@@ -207,6 +212,11 @@ func (a *API) uploadChunk(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusConflict, "stream_not_open", "media stream is not open")
 		return
 	}
+	if errors.Is(err, incidents.ErrAccountBlobQuotaExceeded) {
+		a.removeCommittedBlobAfterMetadataFailure(storedPath)
+		writeAccountBlobQuotaExceeded(w)
+		return
+	}
 	if errors.Is(err, incidents.ErrNotFound) {
 		a.removeCommittedBlobAfterMetadataFailure(storedPath)
 		if upload.streamID != "" {
@@ -232,6 +242,30 @@ func (a *API) uploadChunk(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	writeJSON(w, http.StatusCreated, chunk)
+}
+
+func (a *API) checkAccountBlobQuota(w http.ResponseWriter, r *http.Request, incident incidents.Incident, additionalBytes int64) bool {
+	if incident.OwnerAccountID == "" || a.accountBlobQuotaBytes <= 0 || additionalBytes <= 0 {
+		return true
+	}
+	if additionalBytes > a.accountBlobQuotaBytes {
+		writeAccountBlobQuotaExceeded(w)
+		return false
+	}
+	currentBytes, err := a.repo.AccountCommittedBlobBytes(r.Context(), incident.OwnerAccountID)
+	if err != nil {
+		a.internalError(w, "read account blob quota usage", err)
+		return false
+	}
+	if currentBytes > a.accountBlobQuotaBytes-additionalBytes {
+		writeAccountBlobQuotaExceeded(w)
+		return false
+	}
+	return true
+}
+
+func writeAccountBlobQuotaExceeded(w http.ResponseWriter) {
+	writeError(w, http.StatusInsufficientStorage, "account_storage_quota_exceeded", "account storage quota exceeded")
 }
 
 func (a *API) reconcileChunk(w http.ResponseWriter, r *http.Request) {

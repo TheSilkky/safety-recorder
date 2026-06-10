@@ -101,6 +101,7 @@ values for the same field. Within TOML, set either the direct secret key or the
 | `[coordination].valkey_read_timeout` | `SAFE_VALKEY_READ_TIMEOUT` |
 | `[coordination].valkey_write_timeout` | `SAFE_VALKEY_WRITE_TIMEOUT` |
 | `[uploads].max_upload_bytes` | `SAFE_MAX_UPLOAD_BYTES` |
+| `[uploads].account_default_blob_quota_bytes` | `SAFE_ACCOUNT_DEFAULT_BLOB_QUOTA_BYTES` |
 | `[uploads].upload_coordination_lease_ttl` | `SAFE_UPLOAD_COORDINATION_LEASE_TTL` |
 | `[uploads].temp_upload_cleanup_age` | `SAFE_TEMP_UPLOAD_CLEANUP_AGE` |
 | `[uploads].temp_upload_cleanup_dry_run` | `SAFE_TEMP_UPLOAD_CLEANUP_DRY_RUN` |
@@ -199,6 +200,7 @@ values for the same field. Within TOML, set either the direct secret key or the
 | `SAFE_VALKEY_WRITE_TIMEOUT` | `5s` | Valkey write timeout. |
 | `SAFE_UPLOAD_COORDINATION_LEASE_TTL` | `2m` | Short TTL for Valkey-backed complete-upload in-progress leases and retry hints. Must be positive. |
 | `SAFE_MAX_UPLOAD_BYTES` | `250MB` | Maximum encrypted file bytes per upload. |
+| `SAFE_ACCOUNT_DEFAULT_BLOB_QUOTA_BYTES` | `10GB` | Default committed encrypted blob quota per owner account. Counted from accepted chunk metadata across owned incidents for both local and S3-compatible blob backends. |
 | `SAFE_DEFAULT_INCIDENT_TOKEN_TTL` | `24h` | Default lifetime for viewer tokens created without `expires_at`. Set to `0` to disable the default for omitted `expires_at` values. |
 | `SAFE_SESSION_TTL` | `12h` | Lifetime for local account sessions created by `/v1/auth/login`. |
 | `SAFE_ACCOUNT_REGISTRATION_MODE` | `disabled` | Public account registration mode. Supported values are `disabled`, `admin_only`, `open`, and `paid`. `open` requires SMTP email verification; `paid` is a fail-closed placeholder. |
@@ -396,6 +398,13 @@ index metadata:
 
 The optional prefix must be relative and must not contain empty, `.`, `..`, or backslash path segments. Client requests never provide final object keys or stored paths.
 
+Account-scoped committed blob quota is enforced from metadata, not from object
+key listing. `[uploads].account_default_blob_quota_bytes` counts accepted
+encrypted chunk `byte_size` values for incidents owned by the account. Chunks
+continue to count while deletion is pending or retrying and stop counting only
+after durable deletion completes and chunk metadata is pruned. Failed, staged,
+or orphan temp uploads are separate from committed quota.
+
 Use HTTPS for S3-compatible endpoints unless the endpoint is limited to a local
 or private test network. Plain HTTP object-storage traffic can expose
 credentials, session tokens, object keys, and encrypted evidence bytes to the
@@ -508,7 +517,7 @@ SAFE_ADMIN_BIND_ADDRS=127.0.0.1:8081 \
 go run ./cmd/api
 ```
 
-## Upload Size Limits
+## Upload Size And Account Blob Quota
 
 `SAFE_MAX_UPLOAD_BYTES` accepts a positive byte count or binary unit suffix:
 
@@ -524,13 +533,24 @@ Using TOML:
 ```toml
 [uploads]
 max_upload_bytes = "250MB"
+account_default_blob_quota_bytes = "10GB"
 ```
 
 Environment override:
 
 ```bash
-SAFE_MAX_UPLOAD_BYTES=250MB go run ./cmd/api
+SAFE_MAX_UPLOAD_BYTES=250MB \
+SAFE_ACCOUNT_DEFAULT_BLOB_QUOTA_BYTES=10GB \
+go run ./cmd/api
 ```
+
+`SAFE_ACCOUNT_DEFAULT_BLOB_QUOTA_BYTES` uses the same byte parser and defaults
+to 10 GB. It limits committed encrypted chunk bytes per owner account across
+all owned incidents. Equivalent duplicate or idempotent retries do not add new
+committed bytes. Deletion frees quota only after blob deletion has completed
+and the associated chunk metadata has been removed. The setting is an
+abuse/cost control for preview deployments, not billing, subscription, account
+plan, or payment-gating logic.
 
 ## Viewer Token Expiry
 

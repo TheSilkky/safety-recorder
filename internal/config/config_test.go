@@ -369,6 +369,20 @@ func TestLoadUploadCoordinationLeaseTTL(t *testing.T) {
 	}
 }
 
+func TestLoadAccountDefaultBlobQuotaBytes(t *testing.T) {
+	cfg := loadConfigForTest(t, nil)
+	if cfg.AccountDefaultBlobQuotaBytes != 10*1024*1024*1024 {
+		t.Fatalf("account default blob quota bytes = %d, want 10GB", cfg.AccountDefaultBlobQuotaBytes)
+	}
+
+	cfg = loadConfigForTest(t, map[string]string{
+		"SAFE_ACCOUNT_DEFAULT_BLOB_QUOTA_BYTES": "1.5GB",
+	})
+	if cfg.AccountDefaultBlobQuotaBytes != int64(3*1024*1024*1024/2) {
+		t.Fatalf("account default blob quota bytes = %d, want 1.5GB", cfg.AccountDefaultBlobQuotaBytes)
+	}
+}
+
 func TestLoadUploadCoordinationLeaseTTLRejectsNonPositive(t *testing.T) {
 	for _, value := range []string{"0", "-1s"} {
 		t.Run(value, func(t *testing.T) {
@@ -476,6 +490,7 @@ backend = "none"
 
 [uploads]
 max_upload_bytes = "1KB"
+account_default_blob_quota_bytes = "3GB"
 
 [auth]
 session_ttl = "6h"
@@ -499,6 +514,9 @@ read_timeout = "45s"
 	}
 	if cfg.MaxUploadBytes != 1024 {
 		t.Fatalf("max upload bytes = %d, want 1024", cfg.MaxUploadBytes)
+	}
+	if cfg.AccountDefaultBlobQuotaBytes != 3*1024*1024*1024 {
+		t.Fatalf("account default blob quota bytes = %d, want 3GB", cfg.AccountDefaultBlobQuotaBytes)
 	}
 	if cfg.SessionTTL != 6*time.Hour || cfg.DefaultIncidentTokenTTL != 12*time.Hour {
 		t.Fatalf("durations = session %s token %s", cfg.SessionTTL, cfg.DefaultIncidentTokenTTL)
@@ -543,16 +561,21 @@ main_bind_addrs = ["127.0.0.1:19080"]
 
 [uploads]
 max_upload_bytes = "1KB"
+account_default_blob_quota_bytes = "1GB"
 `)
 
 	cfg := loadConfigWithOptionsForTest(t, LoadOptions{ConfigFilePath: path}, map[string]string{
-		"SAFE_MAIN_BIND_ADDRS":  "127.0.0.1:29080",
-		"SAFE_MAX_UPLOAD_BYTES": "2KB",
+		"SAFE_MAIN_BIND_ADDRS":                  "127.0.0.1:29080",
+		"SAFE_MAX_UPLOAD_BYTES":                 "2KB",
+		"SAFE_ACCOUNT_DEFAULT_BLOB_QUOTA_BYTES": "2GB",
 	})
 
 	assertStringsEqual(t, cfg.MainBindAddrs, []string{"127.0.0.1:29080"})
 	if cfg.MaxUploadBytes != 2048 {
 		t.Fatalf("max upload bytes = %d, want 2048", cfg.MaxUploadBytes)
+	}
+	if cfg.AccountDefaultBlobQuotaBytes != 2*1024*1024*1024 {
+		t.Fatalf("account default blob quota bytes = %d, want 2GB", cfg.AccountDefaultBlobQuotaBytes)
 	}
 }
 
@@ -1687,6 +1710,18 @@ func TestLoadRejectsUnsafeMaxUploadBytes(t *testing.T) {
 	}
 }
 
+func TestLoadRejectsUnsafeAccountDefaultBlobQuotaBytes(t *testing.T) {
+	_, err := loadConfigForTestErr(t, map[string]string{
+		"SAFE_ACCOUNT_DEFAULT_BLOB_QUOTA_BYTES": "0.0001B",
+	})
+	if err == nil {
+		t.Fatal("expected Load error")
+	}
+	if !strings.Contains(err.Error(), "parse SAFE_ACCOUNT_DEFAULT_BLOB_QUOTA_BYTES") {
+		t.Fatalf("expected SAFE_ACCOUNT_DEFAULT_BLOB_QUOTA_BYTES context, got %v", err)
+	}
+}
+
 func loadConfigForTest(t *testing.T, env map[string]string) Config {
 	t.Helper()
 	cfg, err := loadConfigForTestErr(t, env)
@@ -1728,6 +1763,7 @@ func loadConfigWithOptionsForTestErr(t *testing.T, opts LoadOptions, env map[str
 		"SAFE_BLOB_BACKEND",
 		"SAFE_COORDINATION_BACKEND",
 		"SAFE_MAX_UPLOAD_BYTES",
+		"SAFE_ACCOUNT_DEFAULT_BLOB_QUOTA_BYTES",
 		"SAFE_DEFAULT_INCIDENT_TOKEN_TTL",
 		"SAFE_SESSION_TTL",
 		"SAFE_ACCOUNT_REGISTRATION_MODE",

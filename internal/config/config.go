@@ -11,6 +11,7 @@ const (
 	defaultDataDir                            = "./data"
 	defaultDBPath                             = "./data/proofline.db"
 	defaultMaxUploadBytes                     = int64(250 * 1024 * 1024)
+	defaultAccountDefaultBlobQuotaBytes       = int64(10 * 1024 * 1024 * 1024)
 	defaultIncidentTokenTTL                   = 24 * time.Hour
 	defaultSessionTTL                         = 12 * time.Hour
 	defaultEmailVerificationTTL               = 24 * time.Hour
@@ -70,32 +71,33 @@ const (
 
 // Config contains the runtime settings needed by the API server.
 type Config struct {
-	MainBindAddrs              []string
-	AdminBindAddrs             []string
-	Backends                   BackendSelection
-	Postgres                   PostgresConfig
-	S3Blob                     S3BlobConfig
-	Valkey                     ValkeyConfig
-	DataDir                    string
-	DBPath                     string
-	MaxUploadBytes             int64
-	DefaultIncidentTokenTTL    time.Duration
-	SessionTTL                 time.Duration
-	AccountRegistration        AccountRegistrationConfig
-	Email                      EmailConfig
-	AuthBootstrapSecret        string
-	DeletionWorkerInterval     time.Duration
-	ClosedIncidentRetention    time.Duration
-	TokenMetadataRetention     time.Duration
-	TombstoneRetention         time.Duration
-	TempUploadCleanupAge       time.Duration
-	TempUploadCleanupDryRun    bool
-	UploadCoordinationLeaseTTL time.Duration
-	MainAPIRateLimit           MainAPIRateLimitConfig
-	PublicViewerRateLimit      PublicViewerRateLimitConfig
-	WebAuth                    WebAuthConfig
-	MainTimeouts               HTTPTimeouts
-	AdminTimeouts              HTTPTimeouts
+	MainBindAddrs                []string
+	AdminBindAddrs               []string
+	Backends                     BackendSelection
+	Postgres                     PostgresConfig
+	S3Blob                       S3BlobConfig
+	Valkey                       ValkeyConfig
+	DataDir                      string
+	DBPath                       string
+	MaxUploadBytes               int64
+	AccountDefaultBlobQuotaBytes int64
+	DefaultIncidentTokenTTL      time.Duration
+	SessionTTL                   time.Duration
+	AccountRegistration          AccountRegistrationConfig
+	Email                        EmailConfig
+	AuthBootstrapSecret          string
+	DeletionWorkerInterval       time.Duration
+	ClosedIncidentRetention      time.Duration
+	TokenMetadataRetention       time.Duration
+	TombstoneRetention           time.Duration
+	TempUploadCleanupAge         time.Duration
+	TempUploadCleanupDryRun      bool
+	UploadCoordinationLeaseTTL   time.Duration
+	MainAPIRateLimit             MainAPIRateLimitConfig
+	PublicViewerRateLimit        PublicViewerRateLimitConfig
+	WebAuth                      WebAuthConfig
+	MainTimeouts                 HTTPTimeouts
+	AdminTimeouts                HTTPTimeouts
 }
 
 // AccountRegistrationConfig controls public self-registration behavior.
@@ -266,6 +268,10 @@ func loadFromSource(source configSource) (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
+	accountDefaultBlobQuotaBytes, err := accountDefaultBlobQuotaBytesFromSource(source)
+	if err != nil {
+		return Config{}, err
+	}
 	incidentTokenTTL, err := durationFromSource(source, "SAFE_DEFAULT_INCIDENT_TOKEN_TTL", defaultIncidentTokenTTL)
 	if err != nil {
 		return Config{}, err
@@ -345,31 +351,32 @@ func loadFromSource(source configSource) (Config, error) {
 	}
 
 	return Config{
-		MainBindAddrs:              mainBindAddrs,
-		AdminBindAddrs:             adminBindAddrs,
-		Backends:                   backends,
-		Postgres:                   postgres,
-		S3Blob:                     s3Blob,
-		Valkey:                     valkey,
-		DataDir:                    envOrDefault(source, "SAFE_DATA_DIR", defaultDataDir),
-		DBPath:                     envOrDefault(source, "SAFE_DB_PATH", defaultDBPath),
-		MaxUploadBytes:             maxUploadBytes,
-		DefaultIncidentTokenTTL:    incidentTokenTTL,
-		SessionTTL:                 sessionTTL,
-		AccountRegistration:        accountRegistration,
-		Email:                      email,
-		AuthBootstrapSecret:        authBootstrapSecret,
-		DeletionWorkerInterval:     deletionWorkerInterval,
-		ClosedIncidentRetention:    closedIncidentRetention,
-		TokenMetadataRetention:     tokenMetadataRetention,
-		TombstoneRetention:         tombstoneRetention,
-		TempUploadCleanupAge:       tempUploadCleanupAge,
-		TempUploadCleanupDryRun:    tempUploadCleanupDryRun,
-		UploadCoordinationLeaseTTL: uploadCoordinationLeaseTTL,
-		MainAPIRateLimit:           mainAPIRateLimit,
-		PublicViewerRateLimit:      publicViewerRateLimit,
-		WebAuth:                    webAuth,
-		MainTimeouts:               mainTimeouts,
-		AdminTimeouts:              adminTimeouts,
+		MainBindAddrs:                mainBindAddrs,
+		AdminBindAddrs:               adminBindAddrs,
+		Backends:                     backends,
+		Postgres:                     postgres,
+		S3Blob:                       s3Blob,
+		Valkey:                       valkey,
+		DataDir:                      envOrDefault(source, "SAFE_DATA_DIR", defaultDataDir),
+		DBPath:                       envOrDefault(source, "SAFE_DB_PATH", defaultDBPath),
+		MaxUploadBytes:               maxUploadBytes,
+		AccountDefaultBlobQuotaBytes: accountDefaultBlobQuotaBytes,
+		DefaultIncidentTokenTTL:      incidentTokenTTL,
+		SessionTTL:                   sessionTTL,
+		AccountRegistration:          accountRegistration,
+		Email:                        email,
+		AuthBootstrapSecret:          authBootstrapSecret,
+		DeletionWorkerInterval:       deletionWorkerInterval,
+		ClosedIncidentRetention:      closedIncidentRetention,
+		TokenMetadataRetention:       tokenMetadataRetention,
+		TombstoneRetention:           tombstoneRetention,
+		TempUploadCleanupAge:         tempUploadCleanupAge,
+		TempUploadCleanupDryRun:      tempUploadCleanupDryRun,
+		UploadCoordinationLeaseTTL:   uploadCoordinationLeaseTTL,
+		MainAPIRateLimit:             mainAPIRateLimit,
+		PublicViewerRateLimit:        publicViewerRateLimit,
+		WebAuth:                      webAuth,
+		MainTimeouts:                 mainTimeouts,
+		AdminTimeouts:                adminTimeouts,
 	}, nil
 }
