@@ -119,6 +119,42 @@ func TestS3StoreRejectsUnsafeStoredPaths(t *testing.T) {
 	}
 }
 
+func TestS3StoreTempStagingQuota(t *testing.T) {
+	store, err := newS3Store(newFakeS3Client(), S3Options{
+		Bucket:                "proofline-evidence",
+		TempDir:               t.TempDir(),
+		TempStagingQuotaBytes: 5,
+	})
+	if err != nil {
+		t.Fatalf("new s3 store: %v", err)
+	}
+	ctx := context.Background()
+
+	first, err := store.SaveTemp(ctx, strings.NewReader("1234"), 100)
+	if err != nil {
+		t.Fatalf("save first temp: %v", err)
+	}
+	t.Cleanup(first.Cleanup)
+	if used, err := tempStagingUsedBytes(store.tempDir); err != nil || used != 4 {
+		t.Fatalf("temp staging used bytes = %d, err %v; want 4", used, err)
+	}
+
+	_, err = store.SaveTemp(ctx, strings.NewReader("12"), 100)
+	if !errors.Is(err, ErrTempStagingQuotaExceeded) {
+		t.Fatalf("over quota save error = %v, want ErrTempStagingQuotaExceeded", err)
+	}
+	if used, err := tempStagingUsedBytes(store.tempDir); err != nil || used != 4 {
+		t.Fatalf("temp staging used bytes after reject = %d, err %v; want 4", used, err)
+	}
+
+	first.Cleanup()
+	next, err := store.SaveTemp(ctx, strings.NewReader("12"), 100)
+	if err != nil {
+		t.Fatalf("save after cleanup: %v", err)
+	}
+	next.Cleanup()
+}
+
 func TestS3StoreRejectsUnsafeCommitSegments(t *testing.T) {
 	store, err := newS3Store(newFakeS3Client(), S3Options{
 		Bucket:  "proofline-evidence",

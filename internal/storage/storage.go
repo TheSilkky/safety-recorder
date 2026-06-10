@@ -11,6 +11,8 @@ import (
 var (
 	// ErrTooLarge indicates that an upload exceeded its configured byte limit.
 	ErrTooLarge = errors.New("upload too large")
+	// ErrTempStagingQuotaExceeded indicates that local upload staging is full.
+	ErrTempStagingQuotaExceeded = errors.New("temp upload staging quota exceeded")
 	// ErrAlreadyExists indicates that committing a temp upload would overwrite
 	// an existing immutable chunk file.
 	ErrAlreadyExists = errors.New("stored chunk already exists")
@@ -19,15 +21,26 @@ var (
 	ErrUnsafePath = errors.New("unsafe storage path")
 )
 
+// Options configures local blob storage.
+type Options struct {
+	TempStagingQuotaBytes int64
+}
+
 // Store manages temporary and final blob files under one data directory.
 type Store struct {
-	dataDir string
-	tempDir string
+	dataDir   string
+	tempDir   string
+	tempQuota *tempStagingQuota
 }
 
 // New creates the data and temporary directories used for encrypted blob
 // storage.
 func New(dataDir string) (*Store, error) {
+	return NewWithOptions(dataDir, Options{})
+}
+
+// NewWithOptions creates local encrypted blob storage with explicit options.
+func NewWithOptions(dataDir string, opts Options) (*Store, error) {
 	if err := os.MkdirAll(dataDir, 0o700); err != nil {
 		return nil, fmt.Errorf("create data directory: %w", err)
 	}
@@ -35,7 +48,11 @@ func New(dataDir string) (*Store, error) {
 	if err := os.MkdirAll(tempDir, 0o700); err != nil {
 		return nil, fmt.Errorf("create temp directory: %w", err)
 	}
-	return &Store{dataDir: dataDir, tempDir: tempDir}, nil
+	return &Store{
+		dataDir:   dataDir,
+		tempDir:   tempDir,
+		tempQuota: newTempStagingQuota(opts.TempStagingQuotaBytes),
+	}, nil
 }
 
 // Check verifies that local blob storage and temp staging directories are

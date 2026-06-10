@@ -144,9 +144,11 @@ write routes separately before placing them on a public edge.
 Account-scoped committed blob quota is enabled by default as a preview
 abuse/cost control. `[uploads].account_default_blob_quota_bytes` defaults to
 `10GB` per owner account and applies to accepted encrypted chunk bytes for both
-local and S3-compatible committed blobs. It does not add billing, account
-plans, payment-gated access, temp upload staging limits, public admin routes,
-or blanket evidence-capture route approval.
+local and S3-compatible committed blobs. Local temp-upload staging is also
+bounded by `[uploads].temp_upload_staging_quota_bytes`, which defaults to `1GB`
+and applies before final local or S3-compatible blob commit. These controls do
+not add billing, account plans, payment-gated access, public admin routes, or
+blanket evidence-capture route approval.
 
 Public self-registration is disabled by default. If a self-hosted deployment
 sets `[account_registration].mode = "open"` or uses the equivalent
@@ -305,6 +307,7 @@ Container TOML defaults:
 | `[paths].sqlite_db_path` | `/var/lib/proofline/proofline.db` |
 | `[uploads].max_upload_bytes` | `250MB` |
 | `[uploads].account_default_blob_quota_bytes` | `10GB` |
+| `[uploads].temp_upload_staging_quota_bytes` | `1GB` |
 | `[retention].deletion_worker_interval` | `1m` |
 | `[retention].closed_incident_retention` | `0` |
 

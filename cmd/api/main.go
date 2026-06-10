@@ -274,18 +274,21 @@ func newMetadataRepository(ctx context.Context, cfg config.Config) (httpapi.Meta
 func newBlobStore(cfg config.Config) (storage.BlobStore, error) {
 	switch cfg.Backends.Blob {
 	case config.BlobBackendLocal:
-		return storage.New(cfg.DataDir)
+		return storage.NewWithOptions(cfg.DataDir, storage.Options{
+			TempStagingQuotaBytes: cfg.TempUploadStagingQuotaBytes,
+		})
 	case config.BlobBackendS3:
 		return storage.NewS3(storage.S3Options{
-			Endpoint:        cfg.S3Blob.Endpoint,
-			Region:          cfg.S3Blob.Region,
-			Bucket:          cfg.S3Blob.Bucket,
-			Prefix:          cfg.S3Blob.Prefix,
-			AccessKeyID:     cfg.S3Blob.AccessKeyID,
-			SecretAccessKey: cfg.S3Blob.SecretAccessKey,
-			SessionToken:    cfg.S3Blob.SessionToken,
-			ForcePathStyle:  cfg.S3Blob.ForcePathStyle,
-			TempDir:         filepath.Join(cfg.DataDir, "tmp"),
+			Endpoint:              cfg.S3Blob.Endpoint,
+			Region:                cfg.S3Blob.Region,
+			Bucket:                cfg.S3Blob.Bucket,
+			Prefix:                cfg.S3Blob.Prefix,
+			AccessKeyID:           cfg.S3Blob.AccessKeyID,
+			SecretAccessKey:       cfg.S3Blob.SecretAccessKey,
+			SessionToken:          cfg.S3Blob.SessionToken,
+			ForcePathStyle:        cfg.S3Blob.ForcePathStyle,
+			TempDir:               filepath.Join(cfg.DataDir, "tmp"),
+			TempStagingQuotaBytes: cfg.TempUploadStagingQuotaBytes,
 		})
 	default:
 		return nil, config.UnsupportedBackendError{

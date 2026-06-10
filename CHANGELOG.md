@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Added local temp-upload staging quota enforcement, defaulting to 1 GB, for
+  both local and S3-compatible blob staging before final commit, with safe
+  `507 upload_staging_quota_exceeded` responses, concurrent storage tests, S3
+  parity coverage, and docs confirming separation from committed quota,
+  cleanup, billing, key escrow, decryption, and public-route behavior.
 - Added account-scoped committed encrypted blob quota enforcement, defaulting
   to 10 GB per owner account, with SQLite/PostgreSQL metadata-backed usage
   checks, safe `507 account_storage_quota_exceeded` upload responses, local/S3

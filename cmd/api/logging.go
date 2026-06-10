@@ -126,6 +126,8 @@ func safeStartupErrorCategory(err error) string {
 		return "unsafe_path"
 	case errors.Is(err, storage.ErrTooLarge):
 		return "too_large"
+	case errors.Is(err, storage.ErrTempStagingQuotaExceeded):
+		return "temp_staging_quota_exceeded"
 	case errors.Is(err, storage.ErrAlreadyExists):
 		return "already_exists"
 	case errors.Is(err, coordination.ErrUnavailable):

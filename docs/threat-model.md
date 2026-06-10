@@ -155,6 +155,10 @@ encrypted evidence bundles.
   byte sizes from metadata across owned incidents for local and S3-compatible
   blob backends, and it returns a generic `507 account_storage_quota_exceeded`
   when a new chunk would exceed the limit.
+- Local temp-upload staging quota defaults to 1 GB via
+  `SAFE_TEMP_UPLOAD_STAGING_QUOTA_BYTES`. It bounds regular `upload-*` staging
+  files before final local or S3-compatible blob commit and returns a generic
+  `507 upload_staging_quota_exceeded` when staging pressure reaches the limit.
 - Uploaded bytes are committed only after hash verification.
 - Final local chunk storage uses no-overwrite hard links. Optional S3-compatible storage uses conditional no-overwrite final object writes.
 - The simulator encrypts generated test bytes, local pre-recorded files, or
