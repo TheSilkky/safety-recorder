@@ -111,8 +111,14 @@ If only Markdown changed:
 ```bash
 git diff --stat
 git diff -- README.md docs codex AGENTS.md SECURITY.md CHANGELOG.md .github/ISSUE_TEMPLATE
+scripts/check-markdown-links.py
 git diff --check
 ```
+
+The Markdown link checker validates local links and simple heading anchors in
+`README.md`, `AGENTS.md`, `SECURITY.md`, `docs/**/*.md`, and `codex/**/*.md`;
+it intentionally skips external URLs and fenced code examples. If the checker
+itself changed, also run `scripts/check-markdown-links.py --self-test`.
 
 Go tests are not required unless code changed.
 

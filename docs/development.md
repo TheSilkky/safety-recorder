@@ -215,6 +215,20 @@ When editing docs, keep these claims aligned:
 
 Do not claim production readiness unless deployment hardening has actually been implemented. Do not treat protocol or data-layout compatibility names as stale just because the repository, module, Docker image, and GHCR artifact names now use the Proofline namespace.
 
+Run the local Markdown link checker for documentation and reusable prompt
+changes:
+
+```bash
+scripts/check-markdown-links.py
+```
+
+The checker validates local links and simple heading anchors in `README.md`,
+`AGENTS.md`, `SECURITY.md`, `docs/**/*.md`, and `codex/**/*.md`. It skips
+external URLs and fenced code examples, uses only the Python standard library,
+and does not require network access, Node/npm, Docker, cloud services, or
+secrets. If the checker itself changes, also run
+`scripts/check-markdown-links.py --self-test`.
+
 ## Backlog Discipline
 
 New ideas discovered during unrelated work should become issues or backlog items unless they are required to finish the current task. Capture the context, acceptance criteria, tests, docs impact, and out-of-scope items instead of expanding the active diff.

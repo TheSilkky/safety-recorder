@@ -231,7 +231,24 @@ git diff --check
 ```
 
 For docs-only changes, run `git diff --check` and inspect the relevant
-Markdown and links manually. Go tests are not required unless code changed.
+Markdown. Run the local Markdown link checker for documentation or reusable
+prompt changes:
+
+```bash
+scripts/check-markdown-links.py
+```
+
+The checker validates local links in `README.md`, `AGENTS.md`, `SECURITY.md`,
+`docs/**/*.md`, and `codex/**/*.md`, including simple GitHub-style Markdown
+heading anchors. It skips external URLs and fenced code examples, uses only the
+Python standard library, and does not require network access, Node/npm, Docker,
+cloud services, or secrets. When changing the checker itself, also run:
+
+```bash
+scripts/check-markdown-links.py --self-test
+```
+
+Go tests are not required unless code changed.
 
 For simulator/API flow changes, also run the simulator smoke test when
 practical. Prefer an explicit TOML config for repeatable smoke tests,

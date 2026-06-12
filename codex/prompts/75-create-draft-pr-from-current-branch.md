@@ -101,8 +101,17 @@ go vet ./...
 git diff --check
 ```
 
-If only Markdown changed, run `git diff --check` and inspect docs and links
-manually. Go tests are not required unless code changed.
+If only Markdown changed, run:
+
+```bash
+scripts/check-markdown-links.py
+git diff --check
+```
+
+The local Markdown link checker validates local links and simple heading
+anchors in `README.md`, `AGENTS.md`, `SECURITY.md`, `docs/**/*.md`, and
+`codex/**/*.md`; it skips external URLs and fenced code examples. Go tests are
+not required unless code changed.
 
 If simulator behaviour is relevant, prefer TOML for repeatable smoke:
 
@@ -166,6 +175,7 @@ gh pr create \
 - [ ] gofmt -w ./cmd ./internal ./migrations
 - [ ] go test ./...
 - [ ] go vet ./...
+- [ ] scripts/check-markdown-links.py, if docs or prompts changed
 - [ ] git diff --check
 "
 ```

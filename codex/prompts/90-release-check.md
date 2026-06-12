@@ -116,6 +116,7 @@ Check:
 - `docs/codex-change-control.md` and `codex/README.md` match prompt workflow, if present
 - issue/PR/backlog workflow prompts are listed in `codex/README.md`
 - PR creation/review prompts support non-`main` base branches where applicable
+- local Markdown links and simple heading anchors pass
 - Docker/GHCR notes are current
 - GitHub Actions workflow names and badges are correct
 - environment variable docs match implementation
@@ -170,6 +171,7 @@ From the repository root, run:
 gofmt -w ./cmd ./internal ./migrations
 go test ./...
 go vet ./...
+scripts/check-markdown-links.py
 git diff --check
 ```
 
