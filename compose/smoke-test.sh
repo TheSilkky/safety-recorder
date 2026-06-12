@@ -225,6 +225,7 @@ PROOFLINE_SIM_PASSWORD="$PROOFLINE_SMOKE_PASSWORD" \
 go run ./cmd/simclient \
   --api "http://127.0.0.1:${PROOFLINE_MAIN_PORT}" \
   --viewer "http://127.0.0.1:${PROOFLINE_MAIN_PORT}" \
+  --setup-totp-second-factor \
   --chunks 3 \
   --interval 0s \
   --download-bundle \

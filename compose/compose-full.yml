@@ -3,14 +3,12 @@ services:
     build:
       context: ..
       dockerfile: Dockerfile
-    environment:
-      SAFE_CONFIG_FILE: /config/proofline-full.toml
     ports:
       - "127.0.0.1:${PROOFLINE_MAIN_PORT:-18080}:8080"
       - "127.0.0.1:${PROOFLINE_ADMIN_PORT:-18081}:8081"
     volumes:
       - server-data:/var/lib/proofline
-      - ./smoke/proofline-full.toml:/config/proofline-full.toml:ro
+      - ./smoke/proofline-full.toml:/etc/proofline/proofline.toml:ro
       - ${PROOFLINE_SMOKE_SECRETS_DIR:-./smoke/secrets}:/run/proofline-secrets:ro
     depends_on:
       postgres:

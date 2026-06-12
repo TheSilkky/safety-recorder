@@ -12,6 +12,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/open-proofline/server/internal/auth"
 )
 
 type client struct {
@@ -29,6 +31,10 @@ type createIncidentResponse struct {
 
 type loginResponse struct {
 	Token string `json:"token"`
+}
+
+type totpEnrollmentResponse struct {
+	Secret string `json:"secret"`
 }
 
 type createIncidentTokenResponse struct {
@@ -148,6 +154,24 @@ func (c client) login(ctx context.Context, username, password string) (string, e
 		return "", fmt.Errorf("login: empty token in response")
 	}
 	return response.Token, nil
+}
+
+func (c client) setupTOTPSecondFactor(ctx context.Context) error {
+	var response totpEnrollmentResponse
+	if err := c.postJSON(ctx, "/v1/account/second-factor/totp/enroll", map[string]any{}, http.StatusCreated, &response); err != nil {
+		return fmt.Errorf("enroll TOTP second factor: %w", err)
+	}
+	if strings.TrimSpace(response.Secret) == "" {
+		return fmt.Errorf("enroll TOTP second factor: empty secret in response")
+	}
+	code, err := auth.GenerateTOTPCode(response.Secret, time.Now().UTC())
+	if err != nil {
+		return fmt.Errorf("generate TOTP challenge code: %w", err)
+	}
+	if err := c.postJSON(ctx, "/v1/account/second-factor/totp/confirm", map[string]string{"code": code}, http.StatusOK, nil); err != nil {
+		return fmt.Errorf("confirm TOTP second factor: %w", err)
+	}
+	return nil
 }
 
 func (c client) createIncidentToken(ctx context.Context, incidentID string) (string, error) {

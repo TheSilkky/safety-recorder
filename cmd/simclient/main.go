@@ -44,6 +44,13 @@ func run(ctx context.Context, out io.Writer, args []string) error {
 		return err
 	}
 	sim.sessionToken = sessionToken
+	if cfg.setupTOTPSecondFactor {
+		fmt.Fprintln(out, "Setting up TOTP second factor...")
+		if err := sim.setupTOTPSecondFactor(ctx); err != nil {
+			return err
+		}
+		fmt.Fprintln(out, "TOTP second factor verified.")
+	}
 
 	fmt.Fprintln(out, "Creating incident...")
 	incidentID, err := sim.createIncident(ctx)

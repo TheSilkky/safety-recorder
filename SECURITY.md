@@ -13,6 +13,7 @@ process.
 
 | Version | Supported |
 |---|---|
+| 0.11.0-rc.1 | Release candidate |
 | 0.10.x | Yes |
 | 0.9.x | Yes |
 | < 0.9 | No |
