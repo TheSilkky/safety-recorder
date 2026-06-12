@@ -67,3 +67,4 @@ scripts/
 # The Dockerfile is supplied explicitly to the builder and should not be
 # available to COPY instructions from the application context.
 Dockerfile
+Dockerfile.ingress

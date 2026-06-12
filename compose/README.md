@@ -13,7 +13,9 @@ simulator against the main API/viewer listener with that account. The default
 bootstrap secret and password are placeholders for local throwaway smoke volumes
 only. The script waits for token-neutral `/admin/static/styles.css` on the
 private-admin loopback port before bootstrapping the test account through
-`POST /admin/bootstrap`.
+`POST /admin/bootstrap`. The relay smoke variant starts a core server and
+`cmd/stream-ingress`, waits for relay liveness/readiness, and checks relay
+route-surface exclusions instead of running simulator relay uploads.
 
 The `full` stack loads the server's primary settings from
 `compose/smoke/proofline-full.toml` and mounts fake local secret files under
@@ -32,6 +34,7 @@ creates an ignored runtime secrets directory from the current
 | `sqlite-local` | `compose-sqlite-local.yml` | SQLite | Local filesystem | none |
 | `postgresql-local` | `compose-postgresql-local.yml` | PostgreSQL | Local filesystem | none |
 | `sqlite-s3` | `compose-sqlite-s3.yml` | SQLite | MinIO S3-compatible bucket | none |
+| `relay-sqlite-local` | `compose-relay-sqlite-local.yml` | SQLite | Local filesystem | none |
 
 Run the default full-stack smoke test from the repository root:
 
@@ -45,7 +48,15 @@ Run a specific variant:
 compose/smoke-test.sh sqlite-local
 compose/smoke-test.sh postgresql-local
 compose/smoke-test.sh sqlite-s3
+compose/smoke-test.sh relay-sqlite-local
 ```
+
+The relay variant builds the main server image from `Dockerfile`, builds the
+relay image from `Dockerfile.ingress`, binds the relay to
+`127.0.0.1:${PROOFLINE_RELAY_PORT:-18090}`, and checks that `/admin`,
+`/admin/api/...`, `/v1/...`, viewer, and `/metrics` routes are not mounted on
+the relay. It is a packaging/readiness smoke path only; simulator relay upload
+mode is a separate explicit simulator feature.
 
 Pass additional simulator arguments after `--`:
 
@@ -56,7 +67,8 @@ compose/smoke-test.sh full -- --chunks 5 --simulate-failure-every 2
 The script uses `PROOFLINE_MAIN_PORT` and `PROOFLINE_ADMIN_PORT` when set,
 defaulting to `18080` and `18081`. `PROOFLINE_PRIVATE_PORT` and
 `PROOFLINE_PUBLIC_PORT` remain accepted by the script as legacy aliases for
-those local host ports.
+those local host ports. The relay smoke variant also accepts
+`PROOFLINE_RELAY_PORT`, defaulting to `18090`.
 
 ```bash
 PROOFLINE_MAIN_PORT=28080 PROOFLINE_ADMIN_PORT=28081 compose/smoke-test.sh full
@@ -87,6 +99,7 @@ Validate the full stack Compose model without starting containers:
 
 ```bash
 docker compose -f compose/compose-full.yml config
+docker compose -f compose/compose-relay-sqlite-local.yml config
 ```
 
 ## Optional S3 Deletion Smoke

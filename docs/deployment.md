@@ -17,7 +17,7 @@ or a private reverse proxy. Private placement must not replace admin
 authentication. The main API/public viewer listener split is documented in
 [public-api-listener-split.md](public-api-listener-split.md).
 
-The current module and artifact names use the `open-proofline/server` repository namespace. The published GHCR image is `ghcr.io/open-proofline/server`, local examples use the `proofline-server` image name, and release binaries use `proofline-server-*` names. Current runtime protocol and default data-layout identifiers use Proofline names. Historical reports and archived prompts may still mention earlier `safety-recorder` identifiers.
+The current module and artifact names use the `open-proofline/server` repository namespace. The main server GHCR image is `ghcr.io/open-proofline/server`, the stream-ingress relay GHCR image is `ghcr.io/open-proofline/stream-ingress`, local examples use the `proofline-server` and `proofline-stream-ingress` image names, and release binaries use `proofline-server-*` names. Current runtime protocol and default data-layout identifiers use Proofline names. Historical reports and archived prompts may still mention earlier `safety-recorder` identifiers.
 
 Public web-client deployments have an additional route, CORS, CSRF, cookie,
 cache, edge, and logging boundary documented in
@@ -302,6 +302,7 @@ Build from the repository root:
 
 ```bash
 docker build -t proofline-server .
+docker build -f Dockerfile.ingress -t proofline-stream-ingress .
 ```
 
 Run with localhost-only port publishing when everything that talks to the backend is on the same host:
@@ -360,6 +361,15 @@ docker run --rm \
 Mount secret files separately and reference them from TOML `*_file` keys or
 `SAFE_*_FILE` environment variables. Do not bake real secrets into images or
 committed config files.
+
+The stream-ingress relay image is built from `Dockerfile.ingress`, builds
+`cmd/stream-ingress` rather than the main `cmd/api` binary, runs as the same
+non-root container user style, and stores relay-local temporary ciphertext under
+`/var/lib/proofline-stream-ingress`. It is published separately from the main
+server image as `ghcr.io/open-proofline/stream-ingress`. Publishing the image is
+release packaging support only; it does not add cloud deployment automation,
+public metrics, admin routes, viewer routes, broad `/v1` routing, decryption, or
+production readiness.
 
 ## SQLite WAL Operations
 
@@ -631,6 +641,21 @@ decisions, authorization, incident and stream state, idempotency, final blob
 commits, and metadata. Current fanout chunks are optimistic and must remain
 viewer-labeled as unconfirmed until a matching `confirmed` relay state or
 other backend-confirmed state exists.
+
+For local packaging smoke, use the dedicated Compose variant from the
+repository root:
+
+```bash
+compose/smoke-test.sh relay-sqlite-local
+```
+
+This stack builds `Dockerfile` for the core API and `Dockerfile.ingress` for
+the relay, publishes the core main/private-admin listeners and relay listener
+on loopback host ports only, waits for the private admin static asset, checks
+`/health/live` and `/health/ready` on the relay, and asserts that `/admin`,
+`/admin/api/...`, `/v1/...`, viewer, and `/metrics` paths are not mounted on
+the relay. It intentionally does not run simulator relay-mode uploads; that is
+separate simulator support.
 
 Do not route `/admin`, `/admin/api/...`, public incident viewer routes, bundle
 downloads, deletion, retention, backup, restore, escrow, break-glass,
@@ -1204,9 +1229,10 @@ The CI workflow:
 - builds a Linux amd64 binary artifact
 - generates release binary attestations from a tag-only attestation job
 - creates a minimal GitHub Release when needed and uploads the Linux amd64 binary as a Release asset for `v*` tags
-- builds the Docker image from `Dockerfile` with the repository root as build context
-- publishes `ghcr.io/open-proofline/server` on pushes to `main` and `v*` tags
+- builds the main server Docker image from `Dockerfile` with the repository root as build context
+- builds the stream-ingress relay Docker image from `Dockerfile.ingress` with the repository root as build context
+- publishes `ghcr.io/open-proofline/server` and `ghcr.io/open-proofline/stream-ingress` on trusted pushes to `main`, `develop`, and `v*` tags
 - attaches attestations to published GHCR images
 - keeps workflow-level token permissions read-only and grants write permissions only to the tag-only binary attestation, release binary upload, and trusted Docker publish jobs
 
-The previous `ghcr.io/thesilkky/safety-recorder` package name is historical. New release and deployment references should use `ghcr.io/open-proofline/server`; deployments pinned to old images should migrate deliberately.
+The previous `ghcr.io/thesilkky/safety-recorder` package name is historical. New release and deployment references should use `ghcr.io/open-proofline/server` for the main API image and `ghcr.io/open-proofline/stream-ingress` for the relay image; deployments pinned to old images should migrate deliberately.

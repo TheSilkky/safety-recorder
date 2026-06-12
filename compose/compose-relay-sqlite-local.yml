@@ -1,0 +1,44 @@
+services:
+  server:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    environment:
+      SAFE_MAIN_BIND_ADDRS: 0.0.0.0:8080
+      SAFE_ADMIN_BIND_ADDRS: 0.0.0.0:8081
+      SAFE_AUTH_BOOTSTRAP_SECRET: ${PROOFLINE_SMOKE_BOOTSTRAP_SECRET:-replace-with-local-compose-bootstrap-secret}
+      SAFE_DATA_DIR: /var/lib/proofline
+      SAFE_DB_PATH: /var/lib/proofline/proofline.db
+      SAFE_METADATA_BACKEND: sqlite
+      SAFE_BLOB_BACKEND: local
+      SAFE_COORDINATION_BACKEND: none
+      SAFE_RELAY_SERVICE_AUTH_TOKEN: ${PROOFLINE_SMOKE_RELAY_SERVICE_TOKEN:-replace-with-local-relay-service-token}
+      SAFE_RELAY_CAPABILITY_SECRET: ${PROOFLINE_SMOKE_RELAY_CAPABILITY_SECRET:-replace-with-local-relay-capability-secret}
+    ports:
+      - "127.0.0.1:${PROOFLINE_MAIN_PORT:-18080}:8080"
+      - "127.0.0.1:${PROOFLINE_ADMIN_PORT:-18081}:8081"
+    volumes:
+      - server-data:/var/lib/proofline
+
+  stream-ingress:
+    build:
+      context: ..
+      dockerfile: Dockerfile.ingress
+    environment:
+      SAFE_STREAM_INGRESS_BIND_ADDR: 0.0.0.0:8090
+      SAFE_STREAM_INGRESS_RELAY_ID: local-relay-smoke
+      SAFE_STREAM_INGRESS_REGION: local
+      SAFE_STREAM_INGRESS_READY: "true"
+      SAFE_STREAM_INGRESS_CORE_BASE_URL: http://server:8080
+      SAFE_STREAM_INGRESS_CORE_SERVICE_AUTH_TOKEN: ${PROOFLINE_SMOKE_RELAY_SERVICE_TOKEN:-replace-with-local-relay-service-token}
+      SAFE_STREAM_INGRESS_DATA_DIR: /var/lib/proofline-stream-ingress
+    ports:
+      - "127.0.0.1:${PROOFLINE_RELAY_PORT:-18090}:8090"
+    volumes:
+      - relay-data:/var/lib/proofline-stream-ingress
+    depends_on:
+      - server
+
+volumes:
+  server-data:
+  relay-data:
