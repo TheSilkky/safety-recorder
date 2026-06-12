@@ -407,3 +407,5 @@ recovery, playable media export,
 push notifications, SMS, Messenger integration, OAuth, JWT, public account
 portal, or a public admin dashboard. The local
 desktop-recorder behavior in `cmd/simclient` is simulator/reference flow only.
+Future notification delivery boundaries are documented in
+[notification-boundary.md](notification-boundary.md).

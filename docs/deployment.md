@@ -29,6 +29,10 @@ The no-account viewer route decision is documented in
 viewer links should point at the web-client origin, while current `/i` and `/e`
 server routes are prototype/local compatibility until a later runtime issue
 changes them.
+Future trusted-contact alerts, missed-check-in notifications, and no-account
+viewer-link delivery must follow
+[notification-boundary.md](notification-boundary.md) before any provider,
+outbox, retry worker, callback, or message-template behavior is implemented.
 
 ## Local Development
 
@@ -816,6 +820,13 @@ integration require separate deployment warnings, audit, runbooks, and security
 review. See [v1-access-control.md](v1-access-control.md),
 [break-glass-key-access.md](break-glass-key-access.md),
 [key-custody.md](key-custody.md), and [incident-modes.md](incident-modes.md).
+
+Future notification delivery adds its own deployment boundary: provider
+selection, provider logs, token-bearing links, callbacks, retries, suppression,
+opt-out, rate limits, audit records, and provider secrets must be reviewed
+before enabling any SMS, push, Messenger, chat, or email-alert path. Proofline
+notifications must not be described as emergency dispatch or guaranteed live
+tracking; see [notification-boundary.md](notification-boundary.md).
 
 Optional PostgreSQL metadata deployment remains experimental. Schema parity,
 migration tracking, transaction boundaries, configuration shape, integration

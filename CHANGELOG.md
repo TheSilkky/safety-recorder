@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- Added a planning-only notification boundary for trusted-contact alerts,
+  missed safety checks, and no-account viewer-token link delivery, covering
+  token-link redaction, provider-log risks, retry, suppression, opt-out,
+  rate-limit, audit, provider-secret, and deployment-warning expectations
+  without adding notification providers, emergency dispatch, guaranteed live
+  tracking, or runtime behavior.
+
 - Expanded the break-glass and dead-man-switch policy boundary with a
   wrapped-key-release-first direction, explicit trigger/cancellation state,
   contact-review, safe audit-field, offline-device, false-positive/negative,

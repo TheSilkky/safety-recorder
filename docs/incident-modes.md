@@ -257,8 +257,10 @@ key-custody behavior depends on other designs:
 - [Key custody and emergency access](key-custody.md) for contact-wrapped keys, wrapped-key delivery, and phone-unavailable assumptions
 - [Browser-side decryption](browser-decryption.md) before any web viewer decrypts evidence
 - [Break-glass key access](break-glass-key-access.md) before any server-assisted emergency key access exists
+- [Notification boundary](notification-boundary.md) before SMS, push,
+  Messenger, email-alert, trusted-contact, missed-check-in, or no-account
+  viewer-link delivery exists
 - client and protocol repository planning before mobile or shared protocol behavior is implemented outside this server repository
-- notification delivery design before push, SMS, Messenger, email, or other trusted-contact delivery is added
 
 Any implementation that changes key custody, wrapped-key delivery, browser decryption, server-side decryption, or break-glass access is separate security-sensitive work and must update the security model, threat model, encryption docs, operational guidance, tests, and deployment warnings before or alongside code.
 
@@ -288,6 +290,8 @@ Not implemented today:
 - non-emergency interaction UX
 - dead-man switch notifications
 - push/SMS/Messenger integrations
+- email-alert or other provider notification delivery beyond account setup and
+  authentication email flows
 - production key custody
 - browser/client-side decryption
 - legal export workflow

@@ -21,6 +21,9 @@ The Figma file metadata was accessible during this pass. The inspected page,
 contacts, trusted-contact alert, evidence review, and key custody. It was used
 only as product direction for future invite/accept, alert, evidence, and key
 custody flows; it does not override the current backend source of truth.
+Future notification provider, viewer-link, retry, suppression, opt-out,
+rate-limit, provider-log, and audit boundaries are documented in
+[notification-boundary.md](notification-boundary.md).
 
 ## Purpose
 
@@ -762,6 +765,7 @@ are not backlog drafts and they are not GitHub issues.
     default, no incidental SMS/push/Messenger. Sensitive data: messages,
     provider logs, links, and contact identifiers. Validation: template
     redaction, rate-limit, retry, opt-out, and failure-mode tests.
+    Current design source: [notification-boundary.md](notification-boundary.md).
 
 17. **Post-quantum envelope compatibility and migration planning.**
     Reasoning: very high. Type: migration/design/test support. Areas:
