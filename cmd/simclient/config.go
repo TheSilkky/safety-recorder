@@ -25,6 +25,7 @@ type config struct {
 	closeIncident         bool
 	completeStream        bool
 	downloadBundle        bool
+	setupTOTPSecondFactor bool
 	bundleOutput          string
 	verifyBundlePath      string
 	encrypt               bool
@@ -81,6 +82,7 @@ func parseConfig(args []string) (config, error) {
 	fs.BoolVar(&cfg.closeIncident, "close", false, "Close the incident when complete")
 	fs.BoolVar(&cfg.completeStream, "complete-stream", true, "Mark the uploaded media stream complete")
 	fs.BoolVar(&cfg.downloadBundle, "download-bundle", false, "Download the completed stream bundle through the incident viewer")
+	fs.BoolVar(&cfg.setupTOTPSecondFactor, "setup-totp-second-factor", false, "Enroll and verify a TOTP second factor before product-route simulator calls")
 	fs.StringVar(&cfg.bundleOutput, "bundle-output", "", "Write the downloaded encrypted stream bundle ZIP to this path")
 	fs.StringVar(&cfg.verifyBundlePath, "verify-bundle", "", "Verify an existing encrypted stream bundle ZIP and exit")
 	fs.BoolVar(&cfg.encrypt, "encrypt", true, "Encrypt simulated chunk bytes before upload")

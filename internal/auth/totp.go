@@ -84,12 +84,16 @@ func MatchTOTPCode(secret, code string, now time.Time, periodSeconds, digits int
 	return 0, false, nil
 }
 
-func GenerateTOTPCodeForTest(secret string, at time.Time) (string, error) {
+func GenerateTOTPCode(secret string, at time.Time) (string, error) {
 	opts, err := totpValidateOptions(TOTPDefaultPeriodSeconds, TOTPDefaultDigits, TOTPAlgorithmSHA1)
 	if err != nil {
 		return "", err
 	}
 	return totp.GenerateCodeCustom(secret, at.UTC(), opts)
+}
+
+func GenerateTOTPCodeForTest(secret string, at time.Time) (string, error) {
+	return GenerateTOTPCode(secret, at)
 }
 
 func totpValidateOptions(periodSeconds, digits int, algorithm string) (totp.ValidateOpts, error) {

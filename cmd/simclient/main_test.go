@@ -19,6 +19,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/open-proofline/server/internal/auth"
 	"github.com/open-proofline/server/internal/envelope"
 	pqenv "github.com/open-proofline/server/internal/envelope/pq"
 )
@@ -866,6 +867,53 @@ func TestClientDownloadStreamBundleUsesViewerBase(t *testing.T) {
 	}
 }
 
+func TestSetupTOTPSecondFactor(t *testing.T) {
+	const secret = "JBSWY3DPEHPK3PXP"
+	var gotPaths []string
+	httpClient := &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		gotPaths = append(gotPaths, r.Method+" "+r.URL.Path)
+		if r.Header.Get("Authorization") != "Bearer session-token" {
+			t.Fatalf("second-factor route %s missing session Authorization header", r.URL.Path)
+		}
+		switch r.URL.Path {
+		case "/v1/account/second-factor/totp/enroll":
+			return testResponse(http.StatusCreated, "application/json", `{"secret":"`+secret+`"}`), nil
+		case "/v1/account/second-factor/totp/confirm":
+			var request struct {
+				Code string `json:"code"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+				t.Fatalf("decode TOTP confirm request: %v", err)
+			}
+			if request.Code == "" || request.Code == secret {
+				t.Fatalf("unexpected TOTP confirm code")
+			}
+			if _, ok, err := auth.MatchTOTPCode(secret, request.Code, time.Now().UTC(), auth.TOTPDefaultPeriodSeconds, auth.TOTPDefaultDigits, auth.TOTPAlgorithmSHA1); err != nil || !ok {
+				t.Fatalf("TOTP confirm code valid=%t err=%v", ok, err)
+			}
+			return testResponse(http.StatusOK, "application/json", `{"status":"verified"}`), nil
+		default:
+			return testResponse(http.StatusNotFound, "application/json", `{"error":{"code":"not_found"}}`), nil
+		}
+	})}
+	sim := client{
+		httpClient:   httpClient,
+		apiBase:      "http://api.example",
+		sessionToken: "session-token",
+	}
+
+	if err := sim.setupTOTPSecondFactor(context.Background()); err != nil {
+		t.Fatalf("setupTOTPSecondFactor returned error: %v", err)
+	}
+	wantPaths := []string{
+		"POST /v1/account/second-factor/totp/enroll",
+		"POST /v1/account/second-factor/totp/confirm",
+	}
+	if strings.Join(gotPaths, "\n") != strings.Join(wantPaths, "\n") {
+		t.Fatalf("paths = %v, want %v", gotPaths, wantPaths)
+	}
+}
+
 func TestPostJSONUnexpectedStatusOmitsTokenBearingBody(t *testing.T) {
 	httpClient := &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
 		return testResponse(http.StatusOK, "application/json", `{"token":"raw-session-token","other":"raw-viewer-token"}`), nil
@@ -934,6 +982,16 @@ func TestParseConfigReconcileDuplicateFlag(t *testing.T) {
 	}
 	if !cfg.reconcileDuplicate {
 		t.Fatal("expected reconcile duplicate flag to be set")
+	}
+}
+
+func TestParseConfigSetupTOTPSecondFactorFlag(t *testing.T) {
+	cfg, err := parseConfig(withAuthArgs("--setup-totp-second-factor"))
+	if err != nil {
+		t.Fatalf("parseConfig returned error: %v", err)
+	}
+	if !cfg.setupTOTPSecondFactor {
+		t.Fatal("expected setup TOTP second factor flag to be set")
 	}
 }
 

@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## v0.11.0-rc.1 - 2026-06-13
+
+This is an ordinary pre-v1, experimental release candidate. It is not
+production-ready public infrastructure, not a v1 preview readiness claim, and
+not final `v0.11.0`.
+
 - Added a standard-library local Markdown link checker for README, AGENTS,
   SECURITY, docs, and Codex prompt files, with fenced-example and external-link
   exclusions, self-test coverage, and documentation/release/PR prompt
