@@ -2,11 +2,26 @@
 
 ## Unreleased
 
-## v0.11.0-rc.1 - 2026-06-13
+## v0.11.0 - 2026-06-13
 
-This is an ordinary pre-v1, experimental release candidate. It is not
-production-ready public infrastructure, not a v1 preview readiness claim, and
-not final `v0.11.0`.
+This is an ordinary pre-v1, experimental release. It is not production-ready
+public infrastructure and not a v1 preview readiness claim.
+
+- Published the technical review report in `docs/reports/` as supporting
+  release documentation.
+
+- Pinned the PostgreSQL GitHub Actions service image by digest and documented
+  the refresh command so CI does not silently float across PostgreSQL image
+  updates.
+
+- Added sanitized observability for committed-blob rollback cleanup failures
+  after metadata insertion errors, without logging stored paths, payload bytes,
+  raw storage errors, or other sensitive details.
+
+- Verified completed stream and incident bundle chunk byte counts and SHA-256
+  hashes against metadata before sending ZIP headers or body bytes. Missing or
+  mismatched committed chunks now fail closed with safe `409` bundle
+  inconsistency errors rather than producing partial evidence bundles.
 
 - Added a standard-library local Markdown link checker for README, AGENTS,
   SECURITY, docs, and Codex prompt files, with fenced-example and external-link
