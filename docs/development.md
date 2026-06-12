@@ -80,6 +80,16 @@ a disposable PostgreSQL service using fixed CI-only credentials. That job is an
 additional integration signal; making it a required branch check is a separate
 maintainer ruleset decision.
 
+The CI PostgreSQL service image is pinned by digest for reproducibility. To
+refresh it, inspect the current tag with:
+
+```bash
+docker buildx imagetools inspect postgres:18-alpine
+```
+
+Then update the `postgres:18-alpine@sha256:...` value in
+`.github/workflows/ci.yml` and confirm the PostgreSQL metadata job still runs.
+
 Local Docker Compose smoke stacks for release preparation live in
 [../compose/](../compose/). They exercise the simulator against disposable
 SQLite/local, PostgreSQL/local, SQLite/S3-compatible MinIO, and full
