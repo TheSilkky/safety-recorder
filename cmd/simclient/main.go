@@ -35,6 +35,7 @@ func run(ctx context.Context, out io.Writer, args []string) error {
 		httpClient: newHTTPClient(cfg),
 		apiBase:    cfg.apiBase,
 		viewerBase: cfg.viewerBase,
+		relayBase:  cfg.relayBase,
 	}
 
 	fmt.Fprintln(out, "Logging in...")
@@ -66,6 +67,17 @@ func run(ctx context.Context, out io.Writer, args []string) error {
 	}
 	fmt.Fprintf(out, "Stream: %s\n\n", streamID)
 
+	var relaySession relaySession
+	if cfg.uploadMode == uploadModeRelay {
+		fmt.Fprintln(out, "Creating relay upload session...")
+		relaySession, err = sim.createRelaySession(ctx, incidentID, streamID)
+		if err != nil {
+			return err
+		}
+		fmt.Fprintln(out, "Relay upload session created; capability omitted from output.")
+		fmt.Fprintln(out)
+	}
+
 	bundleVerification := encryption
 	contactWrappedVerification := false
 	if encryption.mode == envelopeModeV1 {
@@ -77,7 +89,7 @@ func run(ctx context.Context, out io.Writer, args []string) error {
 		}
 	}
 
-	if err := uploadChunks(ctx, out, sim, cfg, incidentID, streamID, encryption); err != nil {
+	if err := uploadChunks(ctx, out, sim, cfg, incidentID, streamID, encryption, relaySession); err != nil {
 		return err
 	}
 

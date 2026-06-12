@@ -8,6 +8,9 @@
   checks, and docs that keep relay packaging separate from production
   deployment readiness.
 
+- Added opt-in `cmd/simclient` relay upload mode for local stream-ingress
+  testing, while keeping direct main-API upload as the default simulator path.
+
 - Renamed private-admin JSON API routes into the `/admin/api/...` namespace,
   removed the old JSON route aliases, and updated listener-boundary tests and
   docs so admin JSON, the `/admin` dashboard, and public viewer/main routes

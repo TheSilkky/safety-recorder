@@ -18,6 +18,7 @@ type client struct {
 	httpClient   *http.Client
 	apiBase      string
 	viewerBase   string
+	relayBase    string
 	sessionToken string
 }
 
@@ -57,6 +58,34 @@ type mediaStream struct {
 	CreatedAt          time.Time  `json:"created_at"`
 	UpdatedAt          time.Time  `json:"updated_at"`
 	CompletedAt        *time.Time `json:"completed_at,omitempty"`
+}
+
+type relaySessionResponse struct {
+	RelaySession relaySession `json:"relay_session"`
+}
+
+type relaySession struct {
+	RelaySessionID    string    `json:"relay_session_id"`
+	Capability        string    `json:"capability"`
+	Role              string    `json:"role"`
+	IncidentID        string    `json:"incident_id"`
+	StreamID          string    `json:"stream_id"`
+	ExpiresAt         time.Time `json:"expires_at"`
+	MaxChunkBytes     int64     `json:"max_chunk_bytes"`
+	MaxChunks         int       `json:"max_chunks"`
+	AllowedMediaTypes []string  `json:"allowed_media_types"`
+}
+
+type relayUploadResponse struct {
+	RelayUpload relayUploadPayload `json:"relay_upload"`
+}
+
+type relayUploadPayload struct {
+	Status     string `json:"status"`
+	IncidentID string `json:"incident_id,omitempty"`
+	StreamID   string `json:"stream_id,omitempty"`
+	ChunkIndex int    `json:"chunk_index,omitempty"`
+	MediaType  string `json:"media_type,omitempty"`
 }
 
 type chunkReconciliationResponse struct {
@@ -148,6 +177,25 @@ func (c client) createMediaStream(ctx context.Context, incidentID, mediaType str
 		return "", fmt.Errorf("create media stream: empty stream id in response")
 	}
 	return response.Stream.ID, nil
+}
+
+func (c client) createRelaySession(ctx context.Context, incidentID, streamID string) (relaySession, error) {
+	var response relaySessionResponse
+	path := "/v1/incidents/" + url.PathEscape(incidentID) + "/streams/" + url.PathEscape(streamID) + "/relay-session"
+	if err := c.postJSON(ctx, path, map[string]any{}, http.StatusCreated, &response); err != nil {
+		return relaySession{}, fmt.Errorf("create relay session: %w", err)
+	}
+	session := response.RelaySession
+	if session.RelaySessionID == "" {
+		return relaySession{}, fmt.Errorf("create relay session: empty relay_session_id in response")
+	}
+	if session.Capability == "" {
+		return relaySession{}, fmt.Errorf("create relay session: empty capability in response")
+	}
+	if session.IncidentID != incidentID || session.StreamID != streamID {
+		return relaySession{}, fmt.Errorf("create relay session: response identity did not match requested stream")
+	}
+	return session, nil
 }
 
 func (c client) createCheckin(ctx context.Context, incidentID string, chunkIndex int) error {
@@ -245,6 +293,24 @@ func (c client) uploadChunk(ctx context.Context, upload chunkUpload) error {
 	return fmt.Errorf("upload chunk: %w", uploadStatusError(status, body))
 }
 
+func (c client) uploadRelayChunk(ctx context.Context, session relaySession, upload chunkUpload) error {
+	status, body, err := c.postRelayChunk(ctx, session, upload)
+	if err != nil {
+		return err
+	}
+	if status != http.StatusCreated && status != http.StatusOK {
+		return fmt.Errorf("upload relay chunk: %w", relayStatusError(http.StatusCreated, status, body))
+	}
+	var response relayUploadResponse
+	if err := json.Unmarshal(body, &response); err != nil {
+		return fmt.Errorf("decode relay upload response: %w", err)
+	}
+	if response.RelayUpload.Status != "committed" {
+		return fmt.Errorf("upload relay chunk: expected committed status, got %q", response.RelayUpload.Status)
+	}
+	return nil
+}
+
 func (c client) expectIdempotentReplay(ctx context.Context, upload chunkUpload) error {
 	status, headers, body, err := c.postChunk(ctx, upload)
 	if err != nil {
@@ -255,6 +321,21 @@ func (c client) expectIdempotentReplay(ctx context.Context, upload chunkUpload) 
 	}
 	if headers.Get("Idempotency-Replayed") != "true" {
 		return fmt.Errorf("expected idempotent replay header")
+	}
+	return nil
+}
+
+func (c client) expectRelayHashMismatch(ctx context.Context, session relaySession, upload chunkUpload) error {
+	status, body, err := c.postRelayChunk(ctx, session, upload)
+	if err != nil {
+		return err
+	}
+	if status != http.StatusBadRequest {
+		return fmt.Errorf("expected relay hash mismatch: %w", relayStatusError(http.StatusBadRequest, status, body))
+	}
+	code := errorCode(body)
+	if code != "hash_mismatch" {
+		return fmt.Errorf("expected relay hash_mismatch error code, got %q", safeErrorCode(body))
 	}
 	return nil
 }
@@ -460,6 +541,58 @@ func (c client) postChunk(ctx context.Context, upload chunkUpload) (int, http.He
 	return response.StatusCode, response.Header.Clone(), responseBody, nil
 }
 
+func (c client) postRelayChunk(ctx context.Context, session relaySession, upload chunkUpload) (int, []byte, error) {
+	var body bytes.Buffer
+	writer := multipart.NewWriter(&body)
+
+	fields := map[string]string{
+		"relay_session_id":  session.RelaySessionID,
+		"capability":        session.Capability,
+		"incident_id":       upload.incidentID,
+		"stream_id":         upload.streamID,
+		"chunk_index":       strconv.Itoa(upload.chunkIndex),
+		"media_type":        upload.mediaType,
+		"started_at":        upload.startedAt.Format(time.RFC3339Nano),
+		"ended_at":          upload.endedAt.Format(time.RFC3339Nano),
+		"byte_size":         strconv.FormatInt(int64(len(upload.body)), 10),
+		"sha256_hex":        upload.sha256Hex,
+		"original_filename": upload.filename,
+	}
+	for name, value := range fields {
+		if err := writer.WriteField(name, value); err != nil {
+			return 0, nil, err
+		}
+	}
+	filePart, err := writer.CreateFormFile("file", upload.filename)
+	if err != nil {
+		return 0, nil, err
+	}
+	if _, err := filePart.Write(upload.body); err != nil {
+		return 0, nil, err
+	}
+	if err := writer.Close(); err != nil {
+		return 0, nil, err
+	}
+
+	request, err := http.NewRequestWithContext(ctx, http.MethodPost, joinURL(c.relayBase, "/upload/complete-chunk"), &body)
+	if err != nil {
+		return 0, nil, err
+	}
+	request.Header.Set("Content-Type", writer.FormDataContentType())
+
+	response, err := c.httpClient.Do(request)
+	if err != nil {
+		return 0, nil, err
+	}
+	defer response.Body.Close()
+
+	responseBody, err := io.ReadAll(io.LimitReader(response.Body, 64*1024))
+	if err != nil {
+		return response.StatusCode, nil, err
+	}
+	return response.StatusCode, responseBody, nil
+}
+
 func (c client) authorize(request *http.Request) {
 	if c.sessionToken != "" {
 		request.Header.Set("Authorization", "Bearer "+c.sessionToken)
@@ -489,6 +622,14 @@ func uploadStatusError(gotStatus int, body []byte) error {
 		}
 	}
 	return statusError(http.StatusCreated, gotStatus, body)
+}
+
+func relayStatusError(wantStatus, gotStatus int, body []byte) error {
+	summary := safeErrorCode(body)
+	if summary == "" {
+		summary = "response body omitted"
+	}
+	return fmt.Errorf("expected status %d, got %d: %s", wantStatus, gotStatus, summary)
 }
 
 func responseErrorSummary(body []byte) string {

@@ -655,7 +655,7 @@ on loopback host ports only, waits for the private admin static asset, checks
 `/health/live` and `/health/ready` on the relay, and asserts that `/admin`,
 `/admin/api/...`, `/v1/...`, viewer, and `/metrics` paths are not mounted on
 the relay. It intentionally does not run simulator relay-mode uploads; that is
-separate simulator support.
+covered by the explicit relay mode in [simulator.md](simulator.md).
 
 Do not route `/admin`, `/admin/api/...`, public incident viewer routes, bundle
 downloads, deletion, retention, backup, restore, escrow, break-glass,
