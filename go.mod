@@ -10,7 +10,7 @@ require (
 	github.com/aws/smithy-go v1.27.2
 	github.com/go-webauthn/webauthn v0.17.4
 	github.com/jackc/pgx/v5 v5.10.0
-	github.com/mattn/go-sqlite3 v1.14.44
+	github.com/mattn/go-sqlite3 v1.14.45
 	github.com/pquerna/otp v1.5.0
 	github.com/redis/go-redis/v9 v9.20.1
 	golang.org/x/crypto v0.53.0
