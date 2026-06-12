@@ -155,7 +155,7 @@ A restore test should:
 3. Load known incident metadata through authenticated main `/v1` routes.
 4. Verify completed stream or incident bundle downloads can be generated.
 5. Confirm generated manifests match expected stream and chunk metadata.
-6. Confirm missing blobs or database/blob mismatches fail closed rather than producing partial evidence.
+6. Confirm missing blobs or database/blob byte-count or SHA-256 mismatches fail closed before ZIP headers or body bytes are sent rather than producing partial evidence.
 7. Validate deletion state in private only: active incidents should remain
    readable, deletion-pending/deleting/deletion-failed incidents should expose
    only private status, deleted incidents should contain only minimal tombstone

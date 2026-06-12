@@ -299,6 +299,15 @@ func removeStoredStreamChunkFile(t *testing.T, app *testApp, incidentID, streamI
 	}
 }
 
+func replaceStoredStreamChunkFile(t *testing.T, app *testApp, incidentID, streamID, mediaType string, chunkIndex int, payload []byte) {
+	t.Helper()
+
+	chunkPath := filepath.Join(app.dataDir, "incidents", incidentID, "streams", streamID, fmt.Sprintf("%s_%06d.enc", mediaType, chunkIndex))
+	if err := os.WriteFile(chunkPath, payload, 0o600); err != nil {
+		t.Fatalf("replace stored stream chunk file: %v", err)
+	}
+}
+
 func updateStoredStreamChunkIndex(t *testing.T, app *testApp, incidentID, streamID string, currentIndex, nextIndex int) {
 	t.Helper()
 

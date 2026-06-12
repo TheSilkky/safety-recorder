@@ -3,13 +3,18 @@ package httpapi
 import (
 	"archive/zip"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 
 	"github.com/open-proofline/server/internal/incidents"
 )
+
+var errBundleChunkIntegrityMismatch = errors.New("bundle chunk integrity mismatch")
 
 func (a *API) downloadPrivateStreamBundle(w http.ResponseWriter, r *http.Request) {
 	incidentID := r.PathValue("incident_id")
@@ -87,6 +92,10 @@ func (a *API) loadCompletedStreamBundle(w http.ResponseWriter, r *http.Request, 
 		writeError(w, http.StatusConflict, "stream_not_complete", "media stream is not complete")
 		return streamBundleData{}, false
 	}
+	if isBundleChunkVerificationFailure(err) {
+		writeError(w, http.StatusConflict, "stream_bundle_inconsistent", "completed media stream could not be included in stream bundle")
+		return streamBundleData{}, false
+	}
 	if err != nil {
 		a.internalError(w, "build stream bundle", err)
 		return streamBundleData{}, false
@@ -120,7 +129,12 @@ func (a *API) loadCompletedIncidentBundles(w http.ResponseWriter, r *http.Reques
 func isIncidentBundleInconsistency(err error) bool {
 	return errors.Is(err, incidents.ErrInvalidState) ||
 		errors.Is(err, incidents.ErrNotFound) ||
-		errors.Is(err, os.ErrNotExist)
+		isBundleChunkVerificationFailure(err)
+}
+
+func isBundleChunkVerificationFailure(err error) bool {
+	return errors.Is(err, os.ErrNotExist) ||
+		errors.Is(err, errBundleChunkIntegrityMismatch)
 }
 
 func (a *API) buildCompletedStreamBundle(ctx context.Context, incidentID, streamID string) (streamBundleData, error) {
@@ -142,7 +156,7 @@ func (a *API) buildCompletedStreamBundle(ctx context.Context, incidentID, stream
 	if !validStreamBundleChunks(stream, chunks) {
 		return streamBundleData{}, incidents.ErrInvalidState
 	}
-	if err := a.validateBundleChunkFiles(ctx, chunks); err != nil {
+	if err := a.verifyBundleChunkFiles(ctx, chunks); err != nil {
 		return streamBundleData{}, err
 	}
 
@@ -154,15 +168,32 @@ func (a *API) buildCompletedStreamBundle(ctx context.Context, incidentID, stream
 	}, nil
 }
 
-func (a *API) validateBundleChunkFiles(ctx context.Context, chunks []incidents.Chunk) error {
+func (a *API) verifyBundleChunkFiles(ctx context.Context, chunks []incidents.Chunk) error {
 	for _, chunk := range chunks {
-		file, err := a.store.Open(ctx, chunk.StoredPath)
-		if err != nil {
-			return fmt.Errorf("open chunk for bundle: %w", err)
+		if err := a.verifyBundleChunkFile(ctx, chunk); err != nil {
+			return err
 		}
-		if err := file.Close(); err != nil {
-			return fmt.Errorf("close chunk for bundle: %w", err)
-		}
+	}
+	return nil
+}
+
+func (a *API) verifyBundleChunkFile(ctx context.Context, chunk incidents.Chunk) error {
+	file, err := a.store.Open(ctx, chunk.StoredPath)
+	if err != nil {
+		return fmt.Errorf("open chunk for bundle verification: %w", err)
+	}
+
+	hash := sha256.New()
+	size, readErr := io.Copy(hash, file)
+	closeErr := file.Close()
+	if readErr != nil {
+		return fmt.Errorf("read chunk for bundle verification: %w", readErr)
+	}
+	if closeErr != nil {
+		return fmt.Errorf("close chunk for bundle verification: %w", closeErr)
+	}
+	if size != chunk.ByteSize || hex.EncodeToString(hash.Sum(nil)) != chunk.SHA256Hex {
+		return errBundleChunkIntegrityMismatch
 	}
 	return nil
 }
