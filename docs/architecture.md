@@ -40,7 +40,9 @@ implemented yet. Planned mode behavior, escalation, migration, and
 viewer-wording boundaries are documented in [incident-modes.md](incident-modes.md),
 and current local session behavior plus future public product API, separately
 bound private admin API, role, and grant boundaries are documented in
-[v1-access-control.md](v1-access-control.md).
+[v1-access-control.md](v1-access-control.md). Future notification provider,
+viewer-link, retry, suppression, opt-out, rate-limit, and audit boundaries are
+documented in [notification-boundary.md](notification-boundary.md).
 
 The repository does not contain an iOS app, Android app, web client, protocol
 package, production recording client, production client key storage, key
@@ -238,6 +240,9 @@ routes, bundle downloads, deletion, retention, backup, restore, escrow,
 break-glass, decryption, raw-key, or operator routes. Loss of relay temporary
 staging must be recoverable by client retry.
 
-## Emergency Services Boundary
+## Emergency Services And Notification Boundary
 
 Proofline Server does not currently contact emergency services. Future dead-man switch or safety-check designs should rely on trusted contacts to review the context and decide whether to call emergency services unless a future jurisdiction-specific emergency-services integration is explicitly designed, implemented, and documented.
+Future trusted-contact alerts or missed-check-in messages must also follow the
+planning-only [notification boundary](notification-boundary.md); notification
+delivery is not emergency dispatch and must not imply guaranteed live tracking.

@@ -1,6 +1,6 @@
 # Security Model
 
-This document summarizes the current Proofline backend security assumptions and controls. For a threat-oriented view, see [threat-model.md](threat-model.md). For planned incident-mode behavior, see [incident-modes.md](incident-modes.md). For `/v1` role and grant boundaries, see [v1-access-control.md](v1-access-control.md). For future production key custody and emergency access design, see [key-custody.md](key-custody.md), the contact key-sharing and wrapped-key grant design in [contact-key-sharing-grants.md](contact-key-sharing-grants.md), the simulator-only wrapped-key metadata prototype in [contact-wrapped-key-metadata-simulator.md](contact-wrapped-key-metadata-simulator.md), [browser-decryption.md](browser-decryption.md), [live-partial-stream-access-boundary.md](live-partial-stream-access-boundary.md), [encrypted-location-context.md](encrypted-location-context.md), [regional-stream-ingress-relay.md](regional-stream-ingress-relay.md), and [break-glass-key-access.md](break-glass-key-access.md). For vulnerability reporting, see [../SECURITY.md](../SECURITY.md).
+This document summarizes the current Proofline backend security assumptions and controls. For a threat-oriented view, see [threat-model.md](threat-model.md). For planned incident-mode behavior, see [incident-modes.md](incident-modes.md). For `/v1` role and grant boundaries, see [v1-access-control.md](v1-access-control.md). For future production key custody and emergency access design, see [key-custody.md](key-custody.md), the contact key-sharing and wrapped-key grant design in [contact-key-sharing-grants.md](contact-key-sharing-grants.md), the simulator-only wrapped-key metadata prototype in [contact-wrapped-key-metadata-simulator.md](contact-wrapped-key-metadata-simulator.md), [browser-decryption.md](browser-decryption.md), [live-partial-stream-access-boundary.md](live-partial-stream-access-boundary.md), [encrypted-location-context.md](encrypted-location-context.md), [regional-stream-ingress-relay.md](regional-stream-ingress-relay.md), [notification-boundary.md](notification-boundary.md), and [break-glass-key-access.md](break-glass-key-access.md). For vulnerability reporting, see [../SECURITY.md](../SECURITY.md).
 
 ## Maturity
 
@@ -19,9 +19,12 @@ trusted-contact wrapped-key delivery when an accepted relationship,
 recipient-bound active contact key, active unexpired ciphertext grant, and
 active wrapped-key record all authorize the request. It does not yet implement
 account/device wrapped-key delivery, trusted-contact incident reads,
-dead-man-switch notifications, mode-driven sharing, browser decryption, backend
-decryption, or public account-based product access beyond the narrow owner
-incident metadata list/detail read surface for the future web client.
+dead-man-switch notifications, provider-backed trusted-contact alerts,
+mode-driven sharing, browser decryption, backend decryption, or public
+account-based product access beyond the narrow owner incident metadata
+list/detail read surface for the future web client. Future notification
+delivery boundaries are documented in
+[notification-boundary.md](notification-boundary.md).
 
 The `/v1` access-control direction is documented in
 [v1-access-control.md](v1-access-control.md). The current implementation covers

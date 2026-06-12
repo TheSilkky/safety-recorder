@@ -126,6 +126,9 @@ encrypted evidence bundles.
   browser decryption constraints are documented in
   [browser-decryption.md](browser-decryption.md), and server-assisted access
   design is documented in [break-glass-key-access.md](break-glass-key-access.md).
+  Future notification delivery, token-link, provider-log, retry, suppression,
+  opt-out, rate-limit, and audit risks are documented in
+  [notification-boundary.md](notification-boundary.md).
   The accepted future break-glass boundary is wrapped-key release first; server
   unwrapping, raw server-held keys, backend decryption, plaintext export, and
   emergency-services contact require separate security-sensitive review.
@@ -347,6 +350,10 @@ Future incident-mode work should treat these as explicit design risks rather tha
 - incident mode, capture profile, escalation policy, sharing, export, publication, and legal submission are distinct actions and should not be collapsed into capture
 - safety-check or dead-man switch notifications may create false alarms if timers, connectivity, or contact workflows are poorly designed
 - trusted contacts need clear context and should decide whether to contact emergency services unless a future emergency-services integration is explicitly implemented
+- no-account viewer-token links, account-based trusted-contact alerts, and
+  missed-check-in notifications have different token leakage, provider-log,
+  opt-out, retry, suppression, rate-limit, and audit risks; see
+  [notification-boundary.md](notification-boundary.md)
 - offline-device, missed-check-in, cancellation, and contact-review policy must
   distinguish metadata review from wrapped-key release and must fail closed
   when authorization or policy state cannot be proven
@@ -482,6 +489,10 @@ before they are described as a reviewed v1 preview path.
 - Use the first-class incident-mode and escalation design in
   [incident-modes.md](incident-modes.md) before implementing mode-driven
   interaction-record, safety-check, or dead-man switch workflows.
+- Accept the notification boundary in
+  [notification-boundary.md](notification-boundary.md) before implementing SMS,
+  push, Messenger, email-alert, trusted-contact, missed-check-in, or
+  viewer-link delivery.
 - Define the future public product API and separately bound private admin API,
   including account-owner, trusted-contact, web-client, and admin/operator
   authorization boundaries, using the target listener split in

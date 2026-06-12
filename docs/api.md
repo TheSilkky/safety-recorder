@@ -28,9 +28,12 @@ trusted-contact wrapped-key reads require an accepted relationship, a
 recipient-bound active contact public key, an active unexpired ciphertext grant,
 and an active wrapped-key record. Account/device wrapped-key delivery, browser
 or backend decryption, notifications, raw key storage, and key escrow do not
-exist yet. The main API does include a narrow public-safe owner incident
-list/detail read surface for the future web client, but this does not make
-every `/v1` route group public-ready without route-level deployment review.
+exist yet. Future trusted-contact alerts, missed-check-in messages, and
+viewer-link delivery are planned separately in
+[notification-boundary.md](notification-boundary.md). The main API does include
+a narrow public-safe owner incident list/detail read surface for the future web
+client, but this does not make every `/v1` route group public-ready without
+route-level deployment review.
 The public web-client route, CORS, CSRF, cookie, cache, edge, and logging
 boundary is documented in
 [public-web-client-deployment-boundary.md](public-web-client-deployment-boundary.md).
@@ -2690,7 +2693,9 @@ Response `200`:
 client-reported check-in timestamp. `freshness_status` is based on the
 server-received check-in timestamp and is either `recent` or `stale` for a
 reported location. This is not a live-tracking contract, does not imply
-emergency dispatch, and does not authorize map-provider backend integration.
+emergency dispatch, notification delivery, provider delivery, or
+map-provider backend integration. Future viewer-link notifications must follow
+[notification-boundary.md](notification-boundary.md).
 
 Invalid, expired, and revoked tokens return the same
 `404 incident_token_invalid` response as the other public viewer routes. The
