@@ -15,6 +15,11 @@ const (
 )
 
 const (
+	uploadModeDirect = "direct"
+	uploadModeRelay  = "relay"
+)
+
+const (
 	desktopSourceGenerated = "generated"
 	desktopSourceFiles     = "files"
 	desktopSourceFFmpeg    = "ffmpeg"

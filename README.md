@@ -182,8 +182,8 @@ escrow.
   when coordination is explicitly configured
 - Validated backend-selection config defaults for SQLite metadata, optional PostgreSQL metadata, local encrypted blobs, optional S3-compatible encrypted blobs, no coordination by default, and optional Valkey/Redis-compatible coordination
 - Simulator CLI for direct main-API encrypted upload, check-in, stream
-  completion, bundle download/decrypt-verification, and durable
-  desktop-recorder staging flows
+  completion, bundle download/decrypt-verification, opt-in stream-ingress relay
+  upload mode, and durable desktop-recorder staging flows
 - Docker image builds and GitHub Actions / GHCR publishing for the main server
   image and the stream-ingress relay image
 

@@ -14,6 +14,8 @@ import (
 type config struct {
 	apiBase               string
 	viewerBase            string
+	relayBase             string
+	uploadMode            string
 	username              string
 	password              string
 	chunks                int
@@ -68,6 +70,8 @@ func parseConfig(args []string) (config, error) {
 	cfg := config{}
 	fs.StringVar(&cfg.apiBase, "api", defaultAPIBase, "Main API base URL")
 	fs.StringVar(&cfg.viewerBase, "viewer", defaultViewerBase, "Incident viewer base URL")
+	fs.StringVar(&cfg.uploadMode, "upload-mode", uploadModeDirect, "Chunk upload mode: direct or relay")
+	fs.StringVar(&cfg.relayBase, "relay-url", "", "Stream-ingress relay base URL when --upload-mode=relay")
 	fs.StringVar(&cfg.username, "username", os.Getenv("PROOFLINE_SIM_USERNAME"), "Proofline account username")
 	fs.StringVar(&cfg.password, "password", os.Getenv("PROOFLINE_SIM_PASSWORD"), "Proofline account password")
 	fs.IntVar(&cfg.chunks, "chunks", defaultChunks, "Number of chunks to upload")
@@ -154,11 +158,29 @@ func parseConfig(args []string) (config, error) {
 	if cfg.simulateFailureEvery < 0 {
 		return config{}, fmt.Errorf("--simulate-failure-every must be non-negative")
 	}
+	cfg.uploadMode = strings.ToLower(strings.TrimSpace(cfg.uploadMode))
+	if cfg.uploadMode == "" {
+		cfg.uploadMode = uploadModeDirect
+	}
+	switch cfg.uploadMode {
+	case uploadModeDirect, uploadModeRelay:
+	default:
+		return config{}, fmt.Errorf("--upload-mode must be direct or relay")
+	}
+	if cfg.uploadMode == uploadModeRelay && strings.TrimSpace(cfg.relayBase) == "" {
+		return config{}, fmt.Errorf("--relay-url is required when --upload-mode=relay")
+	}
+	if cfg.uploadMode == uploadModeDirect && strings.TrimSpace(cfg.relayBase) != "" {
+		return config{}, fmt.Errorf("--relay-url requires --upload-mode=relay")
+	}
 	if cfg.reconcileDuplicate && cfg.chunks == 0 {
 		return config{}, fmt.Errorf("--reconcile-duplicate requires at least one chunk")
 	}
 	if cfg.reconcileDuplicate && cfg.desktopRecorder {
 		return config{}, fmt.Errorf("--reconcile-duplicate is only supported in the standard simulator flow")
+	}
+	if cfg.reconcileDuplicate && cfg.uploadMode == uploadModeRelay {
+		return config{}, fmt.Errorf("--reconcile-duplicate is only supported with --upload-mode=direct")
 	}
 	if cfg.networkLatency < 0 {
 		return config{}, fmt.Errorf("--network-latency must be non-negative")
@@ -195,6 +217,9 @@ func parseConfig(args []string) (config, error) {
 		return config{}, fmt.Errorf("--bundle-output requires --encrypt=true")
 	}
 	if offlineBundleVerify {
+		if cfg.uploadMode == uploadModeRelay {
+			return config{}, fmt.Errorf("--verify-bundle cannot be combined with --upload-mode=relay")
+		}
 		if !cfg.encrypt {
 			return config{}, fmt.Errorf("--verify-bundle requires --encrypt=true")
 		}
@@ -229,10 +254,14 @@ func parseConfig(args []string) (config, error) {
 	if err := validateDesktopConfig(cfg); err != nil {
 		return config{}, err
 	}
+	if cfg.desktopRecorder && cfg.uploadMode == uploadModeRelay {
+		return config{}, fmt.Errorf("--upload-mode=relay is only supported in the standard simulator flow")
+	}
 
 	cfg.chunkSize = chunkSize
 	cfg.apiBase = cleanBaseURL(cfg.apiBase)
 	cfg.viewerBase = cleanBaseURL(cfg.viewerBase)
+	cfg.relayBase = cleanBaseURL(cfg.relayBase)
 	cfg.username = strings.TrimSpace(cfg.username)
 	return cfg, nil
 }

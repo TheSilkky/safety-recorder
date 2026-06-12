@@ -56,7 +56,8 @@ relay image from `Dockerfile.ingress`, binds the relay to
 `127.0.0.1:${PROOFLINE_RELAY_PORT:-18090}`, and checks that `/admin`,
 `/admin/api/...`, `/v1/...`, viewer, and `/metrics` routes are not mounted on
 the relay. It is a packaging/readiness smoke path only; simulator relay upload
-mode is a separate explicit simulator feature.
+mode is a separate explicit simulator feature documented in
+[simulator.md](../docs/simulator.md).
 
 Pass additional simulator arguments after `--`:
 

@@ -65,6 +65,7 @@ func TestClientWriteRoutesUseMainAPIBase(t *testing.T) {
 		"POST /v1/incidents",
 		"POST /v1/incidents/inc_1/incident-tokens",
 		"POST /v1/incidents/inc_1/streams",
+		"POST /v1/incidents/inc_1/streams/str_1/relay-session",
 		"POST /v1/incidents/inc_1/checkins",
 		"POST /v1/incidents/inc_1/streams/str_1/complete",
 		"POST /v1/incidents/inc_1/streams/str_1/fail",
@@ -88,6 +89,8 @@ func TestClientWriteRoutesUseMainAPIBase(t *testing.T) {
 			return testResponse(http.StatusCreated, "application/json", `{"token_id":"itk_1","incident_id":"inc_1","token":"tok_1","created_at":"2026-05-22T10:00:00Z"}`), nil
 		case "/v1/incidents/inc_1/streams":
 			return testResponse(http.StatusCreated, "application/json", `{"stream":{"id":"str_1","incident_id":"inc_1","media_type":"audio","status":"open","created_at":"2026-05-22T10:00:00Z","updated_at":"2026-05-22T10:00:00Z"}}`), nil
+		case "/v1/incidents/inc_1/streams/str_1/relay-session":
+			return testResponse(http.StatusCreated, "application/json", `{"relay_session":{"relay_session_id":"rls_1","capability":"capability-token","role":"upload","incident_id":"inc_1","stream_id":"str_1","expires_at":"2026-05-22T10:05:00Z","max_chunk_bytes":1048576,"max_chunks":100,"allowed_media_types":["audio"]}}`), nil
 		case "/v1/incidents/inc_1/checkins":
 			return testResponse(http.StatusCreated, "application/json", `{"id":"chk_1"}`), nil
 		case "/v1/incidents/inc_1/streams/str_1/complete":
@@ -133,6 +136,13 @@ func TestClientWriteRoutesUseMainAPIBase(t *testing.T) {
 	}
 	if streamID != "str_1" {
 		t.Fatalf("streamID = %q", streamID)
+	}
+	relaySession, err := sim.createRelaySession(ctx, incidentID, streamID)
+	if err != nil {
+		t.Fatalf("createRelaySession returned error: %v", err)
+	}
+	if relaySession.RelaySessionID != "rls_1" || relaySession.Capability == "" {
+		t.Fatalf("unexpected relay session response: %+v", relaySession)
 	}
 	if err := sim.createCheckin(ctx, incidentID, 1); err != nil {
 		t.Fatalf("createCheckin returned error: %v", err)
@@ -209,6 +219,267 @@ func TestClientUploadChunkUsesMainAPIBaseAndStreamID(t *testing.T) {
 	}
 	if err := sim.uploadChunk(context.Background(), upload); err != nil {
 		t.Fatalf("uploadChunk returned error: %v", err)
+	}
+}
+
+func TestClientUploadRelayChunkUsesRelayBaseAndMetadata(t *testing.T) {
+	body := []byte("encrypted bytes")
+	startedAt := time.Date(2026, 5, 22, 10, 0, 0, 0, time.UTC)
+	upload := buildChunkUpload("inc_1", "str_1", 2, "audio", startedAt, body)
+	session := relaySession{
+		RelaySessionID: "rls_1",
+		Capability:     "capability-token",
+		IncidentID:     "inc_1",
+		StreamID:       "str_1",
+	}
+
+	httpClient := &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		if r.URL.Host != "relay.example" {
+			t.Fatalf("relay upload used host %q, want relay.example", r.URL.Host)
+		}
+		if r.Method != http.MethodPost || r.URL.Path != "/upload/complete-chunk" {
+			t.Fatalf("unexpected relay upload route %s %s", r.Method, r.URL.Path)
+		}
+		if got := r.Header.Get("Authorization"); got != "" {
+			t.Fatalf("relay upload sent Authorization header %q", got)
+		}
+		if got := r.Header.Get("Idempotency-Key"); got != "" {
+			t.Fatalf("relay upload sent Idempotency-Key header %q", got)
+		}
+		reader, err := r.MultipartReader()
+		if err != nil {
+			t.Fatalf("MultipartReader returned error: %v", err)
+		}
+		fields := map[string]string{}
+		sawFile := false
+		for {
+			part, err := reader.NextPart()
+			if errors.Is(err, io.EOF) {
+				break
+			}
+			if err != nil {
+				t.Fatalf("NextPart returned error: %v", err)
+			}
+			if part.FormName() == "file" {
+				sawFile = true
+				if len(fields) != 11 {
+					t.Fatalf("file part arrived before metadata fields: %v", fields)
+				}
+				fileBody, err := io.ReadAll(part)
+				if err != nil {
+					t.Fatalf("read file part: %v", err)
+				}
+				if !bytes.Equal(fileBody, body) {
+					t.Fatalf("relay file body = %q, want %q", fileBody, body)
+				}
+				continue
+			}
+			if sawFile {
+				t.Fatalf("metadata field %q arrived after file", part.FormName())
+			}
+			fieldBody, err := io.ReadAll(part)
+			if err != nil {
+				t.Fatalf("read metadata field %q: %v", part.FormName(), err)
+			}
+			fields[part.FormName()] = string(fieldBody)
+		}
+		if !sawFile {
+			t.Fatal("relay upload omitted file part")
+		}
+		wantFields := map[string]string{
+			"relay_session_id":  "rls_1",
+			"capability":        "capability-token",
+			"incident_id":       "inc_1",
+			"stream_id":         "str_1",
+			"chunk_index":       "2",
+			"media_type":        "audio",
+			"started_at":        upload.startedAt.Format(time.RFC3339Nano),
+			"ended_at":          upload.endedAt.Format(time.RFC3339Nano),
+			"byte_size":         "15",
+			"sha256_hex":        sha256Hex(body),
+			"original_filename": "audio_000002.enc",
+		}
+		for name, want := range wantFields {
+			if got := fields[name]; got != want {
+				t.Fatalf("relay field %s = %q, want %q", name, got, want)
+			}
+		}
+		return testResponse(http.StatusCreated, "application/json", `{"relay_upload":{"status":"committed","incident_id":"inc_1","stream_id":"str_1","chunk_index":2,"media_type":"audio"}}`), nil
+	})}
+
+	sim := client{
+		httpClient: httpClient,
+		apiBase:    "http://api.example",
+		viewerBase: "http://viewer.example",
+		relayBase:  "http://relay.example",
+	}
+	if err := sim.uploadRelayChunk(context.Background(), session, upload); err != nil {
+		t.Fatalf("uploadRelayChunk returned error: %v", err)
+	}
+}
+
+func TestClientRelayHashMismatchUsesSafeErrorCode(t *testing.T) {
+	upload := buildChunkUpload("inc_1", "str_1", 1, "audio", time.Date(2026, 5, 22, 10, 0, 0, 0, time.UTC), []byte("encrypted bytes"))
+	session := relaySession{RelaySessionID: "rls_1", Capability: "capability-token", IncidentID: "inc_1", StreamID: "str_1"}
+	httpClient := &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		return testResponse(http.StatusBadRequest, "application/json", `{"error":{"code":"hash_mismatch","message":"capability-token uploaded bytes omitted"}}`), nil
+	})}
+	sim := client{httpClient: httpClient, relayBase: "http://relay.example"}
+
+	if err := sim.expectRelayHashMismatch(context.Background(), session, upload); err != nil {
+		t.Fatalf("expectRelayHashMismatch returned error: %v", err)
+	}
+}
+
+func TestClientRelayUploadErrorsOmitCapabilityMessages(t *testing.T) {
+	upload := buildChunkUpload("inc_1", "str_1", 1, "audio", time.Date(2026, 5, 22, 10, 0, 0, 0, time.UTC), []byte("encrypted bytes"))
+	session := relaySession{RelaySessionID: "rls_1", Capability: "capability-token", IncidentID: "inc_1", StreamID: "str_1"}
+	httpClient := &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		return testResponse(http.StatusServiceUnavailable, "application/json", `{"error":{"code":"core_commit_unavailable","message":"capability-token raw uploaded bytes http://relay.example/private"}}`), nil
+	})}
+	sim := client{httpClient: httpClient, relayBase: "http://relay.example/private"}
+
+	err := sim.uploadRelayChunk(context.Background(), session, upload)
+	if err == nil {
+		t.Fatal("expected relay upload error")
+	}
+	message := err.Error()
+	if !strings.Contains(message, "core_commit_unavailable") {
+		t.Fatalf("relay upload error = %q, want safe code", message)
+	}
+	for _, disallowed := range []string{
+		"capability-token",
+		"raw uploaded bytes",
+		"relay.example",
+		"private",
+	} {
+		if strings.Contains(message, disallowed) {
+			t.Fatalf("relay upload error exposed %q: %s", disallowed, message)
+		}
+	}
+}
+
+func TestRunRelayModeUploadsThroughRelayAndDownloadsBundle(t *testing.T) {
+	relayUploads := 0
+	relayServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || r.URL.Path != "/upload/complete-chunk" {
+			t.Fatalf("unexpected relay route %s %s", r.Method, r.URL.Path)
+		}
+		relayUploads++
+		if got := r.Header.Get("Authorization"); got != "" {
+			t.Fatalf("relay request included Authorization header %q", got)
+		}
+		if err := r.ParseMultipartForm(1024 * 1024); err != nil {
+			t.Fatalf("parse relay multipart: %v", err)
+		}
+		for name, want := range map[string]string{
+			"relay_session_id": "rls_1",
+			"capability":       "capability-token",
+			"incident_id":      "inc_1",
+			"stream_id":        "str_1",
+			"chunk_index":      "1",
+			"media_type":       "audio",
+		} {
+			if got := r.FormValue(name); got != want {
+				t.Fatalf("relay field %s = %q, want %q", name, got, want)
+			}
+		}
+		file, _, err := r.FormFile("file")
+		if err != nil {
+			t.Fatalf("relay file: %v", err)
+		}
+		defer file.Close()
+		body, err := io.ReadAll(file)
+		if err != nil {
+			t.Fatalf("read relay file: %v", err)
+		}
+		if len(body) == 0 {
+			t.Fatal("relay upload body was empty")
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusCreated)
+		_, _ = w.Write([]byte(`{"relay_upload":{"status":"committed","incident_id":"inc_1","stream_id":"str_1","chunk_index":1,"media_type":"audio"}}`))
+	}))
+	defer relayServer.Close()
+
+	mainServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/auth/login" && !strings.HasPrefix(r.URL.Path, "/i/") && r.Header.Get("Authorization") != "Bearer session-token" {
+			t.Fatalf("main route %s missing session Authorization header", r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/v1/auth/login":
+			w.WriteHeader(http.StatusCreated)
+			_, _ = w.Write([]byte(`{"token":"session-token"}`))
+		case "/v1/incidents":
+			w.WriteHeader(http.StatusCreated)
+			_, _ = w.Write([]byte(`{"incident_id":"inc_1","status":"open"}`))
+		case "/v1/incidents/inc_1/incident-tokens":
+			w.WriteHeader(http.StatusCreated)
+			_, _ = w.Write([]byte(`{"token_id":"itk_1","incident_id":"inc_1","token":"tok_1","created_at":"2026-05-22T10:00:00Z"}`))
+		case "/v1/incidents/inc_1/streams":
+			w.WriteHeader(http.StatusCreated)
+			_, _ = w.Write([]byte(`{"stream":{"id":"str_1","incident_id":"inc_1","media_type":"audio","status":"open","created_at":"2026-05-22T10:00:00Z","updated_at":"2026-05-22T10:00:00Z"}}`))
+		case "/v1/incidents/inc_1/streams/str_1/relay-session":
+			w.WriteHeader(http.StatusCreated)
+			_, _ = w.Write([]byte(`{"relay_session":{"relay_session_id":"rls_1","capability":"capability-token","role":"upload","incident_id":"inc_1","stream_id":"str_1","expires_at":"2026-05-22T10:05:00Z","max_chunk_bytes":1048576,"max_chunks":100,"allowed_media_types":["audio"]}}`))
+		case "/v1/incidents/inc_1/checkins":
+			w.WriteHeader(http.StatusCreated)
+			_, _ = w.Write([]byte(`{"id":"chk_1"}`))
+		case "/v1/incidents/inc_1/streams/str_1/complete":
+			var request map[string]int
+			if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+				t.Fatalf("decode complete request: %v", err)
+			}
+			if request["expected_chunk_count"] != 1 {
+				t.Fatalf("expected_chunk_count = %d, want 1", request["expected_chunk_count"])
+			}
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"stream":{"id":"str_1","incident_id":"inc_1","media_type":"audio","status":"complete","created_at":"2026-05-22T10:00:00Z","updated_at":"2026-05-22T10:01:00Z","completed_at":"2026-05-22T10:01:00Z"}}`))
+		case "/i/tok_1/streams/str_1/download":
+			w.Header().Set("Content-Type", "application/zip")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte("zip bytes"))
+		default:
+			t.Fatalf("unexpected main route %s %s", r.Method, r.URL.Path)
+		}
+	}))
+	defer mainServer.Close()
+
+	var out bytes.Buffer
+	err := run(context.Background(), &out, []string{
+		"--username", "admin",
+		"--password", "test-password",
+		"--api", mainServer.URL,
+		"--viewer", mainServer.URL,
+		"--upload-mode", "relay",
+		"--relay-url", relayServer.URL,
+		"--chunks", "1",
+		"--interval", "0",
+		"--download-bundle",
+		"--encrypt=false",
+	})
+	if err != nil {
+		t.Fatalf("run returned error: %v", err)
+	}
+	if relayUploads != 1 {
+		t.Fatalf("relayUploads = %d, want 1", relayUploads)
+	}
+	output := out.String()
+	for _, want := range []string{
+		"Relay upload session created; capability omitted from output.",
+		"Uploading audio chunk 1/1 through relay...",
+		"Bundle download succeeded.",
+		"Done.",
+	} {
+		if !strings.Contains(output, want) {
+			t.Fatalf("output missing %q: %s", want, output)
+		}
+	}
+	for _, disallowed := range []string{"capability-token", "session-token", "tok_1", relayServer.URL, mainServer.URL} {
+		if strings.Contains(output, disallowed) {
+			t.Fatalf("output exposed %q: %s", disallowed, output)
+		}
 	}
 }
 
@@ -651,6 +922,9 @@ func TestParseConfigStreamFlags(t *testing.T) {
 	if !cfg.downloadBundle {
 		t.Fatal("expected download-bundle flag to be set")
 	}
+	if cfg.uploadMode != uploadModeDirect {
+		t.Fatalf("uploadMode = %q, want %q", cfg.uploadMode, uploadModeDirect)
+	}
 }
 
 func TestParseConfigReconcileDuplicateFlag(t *testing.T) {
@@ -660,6 +934,26 @@ func TestParseConfigReconcileDuplicateFlag(t *testing.T) {
 	}
 	if !cfg.reconcileDuplicate {
 		t.Fatal("expected reconcile duplicate flag to be set")
+	}
+}
+
+func TestParseConfigRelayUploadMode(t *testing.T) {
+	cfg, err := parseConfig(withAuthArgs(
+		"--upload-mode", "relay",
+		"--relay-url", "http://relay.example/",
+		"--network-latency", "25ms",
+	))
+	if err != nil {
+		t.Fatalf("parseConfig returned error: %v", err)
+	}
+	if cfg.uploadMode != uploadModeRelay {
+		t.Fatalf("uploadMode = %q, want %q", cfg.uploadMode, uploadModeRelay)
+	}
+	if cfg.relayBase != "http://relay.example" {
+		t.Fatalf("relayBase = %q, want cleaned relay base", cfg.relayBase)
+	}
+	if cfg.networkLatency != 25*time.Millisecond {
+		t.Fatalf("networkLatency = %s, want 25ms", cfg.networkLatency)
 	}
 }
 
@@ -844,6 +1138,26 @@ func TestParseConfigRejectsInvalidValues(t *testing.T) {
 		{
 			name: "invalid network failure rate",
 			args: withAuthArgs("--network-failure-rate", "1.5"),
+		},
+		{
+			name: "invalid upload mode",
+			args: withAuthArgs("--upload-mode", "regional"),
+		},
+		{
+			name: "relay mode requires relay url",
+			args: withAuthArgs("--upload-mode", "relay"),
+		},
+		{
+			name: "relay url requires relay mode",
+			args: withAuthArgs("--relay-url", "http://relay.example"),
+		},
+		{
+			name: "reconcile duplicate direct only",
+			args: withAuthArgs("--upload-mode", "relay", "--relay-url", "http://relay.example", "--reconcile-duplicate"),
+		},
+		{
+			name: "desktop relay unsupported",
+			args: withAuthArgs("--desktop-recorder", "--stage-dir", "stage", "--upload-mode", "relay", "--relay-url", "http://relay.example"),
 		},
 		{
 			name: "bundle output without bundle download",

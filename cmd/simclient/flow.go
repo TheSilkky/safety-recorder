@@ -34,14 +34,14 @@ func prepareEncryption(out io.Writer, cfg config) (simulatorEncryption, error) {
 	return encryption, nil
 }
 
-func uploadChunks(ctx context.Context, out io.Writer, sim client, cfg config, incidentID, streamID string, encryption simulatorEncryption) error {
+func uploadChunks(ctx context.Context, out io.Writer, sim client, cfg config, incidentID, streamID string, encryption simulatorEncryption, relaySession relaySession) error {
 	startedAt := time.Now().UTC()
 	for i := 1; i <= cfg.chunks; i++ {
 		chunk, err := createUploadChunk(cfg, encryption, incidentID, streamID, i, startedAt)
 		if err != nil {
 			return err
 		}
-		if err := uploadChunkWithOptionalHashFailure(ctx, out, sim, cfg, chunk, i); err != nil {
+		if err := uploadChunkWithOptionalHashFailure(ctx, out, sim, cfg, chunk, i, relaySession); err != nil {
 			return err
 		}
 		if shouldSendCheckin(i) {
@@ -64,32 +64,49 @@ func createUploadChunk(cfg config, encryption simulatorEncryption, incidentID, s
 	return newChunkUpload(incidentID, streamID, chunkIndex, cfg.mediaType, cfg.chunkSize, startedAt)
 }
 
-func uploadChunkWithOptionalHashFailure(ctx context.Context, out io.Writer, sim client, cfg config, chunk chunkUpload, chunkIndex int) error {
+func uploadChunkWithOptionalHashFailure(ctx context.Context, out io.Writer, sim client, cfg config, chunk chunkUpload, chunkIndex int, relaySession relaySession) error {
 	if !shouldSimulateFailure(chunkIndex, cfg.simulateFailureEvery) {
-		fmt.Fprintf(out, "Uploading %s%s chunk %d/%d...\n", encryptionLogPrefix(cfg.encrypt), cfg.mediaType, chunkIndex, cfg.chunks)
-		if err := sim.uploadChunk(ctx, chunk); err != nil {
+		fmt.Fprintf(out, "Uploading %s%s chunk %d/%d%s...\n", encryptionLogPrefix(cfg.encrypt), cfg.mediaType, chunkIndex, cfg.chunks, uploadModeLogSuffix(cfg.uploadMode))
+		if err := uploadChunkForConfiguredMode(ctx, sim, cfg, relaySession, chunk); err != nil {
 			return err
 		}
 		return verifyFirstChunkIdempotentReplay(ctx, out, sim, cfg, chunk, chunkIndex)
 	}
 
-	fmt.Fprintf(out, "Uploading %s%s chunk %d/%d with intentionally bad hash...\n", encryptionLogPrefix(cfg.encrypt), cfg.mediaType, chunkIndex, cfg.chunks)
+	fmt.Fprintf(out, "Uploading %s%s chunk %d/%d%s with intentionally bad hash...\n", encryptionLogPrefix(cfg.encrypt), cfg.mediaType, chunkIndex, cfg.chunks, uploadModeLogSuffix(cfg.uploadMode))
 	failed := chunk
 	failed.sha256Hex = badHashFor(chunk.sha256Hex)
-	if err := sim.expectHashMismatch(ctx, failed); err != nil {
+	if err := expectHashMismatchForConfiguredMode(ctx, sim, cfg, relaySession, failed); err != nil {
 		return err
 	}
 	fmt.Fprintln(out, "Server rejected chunk as expected.")
 
-	fmt.Fprintf(out, "Retrying %s%s chunk %d/%d with correct hash...\n", encryptionLogPrefix(cfg.encrypt), cfg.mediaType, chunkIndex, cfg.chunks)
-	if err := sim.uploadChunk(ctx, chunk); err != nil {
+	fmt.Fprintf(out, "Retrying %s%s chunk %d/%d%s with correct hash...\n", encryptionLogPrefix(cfg.encrypt), cfg.mediaType, chunkIndex, cfg.chunks, uploadModeLogSuffix(cfg.uploadMode))
+	if err := uploadChunkForConfiguredMode(ctx, sim, cfg, relaySession, chunk); err != nil {
 		return err
 	}
 	fmt.Fprintln(out, "Retry succeeded.")
 	return verifyFirstChunkIdempotentReplay(ctx, out, sim, cfg, chunk, chunkIndex)
 }
 
+func uploadChunkForConfiguredMode(ctx context.Context, sim client, cfg config, relaySession relaySession, chunk chunkUpload) error {
+	if cfg.uploadMode == uploadModeRelay {
+		return sim.uploadRelayChunk(ctx, relaySession, chunk)
+	}
+	return sim.uploadChunk(ctx, chunk)
+}
+
+func expectHashMismatchForConfiguredMode(ctx context.Context, sim client, cfg config, relaySession relaySession, chunk chunkUpload) error {
+	if cfg.uploadMode == uploadModeRelay {
+		return sim.expectRelayHashMismatch(ctx, relaySession, chunk)
+	}
+	return sim.expectHashMismatch(ctx, chunk)
+}
+
 func verifyFirstChunkIdempotentReplay(ctx context.Context, out io.Writer, sim client, cfg config, chunk chunkUpload, chunkIndex int) error {
+	if cfg.uploadMode != uploadModeDirect {
+		return nil
+	}
 	if chunkIndex != 1 {
 		return nil
 	}
@@ -150,4 +167,11 @@ func downloadAndVerifyBundle(ctx context.Context, out io.Writer, sim client, cfg
 		fmt.Fprintln(out, "Encrypted bundle written.")
 	}
 	return nil
+}
+
+func uploadModeLogSuffix(mode string) string {
+	if mode == uploadModeRelay {
+		return " through relay"
+	}
+	return ""
 }

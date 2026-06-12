@@ -12,11 +12,13 @@ The simulator covers generic incidents only. It does not set optional
 incident-mode metadata for emergency incidents, interaction records, safety
 checks, or evidence notes.
 
-The current simulator uploads complete encrypted chunks directly to the main
-API. It does not issue relay sessions, upload through `cmd/stream-ingress`,
-subscribe to relay fanout, or verify relay readiness; relay smoke checks are
-documented separately in [deployment](deployment.md) and
-[regional-stream-ingress-relay.md](regional-stream-ingress-relay.md).
+The standard simulator uploads complete encrypted chunks directly to the main
+API by default. It also has an explicit relay upload mode for local
+`cmd/stream-ingress` testing: relay mode still creates incidents, streams,
+viewer tokens, and relay sessions through the main `/v1` API, then sends
+complete encrypted chunks through the separate relay upload route. It does not
+subscribe to relay fanout or make the relay production-ready public
+infrastructure.
 
 ## Desktop Recorder Simulator
 
@@ -110,6 +112,49 @@ go run ./cmd/simclient --chunks 12 --interval 5s
 
 The simulator creates a read-only incident viewer token for the flow but omits
 token-bearing viewer URLs from output.
+
+## Relay Upload Mode
+
+Relay upload mode is opt-in and requires both the main API base URL and the
+stream-ingress relay base URL:
+
+```bash
+PROOFLINE_SIM_USERNAME=admin \
+PROOFLINE_SIM_PASSWORD='replace-with-a-long-local-password' \
+go run ./cmd/simclient \
+  --api http://127.0.0.1:18080 \
+  --viewer http://127.0.0.1:18080 \
+  --upload-mode relay \
+  --relay-url http://127.0.0.1:18090 \
+  --chunks 3 \
+  --interval 1s \
+  --download-bundle
+```
+
+In relay mode the simulator requests a backend-issued relay session and upload
+capability for the open stream, but it does not print the raw capability. The
+relay receives only complete encrypted chunks plus the existing safe upload
+metadata, forwards them to the core relay preflight/commit routes, and durable
+verification still uses stream completion plus the existing viewer bundle
+download/decrypt path.
+
+The local relay packaging stack from [compose](../compose/README.md) can be
+used as the core/relay pair for this command:
+
+```bash
+KEEP_COMPOSE=1 compose/smoke-test.sh relay-sqlite-local
+```
+
+That Compose smoke remains a packaging/readiness check; the simulator command
+above is the relay upload exercise. Use an account whose required second-factor
+setup is already complete for main product routes.
+
+Poor-network flags such as `--network-latency`, `--network-jitter`,
+`--network-timeout`, `--network-bandwidth`, `--network-offline-every`,
+`--network-offline-for`, and `--network-failure-rate` apply to relay mode
+because it uses the same HTTP client transport. Relay mode is currently limited
+to the standard simulator flow; desktop-recorder staging mode and
+`--reconcile-duplicate` remain direct-upload-only.
 
 ## Duplicate Reconciliation Drill
 
@@ -413,7 +458,11 @@ Every fourth chunk intentionally fails SHA-256 verification before being
 retried. Hash-mismatch attempts do not reserve idempotency state because the
 server has not accepted the immutable fingerprint. The first successfully
 uploaded chunk is then resent with the same `Idempotency-Key` to verify
-equivalent retry success.
+equivalent retry success in direct upload mode. In relay mode, the same
+hash-mismatch drill is sent through the relay and retried with the correct
+fingerprint, but direct upload idempotency replay and duplicate reconciliation
+are not run because the relay upload route is not the direct idempotency-key
+API.
 
 For desktop-recorder retry flows, an upload that was accepted by the server but
 lost its response can be retried as the same complete encrypted staged chunk
@@ -463,6 +512,8 @@ attempts and durable metadata for accepted chunks.
 |---|---|
 | `--api` | Main API base URL. Defaults to `http://localhost:8080`. |
 | `--viewer` | Incident viewer base URL. Defaults to `http://localhost:8080` because the viewer is mounted on the main listener. |
+| `--upload-mode` | Chunk upload path: `direct` by default, or `relay` for explicit stream-ingress relay testing. |
+| `--relay-url` | Stream-ingress relay base URL. Required when `--upload-mode=relay`; rejected for direct mode. |
 | `--username` | Proofline account username. Defaults to `PROOFLINE_SIM_USERNAME`. |
 | `--password` | Proofline account password. Defaults to `PROOFLINE_SIM_PASSWORD`. |
 | `--chunks` | Number of chunks to upload. |

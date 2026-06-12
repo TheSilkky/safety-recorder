@@ -79,6 +79,11 @@ separable from broader cluster work:
   loopback-bound Compose relay smoke variant that checks relay readiness and
   route-surface boundaries without making the relay production-ready public
   infrastructure
+- opt-in `cmd/simclient --upload-mode relay` support that obtains a
+  backend-issued relay session for a standard simulator stream, uploads
+  complete encrypted chunks through `cmd/stream-ingress`, and relies on the
+  existing stream completion plus bundle verification path for durable backend
+  confirmation
 
 Those features do not make `/v1` production-ready public infrastructure. The
 relay exposes only `/health/live`, `/health/ready`, and
