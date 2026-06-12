@@ -73,6 +73,28 @@ func (r *Repository) GetChunkByIdentity(ctx context.Context, incidentID, streamI
 	return r.GetChunkByKey(ctx, incidentID, mediaType, chunkIndex)
 }
 
+// AccountCommittedBlobBytes returns committed encrypted chunk bytes for all
+// incidents owned by accountID. Chunks continue to count while deletion is
+// pending or retrying because metadata rows are pruned only after durable blob
+// deletion completes.
+func (r *Repository) AccountCommittedBlobBytes(ctx context.Context, ownerAccountID string) (int64, error) {
+	if ownerAccountID == "" {
+		return 0, nil
+	}
+	var total int64
+	err := r.db.QueryRowContext(ctx, `
+		SELECT COALESCE(SUM(chunks.byte_size), 0)
+		FROM chunks
+		JOIN incidents ON incidents.id = chunks.incident_id
+		WHERE incidents.owner_account_id = ?`,
+		ownerAccountID,
+	).Scan(&total)
+	if err != nil {
+		return 0, fmt.Errorf("read account committed blob bytes: %w", err)
+	}
+	return total, nil
+}
+
 // CreateChunk inserts metadata for a chunk after the blob has been committed to
 // disk.
 func (r *Repository) CreateChunk(ctx context.Context, params CreateChunkParams) (Chunk, error) {
@@ -99,7 +121,21 @@ func (r *Repository) CreateChunk(ctx context.Context, params CreateChunkParams) 
 	if err != nil {
 		return Chunk{}, fmt.Errorf("begin create chunk: %w", err)
 	}
-	if err := validateChunkInsertState(ctx, tx, params); err != nil {
+	ownerAccountID, err := validateChunkInsertState(ctx, tx, params)
+	if err != nil {
+		_ = tx.Rollback()
+		return Chunk{}, err
+	}
+	exists, err := chunkIdentityExistsTx(ctx, tx, params)
+	if err != nil {
+		_ = tx.Rollback()
+		return Chunk{}, err
+	}
+	if exists {
+		_ = tx.Rollback()
+		return Chunk{}, ErrDuplicate
+	}
+	if err := enforceAccountBlobQuotaTx(ctx, tx, ownerAccountID, params.ByteSize, params.AccountBlobQuotaBytes); err != nil {
 		_ = tx.Rollback()
 		return Chunk{}, err
 	}
@@ -139,29 +175,30 @@ func (r *Repository) CreateChunk(ctx context.Context, params CreateChunkParams) 
 	return chunk, nil
 }
 
-func validateChunkInsertState(ctx context.Context, tx *sql.Tx, params CreateChunkParams) error {
+func validateChunkInsertState(ctx context.Context, tx *sql.Tx, params CreateChunkParams) (string, error) {
 	var incidentStatus string
 	var deletionState string
+	var ownerAccountID string
 	err := tx.QueryRowContext(ctx, `
-		SELECT status, deletion_state
+		SELECT status, deletion_state, COALESCE(owner_account_id, '')
 		FROM incidents
 		WHERE id = ?`,
 		params.IncidentID,
-	).Scan(&incidentStatus, &deletionState)
+	).Scan(&incidentStatus, &deletionState, &ownerAccountID)
 	if errors.Is(err, sql.ErrNoRows) {
-		return ErrNotFound
+		return "", ErrNotFound
 	}
 	if err != nil {
-		return fmt.Errorf("read incident status: %w", err)
+		return "", fmt.Errorf("read incident status: %w", err)
 	}
 	if deletionState != IncidentDeletionStateActive {
-		return ErrIncidentDeleting
+		return "", ErrIncidentDeleting
 	}
 	if incidentStatus != StatusOpen {
-		return ErrIncidentClosed
+		return "", ErrIncidentClosed
 	}
 	if params.StreamID == "" {
-		return nil
+		return ownerAccountID, nil
 	}
 
 	var streamStatus string
@@ -174,13 +211,68 @@ func validateChunkInsertState(ctx context.Context, tx *sql.Tx, params CreateChun
 		params.StreamID,
 	).Scan(&streamStatus, &streamMediaType)
 	if errors.Is(err, sql.ErrNoRows) {
-		return ErrNotFound
+		return "", ErrNotFound
 	}
 	if err != nil {
-		return fmt.Errorf("read media stream state: %w", err)
+		return "", fmt.Errorf("read media stream state: %w", err)
 	}
 	if streamStatus != StreamStatusOpen || streamMediaType != params.MediaType {
-		return ErrInvalidState
+		return "", ErrInvalidState
+	}
+	return ownerAccountID, nil
+}
+
+func chunkIdentityExistsTx(ctx context.Context, tx *sql.Tx, params CreateChunkParams) (bool, error) {
+	var exists int
+	var err error
+	if params.StreamID != "" {
+		err = tx.QueryRowContext(ctx, `
+			SELECT 1
+			FROM chunks
+			WHERE incident_id = ? AND stream_id = ? AND chunk_index = ?`,
+			params.IncidentID,
+			params.StreamID,
+			params.ChunkIndex,
+		).Scan(&exists)
+	} else {
+		err = tx.QueryRowContext(ctx, `
+			SELECT 1
+			FROM chunks
+			WHERE incident_id = ? AND stream_id IS NULL AND media_type = ? AND chunk_index = ?`,
+			params.IncidentID,
+			params.MediaType,
+			params.ChunkIndex,
+		).Scan(&exists)
+	}
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("check chunk identity for insert: %w", err)
+	}
+	return true, nil
+}
+
+func enforceAccountBlobQuotaTx(ctx context.Context, tx *sql.Tx, ownerAccountID string, additionalBytes int64, quotaBytes int64) error {
+	if ownerAccountID == "" || quotaBytes <= 0 || additionalBytes <= 0 {
+		return nil
+	}
+	if additionalBytes > quotaBytes {
+		return ErrAccountBlobQuotaExceeded
+	}
+	var currentBytes int64
+	err := tx.QueryRowContext(ctx, `
+		SELECT COALESCE(SUM(chunks.byte_size), 0)
+		FROM chunks
+		JOIN incidents ON incidents.id = chunks.incident_id
+		WHERE incidents.owner_account_id = ?`,
+		ownerAccountID,
+	).Scan(&currentBytes)
+	if err != nil {
+		return fmt.Errorf("read account committed blob bytes for quota: %w", err)
+	}
+	if currentBytes > quotaBytes-additionalBytes {
+		return ErrAccountBlobQuotaExceeded
 	}
 	return nil
 }

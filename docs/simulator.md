@@ -1,10 +1,24 @@
 # Simulator
 
-The simulator CLI lives at `cmd/simclient`. It exercises the current Proofline ingest flow that a future recording client is expected to use. It logs in to the main `/v1` API with a local account session, then encrypts generated test bytes, local pre-recorded files, or optional ffmpeg test segments with the v1 client-side envelope before upload. Each intended chunk upload includes a stable `Idempotency-Key`, and the simulator verifies one equivalent replay without printing the raw key.
+The simulator CLI lives at `cmd/simclient`. It exercises the current Proofline
+ingest flow that a future recording client is expected to use. It logs in to
+the main `/v1` API with a local account session, then encrypts generated test
+bytes, local pre-recorded files, or optional ffmpeg test segments with the
+accepted post-quantum envelope before upload. Each intended chunk upload
+includes a stable `Idempotency-Key`, and the simulator verifies one equivalent
+replay without printing raw key material.
 
 The simulator covers generic incidents only. It does not set optional
 incident-mode metadata for emergency incidents, interaction records, safety
 checks, or evidence notes.
+
+The standard simulator uploads complete encrypted chunks directly to the main
+API by default. It also has an explicit relay upload mode for local
+`cmd/stream-ingress` testing: relay mode still creates incidents, streams,
+viewer tokens, and relay sessions through the main `/v1` API, then sends
+complete encrypted chunks through the separate relay upload route. It does not
+subscribe to relay fanout or make the relay production-ready public
+infrastructure.
 
 ## Desktop Recorder Simulator
 
@@ -30,7 +44,7 @@ server-visible evidence.
 The desktop simulator continues using account-aware local sessions without
 turning this repository into a production desktop app. Simulator credentials
 are local development credentials only. The simulator does not add OAuth, JWT,
-public `/v1` exposure, browser decryption, mobile client behavior, a public
+broad public `/v1` exposure, browser decryption, mobile client behavior, a public
 account portal, resumable uploads, partial-upload lease sessions, or
 server-visible queue summary routes.
 
@@ -61,14 +75,31 @@ decision is planned separately in
 
 Start the backend first:
 
+For repeatable local configuration, set the bootstrap secret through a private
+secret file referenced by TOML:
+
+```toml
+[auth]
+bootstrap_secret_file = "/path/to/local-bootstrap-secret"
+```
+
+Then run:
+
+```bash
+go run ./cmd/api --config /path/to/proofline.toml
+```
+
+For a one-off local shell, an environment override remains supported:
+
 ```bash
 SAFE_AUTH_BOOTSTRAP_SECRET='replace-with-local-bootstrap-secret' \
 go run ./cmd/api
 ```
 
 For a new local database, create an admin account through the private
-`/admin` bootstrap screen or `POST /admin/bootstrap`, then remove
-`SAFE_AUTH_BOOTSTRAP_SECRET` and restart the server. See
+`/admin` bootstrap screen or `POST /admin/bootstrap`, then remove the
+bootstrap secret from TOML, the environment, or the secret mount and restart
+the server. See
 [deployment](deployment.md) for the bootstrap flow.
 
 Then run:
@@ -81,6 +112,81 @@ go run ./cmd/simclient --chunks 12 --interval 5s
 
 The simulator creates a read-only incident viewer token for the flow but omits
 token-bearing viewer URLs from output.
+
+## Relay Upload Mode
+
+Relay upload mode is opt-in and requires both the main API base URL and the
+stream-ingress relay base URL:
+
+```bash
+PROOFLINE_SIM_USERNAME=admin \
+PROOFLINE_SIM_PASSWORD='replace-with-a-long-local-password' \
+go run ./cmd/simclient \
+  --api http://127.0.0.1:18080 \
+  --viewer http://127.0.0.1:18080 \
+  --upload-mode relay \
+  --relay-url http://127.0.0.1:18090 \
+  --chunks 3 \
+  --interval 1s \
+  --download-bundle
+```
+
+In relay mode the simulator requests a backend-issued relay session and upload
+capability for the open stream, but it does not print the raw capability. The
+relay receives only complete encrypted chunks plus the existing safe upload
+metadata, forwards them to the core relay preflight/commit routes, and durable
+verification still uses stream completion plus the existing viewer bundle
+download/decrypt path.
+
+The local relay packaging stack from [compose](../compose/README.md) can be
+used as the core/relay pair for this command:
+
+```bash
+KEEP_COMPOSE=1 compose/smoke-test.sh relay-sqlite-local
+```
+
+That Compose smoke remains a packaging/readiness check; the simulator command
+above is the relay upload exercise. Use an account whose required second-factor
+setup is already complete for main product routes.
+
+Poor-network flags such as `--network-latency`, `--network-jitter`,
+`--network-timeout`, `--network-bandwidth`, `--network-offline-every`,
+`--network-offline-for`, and `--network-failure-rate` apply to relay mode
+because it uses the same HTTP client transport. Relay mode is currently limited
+to the standard simulator flow; desktop-recorder staging mode and
+`--reconcile-duplicate` remain direct-upload-only.
+
+## Duplicate Reconciliation Drill
+
+To verify the private duplicate chunk reconciliation path after an accepted
+streamed chunk:
+
+```bash
+PROOFLINE_SIM_USERNAME=admin \
+PROOFLINE_SIM_PASSWORD='replace-with-a-long-local-password' \
+go run ./cmd/simclient \
+  --chunks 3 \
+  --interval 1s \
+  --reconcile-duplicate
+```
+
+The drill uploads chunk 1, verifies the normal idempotent replay path, calls
+`POST /v1/incidents/{incident_id}/chunks/reconcile` with locally known
+ciphertext metadata, and then sends a deliberate metadata mismatch for the same
+chunk identity to confirm the safe `409 duplicate_chunk_conflict` response. It
+does not re-upload ciphertext during reconciliation and does not print raw
+session tokens, idempotency keys, request bodies, uploaded bytes, plaintext,
+raw keys, local staging paths, stored paths, object keys, or token-bearing
+viewer URLs.
+
+Recorder clients should use reconciliation after a `409 duplicate_chunk` or an
+uncertain restart state when local durable metadata can identify the intended
+stream ID, chunk index, media type, time range, ciphertext byte size,
+ciphertext SHA-256, and normalized original filename. A matched reconciliation
+confirms that the server already accepted the expected complete encrypted
+chunk. A conflict means the local queue and server evidence metadata disagree;
+the client must not overwrite server evidence and should preserve local
+diagnostics for operator review.
 
 ## Desktop Generated Staging Flow
 
@@ -125,8 +231,15 @@ go run ./cmd/simclient \
   --desktop-recorder \
   --stage-dir /tmp/proofline-desktop-stage \
   --resume-staged \
-  --download-bundle
+  --download-bundle \
+  --verify-bundle-decryption=false
 ```
+
+PQ bundle decryption verification needs the local wrapping records produced
+during the same simulator process. After a process restart, staged PQ chunks can
+still be uploaded and bundled, but local decrypt verification should be disabled
+unless a future simulator task persists local wrapping records. The explicit
+`--envelope v1` compatibility path can still use offline key-file verification.
 
 ## Desktop File Input Flow
 
@@ -227,10 +340,12 @@ go run ./cmd/simclient \
 It requires encrypted uploads, refuses to overwrite an existing output file, and
 does not write decrypted chunks or playable media.
 
-To verify an existing encrypted stream bundle without uploading anything:
+Offline verification remains available for explicit v1 compatibility bundles.
+To verify an existing v1 encrypted stream bundle without uploading anything:
 
 ```bash
 go run ./cmd/simclient \
+  --envelope v1 \
   --verify-bundle /tmp/proofline-stream-bundle.zip \
   --key-file /tmp/proofline-sim.key.json
 ```
@@ -238,7 +353,10 @@ go run ./cmd/simclient \
 For desktop-recorder bundles, `--verify-bundle` may use `--stage-dir` instead of
 `--key-file`; it then reads the simulator key from that stage directory. Offline
 verification checks the bundle manifest, encrypted chunk hashes where present,
-and local decryption with the simulator key. It does not export plaintext.
+and local decryption with the simulator key. It does not export plaintext. PQ
+bundle ZIPs intentionally do not include wrapped-key records, so PQ bundle
+decryption verification is same-run only while the simulator still has local
+wrapping records.
 
 ## Contact-Wrapped Key Metadata
 
@@ -252,6 +370,7 @@ go run ./cmd/simclient \
   --chunks 5 \
   --interval 1s \
   --download-bundle \
+  --envelope v1 \
   --wrapped-key-output /tmp/proofline-sim-wrapped-keys.json
 ```
 
@@ -275,7 +394,9 @@ custody, backend decryption, browser decryption, key escrow, trusted-contact
 accounts, public product authentication, or bundle manifest key records. The
 server now has private authenticated metadata routes for contact public keys,
 sharing grants, and grant-bound wrapped-key records, but this simulator option
-does not call them or add raw key custody behavior.
+does not call them or add raw key custody behavior. It requires
+`--envelope v1`; the runtime default PQ path uses the accepted wrapped-key API
+profile instead of this age-based local artifact.
 
 ## Encryption
 
@@ -287,7 +408,9 @@ PROOFLINE_SIM_PASSWORD='replace-with-a-long-local-password' \
 go run ./cmd/simclient --chunks 5 --interval 1s --download-bundle
 ```
 
-The simulator prints a non-secret `key_id`, but it never prints the raw key or decrypted plaintext.
+The simulator prints a non-secret PQ recipient key ID by default, but it never
+prints the raw key, decapsulation seed, or decrypted plaintext. With
+`--envelope v1`, it prints the non-secret v1 `key_id`.
 
 To reuse a simulator key across runs:
 
@@ -299,7 +422,9 @@ go run ./cmd/simclient --chunks 5 --interval 1s --download-bundle --key-file /tm
 
 If the key file exists, the simulator loads it. If it does not exist, the simulator creates it with restrictive permissions where practical. Do not upload or commit simulator key files.
 
-Older examples may use `/tmp/safety-recorder-sim.key.json`; the file name is not part of the encryption protocol.
+Older local examples may have used `/tmp/safety-recorder-sim.key.json`; that
+name is historical and is not part of the current protocol or default
+simulator artifact layout.
 
 To preserve the old raw fake chunk behavior:
 
@@ -307,6 +432,14 @@ To preserve the old raw fake chunk behavior:
 PROOFLINE_SIM_USERNAME=admin \
 PROOFLINE_SIM_PASSWORD='replace-with-a-long-local-password' \
 go run ./cmd/simclient --encrypt=false
+```
+
+To use the old v1 AES-GCM compatibility envelope explicitly:
+
+```bash
+PROOFLINE_SIM_USERNAME=admin \
+PROOFLINE_SIM_PASSWORD='replace-with-a-long-local-password' \
+go run ./cmd/simclient --envelope v1 --chunks 5 --interval 1s --download-bundle
 ```
 
 This is only for development compatibility. See [encryption.md](encryption.md) for the envelope and key file format.
@@ -325,7 +458,11 @@ Every fourth chunk intentionally fails SHA-256 verification before being
 retried. Hash-mismatch attempts do not reserve idempotency state because the
 server has not accepted the immutable fingerprint. The first successfully
 uploaded chunk is then resent with the same `Idempotency-Key` to verify
-equivalent retry success.
+equivalent retry success in direct upload mode. In relay mode, the same
+hash-mismatch drill is sent through the relay and retried with the correct
+fingerprint, but direct upload idempotency replay and duplicate reconciliation
+are not run because the relay upload route is not the direct idempotency-key
+API.
 
 For desktop-recorder retry flows, an upload that was accepted by the server but
 lost its response can be retried as the same complete encrypted staged chunk
@@ -334,11 +471,11 @@ with the same `Idempotency-Key`. If the server returns `200 OK` with
 without printing the raw idempotency key, uploaded bytes, local staging path, or
 session token.
 
-The simulator does not yet call the duplicate chunk reconciliation route. Future
-ambiguous-network and process-restart drills can use
-`POST /v1/incidents/{incident_id}/chunks/reconcile` to compare a local expected
-chunk fingerprint with accepted server metadata without re-uploading ciphertext.
-Broader simulator drills remain future work planned in
+The standard simulator can call the duplicate chunk reconciliation route with
+`--reconcile-duplicate` to compare a local expected chunk fingerprint with
+accepted server metadata without re-uploading ciphertext. Broader desktop
+recorder ambiguous-network and process-restart reconciliation drills remain
+future work planned in
 [cluster-safe-upload-semantics.md](cluster-safe-upload-semantics.md).
 
 ## Poor-Network Desktop Controls
@@ -375,6 +512,8 @@ attempts and durable metadata for accepted chunks.
 |---|---|
 | `--api` | Main API base URL. Defaults to `http://localhost:8080`. |
 | `--viewer` | Incident viewer base URL. Defaults to `http://localhost:8080` because the viewer is mounted on the main listener. |
+| `--upload-mode` | Chunk upload path: `direct` by default, or `relay` for explicit stream-ingress relay testing. |
+| `--relay-url` | Stream-ingress relay base URL. Required when `--upload-mode=relay`; rejected for direct mode. |
 | `--username` | Proofline account username. Defaults to `PROOFLINE_SIM_USERNAME`. |
 | `--password` | Proofline account password. Defaults to `PROOFLINE_SIM_PASSWORD`. |
 | `--chunks` | Number of chunks to upload. |
@@ -386,12 +525,14 @@ attempts and durable metadata for accepted chunks.
 | `--bundle-output` | Write the downloaded encrypted stream bundle ZIP to a new local file. |
 | `--verify-bundle` | Verify an existing encrypted stream bundle ZIP without uploading. |
 | `--encrypt` | Encrypt simulated chunk bytes before upload. Defaults to `true`. |
+| `--envelope` | Encrypted chunk envelope profile. Defaults to `pq`; use `v1` only for compatibility. |
 | `--key-file` | Optional local simulator key file. |
 | `--wrapped-key-output` | Write a simulator-only contact-wrapped key metadata artifact. |
 | `--contact-key-file` | Optional local simulator trusted-contact private key file for wrapped-key metadata. |
 | `--wrapped-key-contact-id` | Local simulator trusted-contact ID for wrapped-key metadata. |
 | `--verify-bundle-decryption` | Locally decrypt downloaded bundles when encryption is enabled. |
 | `--simulate-failure-every` | Intentionally fail every Nth chunk hash before retrying. |
+| `--reconcile-duplicate` | Reconcile accepted chunk 1 metadata and verify a safe duplicate-conflict response in the standard simulator flow. |
 | `--close` | Close the incident when complete. |
 | `--desktop-recorder` | Enable durable desktop recorder simulator mode. |
 | `--stage-dir` | Local durable staging directory for desktop recorder mode. |

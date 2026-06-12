@@ -7,7 +7,7 @@ The current backend implements a narrow `Idempotency-Key` path for complete
 chunk uploads and optional Valkey/Redis-compatible short-lived complete-upload
 leases. Remaining cluster semantics, including resumable uploads,
 partial-upload lease sessions, changes to the current local account/session
-model, public `/v1` exposure, browser decryption, backend decryption, key
+model, broad public `/v1` exposure, browser decryption, backend decryption, key
 custody, and playable media export are still not implemented.
 
 ## Current Behavior
@@ -45,8 +45,8 @@ S3-compatible object storage backends.
 - No resumable upload protocol or partial committed chunks.
 - Complete-upload Valkey leases are in-progress hints only; they do not store
   idempotency results or committed evidence truth.
-- No public `/v1` exposure, public account workflows, or changes to the current
-  local account/session model.
+- No new broad public `/v1` exposure model, public account workflows, or
+  changes to the current local account/session model.
 - No client repository, protocol repository, or mobile implementation.
 - No backend decryption, raw server-held keys, key escrow, key sharing, or
   playable media export.
@@ -129,6 +129,13 @@ identity constraints and still receive `409 duplicate_chunk` for duplicate
 identities. Equivalent retry success is only part of the idempotency-key path.
 The current implementation still requires a complete encrypted chunk retry; it
 does not resume an in-progress partial transfer.
+
+The simulator can exercise the separate duplicate reconciliation path with
+`go run ./cmd/simclient --reconcile-duplicate`. That drill compares locally
+known ciphertext metadata for an already accepted chunk against server metadata
+without uploading ciphertext again, then verifies the safe conflict response
+shape for a mismatched fingerprint. It remains a private authenticated query
+flow and does not make local upload queues server-authoritative evidence.
 
 ## Request Fingerprint
 

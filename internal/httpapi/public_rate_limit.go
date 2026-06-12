@@ -103,7 +103,7 @@ func (a *API) publicRateLimitMiddleware(next http.Handler) http.Handler {
 
 		allowed, err := limiter.Allow(r.Context(), publicViewerRateLimitKey(r, class), limit, cfg.Window)
 		if err != nil {
-			a.logInternalError("public viewer rate limit", err)
+			a.logInternalError("public viewer rate limit", errRateLimitUnavailable, "route_class", string(class))
 			writeError(w, http.StatusServiceUnavailable, "rate_limit_unavailable", "rate limiter is temporarily unavailable")
 			return
 		}
@@ -151,6 +151,8 @@ func classifyPublicViewerRateLimit(r *http.Request) (publicRateLimitClass, bool)
 	case len(segments) == 2:
 		return publicRateLimitPage, true
 	case len(segments) == 3 && segments[2] == "data":
+		return publicRateLimitData, true
+	case len(segments) == 3 && segments[2] == "viewer-payload":
 		return publicRateLimitData, true
 	case len(segments) == 4 && segments[2] == "incident" && segments[3] == "download":
 		return publicRateLimitDownload, true

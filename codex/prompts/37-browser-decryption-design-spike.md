@@ -9,7 +9,7 @@ Do **not** add JavaScript crypto code.
 Do **not** change backend behaviour.
 Do **not** add API routes.
 Do **not** change database schema.
-Do **not** add React, Node, npm, Vite, frontend build tooling, OAuth, JWT, user accounts, SMS, Messenger, push notifications, Docker Compose, Kubernetes, or cloud integrations.
+Do **not** add React, Node, npm, Vite, frontend build tooling, OAuth, JWT, new account-system features beyond the implemented local account/session and registration flows, SMS, Messenger, push notifications, Docker Compose, Kubernetes, or cloud integrations.
 
 ## Goal
 
@@ -18,7 +18,7 @@ Explore how the incident viewer might decrypt completed evidence bundles or live
 This design should support the broader hybrid key custody goal:
 
 - client-side encryption by default
-- keys not solely stored on the iPhone
+- keys not solely stored on the user's phone
 - trusted contacts can access emergency evidence
 - browser-side decryption is one possible access path
 - server escrow/break-glass remains a separate explicit design path
@@ -29,6 +29,7 @@ Read:
 
 - `README.md`
 - `AGENTS.md`
+- `docs/v1-preview-direction.md`
 - `docs/encryption.md`
 - `docs/key-custody.md`, if present
 - `docs/security-model.md`
@@ -41,9 +42,12 @@ Read:
   - `internal/httpapi/web/static/scripts.js`
   - `internal/httpapi/assets.go`
 
-## Document to create
+## Document to create or update
 
-Create:
+Create or update the relevant design document. If the document already exists,
+update it rather than creating a duplicate.
+
+Path:
 
 ```text
 docs/browser-decryption.md
@@ -121,7 +125,7 @@ Do not implement.
 
 Discuss:
 
-- AES-GCM compatibility with current simulator envelope
+- PQ default envelope and explicit v1 AES-GCM simulator compatibility limits
 - associated data requirements
 - nonce/header parsing
 - streaming limitations for large bundles
@@ -192,6 +196,7 @@ Markdown-only:
 ```bash
 git diff --stat
 git diff -- docs CHANGELOG.md
+git diff --check
 ```
 
 If code changed, stop and explain why.

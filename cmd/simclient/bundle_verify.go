@@ -6,8 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-
-	"github.com/open-proofline/server/internal/envelope"
 )
 
 type streamBundleManifest struct {
@@ -24,7 +22,7 @@ type bundleChunkManifest struct {
 	SHA256Hex  string `json:"sha256_hex"`
 }
 
-func verifyStreamBundleDecryption(bundleBytes []byte, key envelope.Key, incidentID, streamID, mediaType string) (int, error) {
+func verifyStreamBundleDecryption(bundleBytes []byte, encryption simulatorEncryption, incidentID, streamID, mediaType string) (int, error) {
 	entries, err := readBundleEntries(bundleBytes)
 	if err != nil {
 		return 0, err
@@ -56,8 +54,7 @@ func verifyStreamBundleDecryption(bundleBytes []byte, key envelope.Key, incident
 		if chunk.SHA256Hex != "" && sha256Hex(ciphertext) != chunk.SHA256Hex {
 			return 0, fmt.Errorf("bundle chunk entry %s hash mismatch", entryName)
 		}
-		ctx := chunkContext(manifest.IncidentID, manifest.StreamID, chunkMediaType, chunk.ChunkIndex)
-		if _, err := envelope.DecryptChunk(key, ctx, ciphertext); err != nil {
+		if _, err := encryption.decryptChunk(manifest.IncidentID, manifest.StreamID, chunkMediaType, chunk.ChunkIndex, ciphertext); err != nil {
 			return 0, fmt.Errorf("decrypt bundle chunk %s: %w", entryName, err)
 		}
 		verified++

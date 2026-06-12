@@ -2,6 +2,290 @@
 
 ## Unreleased
 
+## v0.11.0 - 2026-06-13
+
+This is an ordinary pre-v1, experimental release. It is not production-ready
+public infrastructure and not a v1 preview readiness claim.
+
+- Published the technical review report in `docs/reports/` as supporting
+  release documentation.
+
+- Pinned the PostgreSQL GitHub Actions service image by digest and documented
+  the refresh command so CI does not silently float across PostgreSQL image
+  updates.
+
+- Added sanitized observability for committed-blob rollback cleanup failures
+  after metadata insertion errors, without logging stored paths, payload bytes,
+  raw storage errors, or other sensitive details.
+
+- Verified completed stream and incident bundle chunk byte counts and SHA-256
+  hashes against metadata before sending ZIP headers or body bytes. Missing or
+  mismatched committed chunks now fail closed with safe `409` bundle
+  inconsistency errors rather than producing partial evidence bundles.
+
+- Added a standard-library local Markdown link checker for README, AGENTS,
+  SECURITY, docs, and Codex prompt files, with fenced-example and external-link
+  exclusions, self-test coverage, and documentation/release/PR prompt
+  validation guidance.
+
+- Updated the Deep Research report validation prompt to read the v1 direction
+  and post-quantum envelope source documents without silent fixed line caps.
+
+- Added a trusted-shell local `operator request-deletion` command for creating
+  one incident deletion decision through the configured SQLite or PostgreSQL
+  metadata backend, with required reason codes, default open-incident rejection,
+  safe JSON status output, and no HTTP route, public status, dashboard, secure
+  erasure claim, or object lifecycle automation.
+
+- Added a planning-only notification boundary for trusted-contact alerts,
+  missed safety checks, and no-account viewer-token link delivery, covering
+  token-link redaction, provider-log risks, retry, suppression, opt-out,
+  rate-limit, audit, provider-secret, and deployment-warning expectations
+  without adding notification providers, emergency dispatch, guaranteed live
+  tracking, or runtime behavior.
+
+- Expanded the break-glass and dead-man-switch policy boundary with a
+  wrapped-key-release-first direction, explicit trigger/cancellation state,
+  contact-review, safe audit-field, offline-device, false-positive/negative,
+  deployment-warning, and server-escrow review gates without adding runtime key
+  escrow, raw-key access, decryption, notification, or emergency-services
+  behavior.
+
+- Added a separate stream-ingress relay container build and local relay Compose
+  smoke path, with PR CI building `Dockerfile.ingress`, trusted GHCR publishing
+  for `ghcr.io/open-proofline/stream-ingress`, loopback-bound readiness smoke
+  checks, and docs that keep relay packaging separate from production
+  deployment readiness.
+
+- Added opt-in `cmd/simclient` relay upload mode for local stream-ingress
+  testing, while keeping direct main-API upload as the default simulator path.
+
+- Renamed private-admin JSON API routes into the `/admin/api/...` namespace,
+  removed the old JSON route aliases, and updated listener-boundary tests and
+  docs so admin JSON, the `/admin` dashboard, and public viewer/main routes
+  remain separated.
+
+- Aligned the final regional relay documentation pass with the implemented
+  Stop J relay slices, including relay smoke guidance, simulator scope,
+  current-versus-future guardrails, and private/public exposure boundaries.
+
+- Added regional relay operational readiness guardrails, with safe aggregate
+  `/health/ready` categories for upload readiness, core forwarding
+  configuration, and temp-staging pressure, plus tests confirming readiness
+  redaction and docs preserving the boundary that metrics, dashboards, relay
+  Valkey coordination, notifications, decryption, and production deployment
+  automation remain separately scoped.
+
+- Added backend confirmation, rejection, and terminal-failure propagation for
+  regional relay fanout, with `relay_chunk_state` SSE events tied to exact
+  ciphertext metadata, fanout termination on core rejection or ambiguous
+  upstream failure, timeout and core `5xx` coverage, hash-mismatch no-fanout
+  coverage, redaction tests, and docs preserving the boundary that replay,
+  durable relay storage, metrics, notifications, decryption, and production
+  relay deployment automation remain separately scoped.
+
+- Added optimistic near-live encrypted regional relay fanout, with separate
+  backend-issued fanout capabilities, a service-authenticated core fanout
+  authorization route, a header-authenticated stream-ingress SSE subscription
+  route, near-live/unconfirmed chunk state, encrypted payload transport only,
+  redaction tests, and docs preserving the boundary that replay, durable relay
+  storage, metrics, notifications, decryption, and production relay deployment
+  automation remain separately scoped.
+
+- Added the first regional stream-ingress encrypted upload route, with
+  metadata-before-file core preflight, relay-local temporary ciphertext
+  staging, SHA-256 verification, per-session/per-client in-flight limits,
+  forwarding to the service-authenticated core commit endpoint, cleanup tests
+  for success and failure paths, and docs preserving the boundary that fanout,
+  metrics, production deployment automation, notifications, and key-custody
+  changes remain unimplemented.
+
+- Added service-authenticated core regional relay preflight and durable commit
+  endpoints, with relay-to-core token config, capability validation, stream and
+  quota checks, ciphertext hash/envelope validation on commit, route-limit
+  coverage, redaction tests, and docs preserving the boundary that relay
+  fanout, metrics, and deployment automation remain separately scoped.
+
+- Added backend-issued regional relay session capabilities for authorized open
+  media streams, with HMAC-signed upload-role tokens, explicit expiry, bounded
+  chunk limits, stream binding, route-limit coverage, config validation, tests,
+  and docs confirming that relay fanout, metrics, and deployment automation
+  remain separately scoped.
+
+- Added a separate `cmd/stream-ingress` regional relay skeleton with private
+  bind/readiness config, token-neutral health/readiness routes only, route
+  surface tests, and docs clarifying that relay listener upload, fanout,
+  metrics, relay storage, and production readiness remain separately scoped.
+
+- Added a planning-only upload telemetry boundary that keeps client upload
+  telemetry local before v1 preview and defines safe constraints for any future
+  authenticated coarse-code telemetry endpoint.
+
+- Added an opt-in simulator duplicate reconciliation drill for accepted
+  streamed chunks, with safe conflict-path validation and documentation.
+
+- Strengthened backup and restore drill docs for deletion state, tombstones,
+  restored deleted incidents, private restore reconciliation,
+  sharing-grant/wrapped-key consistency, and public viewer fail-closed
+  validation without adding backup automation or production-readiness claims.
+- Added a disabled-by-default local `operator mode-retention-preview` scaffold
+  that groups closed active incidents by explicit mode-aware policy class for
+  private dry runs, reports missing or ineligible policy inputs instead of
+  guessing from labels, preserves SQLite/PostgreSQL parity, and does not change
+  `SAFE_CLOSED_INCIDENT_RETENTION` or create live deletion decisions.
+- Added a private-admin account second-factor recovery reset policy and API,
+  with controlled lost-factor reason codes, SQLite/PostgreSQL audit metadata,
+  removal of enrolled email/TOTP/WebAuthn factors, target-session revocation,
+  route redaction, tests, and docs clarifying that the reset does not add
+  self-service recovery codes, key escrow, raw-key access, or decryption.
+- Added disabled-by-default WebAuthn/FIDO2 passkey and roaming security-key
+  second-factor setup and session verification, with approved go-webauthn
+  integration, fail-closed RP/origin config, SQLite/PostgreSQL credential and
+  challenge tables, bearer and browser-cookie route coverage, route-limit
+  coverage, redaction tests, and docs for exact-origin and challenge handling.
+- Added TOTP authenticator-app second-factor setup and session verification,
+  with SQLite/PostgreSQL TOTP factor tables, session elevation metadata,
+  enrollment confirmation, replay-step rejection, active-factor login gating,
+  route-limit coverage, redaction tests, and docs for TOTP seed handling.
+- Added email challenge second-factor setup for account gating, with
+  SQLite/PostgreSQL factor and challenge tables, hashed single-use expiring
+  codes, authenticated bearer and browser-cookie setup routes, setup-state
+  completion, rate-limit coverage, config/docs updates, and tests for
+  enrollment, verification, reuse, expiry, invalid codes, and redaction.
+- Added a factor-neutral required second-factor setup state for accounts, with
+  SQLite/PostgreSQL migration parity, setup-required defaults for newly
+  admin-created and open-registration accounts, bearer and browser-cookie
+  session tests, main product-route gating, private-admin boundary coverage,
+  and docs clarifying the then-future WebAuthn/passkey and recovery boundaries.
+- Added local temp-upload staging quota enforcement, defaulting to 1 GB, for
+  both local and S3-compatible blob staging before final commit, with safe
+  `507 upload_staging_quota_exceeded` responses, concurrent storage tests, S3
+  parity coverage, and docs confirming separation from committed quota,
+  cleanup, billing, key escrow, decryption, and public-route behavior.
+- Added account-scoped committed encrypted blob quota enforcement, defaulting
+  to 10 GB per owner account, with SQLite/PostgreSQL metadata-backed usage
+  checks, safe `507 account_storage_quota_exceeded` upload responses, local/S3
+  backend coverage through chunk metadata, and docs confirming no billing,
+  temp-upload quota, key escrow, decryption, or public-admin behavior.
+- Documented the future no-account web-client viewer routing decision:
+  canonical links should point at the web-client origin with a fragment token,
+  while current `/i` and `/e` server routes are prototype/local compatibility
+  until a later runtime issue changes them.
+- Added owner-authenticated viewer-token metadata list/read routes that expose
+  only non-secret token IDs, labels, active/expired/revoked state, and
+  timestamps without returning raw viewer tokens or token hashes.
+- Added a token-scoped web-client viewer payload for no-account incident
+  viewers, with latest check-in and latest shared location context, field
+  allowlist tests, docs, and unchanged ciphertext-only/key-custody behavior.
+- Added a public web-client deployment-boundary design for v1 preview route
+  exposure, browser-cookie sessions, credentialed CORS, CSRF, cache headers,
+  TLS/HSTS-at-proxy, viewer-token handling, logging review, and the #223/#233
+  relationship without changing runtime behavior.
+- Added a browser-decryption trust-gate decision that rejects dynamic
+  same-origin decrypting viewers as a production trusted-contact path by
+  themselves and requires a static/signed, independently hosted, native-app, or
+  offline decrypt boundary before browser decryption is trusted.
+- Added an encrypted location context design that classifies full-fidelity GPS,
+  speed, heading, freshness, token-viewer context, signed-in trusted-contact
+  access, relay privacy, envelope binding, and future validation expectations
+  without changing runtime behavior.
+- Added authenticated trusted-contact wrapped-key read routes that deliver
+  grant-scoped wrapped-key ciphertext only to signed-in accepted trusted
+  contacts with a bound active contact key, active unexpired ciphertext grant,
+  and active wrapped-key record, while keeping public viewer routes and bundle
+  manifests key-free.
+- Added private repository-level audit metadata for trusted-contact public-key,
+  sharing-grant, wrapped-key, and incident deletion-pruning lifecycle events,
+  with SQLite/PostgreSQL parity and tests confirming controlled fields only and
+  no raw keys, wrapped-key ciphertext, public wrapping metadata, tokens, paths,
+  object keys, plaintext, or user safety narratives.
+- Added explicit trusted-contact public-key lifecycle routes and metadata for
+  replacement and lost-key states, with SQLite/PostgreSQL parity, tests, and
+  docs confirming that old wrapped-key records remain bound to their original
+  key version and that no private keys, raw CEKs/media keys, plaintext, or
+  backend/browser decryption are introduced.
+- Added authenticated trusted-contact relationship lifecycle routes,
+  SQLite/PostgreSQL metadata parity, and docs for owner invites, recipient
+  accept/decline, owner revoke, and replacement without adding trusted-contact
+  wrapped-key delivery, notifications, backend/browser decryption, raw key
+  storage, or viewer-token promotion.
+- Added authenticated owner-scoped account/device recipient-key lifecycle routes,
+  SQLite/PostgreSQL metadata parity, and docs for create/list/read/update,
+  revoke, replace, and lost-device states without adding backend decryption,
+  raw key storage, or account/device wrapped-key delivery.
+- Made the accepted post-quantum envelope the v1 preview runtime upload
+  default: chunk uploads now fail closed unless the public PQ payload frame
+  matches the request identity, wrapped-key records validate the accepted PQ
+  profile, bundle manifests identify the PQ scheme/suite without key material,
+  and the simulator defaults to PQ encrypted uploads while preserving the old
+  v1 envelope only behind explicit compatibility flags.
+- Reset the current v1 compatibility chunk envelope, associated-data prefix,
+  default SQLite filename, container user, and local/container config examples
+  to Proofline-named identifiers. Old `safety-recorder` envelope identifiers
+  are now limited to explicit fail-closed tests and historical documentation.
+- Accepted the v1 preview production post-quantum wrapped-key profile, including
+  concrete suite identifiers, API field values, metadata shape, canonical
+  encoding constraints, recipient limits, fail-closed behavior, compatibility
+  notes, and conformance-vector requirements without changing runtime behavior.
+- Clarified the future key-custody design around explicit docs-only non-goals,
+  owner-device loss, device replacement, recipient-key rotation, recovery, and
+  fail-closed wrapped-key delivery without changing runtime behavior.
+- Added a v1 preview readiness checklist and release-gate guidance for v1
+  preview, v1.0.0, and real-user evidence-upload readiness claims without
+  changing runtime behavior or adding release automation.
+- Added a v1 preview direction source-of-truth document covering terminology,
+  repository roles, current-versus-future boundaries, viewer replacement,
+  browser crypto, the post-quantum envelope requirement, trusted contacts,
+  capture variants, edge posture, public registration, quota, deployment
+  responsibility, and Codex guidance without changing runtime behavior.
+- Standardized startup, request-adjacent, rate-limit, template-render, and
+  retention worker logs around safe structured fields, startup stages,
+  low-cardinality categories, and redacted error details without changing API,
+  storage, auth, or migration behavior.
+- Documented the future capture stream variant and evidence-preservation
+  supersession model for near-live, audio-priority, and evidence-master
+  encrypted streams without changing runtime behavior.
+- Aligned key-custody, encryption, API, security, and threat-model docs around
+  durable recipient keys, CEK scopes, wrapped-key records, and prototype
+  migration boundaries without changing runtime behavior.
+- Extended main API route-class rate-limit coverage to browser-cookie auth,
+  contact public-key metadata, sharing-grant metadata, and wrapped-key metadata
+  routes while reusing existing limit classes and preserving listener
+  separation.
+- Expanded the future contacts, durable recipient-key model, GPS privacy, and
+  web-client viewer-replacement planning context without changing runtime
+  behavior.
+- Documented the future Stripe subscription billing boundary for cost-recovery
+  hosted server access without implementing payment processing.
+- Added private-admin legacy unowned incident review and one-incident
+  reassignment/quarantine APIs with safe count-oriented candidate metadata,
+  controlled audit fields, and SQLite/PostgreSQL parity while preserving public
+  viewer, bundle, deletion, retention, and ciphertext-only behavior.
+- Added optional TOML configuration loading from `proofline.toml`, explicit
+  config-file selection with `--config` or `SAFE_CONFIG_FILE`, and secret-file
+  references for bootstrap, PostgreSQL, S3, Valkey, and SMTP credentials while
+  preserving `SAFE_*` environment override compatibility.
+- Added Docker image default TOML configuration copied to
+  `/etc/proofline/proofline.toml`, with the container state volume under
+  `/var/lib/proofline` instead of ad hoc `/data` paths.
+- Added configurable account registration modes for disabled, admin-only, open
+  self-registration, and paid-placeholder deployments. Open registration is
+  disabled by default, requires SMTP-backed email verification, stores
+  verification tokens only as hashes, and keeps paid registration fail-closed
+  until a future billing system exists.
+- Added optional main `/v1` browser cookie-session login/logout support for the
+  future web client, including HttpOnly session cookies, session-bound CSRF
+  protection for cookie-authenticated unsafe requests, explicit credentialed
+  CORS for configured origins, and bearer-token compatibility for existing
+  CLI/simulator/API clients.
+- Added owner-scoped `GET /v1/incidents` and narrowed
+  `GET /v1/incidents/{incident_id}` to public-safe account incident metadata
+  for future web-client reads, hiding cross-account and legacy unowned
+  incidents and omitting chunk paths, checkins, notes, and owner IDs.
+- Moved existing admin-only JSON API routes from the main
+  API/viewer handler onto the private-admin listener while preserving admin
+  authentication and authorization behavior.
+
 ## v0.10.0 - 2026-06-01
 
 - Ran the review/update stack and applied small behavior-preserving Go

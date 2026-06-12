@@ -1,6 +1,6 @@
 # Security Policy
 
-Proofline is a private encrypted incident-capture backend. It is not production-ready public infrastructure. The main `/v1` API uses local account sessions, and the private `/admin` web surface uses admin cookie sessions, but neither is a public product API. Keep main `/v1` behind the reviewed deployment boundary, and keep `/admin` behind localhost, WireGuard, a firewall, or an equivalent private boundary.
+Proofline is a private encrypted incident-capture backend. It is not production-ready public infrastructure. The main `/v1` API uses local account sessions, optional browser cookie sessions for future web-client calls, email challenge, TOTP, disabled-by-default WebAuthn/FIDO2 second-factor setup for new account gating, private-admin assisted second-factor reset for lost-factor recovery, and app-level route-class rate limits. Broad public `/v1` exposure still needs route-by-route deployment review, TLS, edge abuse controls, browser credential review, logging review, proxy hardening, and operational testing. Private-admin `/admin/api/...` JSON routes and the private `/admin` web surface require admin authentication and must stay behind localhost, WireGuard, a firewall, or an equivalent private boundary.
 
 The current implementation supports generic incident capture, optional
 incident-mode metadata fields, and token-scoped read-only incident review.
@@ -13,6 +13,7 @@ process.
 
 | Version | Supported |
 |---|---|
+| 0.11.x | Yes |
 | 0.10.x | Yes |
 | 0.9.x | Yes |
 | < 0.9 | No |
@@ -44,9 +45,14 @@ Reports are in scope when they affect the current backend, documentation, or dep
 - main `/v1` and private `/admin` route exposure
 - local account and session authentication for main `/v1` routes and the
   private `/admin` web surface
+- optional main `/v1` browser cookie-session CSRF and credentialed CORS behavior
 - public incident viewer read-only access
+- owner-scoped contact public-key metadata, sharing-grant metadata, and
+  wrapped-key metadata authorization
 - viewer/incident token leakage
 - raw token logging
+- wrapped-key ciphertext, public wrapping metadata, or key-state metadata
+  leakage
 - raw idempotency-key logging or storage
 - request body logging
 - uploaded file byte logging
@@ -71,7 +77,7 @@ The following are generally out of scope unless they demonstrate a concrete vuln
 
 - missing features already documented as absent, such as public account workflows, OAuth, JWT, SMS, push notifications, trusted-contact accounts, Android/iOS clients, a web client, mode-driven escalation behavior, or a public admin dashboard
 - lack of production hardening already documented as a known limitation, without a new exploit path
-- reports requiring public exposure of the main `/v1` API contrary to documented deployment guidance
+- reports requiring unreviewed broad public exposure of main `/v1` route groups contrary to documented deployment guidance
 - denial-of-service reports based only on unrealistic local access or unbounded physical access
 - findings in future clients, recording implementations, account systems, notification systems, or key-sharing systems that are not in this repository
 - legal admissibility, recording-law, or emergency-response claims that are not implemented behavior in this repository
@@ -79,4 +85,4 @@ The following are generally out of scope unless they demonstrate a concrete vuln
 
 ## Public Disclosure Guidance
 
-Please allow time for private triage and remediation before public disclosure. Do not publish raw viewer tokens, incident tokens, idempotency keys, request bodies, uploaded bytes, private deployment details, proof-of-concept material, or user safety data.
+Please allow time for private triage and remediation before public disclosure. Do not publish raw viewer tokens, incident tokens, idempotency keys, request bodies, uploaded bytes, plaintext, raw keys, wrapped-key ciphertext, stored paths, object keys, private deployment details, proof-of-concept material, or user safety data.

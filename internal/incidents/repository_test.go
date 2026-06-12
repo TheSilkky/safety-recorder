@@ -1,16 +1,20 @@
 package incidents_test
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/open-proofline/server/internal/auth"
 	"github.com/open-proofline/server/internal/db"
+	"github.com/open-proofline/server/internal/envelope/pq"
 	"github.com/open-proofline/server/internal/incidents"
 	"github.com/open-proofline/server/internal/incidents/contracttest"
 )
@@ -39,6 +43,625 @@ func TestCreateIncidentStoresModeFields(t *testing.T) {
 		got.EscalationPolicy != incidents.EscalationPolicyTrustedContactsOnMissedCheckin ||
 		got.SharingState != incidents.SharingStatePrivate {
 		t.Fatalf("incident mode fields were not preserved: %+v", got)
+	}
+}
+
+func TestListIncidentsForAccountReturnsOnlyOwnedIncidents(t *testing.T) {
+	ctx := context.Background()
+	repo := newRepository(t, ctx)
+	owner, err := repo.CreateAccount(ctx, auth.CreateAccountParams{
+		Username:     "incident-owner",
+		PasswordHash: "hash",
+		Role:         auth.RoleUser,
+		AccountState: auth.AccountStateActive,
+	})
+	if err != nil {
+		t.Fatalf("create owner account: %v", err)
+	}
+	other, err := repo.CreateAccount(ctx, auth.CreateAccountParams{
+		Username:     "incident-other",
+		PasswordHash: "hash",
+		Role:         auth.RoleUser,
+		AccountState: auth.AccountStateActive,
+	})
+	if err != nil {
+		t.Fatalf("create other account: %v", err)
+	}
+	owned, err := repo.CreateIncidentForAccount(ctx, owner.ID, incidents.CreateIncidentParams{
+		ClientLabel: "owned phone",
+		Notes:       "private note",
+	})
+	if err != nil {
+		t.Fatalf("create owned incident: %v", err)
+	}
+	if _, err := repo.CreateIncidentForAccount(ctx, other.ID, incidents.CreateIncidentParams{
+		ClientLabel: "other phone",
+	}); err != nil {
+		t.Fatalf("create other incident: %v", err)
+	}
+	if _, err := repo.CreateIncident(ctx, "legacy phone", "legacy note"); err != nil {
+		t.Fatalf("create legacy incident: %v", err)
+	}
+
+	list, err := repo.ListIncidentsForAccount(ctx, owner.ID)
+	if err != nil {
+		t.Fatalf("list incidents for account: %v", err)
+	}
+	if len(list) != 1 {
+		t.Fatalf("expected one owned incident, got %+v", list)
+	}
+	if list[0].ID != owned.ID ||
+		list[0].OwnerAccountID != owner.ID ||
+		list[0].ClientLabel != "owned phone" ||
+		list[0].Notes != "private note" {
+		t.Fatalf("unexpected owned incident list result: %+v", list[0])
+	}
+}
+
+func TestAccountRegistrationAndVerificationTokens(t *testing.T) {
+	ctx := context.Background()
+	repo := newRepository(t, ctx)
+
+	defaultAccount, err := repo.CreateAccount(ctx, auth.CreateAccountParams{
+		Username:     "default-setup-user",
+		PasswordHash: "hash",
+		Role:         auth.RoleUser,
+	})
+	if err != nil {
+		t.Fatalf("create default setup account: %v", err)
+	}
+	if defaultAccount.SecondFactorSetup != auth.SecondFactorSetupStateNotRequired {
+		t.Fatalf("default second-factor setup state = %q, want not_required", defaultAccount.SecondFactorSetup)
+	}
+
+	account, err := repo.CreateAccount(ctx, auth.CreateAccountParams{
+		Username:          "verify-user",
+		EmailNormalized:   "Verify.User@Example.Invalid",
+		AccountState:      auth.AccountStatePendingEmailVerification,
+		SecondFactorSetup: auth.SecondFactorSetupStateSetupRequired,
+		PasswordHash:      "hash",
+		Role:              auth.RoleUser,
+	})
+	if err != nil {
+		t.Fatalf("create pending account: %v", err)
+	}
+	if account.EmailNormalized != "verify.user@example.invalid" {
+		t.Fatalf("email normalized = %q", account.EmailNormalized)
+	}
+	if account.AccountState != auth.AccountStatePendingEmailVerification {
+		t.Fatalf("account state = %q", account.AccountState)
+	}
+	if account.SecondFactorSetup != auth.SecondFactorSetupStateSetupRequired {
+		t.Fatalf("account second-factor setup = %q, want setup_required", account.SecondFactorSetup)
+	}
+	if _, err := repo.CreateAccount(ctx, auth.CreateAccountParams{
+		Username:        "verify-other",
+		EmailNormalized: "verify.user@example.invalid",
+		AccountState:    auth.AccountStatePendingEmailVerification,
+		PasswordHash:    "hash",
+		Role:            auth.RoleUser,
+	}); !errors.Is(err, auth.ErrDuplicate) {
+		t.Fatalf("duplicate email error = %v, want ErrDuplicate", err)
+	}
+
+	expiresAt := time.Now().UTC().Add(time.Hour)
+	token, rawToken, err := repo.CreateAccountVerificationToken(ctx, auth.CreateAccountVerificationTokenParams{
+		AccountID: account.ID,
+		Purpose:   auth.VerificationPurposeEmail,
+		ExpiresAt: expiresAt,
+	})
+	if err != nil {
+		t.Fatalf("create verification token: %v", err)
+	}
+	if rawToken == "" || token.TokenHash == rawToken || len(token.TokenHash) != 64 {
+		t.Fatalf("verification token did not use hash storage: raw=%q hash=%q", rawToken, token.TokenHash)
+	}
+	if _, err := repo.ConsumeAccountVerificationToken(ctx, rawToken, "wrong_purpose", time.Now().UTC()); !errors.Is(err, auth.ErrNotFound) {
+		t.Fatalf("wrong purpose consume error = %v, want ErrNotFound", err)
+	}
+	verified, err := repo.ConsumeAccountVerificationToken(ctx, rawToken, auth.VerificationPurposeEmail, time.Now().UTC())
+	if err != nil {
+		t.Fatalf("consume verification token: %v", err)
+	}
+	if verified.AccountState != auth.AccountStateActive {
+		t.Fatalf("verified account state = %q, want active", verified.AccountState)
+	}
+	if verified.SecondFactorSetup != auth.SecondFactorSetupStateSetupRequired {
+		t.Fatalf("verified second-factor setup = %q, want setup_required", verified.SecondFactorSetup)
+	}
+	if verified.EmailVerifiedAt == nil {
+		t.Fatal("verified account missing email_verified_at")
+	}
+	if _, err := repo.ConsumeAccountVerificationToken(ctx, rawToken, auth.VerificationPurposeEmail, time.Now().UTC()); !errors.Is(err, auth.ErrNotFound) {
+		t.Fatalf("reused token error = %v, want ErrNotFound", err)
+	}
+
+	expired, expiredRaw, err := repo.CreateAccountVerificationToken(ctx, auth.CreateAccountVerificationTokenParams{
+		AccountID: account.ID,
+		Purpose:   auth.VerificationPurposeEmail,
+		ExpiresAt: time.Now().UTC().Add(-time.Second),
+	})
+	if err != nil {
+		t.Fatalf("create expired token: %v", err)
+	}
+	if _, err := repo.ConsumeAccountVerificationToken(ctx, expiredRaw, expired.Purpose, time.Now().UTC()); !errors.Is(err, auth.ErrNotFound) {
+		t.Fatalf("expired token error = %v, want ErrNotFound", err)
+	}
+}
+
+func TestEmailSecondFactorChallengesCompleteSetup(t *testing.T) {
+	ctx := context.Background()
+	repo := newRepository(t, ctx)
+
+	account, err := repo.CreateAccount(ctx, auth.CreateAccountParams{
+		Username:          "email-factor-user",
+		SecondFactorSetup: auth.SecondFactorSetupStateSetupRequired,
+		PasswordHash:      "hash",
+		Role:              auth.RoleUser,
+	})
+	if err != nil {
+		t.Fatalf("create account: %v", err)
+	}
+
+	expired, expiredRaw, err := repo.CreateEmailSecondFactorChallenge(ctx, auth.CreateEmailSecondFactorChallengeParams{
+		AccountID:       account.ID,
+		EmailNormalized: "factor@example.invalid",
+		ExpiresAt:       time.Now().UTC().Add(-time.Second),
+	})
+	if err != nil {
+		t.Fatalf("create expired challenge: %v", err)
+	}
+	if expired.TokenHash == expiredRaw || len(expired.TokenHash) != 64 {
+		t.Fatalf("expired challenge did not use hash storage: raw=%q hash=%q", expiredRaw, expired.TokenHash)
+	}
+	if _, _, err := repo.ConsumeEmailSecondFactorChallenge(ctx, account.ID, expiredRaw, time.Now().UTC()); !errors.Is(err, auth.ErrNotFound) {
+		t.Fatalf("expired challenge consume error = %v, want ErrNotFound", err)
+	}
+
+	challenge, rawCode, err := repo.CreateEmailSecondFactorChallenge(ctx, auth.CreateEmailSecondFactorChallengeParams{
+		AccountID:       account.ID,
+		EmailNormalized: "Factor@Example.Invalid",
+		ExpiresAt:       time.Now().UTC().Add(time.Minute),
+	})
+	if err != nil {
+		t.Fatalf("create challenge: %v", err)
+	}
+	if rawCode == "" || challenge.TokenHash == rawCode || len(challenge.TokenHash) != 64 {
+		t.Fatalf("challenge did not use hash storage: raw=%q hash=%q", rawCode, challenge.TokenHash)
+	}
+	if challenge.EmailNormalized != "factor@example.invalid" {
+		t.Fatalf("challenge email normalized = %q, want factor@example.invalid", challenge.EmailNormalized)
+	}
+	if _, _, err := repo.ConsumeEmailSecondFactorChallenge(ctx, account.ID, "not-a-real-code", time.Now().UTC()); !errors.Is(err, auth.ErrNotFound) {
+		t.Fatalf("invalid challenge consume error = %v, want ErrNotFound", err)
+	}
+
+	factor, updated, err := repo.ConsumeEmailSecondFactorChallenge(ctx, account.ID, rawCode, time.Now().UTC())
+	if err != nil {
+		t.Fatalf("consume challenge: %v", err)
+	}
+	if factor.FactorType != auth.SecondFactorTypeEmailChallenge || factor.FactorState != auth.SecondFactorStateActive {
+		t.Fatalf("unexpected second factor after consume: %+v", factor)
+	}
+	if factor.VerifiedAt == nil {
+		t.Fatal("verified second factor missing verified_at")
+	}
+	if updated.SecondFactorSetup != auth.SecondFactorSetupStateComplete {
+		t.Fatalf("account setup state = %q, want complete", updated.SecondFactorSetup)
+	}
+	if _, _, err := repo.ConsumeEmailSecondFactorChallenge(ctx, account.ID, rawCode, time.Now().UTC()); !errors.Is(err, auth.ErrNotFound) {
+		t.Fatalf("reused challenge consume error = %v, want ErrNotFound", err)
+	}
+	if _, _, err := repo.CreateEmailSecondFactorChallenge(ctx, auth.CreateEmailSecondFactorChallengeParams{
+		AccountID:       account.ID,
+		EmailNormalized: "factor@example.invalid",
+		ExpiresAt:       time.Now().UTC().Add(time.Minute),
+	}); !errors.Is(err, auth.ErrDuplicate) {
+		t.Fatalf("configured factor challenge error = %v, want ErrDuplicate", err)
+	}
+}
+
+func TestTOTPSecondFactorsCompleteSetupAndSessionVerification(t *testing.T) {
+	ctx := context.Background()
+	repo := newRepository(t, ctx)
+
+	account, err := repo.CreateAccount(ctx, auth.CreateAccountParams{
+		Username:          "totp-factor-user",
+		SecondFactorSetup: auth.SecondFactorSetupStateSetupRequired,
+		PasswordHash:      "hash",
+		Role:              auth.RoleUser,
+	})
+	if err != nil {
+		t.Fatalf("create account: %v", err)
+	}
+
+	factor, err := repo.CreateTOTPSecondFactorEnrollment(ctx, auth.CreateTOTPSecondFactorEnrollmentParams{
+		AccountID:     account.ID,
+		Secret:        "JBSWY3DPEHPK3PXP",
+		PeriodSeconds: auth.TOTPDefaultPeriodSeconds,
+		Digits:        auth.TOTPDefaultDigits,
+		Algorithm:     auth.TOTPAlgorithmSHA1,
+	})
+	if err != nil {
+		t.Fatalf("create TOTP enrollment: %v", err)
+	}
+	if factor.FactorType != auth.SecondFactorTypeTOTP || factor.FactorState != auth.SecondFactorStatePending {
+		t.Fatalf("unexpected TOTP enrollment factor: %+v", factor)
+	}
+	if factor.TOTPSecret != "JBSWY3DPEHPK3PXP" {
+		t.Fatal("TOTP secret was not stored for verification")
+	}
+
+	refreshed, err := repo.CreateTOTPSecondFactorEnrollment(ctx, auth.CreateTOTPSecondFactorEnrollmentParams{
+		AccountID:     account.ID,
+		Secret:        "JBSWY3DPEHPK3PXQ",
+		PeriodSeconds: auth.TOTPDefaultPeriodSeconds,
+		Digits:        auth.TOTPDefaultDigits,
+		Algorithm:     auth.TOTPAlgorithmSHA1,
+	})
+	if err != nil {
+		t.Fatalf("refresh TOTP enrollment: %v", err)
+	}
+	if refreshed.ID != factor.ID || refreshed.TOTPSecret != "JBSWY3DPEHPK3PXQ" {
+		t.Fatalf("pending TOTP enrollment was not refreshed: %+v", refreshed)
+	}
+
+	activated, updated, err := repo.ActivateTOTPSecondFactor(ctx, account.ID, factor.ID, time.Now().UTC(), 100)
+	if err != nil {
+		t.Fatalf("activate TOTP factor: %v", err)
+	}
+	if activated.FactorState != auth.SecondFactorStateActive || activated.VerifiedAt == nil {
+		t.Fatalf("unexpected active TOTP factor: %+v", activated)
+	}
+	if activated.TOTPLastUsedTimeStep == nil || *activated.TOTPLastUsedTimeStep != 100 {
+		t.Fatalf("last used time step = %v, want 100", activated.TOTPLastUsedTimeStep)
+	}
+	if updated.SecondFactorSetup != auth.SecondFactorSetupStateComplete {
+		t.Fatalf("account setup state = %q, want complete", updated.SecondFactorSetup)
+	}
+	if _, err := repo.MarkTOTPSecondFactorUsed(ctx, activated.ID, time.Now().UTC(), 100); !errors.Is(err, auth.ErrNotFound) {
+		t.Fatalf("reused TOTP step error = %v, want ErrNotFound", err)
+	}
+	used, err := repo.MarkTOTPSecondFactorUsed(ctx, activated.ID, time.Now().UTC(), 101)
+	if err != nil {
+		t.Fatalf("mark TOTP factor used: %v", err)
+	}
+	if used.TOTPLastUsedTimeStep == nil || *used.TOTPLastUsedTimeStep != 101 {
+		t.Fatalf("last used time step after mark = %v, want 101", used.TOTPLastUsedTimeStep)
+	}
+	if _, err := repo.CreateTOTPSecondFactorEnrollment(ctx, auth.CreateTOTPSecondFactorEnrollmentParams{
+		AccountID:     account.ID,
+		Secret:        "JBSWY3DPEHPK3PXR",
+		PeriodSeconds: auth.TOTPDefaultPeriodSeconds,
+		Digits:        auth.TOTPDefaultDigits,
+		Algorithm:     auth.TOTPAlgorithmSHA1,
+	}); !errors.Is(err, auth.ErrDuplicate) {
+		t.Fatalf("configured TOTP enrollment error = %v, want ErrDuplicate", err)
+	}
+
+	session, rawToken, err := repo.CreateSession(ctx, account.ID, time.Now().UTC().Add(time.Hour))
+	if err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+	verifiedSession, err := repo.MarkSessionSecondFactorVerified(ctx, session.ID, activated.ID, auth.SecondFactorTypeTOTP, time.Now().UTC())
+	if err != nil {
+		t.Fatalf("mark session TOTP verified: %v", err)
+	}
+	if verifiedSession.SecondFactorVerifiedAt == nil || verifiedSession.SecondFactorFactorID != activated.ID || verifiedSession.SecondFactorMethod != auth.SecondFactorTypeTOTP {
+		t.Fatalf("unexpected verified session: %+v", verifiedSession)
+	}
+	lookedUp, err := repo.LookupSession(ctx, rawToken)
+	if err != nil {
+		t.Fatalf("lookup verified session: %v", err)
+	}
+	if lookedUp.SecondFactorVerifiedAt == nil || lookedUp.SecondFactorMethod != auth.SecondFactorTypeTOTP {
+		t.Fatalf("lookup lost session second-factor fields: %+v", lookedUp)
+	}
+}
+
+func TestWebAuthnSecondFactorsCompleteSetupChallengesAndSessionVerification(t *testing.T) {
+	ctx := context.Background()
+	repo := newRepository(t, ctx)
+
+	account, err := repo.CreateAccount(ctx, auth.CreateAccountParams{
+		Username:          "webauthn-factor-user",
+		SecondFactorSetup: auth.SecondFactorSetupStateSetupRequired,
+		PasswordHash:      "hash",
+		Role:              auth.RoleUser,
+	})
+	if err != nil {
+		t.Fatalf("create account: %v", err)
+	}
+	session, rawToken, err := repo.CreateSession(ctx, account.ID, time.Now().UTC().Add(time.Hour))
+	if err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+
+	webauthnUser, err := repo.GetOrCreateWebAuthnUser(ctx, account.ID, "example.org")
+	if err != nil {
+		t.Fatalf("create WebAuthn user: %v", err)
+	}
+	if len(webauthnUser.UserHandle) != auth.WebAuthnUserHandleBytes {
+		t.Fatalf("WebAuthn user handle length = %d, want %d", len(webauthnUser.UserHandle), auth.WebAuthnUserHandleBytes)
+	}
+	sameUser, err := repo.GetOrCreateWebAuthnUser(ctx, account.ID, "example.org")
+	if err != nil {
+		t.Fatalf("get existing WebAuthn user: %v", err)
+	}
+	if !bytes.Equal(sameUser.UserHandle, webauthnUser.UserHandle) {
+		t.Fatal("WebAuthn user handle was not stable")
+	}
+
+	firstChallenge, err := repo.CreateWebAuthnChallenge(ctx, auth.CreateWebAuthnChallengeParams{
+		AccountID:       account.ID,
+		SessionID:       session.ID,
+		RPID:            "example.org",
+		ChallengeType:   auth.SecondFactorChallengeTypeWebAuthnRegistration,
+		SessionDataJSON: []byte(`{"challenge":"first"}`),
+		ExpiresAt:       time.Now().UTC().Add(time.Minute),
+	})
+	if err != nil {
+		t.Fatalf("create first WebAuthn challenge: %v", err)
+	}
+	secondChallenge, err := repo.CreateWebAuthnChallenge(ctx, auth.CreateWebAuthnChallengeParams{
+		AccountID:       account.ID,
+		SessionID:       session.ID,
+		RPID:            "example.org",
+		ChallengeType:   auth.SecondFactorChallengeTypeWebAuthnRegistration,
+		SessionDataJSON: []byte(`{"challenge":"second"}`),
+		ExpiresAt:       time.Now().UTC().Add(time.Minute),
+	})
+	if err != nil {
+		t.Fatalf("create second WebAuthn challenge: %v", err)
+	}
+	if firstChallenge.ID == secondChallenge.ID {
+		t.Fatal("WebAuthn challenge IDs should be unique")
+	}
+	if _, err := repo.ConsumeWebAuthnChallenge(ctx, account.ID, session.ID, "wrong.example", auth.SecondFactorChallengeTypeWebAuthnRegistration, time.Now().UTC()); !errors.Is(err, auth.ErrNotFound) {
+		t.Fatalf("mismatched RP WebAuthn challenge error = %v, want ErrNotFound", err)
+	}
+	consumed, err := repo.ConsumeWebAuthnChallenge(ctx, account.ID, session.ID, "example.org", auth.SecondFactorChallengeTypeWebAuthnRegistration, time.Now().UTC())
+	if err != nil {
+		t.Fatalf("consume WebAuthn challenge: %v", err)
+	}
+	if consumed.ID != secondChallenge.ID || !bytes.Equal(consumed.SessionDataJSON, []byte(`{"challenge":"second"}`)) || consumed.ConsumedAt == nil {
+		t.Fatalf("unexpected consumed WebAuthn challenge: %+v", consumed)
+	}
+	if _, err := repo.ConsumeWebAuthnChallenge(ctx, account.ID, session.ID, "example.org", auth.SecondFactorChallengeTypeWebAuthnRegistration, time.Now().UTC()); !errors.Is(err, auth.ErrNotFound) {
+		t.Fatalf("reused WebAuthn challenge error = %v, want ErrNotFound", err)
+	}
+
+	credentialID := []byte("credential-id")
+	created, updatedAccount, err := repo.CreateWebAuthnCredential(ctx, auth.CreateWebAuthnCredentialParams{
+		AccountID:         account.ID,
+		RPID:              "example.org",
+		CredentialID:      credentialID,
+		PublicKey:         []byte("credential-public-key"),
+		AttestationType:   "none",
+		AttestationFormat: "none",
+		Transports:        []string{"usb", "internal"},
+		AAGUID:            []byte("aaguid"),
+		SignCount:         4,
+		Attachment:        "cross-platform",
+		UserPresent:       true,
+		UserVerified:      true,
+		BackupEligible:    true,
+		BackupState:       false,
+		VerifiedAt:        time.Now().UTC(),
+	})
+	if err != nil {
+		t.Fatalf("create WebAuthn credential: %v", err)
+	}
+	if created.ID == "" || !bytes.Equal(created.CredentialID, credentialID) {
+		t.Fatalf("unexpected WebAuthn credential: %+v", created)
+	}
+	if updatedAccount.SecondFactorSetup != auth.SecondFactorSetupStateComplete {
+		t.Fatalf("account setup state = %q, want complete", updatedAccount.SecondFactorSetup)
+	}
+	hasCredential, err := repo.HasActiveWebAuthnCredential(ctx, account.ID)
+	if err != nil {
+		t.Fatalf("check active WebAuthn credential: %v", err)
+	}
+	if !hasCredential {
+		t.Fatal("active WebAuthn credential was not detected")
+	}
+	credentials, err := repo.ListWebAuthnCredentials(ctx, account.ID, "example.org")
+	if err != nil {
+		t.Fatalf("list WebAuthn credentials: %v", err)
+	}
+	if len(credentials) != 1 || !reflect.DeepEqual(credentials[0].Transports, []string{"usb", "internal"}) {
+		t.Fatalf("unexpected WebAuthn credentials: %+v", credentials)
+	}
+	if _, _, err := repo.CreateWebAuthnCredential(ctx, auth.CreateWebAuthnCredentialParams{
+		AccountID:         account.ID,
+		RPID:              "example.org",
+		CredentialID:      credentialID,
+		PublicKey:         []byte("credential-public-key"),
+		AttestationType:   "none",
+		AttestationFormat: "none",
+		VerifiedAt:        time.Now().UTC(),
+	}); !errors.Is(err, auth.ErrDuplicate) {
+		t.Fatalf("duplicate WebAuthn credential error = %v, want ErrDuplicate", err)
+	}
+
+	usedAt := time.Now().UTC()
+	used, err := repo.UpdateWebAuthnCredentialAfterAssertion(ctx, auth.UpdateWebAuthnCredentialParams{
+		ID:             created.ID,
+		AccountID:      account.ID,
+		RPID:           "example.org",
+		SignCount:      5,
+		CloneWarning:   true,
+		UserPresent:    true,
+		UserVerified:   true,
+		BackupEligible: true,
+		BackupState:    true,
+		VerifiedAt:     usedAt,
+	})
+	if err != nil {
+		t.Fatalf("update WebAuthn credential: %v", err)
+	}
+	if used.SignCount != 5 || !used.CloneWarning || !used.BackupState || used.LastUsedAt == nil {
+		t.Fatalf("unexpected used WebAuthn credential: %+v", used)
+	}
+
+	verifiedSession, err := repo.MarkSessionSecondFactorVerified(ctx, session.ID, created.ID, auth.SecondFactorTypeWebAuthn, time.Now().UTC())
+	if err != nil {
+		t.Fatalf("mark session WebAuthn verified: %v", err)
+	}
+	if verifiedSession.SecondFactorVerifiedAt == nil || verifiedSession.SecondFactorFactorID != created.ID || verifiedSession.SecondFactorMethod != auth.SecondFactorTypeWebAuthn {
+		t.Fatalf("unexpected verified WebAuthn session: %+v", verifiedSession)
+	}
+	lookedUp, err := repo.LookupSession(ctx, rawToken)
+	if err != nil {
+		t.Fatalf("lookup verified WebAuthn session: %v", err)
+	}
+	if lookedUp.SecondFactorVerifiedAt == nil || lookedUp.SecondFactorMethod != auth.SecondFactorTypeWebAuthn {
+		t.Fatalf("lookup lost WebAuthn session second-factor fields: %+v", lookedUp)
+	}
+}
+
+func TestAccountSecondFactorRecoveryResetRemovesFactorsAndRevokesSessions(t *testing.T) {
+	ctx := context.Background()
+	repo := newRepository(t, ctx)
+
+	admin, err := repo.CreateAccount(ctx, auth.CreateAccountParams{
+		Username:     "recovery-admin",
+		PasswordHash: "hash",
+		Role:         auth.RoleAdmin,
+	})
+	if err != nil {
+		t.Fatalf("create admin account: %v", err)
+	}
+	_, adminRawToken, err := repo.CreateSession(ctx, admin.ID, time.Now().UTC().Add(time.Hour))
+	if err != nil {
+		t.Fatalf("create admin session: %v", err)
+	}
+	account, err := repo.CreateAccount(ctx, auth.CreateAccountParams{
+		Username:          "recovery-user",
+		SecondFactorSetup: auth.SecondFactorSetupStateSetupRequired,
+		PasswordHash:      "hash",
+		Role:              auth.RoleUser,
+	})
+	if err != nil {
+		t.Fatalf("create account: %v", err)
+	}
+	firstSession, firstRawToken, err := repo.CreateSession(ctx, account.ID, time.Now().UTC().Add(time.Hour))
+	if err != nil {
+		t.Fatalf("create first account session: %v", err)
+	}
+	_, secondRawToken, err := repo.CreateSession(ctx, account.ID, time.Now().UTC().Add(time.Hour))
+	if err != nil {
+		t.Fatalf("create second account session: %v", err)
+	}
+
+	_, rawEmailCode, err := repo.CreateEmailSecondFactorChallenge(ctx, auth.CreateEmailSecondFactorChallengeParams{
+		AccountID:       account.ID,
+		EmailNormalized: "recovery-factor@example.invalid",
+		ExpiresAt:       time.Now().UTC().Add(time.Minute),
+	})
+	if err != nil {
+		t.Fatalf("create email challenge: %v", err)
+	}
+	if _, _, err := repo.ConsumeEmailSecondFactorChallenge(ctx, account.ID, rawEmailCode, time.Now().UTC()); err != nil {
+		t.Fatalf("consume email challenge: %v", err)
+	}
+	totpFactor, err := repo.CreateTOTPSecondFactorEnrollment(ctx, auth.CreateTOTPSecondFactorEnrollmentParams{
+		AccountID:     account.ID,
+		Secret:        "JBSWY3DPEHPK3PXP",
+		PeriodSeconds: auth.TOTPDefaultPeriodSeconds,
+		Digits:        auth.TOTPDefaultDigits,
+		Algorithm:     auth.TOTPAlgorithmSHA1,
+	})
+	if err != nil {
+		t.Fatalf("create TOTP enrollment: %v", err)
+	}
+	if _, _, err := repo.ActivateTOTPSecondFactor(ctx, account.ID, totpFactor.ID, time.Now().UTC(), 100); err != nil {
+		t.Fatalf("activate TOTP factor: %v", err)
+	}
+	if _, err := repo.GetOrCreateWebAuthnUser(ctx, account.ID, "example.org"); err != nil {
+		t.Fatalf("create WebAuthn user: %v", err)
+	}
+	if _, err := repo.CreateWebAuthnChallenge(ctx, auth.CreateWebAuthnChallengeParams{
+		AccountID:       account.ID,
+		SessionID:       firstSession.ID,
+		RPID:            "example.org",
+		ChallengeType:   auth.SecondFactorChallengeTypeWebAuthnRegistration,
+		SessionDataJSON: []byte(`{"challenge":"recovery"}`),
+		ExpiresAt:       time.Now().UTC().Add(time.Minute),
+	}); err != nil {
+		t.Fatalf("create WebAuthn challenge: %v", err)
+	}
+	if _, _, err := repo.CreateWebAuthnCredential(ctx, auth.CreateWebAuthnCredentialParams{
+		AccountID:         account.ID,
+		RPID:              "example.org",
+		CredentialID:      []byte("recovery-credential-id"),
+		PublicKey:         []byte("recovery-public-key"),
+		AttestationType:   "none",
+		AttestationFormat: "none",
+		VerifiedAt:        time.Now().UTC(),
+	}); err != nil {
+		t.Fatalf("create WebAuthn credential: %v", err)
+	}
+
+	event, updated, err := repo.ResetAccountSecondFactorRecovery(ctx, auth.ResetAccountSecondFactorRecoveryParams{
+		AccountID:      account.ID,
+		AdminAccountID: admin.ID,
+		Reason:         auth.AccountRecoveryReasonLostAllFactors,
+	})
+	if err != nil {
+		t.Fatalf("reset account recovery factors: %v", err)
+	}
+	if event.Action != auth.AccountRecoveryActionSecondFactorReset ||
+		event.Reason != auth.AccountRecoveryReasonLostAllFactors ||
+		event.PreviousSecondFactorSetupState != auth.SecondFactorSetupStateComplete ||
+		event.NewSecondFactorSetupState != auth.SecondFactorSetupStateSetupRequired {
+		t.Fatalf("unexpected recovery event metadata: %+v", event)
+	}
+	if event.SessionsRevoked != 2 || event.EmailFactorsRemoved != 1 || event.TOTPFactorsRemoved != 1 || event.WebAuthnCredentialsRemoved != 1 {
+		t.Fatalf("unexpected recovery event counts: %+v", event)
+	}
+	if updated.SecondFactorSetup != auth.SecondFactorSetupStateSetupRequired {
+		t.Fatalf("account setup state = %q, want setup_required", updated.SecondFactorSetup)
+	}
+	if _, err := repo.LookupSession(ctx, firstRawToken); !errors.Is(err, auth.ErrNotFound) {
+		t.Fatalf("first account session lookup error = %v, want ErrNotFound", err)
+	}
+	if _, err := repo.LookupSession(ctx, secondRawToken); !errors.Is(err, auth.ErrNotFound) {
+		t.Fatalf("second account session lookup error = %v, want ErrNotFound", err)
+	}
+	if _, err := repo.LookupSession(ctx, adminRawToken); err != nil {
+		t.Fatalf("admin session was revoked: %v", err)
+	}
+	if _, err := repo.GetActiveTOTPSecondFactor(ctx, account.ID); !errors.Is(err, auth.ErrNotFound) {
+		t.Fatalf("active TOTP lookup error = %v, want ErrNotFound", err)
+	}
+	hasCredential, err := repo.HasActiveWebAuthnCredential(ctx, account.ID)
+	if err != nil {
+		t.Fatalf("check active WebAuthn credential: %v", err)
+	}
+	if hasCredential {
+		t.Fatal("WebAuthn credential survived recovery reset")
+	}
+	if credentials, err := repo.ListWebAuthnCredentials(ctx, account.ID, "example.org"); err != nil {
+		t.Fatalf("list WebAuthn credentials after recovery: %v", err)
+	} else if len(credentials) != 0 {
+		t.Fatalf("WebAuthn credentials survived recovery reset: %+v", credentials)
+	}
+	if _, _, err := repo.CreateEmailSecondFactorChallenge(ctx, auth.CreateEmailSecondFactorChallengeParams{
+		AccountID:       account.ID,
+		EmailNormalized: "recovery-factor@example.invalid",
+		ExpiresAt:       time.Now().UTC().Add(time.Minute),
+	}); err != nil {
+		t.Fatalf("create email challenge after recovery: %v", err)
+	}
+	if _, err := repo.CreateTOTPSecondFactorEnrollment(ctx, auth.CreateTOTPSecondFactorEnrollmentParams{
+		AccountID:     account.ID,
+		Secret:        "JBSWY3DPEHPK3PXQ",
+		PeriodSeconds: auth.TOTPDefaultPeriodSeconds,
+		Digits:        auth.TOTPDefaultDigits,
+		Algorithm:     auth.TOTPAlgorithmSHA1,
+	}); err != nil {
+		t.Fatalf("create TOTP enrollment after recovery: %v", err)
 	}
 }
 
@@ -95,9 +718,29 @@ func TestContactPublicKeysAndSharingGrants(t *testing.T) {
 	if secondKey.Version != 2 || secondKey.ContactID != firstKey.ContactID {
 		t.Fatalf("replacement key = %+v, want same contact version 2", secondKey)
 	}
+	replacedFirstKey, err := repo.GetContactPublicKey(ctx, owner.ID, firstKey.ID)
+	if err != nil {
+		t.Fatalf("get replaced first contact key: %v", err)
+	}
+	if replacedFirstKey.KeyState != incidents.ContactKeyStateReplaced ||
+		replacedFirstKey.ReplacedAt == nil ||
+		replacedFirstKey.ReplacedByPublicKeyID != secondKey.ID {
+		t.Fatalf("first contact key was not replaced: %+v", replacedFirstKey)
+	}
 
 	if _, err := repo.GetContactPublicKey(ctx, other.ID, firstKey.ID); !errors.Is(err, incidents.ErrNotFound) {
 		t.Fatalf("other account get contact key error = %v, want ErrNotFound", err)
+	}
+	if _, err := repo.CreateSharingGrant(ctx, incidents.CreateSharingGrantParams{
+		OwnerAccountID:     owner.ID,
+		IncidentID:         incident.ID,
+		StreamID:           stream.ID,
+		RecipientType:      incidents.SharingGrantRecipientTrustedContact,
+		ContactID:          firstKey.ContactID,
+		ContactPublicKeyID: firstKey.ID,
+		DataClass:          incidents.SharingGrantDataClassMetadataCiphertext,
+	}); !errors.Is(err, incidents.ErrNotFound) {
+		t.Fatalf("replaced key create grant error = %v, want ErrNotFound", err)
 	}
 	grant, err := repo.CreateSharingGrant(ctx, incidents.CreateSharingGrantParams{
 		OwnerAccountID: owner.ID,
@@ -144,6 +787,323 @@ func TestContactPublicKeysAndSharingGrants(t *testing.T) {
 		KeyState:       &active,
 	}); !errors.Is(err, incidents.ErrInvalidState) {
 		t.Fatalf("reactivate revoked key error = %v, want ErrInvalidState", err)
+	}
+
+	lostCandidate, err := repo.CreateContactPublicKey(ctx, incidents.CreateContactPublicKeyParams{
+		OwnerAccountID:       owner.ID,
+		DisplayLabel:         "lost contact",
+		WrappingAlgorithm:    "age-v1-x25519",
+		PublicKey:            "age1lost",
+		PublicKeyFingerprint: "fingerprint-lost",
+		KeyState:             incidents.ContactKeyStateActive,
+	})
+	if err != nil {
+		t.Fatalf("create lost candidate contact key: %v", err)
+	}
+	lostKey, err := repo.MarkContactPublicKeyLost(ctx, owner.ID, lostCandidate.ID)
+	if err != nil {
+		t.Fatalf("mark contact public key lost: %v", err)
+	}
+	if lostKey.KeyState != incidents.ContactKeyStateLost || lostKey.LostAt == nil {
+		t.Fatalf("contact key not marked lost: %+v", lostKey)
+	}
+	if _, err := repo.CreateSharingGrant(ctx, incidents.CreateSharingGrantParams{
+		OwnerAccountID: owner.ID,
+		IncidentID:     incident.ID,
+		RecipientType:  incidents.SharingGrantRecipientTrustedContact,
+		ContactID:      lostKey.ContactID,
+		DataClass:      incidents.SharingGrantDataClassMetadataCiphertext,
+	}); !errors.Is(err, incidents.ErrNotFound) {
+		t.Fatalf("lost key create grant error = %v, want ErrNotFound", err)
+	}
+	if _, err := repo.UpdateContactPublicKey(ctx, incidents.UpdateContactPublicKeyParams{
+		OwnerAccountID: owner.ID,
+		PublicKeyID:    lostKey.ID,
+		KeyState:       &active,
+	}); !errors.Is(err, incidents.ErrInvalidState) {
+		t.Fatalf("reactivate lost key error = %v, want ErrInvalidState", err)
+	}
+}
+
+func TestAccountRecipientKeys(t *testing.T) {
+	ctx := context.Background()
+	repo := newRepository(t, ctx)
+	owner, err := repo.CreateAccount(ctx, auth.CreateAccountParams{
+		Username:     "account-recipient-owner",
+		PasswordHash: "hash",
+		Role:         auth.RoleUser,
+	})
+	if err != nil {
+		t.Fatalf("create owner account: %v", err)
+	}
+	other, err := repo.CreateAccount(ctx, auth.CreateAccountParams{
+		Username:     "account-recipient-other",
+		PasswordHash: "hash",
+		Role:         auth.RoleUser,
+	})
+	if err != nil {
+		t.Fatalf("create other account: %v", err)
+	}
+
+	key, err := repo.CreateAccountRecipientKey(ctx, incidents.CreateAccountRecipientKeyParams{
+		OwnerAccountID:       owner.ID,
+		RecipientID:          "device-phone",
+		RecipientType:        incidents.AccountRecipientTypeDevice,
+		KeyID:                "recipient-key-sqlite-1",
+		DisplayLabel:         "owner phone",
+		Scheme:               pq.SchemeID,
+		SuiteID:              pq.SuiteID,
+		PublicKey:            "mlkem-public-key-sqlite-1",
+		PublicKeyFingerprint: "fingerprint-sqlite-1",
+		KeyState:             incidents.AccountRecipientKeyStateActive,
+	})
+	if err != nil {
+		t.Fatalf("create account recipient key: %v", err)
+	}
+	if key.Version != 1 || key.RecipientID != "device-phone" {
+		t.Fatalf("unexpected account recipient key: %+v", key)
+	}
+	if _, err := repo.GetActiveAccountRecipientKey(ctx, owner.ID, key.ID); err != nil {
+		t.Fatalf("get active account recipient key: %v", err)
+	}
+	if _, err := repo.GetAccountRecipientKey(ctx, other.ID, key.ID); !errors.Is(err, incidents.ErrNotFound) {
+		t.Fatalf("other account get key error = %v, want ErrNotFound", err)
+	}
+	if _, err := repo.CreateAccountRecipientKey(ctx, incidents.CreateAccountRecipientKeyParams{
+		OwnerAccountID:       owner.ID,
+		RecipientID:          "device-phone",
+		RecipientType:        incidents.AccountRecipientTypeDevice,
+		KeyID:                "recipient-key-sqlite-duplicate-version",
+		Scheme:               pq.SchemeID,
+		SuiteID:              pq.SuiteID,
+		PublicKey:            "mlkem-public-key-duplicate-version",
+		PublicKeyFingerprint: "fingerprint-duplicate-version",
+		KeyState:             incidents.AccountRecipientKeyStateActive,
+	}); !errors.Is(err, incidents.ErrDuplicate) {
+		t.Fatalf("duplicate recipient version error = %v, want ErrDuplicate", err)
+	}
+	if _, err := repo.CreateAccountRecipientKey(ctx, incidents.CreateAccountRecipientKeyParams{
+		OwnerAccountID:       owner.ID,
+		RecipientID:          "device-tablet",
+		RecipientType:        incidents.AccountRecipientTypeDevice,
+		KeyID:                "recipient-key-sqlite-1",
+		Scheme:               pq.SchemeID,
+		SuiteID:              pq.SuiteID,
+		PublicKey:            "mlkem-public-key-duplicate-key",
+		PublicKeyFingerprint: "fingerprint-duplicate-key",
+		KeyState:             incidents.AccountRecipientKeyStateActive,
+	}); !errors.Is(err, incidents.ErrDuplicate) {
+		t.Fatalf("duplicate key_id error = %v, want ErrDuplicate", err)
+	}
+
+	replacement, err := repo.ReplaceAccountRecipientKey(ctx, incidents.ReplaceAccountRecipientKeyParams{
+		OwnerAccountID:       owner.ID,
+		RecipientKeyID:       key.ID,
+		KeyID:                "recipient-key-sqlite-2",
+		DisplayLabel:         "owner phone replacement",
+		Scheme:               pq.SchemeID,
+		SuiteID:              pq.SuiteID,
+		PublicKey:            "mlkem-public-key-sqlite-2",
+		PublicKeyFingerprint: "fingerprint-sqlite-2",
+		KeyState:             incidents.AccountRecipientKeyStateActive,
+	})
+	if err != nil {
+		t.Fatalf("replace account recipient key: %v", err)
+	}
+	if replacement.Version != 2 || replacement.RecipientID != key.RecipientID {
+		t.Fatalf("unexpected replacement key: %+v", replacement)
+	}
+	oldKey, err := repo.GetAccountRecipientKey(ctx, owner.ID, key.ID)
+	if err != nil {
+		t.Fatalf("get old account recipient key: %v", err)
+	}
+	if oldKey.KeyState != incidents.AccountRecipientKeyStateReplaced || oldKey.ReplacedAt == nil || oldKey.ReplacedByRecipientKeyID != replacement.ID {
+		t.Fatalf("old key was not replaced: %+v", oldKey)
+	}
+	if _, err := repo.GetActiveAccountRecipientKey(ctx, owner.ID, key.ID); !errors.Is(err, incidents.ErrNotFound) {
+		t.Fatalf("active old key error = %v, want ErrNotFound", err)
+	}
+	if _, err := repo.ReplaceAccountRecipientKey(ctx, incidents.ReplaceAccountRecipientKeyParams{
+		OwnerAccountID:       owner.ID,
+		RecipientKeyID:       key.ID,
+		KeyID:                "recipient-key-sqlite-3",
+		Scheme:               pq.SchemeID,
+		SuiteID:              pq.SuiteID,
+		PublicKey:            "mlkem-public-key-sqlite-3",
+		PublicKeyFingerprint: "fingerprint-sqlite-3",
+		KeyState:             incidents.AccountRecipientKeyStateActive,
+	}); !errors.Is(err, incidents.ErrInvalidState) {
+		t.Fatalf("replace replaced key error = %v, want ErrInvalidState", err)
+	}
+
+	revoked, err := repo.RevokeAccountRecipientKey(ctx, owner.ID, replacement.ID)
+	if err != nil {
+		t.Fatalf("revoke account recipient key: %v", err)
+	}
+	if revoked.KeyState != incidents.AccountRecipientKeyStateRevoked || revoked.RevokedAt == nil {
+		t.Fatalf("replacement key was not revoked: %+v", revoked)
+	}
+	if _, err := repo.GetActiveAccountRecipientKey(ctx, owner.ID, replacement.ID); !errors.Is(err, incidents.ErrNotFound) {
+		t.Fatalf("active revoked key error = %v, want ErrNotFound", err)
+	}
+
+	lostCandidate, err := repo.CreateAccountRecipientKey(ctx, incidents.CreateAccountRecipientKeyParams{
+		OwnerAccountID:       owner.ID,
+		RecipientID:          "device-tablet",
+		RecipientType:        incidents.AccountRecipientTypeDevice,
+		KeyID:                "recipient-key-sqlite-lost",
+		Scheme:               pq.SchemeID,
+		SuiteID:              pq.SuiteID,
+		PublicKey:            "mlkem-public-key-lost",
+		PublicKeyFingerprint: "fingerprint-lost",
+		KeyState:             incidents.AccountRecipientKeyStateActive,
+	})
+	if err != nil {
+		t.Fatalf("create lost candidate: %v", err)
+	}
+	lost, err := repo.MarkAccountRecipientKeyLost(ctx, owner.ID, lostCandidate.ID)
+	if err != nil {
+		t.Fatalf("mark account recipient key lost: %v", err)
+	}
+	if lost.KeyState != incidents.AccountRecipientKeyStateLost || lost.LostAt == nil {
+		t.Fatalf("key was not marked lost: %+v", lost)
+	}
+	if _, err := repo.GetActiveAccountRecipientKey(ctx, owner.ID, lost.ID); !errors.Is(err, incidents.ErrNotFound) {
+		t.Fatalf("active lost key error = %v, want ErrNotFound", err)
+	}
+}
+
+func TestTrustedContactRelationships(t *testing.T) {
+	ctx := context.Background()
+	repo := newRepository(t, ctx)
+	owner, err := repo.CreateAccount(ctx, auth.CreateAccountParams{
+		Username:     "relationship-owner",
+		PasswordHash: "hash",
+		Role:         auth.RoleUser,
+	})
+	if err != nil {
+		t.Fatalf("create owner account: %v", err)
+	}
+	recipient, err := repo.CreateAccount(ctx, auth.CreateAccountParams{
+		Username:     "relationship-recipient",
+		PasswordHash: "hash",
+		Role:         auth.RoleUser,
+	})
+	if err != nil {
+		t.Fatalf("create recipient account: %v", err)
+	}
+	other, err := repo.CreateAccount(ctx, auth.CreateAccountParams{
+		Username:     "relationship-other",
+		PasswordHash: "hash",
+		Role:         auth.RoleUser,
+	})
+	if err != nil {
+		t.Fatalf("create other account: %v", err)
+	}
+
+	relationship, err := repo.CreateTrustedContactRelationship(ctx, incidents.CreateTrustedContactRelationshipParams{
+		OwnerAccountID:     owner.ID,
+		RecipientAccountID: recipient.ID,
+		RelationshipRole:   incidents.TrustedContactRelationshipRoleTrustedContact,
+		DisplayLabel:       "emergency contact",
+	})
+	if err != nil {
+		t.Fatalf("create trusted contact relationship: %v", err)
+	}
+	if relationship.RelationshipState != incidents.TrustedContactRelationshipStatePendingInvite ||
+		relationship.RelationshipRole != incidents.TrustedContactRelationshipRoleTrustedContact ||
+		relationship.InvitedAt.IsZero() {
+		t.Fatalf("unexpected trusted contact relationship: %+v", relationship)
+	}
+	if _, err := repo.CreateTrustedContactRelationship(ctx, incidents.CreateTrustedContactRelationshipParams{
+		OwnerAccountID:     owner.ID,
+		RecipientAccountID: recipient.ID,
+		RelationshipRole:   incidents.TrustedContactRelationshipRoleTrustedContact,
+	}); !errors.Is(err, incidents.ErrDuplicate) {
+		t.Fatalf("duplicate open relationship error = %v, want ErrDuplicate", err)
+	}
+	if _, err := repo.AcceptTrustedContactRelationship(ctx, other.ID, relationship.ID); !errors.Is(err, incidents.ErrNotFound) {
+		t.Fatalf("other account accept error = %v, want ErrNotFound", err)
+	}
+	if _, err := repo.AcceptTrustedContactRelationship(ctx, owner.ID, relationship.ID); !errors.Is(err, incidents.ErrNotFound) {
+		t.Fatalf("owner account accept error = %v, want ErrNotFound", err)
+	}
+
+	accepted, err := repo.AcceptTrustedContactRelationship(ctx, recipient.ID, relationship.ID)
+	if err != nil {
+		t.Fatalf("accept trusted contact relationship: %v", err)
+	}
+	if accepted.RelationshipState != incidents.TrustedContactRelationshipStateActive || accepted.AcceptedAt == nil {
+		t.Fatalf("relationship was not accepted: %+v", accepted)
+	}
+	list, err := repo.ListTrustedContactRelationshipsForAccount(ctx, recipient.ID)
+	if err != nil {
+		t.Fatalf("list recipient relationships: %v", err)
+	}
+	if len(list) != 1 || list[0].ID != relationship.ID {
+		t.Fatalf("unexpected recipient relationship list: %+v", list)
+	}
+	if _, err := repo.GetTrustedContactRelationshipForAccount(ctx, other.ID, relationship.ID); !errors.Is(err, incidents.ErrNotFound) {
+		t.Fatalf("other account get relationship error = %v, want ErrNotFound", err)
+	}
+
+	replacement, err := repo.ReplaceTrustedContactRelationship(ctx, incidents.ReplaceTrustedContactRelationshipParams{
+		OwnerAccountID:     owner.ID,
+		RelationshipID:     relationship.ID,
+		RecipientAccountID: other.ID,
+		RelationshipRole:   incidents.TrustedContactRelationshipRoleTrustedContact,
+		DisplayLabel:       "replacement contact",
+	})
+	if err != nil {
+		t.Fatalf("replace trusted contact relationship: %v", err)
+	}
+	if replacement.RelationshipState != incidents.TrustedContactRelationshipStatePendingInvite || replacement.RecipientAccountID != other.ID {
+		t.Fatalf("unexpected replacement relationship: %+v", replacement)
+	}
+	oldRelationship, err := repo.GetTrustedContactRelationshipForAccount(ctx, owner.ID, relationship.ID)
+	if err != nil {
+		t.Fatalf("get old relationship: %v", err)
+	}
+	if oldRelationship.RelationshipState != incidents.TrustedContactRelationshipStateReplaced ||
+		oldRelationship.ReplacedAt == nil ||
+		oldRelationship.ReplacedByRelationshipID != replacement.ID {
+		t.Fatalf("old relationship was not replaced: %+v", oldRelationship)
+	}
+
+	declined, err := repo.DeclineTrustedContactRelationship(ctx, other.ID, replacement.ID)
+	if err != nil {
+		t.Fatalf("decline replacement relationship: %v", err)
+	}
+	if declined.RelationshipState != incidents.TrustedContactRelationshipStateDeclined || declined.DeclinedAt == nil {
+		t.Fatalf("relationship was not declined: %+v", declined)
+	}
+	if _, err := repo.AcceptTrustedContactRelationship(ctx, other.ID, replacement.ID); !errors.Is(err, incidents.ErrInvalidState) {
+		t.Fatalf("accept declined relationship error = %v, want ErrInvalidState", err)
+	}
+
+	revokedCandidate, err := repo.CreateTrustedContactRelationship(ctx, incidents.CreateTrustedContactRelationshipParams{
+		OwnerAccountID:     owner.ID,
+		RecipientAccountID: recipient.ID,
+		RelationshipRole:   incidents.TrustedContactRelationshipRoleTrustedContact,
+		DisplayLabel:       "new invite",
+	})
+	if err != nil {
+		t.Fatalf("create revoke candidate: %v", err)
+	}
+	revoked, err := repo.RevokeTrustedContactRelationship(ctx, owner.ID, revokedCandidate.ID, owner.ID)
+	if err != nil {
+		t.Fatalf("revoke trusted contact relationship: %v", err)
+	}
+	if revoked.RelationshipState != incidents.TrustedContactRelationshipStateRevoked ||
+		revoked.RevokedAt == nil ||
+		revoked.RevokedByAccountID != owner.ID {
+		t.Fatalf("relationship was not revoked: %+v", revoked)
+	}
+	if _, err := repo.ReplaceTrustedContactRelationship(ctx, incidents.ReplaceTrustedContactRelationshipParams{
+		OwnerAccountID: owner.ID,
+		RelationshipID: revoked.ID,
+	}); !errors.Is(err, incidents.ErrInvalidState) {
+		t.Fatalf("replace revoked relationship error = %v, want ErrInvalidState", err)
 	}
 }
 
@@ -230,6 +1190,42 @@ func TestWrappedKeyRecords(t *testing.T) {
 		t.Fatalf("get wrapped key: %v", err)
 	}
 
+	replacementKey, err := repo.ReplaceContactPublicKey(ctx, incidents.ReplaceContactPublicKeyParams{
+		OwnerAccountID:       owner.ID,
+		PublicKeyID:          contactKey.ID,
+		DisplayLabel:         "contact replacement",
+		WrappingAlgorithm:    "age-v1-x25519",
+		PublicKey:            "age1wrappedreplacement",
+		PublicKeyFingerprint: "fingerprint-wrapped-replacement",
+		KeyState:             incidents.ContactKeyStateActive,
+	})
+	if err != nil {
+		t.Fatalf("replace contact key: %v", err)
+	}
+	if replacementKey.Version != 2 || replacementKey.ContactID != contactKey.ContactID {
+		t.Fatalf("replacement contact key = %+v, want same contact version 2", replacementKey)
+	}
+	if _, err := repo.CreateWrappedKeyRecord(ctx, incidents.CreateWrappedKeyRecordParams{
+		OwnerAccountID:           owner.ID,
+		IncidentID:               incident.ID,
+		StreamID:                 stream.ID,
+		GrantID:                  grant.ID,
+		MediaKeyID:               "media-key-2",
+		WrappingAlgorithm:        "age-v1-x25519",
+		WrappingAlgorithmVersion: "1",
+		WrappedKeyCiphertext:     "wrapped-ciphertext-2",
+		PublicWrappingMetadata:   []byte(`{"profile":"age-v1-x25519"}`),
+	}); !errors.Is(err, incidents.ErrNotFound) {
+		t.Fatalf("replaced contact key create wrapped key error = %v, want ErrNotFound", err)
+	}
+	revokedRecord, err := repo.RevokeWrappedKeyRecord(ctx, owner.ID, record.ID, owner.ID)
+	if err != nil {
+		t.Fatalf("revoke wrapped key after contact key replacement: %v", err)
+	}
+	if revokedRecord.ContactPublicKeyID != contactKey.ID || revokedRecord.ContactPublicKeyVersion != contactKey.Version {
+		t.Fatalf("wrapped key binding mutated after replacement: %+v", revokedRecord)
+	}
+
 	if _, err := repo.RevokeSharingGrant(ctx, owner.ID, grant.ID, owner.ID); err != nil {
 		t.Fatalf("revoke sharing grant: %v", err)
 	}
@@ -242,6 +1238,168 @@ func TestWrappedKeyRecords(t *testing.T) {
 	}
 	if len(records) != 0 {
 		t.Fatalf("revoked grant still delivered wrapped keys: %+v", records)
+	}
+
+	auditEvents, err := repo.ListSharingAuditEvents(ctx, owner.ID)
+	if err != nil {
+		t.Fatalf("list sharing audit events: %v", err)
+	}
+	requireSharingAuditActions(t, auditEvents,
+		incidents.SharingAuditActionContactKeyRegistered,
+		incidents.SharingAuditActionSharingGrantCreated,
+		incidents.SharingAuditActionWrappedKeyCreated,
+		incidents.SharingAuditActionContactKeyReplaced,
+		incidents.SharingAuditActionWrappedKeyRevoked,
+		incidents.SharingAuditActionSharingGrantRevoked,
+	)
+	assertSharingAuditActorsPresent(t, auditEvents)
+	assertSharingAuditEventsSafe(t, auditEvents,
+		"age1wrapped",
+		"media-key-1",
+		"wrapped-ciphertext",
+		`{"profile":"age-v1-x25519"}`,
+	)
+}
+
+func TestTrustedContactWrappedKeyRecordsRequireAcceptedRelationshipAndBoundKey(t *testing.T) {
+	ctx := context.Background()
+	repo := newRepository(t, ctx)
+	owner, err := repo.CreateAccount(ctx, auth.CreateAccountParams{
+		Username:     "trusted-wrapped-owner",
+		PasswordHash: "hash",
+		Role:         auth.RoleUser,
+	})
+	if err != nil {
+		t.Fatalf("create owner account: %v", err)
+	}
+	recipient, err := repo.CreateAccount(ctx, auth.CreateAccountParams{
+		Username:     "trusted-wrapped-recipient",
+		PasswordHash: "hash",
+		Role:         auth.RoleUser,
+	})
+	if err != nil {
+		t.Fatalf("create recipient account: %v", err)
+	}
+	other, err := repo.CreateAccount(ctx, auth.CreateAccountParams{
+		Username:     "trusted-wrapped-other",
+		PasswordHash: "hash",
+		Role:         auth.RoleUser,
+	})
+	if err != nil {
+		t.Fatalf("create other account: %v", err)
+	}
+	incident, err := repo.CreateIncidentForAccount(ctx, owner.ID, incidents.CreateIncidentParams{})
+	if err != nil {
+		t.Fatalf("create owner incident: %v", err)
+	}
+	contactKey, err := repo.CreateContactPublicKey(ctx, incidents.CreateContactPublicKeyParams{
+		OwnerAccountID:       owner.ID,
+		RecipientAccountID:   recipient.ID,
+		DisplayLabel:         "recipient contact",
+		WrappingAlgorithm:    "age-v1-x25519",
+		PublicKey:            "age1trustedrecipient",
+		PublicKeyFingerprint: "fingerprint-trusted-recipient",
+		KeyState:             incidents.ContactKeyStateActive,
+	})
+	if err != nil {
+		t.Fatalf("create contact key: %v", err)
+	}
+	if contactKey.RecipientAccountID != recipient.ID {
+		t.Fatalf("contact key recipient = %q, want %q", contactKey.RecipientAccountID, recipient.ID)
+	}
+	grant, err := repo.CreateSharingGrant(ctx, incidents.CreateSharingGrantParams{
+		OwnerAccountID: owner.ID,
+		IncidentID:     incident.ID,
+		RecipientType:  incidents.SharingGrantRecipientTrustedContact,
+		ContactID:      contactKey.ContactID,
+		DataClass:      incidents.SharingGrantDataClassMetadataCiphertext,
+	})
+	if err != nil {
+		t.Fatalf("create sharing grant: %v", err)
+	}
+	record, err := repo.CreateWrappedKeyRecord(ctx, incidents.CreateWrappedKeyRecordParams{
+		OwnerAccountID:           owner.ID,
+		IncidentID:               incident.ID,
+		GrantID:                  grant.ID,
+		MediaKeyID:               "media-key-trusted",
+		WrappingAlgorithm:        "age-v1-x25519",
+		WrappingAlgorithmVersion: "1",
+		WrappedKeyCiphertext:     "wrapped-ciphertext-trusted",
+		PublicWrappingMetadata:   []byte(`{"profile":"age-v1-x25519"}`),
+	})
+	if err != nil {
+		t.Fatalf("create wrapped key: %v", err)
+	}
+	if records, err := repo.ListTrustedContactWrappedKeyRecords(ctx, recipient.ID, incident.ID); err != nil || len(records) != 0 {
+		t.Fatalf("trusted-contact wrapped keys before accepted relationship = %+v, err %v", records, err)
+	}
+	if _, err := repo.GetTrustedContactWrappedKeyRecord(ctx, recipient.ID, record.ID); !errors.Is(err, incidents.ErrNotFound) {
+		t.Fatalf("get before accepted relationship error = %v, want ErrNotFound", err)
+	}
+
+	relationship, err := repo.CreateTrustedContactRelationship(ctx, incidents.CreateTrustedContactRelationshipParams{
+		OwnerAccountID:     owner.ID,
+		RecipientAccountID: recipient.ID,
+		RelationshipRole:   incidents.TrustedContactRelationshipRoleTrustedContact,
+	})
+	if err != nil {
+		t.Fatalf("create trusted contact relationship: %v", err)
+	}
+	if _, err := repo.AcceptTrustedContactRelationship(ctx, recipient.ID, relationship.ID); err != nil {
+		t.Fatalf("accept trusted contact relationship: %v", err)
+	}
+	records, err := repo.ListTrustedContactWrappedKeyRecords(ctx, recipient.ID, incident.ID)
+	if err != nil {
+		t.Fatalf("list trusted-contact wrapped keys: %v", err)
+	}
+	if len(records) != 1 || records[0].ID != record.ID {
+		t.Fatalf("unexpected trusted-contact wrapped key records: %+v", records)
+	}
+	if _, err := repo.GetTrustedContactWrappedKeyRecord(ctx, recipient.ID, record.ID); err != nil {
+		t.Fatalf("get trusted-contact wrapped key: %v", err)
+	}
+	if records, err := repo.ListTrustedContactWrappedKeyRecords(ctx, other.ID, incident.ID); err != nil || len(records) != 0 {
+		t.Fatalf("unrelated trusted-contact wrapped keys = %+v, err %v", records, err)
+	}
+	if _, err := repo.GetTrustedContactWrappedKeyRecord(ctx, other.ID, record.ID); !errors.Is(err, incidents.ErrNotFound) {
+		t.Fatalf("unrelated get error = %v, want ErrNotFound", err)
+	}
+
+	if _, err := repo.RevokeTrustedContactRelationship(ctx, owner.ID, relationship.ID, owner.ID); err != nil {
+		t.Fatalf("revoke trusted contact relationship: %v", err)
+	}
+	if records, err := repo.ListTrustedContactWrappedKeyRecords(ctx, recipient.ID, incident.ID); err != nil || len(records) != 0 {
+		t.Fatalf("revoked relationship delivered wrapped keys = %+v, err %v", records, err)
+	}
+
+	secondRelationship, err := repo.CreateTrustedContactRelationship(ctx, incidents.CreateTrustedContactRelationshipParams{
+		OwnerAccountID:     owner.ID,
+		RecipientAccountID: recipient.ID,
+		RelationshipRole:   incidents.TrustedContactRelationshipRoleTrustedContact,
+	})
+	if err != nil {
+		t.Fatalf("create second trusted contact relationship: %v", err)
+	}
+	if _, err := repo.AcceptTrustedContactRelationship(ctx, recipient.ID, secondRelationship.ID); err != nil {
+		t.Fatalf("accept second trusted contact relationship: %v", err)
+	}
+	replacementKey, err := repo.ReplaceContactPublicKey(ctx, incidents.ReplaceContactPublicKeyParams{
+		OwnerAccountID:       owner.ID,
+		PublicKeyID:          contactKey.ID,
+		DisplayLabel:         "recipient replacement",
+		WrappingAlgorithm:    "age-v1-x25519",
+		PublicKey:            "age1trustedrecipientreplacement",
+		PublicKeyFingerprint: "fingerprint-trusted-recipient-replacement",
+		KeyState:             incidents.ContactKeyStateActive,
+	})
+	if err != nil {
+		t.Fatalf("replace contact public key: %v", err)
+	}
+	if replacementKey.RecipientAccountID != recipient.ID {
+		t.Fatalf("replacement recipient = %q, want %q", replacementKey.RecipientAccountID, recipient.ID)
+	}
+	if records, err := repo.ListTrustedContactWrappedKeyRecords(ctx, recipient.ID, incident.ID); err != nil || len(records) != 0 {
+		t.Fatalf("replaced contact key delivered old wrapped keys = %+v, err %v", records, err)
 	}
 }
 
@@ -315,6 +1473,65 @@ func TestIncidentDeletionPrunesSharingAndWrappedKeyMetadata(t *testing.T) {
 	}
 	if _, err := repo.GetContactPublicKey(ctx, owner.ID, contactKey.ID); err != nil {
 		t.Fatalf("contact key should remain after incident deletion: %v", err)
+	}
+	auditEvents, err := repo.ListSharingAuditEvents(ctx, owner.ID)
+	if err != nil {
+		t.Fatalf("list sharing audit events after deletion: %v", err)
+	}
+	requireSharingAuditActions(t, auditEvents, incidents.SharingAuditActionIncidentMetadataPruned)
+	var found bool
+	for _, event := range auditEvents {
+		if event.Action == incidents.SharingAuditActionIncidentMetadataPruned &&
+			event.OutcomeCategory == incidents.SharingAuditOutcomeDeleted &&
+			event.IncidentID == incident.ID &&
+			event.DeletionDecisionID == status.DecisionID {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("missing deletion-pruning audit event: %+v", auditEvents)
+	}
+	assertSharingAuditActorsPresent(t, auditEvents)
+	assertSharingAuditEventsSafe(t, auditEvents,
+		"media-key-delete",
+		"wrapped-ciphertext",
+		`{"profile":"age-v1-x25519"}`,
+	)
+}
+
+func requireSharingAuditActions(t *testing.T, events []incidents.SharingAuditEvent, actions ...string) {
+	t.Helper()
+	counts := map[string]int{}
+	for _, event := range events {
+		counts[event.Action]++
+	}
+	for _, action := range actions {
+		if counts[action] == 0 {
+			t.Fatalf("missing sharing audit action %q in %+v", action, events)
+		}
+	}
+}
+
+func assertSharingAuditActorsPresent(t *testing.T, events []incidents.SharingAuditEvent) {
+	t.Helper()
+	for _, event := range events {
+		if event.ActorAccountID == "" {
+			t.Fatalf("audit event %q has empty actor account id: %#v", event.ID, event)
+		}
+	}
+}
+
+func assertSharingAuditEventsSafe(t *testing.T, events []incidents.SharingAuditEvent, disallowed ...string) {
+	t.Helper()
+	encoded, err := json.Marshal(events)
+	if err != nil {
+		t.Fatalf("marshal sharing audit events: %v", err)
+	}
+	body := string(encoded)
+	for _, value := range disallowed {
+		if strings.Contains(body, value) {
+			t.Fatalf("sharing audit events exposed disallowed value %q: %s", value, body)
+		}
 	}
 }
 
@@ -537,6 +1754,87 @@ func TestListRetentionDeletionCandidatesPreviewsClosedActiveOnly(t *testing.T) {
 	}
 }
 
+func TestListModeAwareRetentionPreviewIncidentsSelectsClosedActiveMetadata(t *testing.T) {
+	ctx := context.Background()
+	repo := newRepository(t, ctx)
+	openIncident, err := repo.CreateIncidentForAccount(ctx, "", incidents.CreateIncidentParams{
+		ClientLabel:      "open",
+		IncidentMode:     incidents.IncidentModeEmergency,
+		CaptureProfile:   incidents.CaptureProfileAudioVideoLocation,
+		EscalationPolicy: incidents.EscalationPolicyTrustedContactsOnStart,
+		SharingState:     incidents.SharingStatePrivate,
+	})
+	if err != nil {
+		t.Fatalf("create open incident: %v", err)
+	}
+	closedIncident, err := repo.CreateIncidentForAccount(ctx, "", incidents.CreateIncidentParams{
+		ClientLabel:      "closed",
+		IncidentMode:     incidents.IncidentModeInteractionRecord,
+		CaptureProfile:   incidents.CaptureProfileAudioLocation,
+		EscalationPolicy: incidents.EscalationPolicyNone,
+		SharingState:     incidents.SharingStatePrivate,
+	})
+	if err != nil {
+		t.Fatalf("create closed incident: %v", err)
+	}
+	missingInputIncident, err := repo.CreateIncident(ctx, "missing", "")
+	if err != nil {
+		t.Fatalf("create missing-input incident: %v", err)
+	}
+	deletingIncident, err := repo.CreateIncidentForAccount(ctx, "", incidents.CreateIncidentParams{
+		ClientLabel:      "deleting",
+		IncidentMode:     incidents.IncidentModeEvidenceNote,
+		CaptureProfile:   incidents.CaptureProfileNoteOrAttachment,
+		EscalationPolicy: incidents.EscalationPolicyNone,
+		SharingState:     incidents.SharingStatePrivate,
+	})
+	if err != nil {
+		t.Fatalf("create deleting incident: %v", err)
+	}
+	for _, incidentID := range []string{closedIncident.ID, missingInputIncident.ID, deletingIncident.ID} {
+		if _, err := repo.CloseIncident(ctx, incidentID); err != nil {
+			t.Fatalf("close incident %s: %v", incidentID, err)
+		}
+	}
+	if _, err := repo.RequestIncidentDeletion(ctx, incidents.IncidentDeletionRequest{
+		IncidentID: deletingIncident.ID,
+		Source:     incidents.IncidentDeletionSourceAdminRequest,
+	}); err != nil {
+		t.Fatalf("request deletion: %v", err)
+	}
+
+	items, err := repo.ListModeAwareRetentionPreviewIncidents(ctx, 10)
+	if err != nil {
+		t.Fatalf("list mode-aware retention preview incidents: %v", err)
+	}
+	if len(items) != 2 {
+		t.Fatalf("preview incidents = %+v, want two closed active rows", items)
+	}
+	byID := map[string]incidents.ModeAwareRetentionPreviewIncident{}
+	for _, item := range items {
+		if item.IncidentID == openIncident.ID || item.IncidentID == deletingIncident.ID {
+			t.Fatalf("preview included ineligible incident: %+v", item)
+		}
+		byID[item.IncidentID] = item
+	}
+	gotClosed, ok := byID[closedIncident.ID]
+	if !ok ||
+		gotClosed.IncidentMode != incidents.IncidentModeInteractionRecord ||
+		gotClosed.CaptureProfile != incidents.CaptureProfileAudioLocation ||
+		gotClosed.EscalationPolicy != incidents.EscalationPolicyNone ||
+		gotClosed.SharingState != incidents.SharingStatePrivate {
+		t.Fatalf("closed preview incident lost mode metadata: %+v", gotClosed)
+	}
+	gotMissing, ok := byID[missingInputIncident.ID]
+	if !ok ||
+		gotMissing.IncidentMode != "" ||
+		gotMissing.CaptureProfile != "" ||
+		gotMissing.EscalationPolicy != "" ||
+		gotMissing.SharingState != "" {
+		t.Fatalf("missing-input preview incident should preserve missing inputs: %+v", gotMissing)
+	}
+}
+
 func TestIncidentDeletionJobStatusSummarizesSafeRetryCategories(t *testing.T) {
 	ctx := context.Background()
 	repo := newRepository(t, ctx)
@@ -744,6 +2042,123 @@ func TestCreateChunkRejectsCompletedStream(t *testing.T) {
 	}
 }
 
+func TestAccountCommittedBlobQuotaUsesOwnedCommittedChunks(t *testing.T) {
+	ctx := context.Background()
+	repo := newRepository(t, ctx)
+	owner, err := repo.CreateAccount(ctx, auth.CreateAccountParams{
+		Username:     "quota-owner",
+		PasswordHash: "hash",
+		Role:         auth.RoleUser,
+		AccountState: auth.AccountStateActive,
+	})
+	if err != nil {
+		t.Fatalf("create owner account: %v", err)
+	}
+	other, err := repo.CreateAccount(ctx, auth.CreateAccountParams{
+		Username:     "quota-other",
+		PasswordHash: "hash",
+		Role:         auth.RoleUser,
+		AccountState: auth.AccountStateActive,
+	})
+	if err != nil {
+		t.Fatalf("create other account: %v", err)
+	}
+	firstIncident, err := repo.CreateIncidentForAccount(ctx, owner.ID, incidents.CreateIncidentParams{})
+	if err != nil {
+		t.Fatalf("create first owned incident: %v", err)
+	}
+	secondIncident, err := repo.CreateIncidentForAccount(ctx, owner.ID, incidents.CreateIncidentParams{})
+	if err != nil {
+		t.Fatalf("create second owned incident: %v", err)
+	}
+	otherIncident, err := repo.CreateIncidentForAccount(ctx, other.ID, incidents.CreateIncidentParams{})
+	if err != nil {
+		t.Fatalf("create other incident: %v", err)
+	}
+	legacyIncident, err := repo.CreateIncident(ctx, "legacy", "")
+	if err != nil {
+		t.Fatalf("create legacy incident: %v", err)
+	}
+
+	firstChunk := testChunkParams(firstIncident.ID, "", incidents.MediaTypeAudio, 1)
+	firstChunk.ByteSize = 6
+	firstChunk.AccountBlobQuotaBytes = 10
+	if _, err := repo.CreateChunk(ctx, firstChunk); err != nil {
+		t.Fatalf("create first owned chunk: %v", err)
+	}
+	if usage, err := repo.AccountCommittedBlobBytes(ctx, owner.ID); err != nil || usage != 6 {
+		t.Fatalf("owner usage = %d, err %v; want 6", usage, err)
+	}
+
+	otherChunk := testChunkParams(otherIncident.ID, "", incidents.MediaTypeAudio, 1)
+	otherChunk.ByteSize = 9
+	otherChunk.AccountBlobQuotaBytes = 10
+	if _, err := repo.CreateChunk(ctx, otherChunk); err != nil {
+		t.Fatalf("create other account chunk: %v", err)
+	}
+	legacyChunk := testChunkParams(legacyIncident.ID, "", incidents.MediaTypeAudio, 1)
+	legacyChunk.ByteSize = 9
+	legacyChunk.AccountBlobQuotaBytes = 10
+	if _, err := repo.CreateChunk(ctx, legacyChunk); err != nil {
+		t.Fatalf("create legacy chunk: %v", err)
+	}
+	if usage, err := repo.AccountCommittedBlobBytes(ctx, owner.ID); err != nil || usage != 6 {
+		t.Fatalf("owner usage after other chunks = %d, err %v; want 6", usage, err)
+	}
+
+	tooLarge := testChunkParams(secondIncident.ID, "", incidents.MediaTypeAudio, 1)
+	tooLarge.ByteSize = 5
+	tooLarge.AccountBlobQuotaBytes = 10
+	if _, err := repo.CreateChunk(ctx, tooLarge); !errors.Is(err, incidents.ErrAccountBlobQuotaExceeded) {
+		t.Fatalf("quota rejection error = %v, want ErrAccountBlobQuotaExceeded", err)
+	}
+	if usage, err := repo.AccountCommittedBlobBytes(ctx, owner.ID); err != nil || usage != 6 {
+		t.Fatalf("owner usage after rejected chunk = %d, err %v; want 6", usage, err)
+	}
+
+	secondChunk := testChunkParams(secondIncident.ID, "", incidents.MediaTypeAudio, 2)
+	secondChunk.ByteSize = 4
+	secondChunk.AccountBlobQuotaBytes = 10
+	if _, err := repo.CreateChunk(ctx, secondChunk); err != nil {
+		t.Fatalf("create second owned chunk: %v", err)
+	}
+	if usage, err := repo.AccountCommittedBlobBytes(ctx, owner.ID); err != nil || usage != 10 {
+		t.Fatalf("owner usage at quota = %d, err %v; want 10", usage, err)
+	}
+	if _, err := repo.CreateChunk(ctx, firstChunk); !errors.Is(err, incidents.ErrDuplicate) {
+		t.Fatalf("duplicate at quota error = %v, want ErrDuplicate", err)
+	}
+
+	status, err := repo.RequestIncidentDeletion(ctx, incidents.IncidentDeletionRequest{
+		IncidentID:     firstIncident.ID,
+		Source:         incidents.IncidentDeletionSourceAccountRequest,
+		ActorAccountID: owner.ID,
+		AllowOpen:      true,
+		RequireOwnerID: owner.ID,
+	})
+	if err != nil {
+		t.Fatalf("request incident deletion: %v", err)
+	}
+	if usage, err := repo.AccountCommittedBlobBytes(ctx, owner.ID); err != nil || usage != 10 {
+		t.Fatalf("owner usage while deletion pending = %d, err %v; want 10", usage, err)
+	}
+	items, err := repo.ListIncidentDeletionItems(ctx, status.DecisionID)
+	if err != nil {
+		t.Fatalf("list deletion items: %v", err)
+	}
+	for _, item := range items {
+		if err := repo.MarkIncidentDeletionItemDeleted(ctx, item.ID); err != nil {
+			t.Fatalf("mark deletion item deleted: %v", err)
+		}
+	}
+	if _, err := repo.CompleteIncidentDeletion(ctx, status.DecisionID); err != nil {
+		t.Fatalf("complete incident deletion: %v", err)
+	}
+	if usage, err := repo.AccountCommittedBlobBytes(ctx, owner.ID); err != nil || usage != 4 {
+		t.Fatalf("owner usage after durable deletion = %d, err %v; want 4", usage, err)
+	}
+}
+
 func TestCreateChunkUsesStreamScopedDuplicateIdentity(t *testing.T) {
 	ctx := context.Background()
 	repo := newRepository(t, ctx)
@@ -894,7 +2309,7 @@ func TestCompleteMediaStreamRejectsUnexpectedChunkRows(t *testing.T) {
 func newRepository(t *testing.T, ctx context.Context) *incidents.Repository {
 	t.Helper()
 
-	conn, err := db.Open(ctx, filepath.Join(t.TempDir(), "safety.db"))
+	conn, err := db.Open(ctx, filepath.Join(t.TempDir(), "proofline.db"))
 	if err != nil {
 		t.Fatalf("open db: %v", err)
 	}

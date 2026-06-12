@@ -1,7 +1,9 @@
 package config
 
 import (
+	"fmt"
 	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -45,6 +47,514 @@ func TestLoadDefaultSessionTTL(t *testing.T) {
 
 	if cfg.SessionTTL != 12*time.Hour {
 		t.Fatalf("default session ttl = %s, want 12h", cfg.SessionTTL)
+	}
+}
+
+func TestLoadDefaultSecondFactorEmailChallengeTTL(t *testing.T) {
+	cfg := loadConfigForTest(t, nil)
+
+	if cfg.SecondFactorEmailChallengeTTL != 10*time.Minute {
+		t.Fatalf("default second-factor email challenge ttl = %s, want 10m", cfg.SecondFactorEmailChallengeTTL)
+	}
+}
+
+func TestLoadDefaultRelayCapabilityConfig(t *testing.T) {
+	cfg := loadConfigForTest(t, nil)
+
+	if cfg.RelayCapability.Secret != "" {
+		t.Fatal("relay capability secret should default to unset")
+	}
+	if cfg.RelayCapability.TTL != 5*time.Minute {
+		t.Fatalf("relay capability ttl = %s, want 5m", cfg.RelayCapability.TTL)
+	}
+	if cfg.RelayCapability.MaxChunks != 64 {
+		t.Fatalf("relay capability max chunks = %d, want 64", cfg.RelayCapability.MaxChunks)
+	}
+}
+
+func TestLoadRelayCapabilityConfigFromEnv(t *testing.T) {
+	cfg := loadConfigForTest(t, map[string]string{
+		"SAFE_RELAY_CAPABILITY_SECRET":     "0123456789abcdef0123456789abcdef",
+		"SAFE_RELAY_CAPABILITY_TTL":        "2m",
+		"SAFE_RELAY_CAPABILITY_MAX_CHUNKS": "12",
+	})
+
+	if cfg.RelayCapability.Secret != "0123456789abcdef0123456789abcdef" {
+		t.Fatalf("relay capability secret = %q", cfg.RelayCapability.Secret)
+	}
+	if cfg.RelayCapability.TTL != 2*time.Minute {
+		t.Fatalf("relay capability ttl = %s, want 2m", cfg.RelayCapability.TTL)
+	}
+	if cfg.RelayCapability.MaxChunks != 12 {
+		t.Fatalf("relay capability max chunks = %d, want 12", cfg.RelayCapability.MaxChunks)
+	}
+}
+
+func TestLoadRelayCapabilitySecretFileFromEnv(t *testing.T) {
+	secretPath := writeSecretFile(t, "file-relay-capability-secret-12345\n")
+
+	cfg := loadConfigForTest(t, map[string]string{
+		"SAFE_RELAY_CAPABILITY_SECRET":      "direct-relay-capability-secret-123",
+		"SAFE_RELAY_CAPABILITY_SECRET_FILE": secretPath,
+	})
+
+	if cfg.RelayCapability.Secret != "file-relay-capability-secret-12345" {
+		t.Fatalf("relay capability secret = %q, want file value", cfg.RelayCapability.Secret)
+	}
+}
+
+func TestLoadRelayCapabilityConfigFromTOML(t *testing.T) {
+	secretPath := writeSecretFile(t, "toml-relay-capability-secret-12345\n")
+	configPath := writeConfigFile(t, fmt.Sprintf(`
+[relay_capability]
+secret_file = %q
+ttl = "3m"
+max_chunks = 9
+`, secretPath))
+
+	cfg := loadConfigWithOptionsForTest(t, LoadOptions{ConfigFilePath: configPath}, nil)
+
+	if cfg.RelayCapability.Secret != "toml-relay-capability-secret-12345" {
+		t.Fatalf("relay capability secret = %q, want toml file value", cfg.RelayCapability.Secret)
+	}
+	if cfg.RelayCapability.TTL != 3*time.Minute {
+		t.Fatalf("relay capability ttl = %s, want 3m", cfg.RelayCapability.TTL)
+	}
+	if cfg.RelayCapability.MaxChunks != 9 {
+		t.Fatalf("relay capability max chunks = %d, want 9", cfg.RelayCapability.MaxChunks)
+	}
+}
+
+func TestLoadRejectsInvalidRelayCapabilityConfig(t *testing.T) {
+	for name, env := range map[string]map[string]string{
+		"short secret": {
+			"SAFE_RELAY_CAPABILITY_SECRET": "short",
+		},
+		"zero ttl": {
+			"SAFE_RELAY_CAPABILITY_TTL": "0",
+		},
+		"zero max chunks": {
+			"SAFE_RELAY_CAPABILITY_MAX_CHUNKS": "0",
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			_, err := loadConfigForTestErr(t, env)
+			if err == nil {
+				t.Fatal("expected relay capability config error")
+			}
+			if strings.Contains(err.Error(), "0123456789abcdef") {
+				t.Fatalf("relay capability config error exposed secret: %v", err)
+			}
+		})
+	}
+}
+
+func TestLoadDefaultRelayServiceConfig(t *testing.T) {
+	cfg := loadConfigForTest(t, nil)
+
+	if cfg.RelayService.AuthToken != "" {
+		t.Fatal("relay service auth token should default to unset")
+	}
+}
+
+func TestLoadRelayServiceConfigFromEnv(t *testing.T) {
+	cfg := loadConfigForTest(t, map[string]string{
+		"SAFE_RELAY_SERVICE_AUTH_TOKEN": "relay-service-auth-token-1234567890",
+	})
+
+	if cfg.RelayService.AuthToken != "relay-service-auth-token-1234567890" {
+		t.Fatalf("relay service auth token = %q", cfg.RelayService.AuthToken)
+	}
+}
+
+func TestLoadRelayServiceAuthTokenFileFromEnv(t *testing.T) {
+	secretPath := writeSecretFile(t, "file-relay-service-auth-token-12345\n")
+
+	cfg := loadConfigForTest(t, map[string]string{
+		"SAFE_RELAY_SERVICE_AUTH_TOKEN":      "direct-relay-service-auth-token-123",
+		"SAFE_RELAY_SERVICE_AUTH_TOKEN_FILE": secretPath,
+	})
+
+	if cfg.RelayService.AuthToken != "file-relay-service-auth-token-12345" {
+		t.Fatalf("relay service auth token = %q, want file value", cfg.RelayService.AuthToken)
+	}
+}
+
+func TestLoadRelayServiceConfigFromTOML(t *testing.T) {
+	secretPath := writeSecretFile(t, "toml-relay-service-auth-token-12345\n")
+	configPath := writeConfigFile(t, fmt.Sprintf(`
+[relay_service]
+auth_token_file = %q
+`, secretPath))
+
+	cfg := loadConfigWithOptionsForTest(t, LoadOptions{ConfigFilePath: configPath}, nil)
+
+	if cfg.RelayService.AuthToken != "toml-relay-service-auth-token-12345" {
+		t.Fatalf("relay service auth token = %q, want toml file value", cfg.RelayService.AuthToken)
+	}
+}
+
+func TestLoadRejectsInvalidRelayServiceConfig(t *testing.T) {
+	_, err := loadConfigForTestErr(t, map[string]string{
+		"SAFE_RELAY_SERVICE_AUTH_TOKEN": "short",
+	})
+	if err == nil {
+		t.Fatal("expected relay service config error")
+	}
+	if strings.Contains(err.Error(), "relay-service-auth-token") {
+		t.Fatalf("relay service config error exposed token: %v", err)
+	}
+}
+
+func TestLoadNoConfigFileUsesBuiltInDefaults(t *testing.T) {
+	t.Chdir(t.TempDir())
+
+	cfg := loadConfigForTest(t, nil)
+
+	assertStringsEqual(t, cfg.MainBindAddrs, []string{defaultMainBindAddr})
+	assertStringsEqual(t, cfg.AdminBindAddrs, []string{defaultAdminBindAddr})
+	if cfg.DataDir != defaultDataDir || cfg.DBPath != defaultDBPath {
+		t.Fatalf("paths = data_dir %q db_path %q", cfg.DataDir, cfg.DBPath)
+	}
+}
+
+func TestLoadDefaultAccountRegistrationAndEmailConfig(t *testing.T) {
+	cfg := loadConfigForTest(t, nil)
+
+	if cfg.AccountRegistration.Mode != AccountRegistrationModeDisabled {
+		t.Fatalf("registration mode = %q, want disabled", cfg.AccountRegistration.Mode)
+	}
+	if cfg.AccountRegistration.EmailVerificationTTL != 24*time.Hour {
+		t.Fatalf("email verification ttl = %s, want 24h", cfg.AccountRegistration.EmailVerificationTTL)
+	}
+	if cfg.AccountRegistration.PublicWebOrigin != "" {
+		t.Fatalf("public web origin = %q, want empty", cfg.AccountRegistration.PublicWebOrigin)
+	}
+	if cfg.Email.Backend != EmailBackendNone {
+		t.Fatalf("email backend = %q, want none", cfg.Email.Backend)
+	}
+}
+
+func TestLoadAccountRegistrationOpenRequiresUsableEmail(t *testing.T) {
+	tests := map[string]map[string]string{
+		"missing email backend": {
+			"SAFE_ACCOUNT_REGISTRATION_MODE": "open",
+			"SAFE_PUBLIC_WEB_ORIGIN":         "https://app.example.invalid",
+		},
+		"missing public web origin": {
+			"SAFE_ACCOUNT_REGISTRATION_MODE": "open",
+			"SAFE_EMAIL_BACKEND":             "smtp",
+			"SAFE_SMTP_HOST":                 "smtp.example.invalid",
+			"SAFE_SMTP_FROM":                 "noreply@example.invalid",
+		},
+		"invalid mode": {
+			"SAFE_ACCOUNT_REGISTRATION_MODE": "public",
+		},
+		"invalid ttl": {
+			"SAFE_EMAIL_VERIFICATION_TTL": "0",
+		},
+	}
+
+	for name, env := range tests {
+		t.Run(name, func(t *testing.T) {
+			_, err := loadConfigForTestErr(t, env)
+			if err == nil {
+				t.Fatal("expected account registration config error")
+			}
+			if !strings.Contains(err.Error(), "SAFE_ACCOUNT_REGISTRATION_MODE") &&
+				!strings.Contains(err.Error(), "SAFE_EMAIL_BACKEND") &&
+				!strings.Contains(err.Error(), "SAFE_PUBLIC_WEB_ORIGIN") &&
+				!strings.Contains(err.Error(), "SAFE_EMAIL_VERIFICATION_TTL") {
+				t.Fatalf("expected registration config env context, got %v", err)
+			}
+		})
+	}
+}
+
+func TestLoadPaidRegistrationModeDoesNotRequireEmail(t *testing.T) {
+	cfg := loadConfigForTest(t, map[string]string{
+		"SAFE_ACCOUNT_REGISTRATION_MODE": "paid",
+	})
+
+	if cfg.AccountRegistration.Mode != AccountRegistrationModePaid {
+		t.Fatalf("registration mode = %q, want paid", cfg.AccountRegistration.Mode)
+	}
+	if cfg.Email.Backend != EmailBackendNone {
+		t.Fatalf("email backend = %q, want none", cfg.Email.Backend)
+	}
+}
+
+func TestLoadSMTPEmailConfig(t *testing.T) {
+	cfg := loadConfigForTest(t, map[string]string{
+		"SAFE_EMAIL_BACKEND":     "smtp",
+		"SAFE_SMTP_HOST":         "smtp.example.invalid",
+		"SAFE_SMTP_PORT":         "2525",
+		"SAFE_SMTP_USERNAME":     "proofline",
+		"SAFE_SMTP_PASSWORD":     "smtp-secret",
+		"SAFE_SMTP_FROM":         "Proofline <noreply@example.invalid>",
+		"SAFE_SMTP_STARTTLS":     "opportunistic",
+		"SAFE_SMTP_TIMEOUT":      "5s",
+		"SAFE_PUBLIC_WEB_ORIGIN": "https://app.example.invalid/",
+	})
+
+	if cfg.Email.Backend != EmailBackendSMTP {
+		t.Fatalf("email backend = %q, want smtp", cfg.Email.Backend)
+	}
+	want := SMTPConfig{
+		Host:     "smtp.example.invalid",
+		Port:     2525,
+		Username: "proofline",
+		Password: "smtp-secret",
+		From:     "noreply@example.invalid",
+		StartTLS: SMTPStartTLSOpportunistic,
+		Timeout:  5 * time.Second,
+	}
+	if cfg.Email.SMTP != want {
+		t.Fatalf("smtp config = %+v, want %+v", cfg.Email.SMTP, want)
+	}
+	if cfg.AccountRegistration.PublicWebOrigin != "https://app.example.invalid" {
+		t.Fatalf("public web origin = %q, want normalized origin", cfg.AccountRegistration.PublicWebOrigin)
+	}
+}
+
+func TestLoadRejectsUnsafeSMTPConfigWithoutExposingSecrets(t *testing.T) {
+	tests := map[string]map[string]string{
+		"missing host": {
+			"SAFE_EMAIL_BACKEND": "smtp",
+			"SAFE_SMTP_FROM":     "noreply@example.invalid",
+		},
+		"invalid port": {
+			"SAFE_EMAIL_BACKEND": "smtp",
+			"SAFE_SMTP_HOST":     "smtp.example.invalid",
+			"SAFE_SMTP_FROM":     "noreply@example.invalid",
+			"SAFE_SMTP_PORT":     "0",
+		},
+		"missing from": {
+			"SAFE_EMAIL_BACKEND": "smtp",
+			"SAFE_SMTP_HOST":     "smtp.example.invalid",
+		},
+		"invalid starttls": {
+			"SAFE_EMAIL_BACKEND": "smtp",
+			"SAFE_SMTP_HOST":     "smtp.example.invalid",
+			"SAFE_SMTP_FROM":     "noreply@example.invalid",
+			"SAFE_SMTP_STARTTLS": "sometimes",
+		},
+		"password without username": {
+			"SAFE_EMAIL_BACKEND": "smtp",
+			"SAFE_SMTP_HOST":     "smtp.example.invalid",
+			"SAFE_SMTP_FROM":     "noreply@example.invalid",
+			"SAFE_SMTP_PASSWORD": "smtp-secret",
+		},
+	}
+
+	for name, env := range tests {
+		t.Run(name, func(t *testing.T) {
+			_, err := loadConfigForTestErr(t, env)
+			if err == nil {
+				t.Fatal("expected smtp config error")
+			}
+			if !strings.Contains(err.Error(), "SAFE_SMTP_") {
+				t.Fatalf("expected SAFE_SMTP error, got %v", err)
+			}
+			if strings.Contains(err.Error(), "smtp-secret") || strings.Contains(err.Error(), "smtp.example.invalid") {
+				t.Fatalf("smtp config error exposed secret or private host: %v", err)
+			}
+		})
+	}
+}
+
+func TestLoadDefaultWebAuthConfig(t *testing.T) {
+	cfg := loadConfigForTest(t, nil)
+
+	if cfg.WebAuth.Enabled {
+		t.Fatal("web auth should default to disabled")
+	}
+	if cfg.WebAuth.SessionCookieName != "__Host-proofline_session" {
+		t.Fatalf("web session cookie name = %q", cfg.WebAuth.SessionCookieName)
+	}
+	if !cfg.WebAuth.SessionCookieSecure {
+		t.Fatal("web session cookie should default to Secure")
+	}
+	if cfg.WebAuth.SessionCookieSameSite != "lax" {
+		t.Fatalf("web session SameSite = %q, want lax", cfg.WebAuth.SessionCookieSameSite)
+	}
+	if cfg.WebAuth.CSRFHeaderName != "X-CSRF-Token" {
+		t.Fatalf("web CSRF header = %q", cfg.WebAuth.CSRFHeaderName)
+	}
+	if len(cfg.WebAuth.AllowedOrigins) != 0 {
+		t.Fatalf("web allowed origins = %v, want empty", cfg.WebAuth.AllowedOrigins)
+	}
+}
+
+func TestLoadWebAuthConfigFromEnv(t *testing.T) {
+	cfg := loadConfigForTest(t, map[string]string{
+		"SAFE_WEB_AUTH_ENABLED":            "true",
+		"SAFE_WEB_ALLOWED_ORIGINS":         "https://app.example.invalid, http://127.0.0.1:5173/",
+		"SAFE_WEB_SESSION_COOKIE_SAMESITE": "strict",
+		"SAFE_WEB_CSRF_HEADER_NAME":        "X-Proofline-CSRF",
+	})
+
+	if !cfg.WebAuth.Enabled {
+		t.Fatal("web auth was not enabled")
+	}
+	wantOrigins := []string{"https://app.example.invalid", "http://127.0.0.1:5173"}
+	if !reflect.DeepEqual(cfg.WebAuth.AllowedOrigins, wantOrigins) {
+		t.Fatalf("allowed origins = %v, want %v", cfg.WebAuth.AllowedOrigins, wantOrigins)
+	}
+	if cfg.WebAuth.SessionCookieName != "__Host-proofline_session" {
+		t.Fatalf("web session cookie name = %q", cfg.WebAuth.SessionCookieName)
+	}
+	if !cfg.WebAuth.SessionCookieSecure {
+		t.Fatal("web session cookie secure was disabled")
+	}
+	if cfg.WebAuth.SessionCookieSameSite != "strict" {
+		t.Fatalf("web session SameSite = %q, want strict", cfg.WebAuth.SessionCookieSameSite)
+	}
+	if cfg.WebAuth.CSRFHeaderName != "X-Proofline-CSRF" {
+		t.Fatalf("web CSRF header = %q", cfg.WebAuth.CSRFHeaderName)
+	}
+}
+
+func TestLoadWebAuthAllowsExplicitLocalDevelopmentCookie(t *testing.T) {
+	cfg := loadConfigForTest(t, map[string]string{
+		"SAFE_WEB_AUTH_ENABLED":            "true",
+		"SAFE_WEB_ALLOWED_ORIGINS":         "http://localhost:5173,http://127.0.0.1:5174",
+		"SAFE_WEB_SESSION_COOKIE_NAME":     "proofline_session",
+		"SAFE_WEB_SESSION_COOKIE_SECURE":   "false",
+		"SAFE_WEB_SESSION_COOKIE_SAMESITE": "lax",
+	})
+
+	if cfg.WebAuth.SessionCookieName != "proofline_session" {
+		t.Fatalf("web session cookie name = %q", cfg.WebAuth.SessionCookieName)
+	}
+	if cfg.WebAuth.SessionCookieSecure {
+		t.Fatal("local development cookie should allow Secure=false")
+	}
+	wantOrigins := []string{"http://localhost:5173", "http://127.0.0.1:5174"}
+	if !reflect.DeepEqual(cfg.WebAuth.AllowedOrigins, wantOrigins) {
+		t.Fatalf("allowed origins = %v, want %v", cfg.WebAuth.AllowedOrigins, wantOrigins)
+	}
+}
+
+func TestLoadWebAuthRejectsUnsafeConfig(t *testing.T) {
+	tests := map[string]map[string]string{
+		"wildcard origin": {
+			"SAFE_WEB_ALLOWED_ORIGINS": "*",
+		},
+		"origin with path": {
+			"SAFE_WEB_ALLOWED_ORIGINS": "https://app.example.invalid/path",
+		},
+		"invalid same site": {
+			"SAFE_WEB_SESSION_COOKIE_SAMESITE": "none",
+		},
+		"invalid csrf header": {
+			"SAFE_WEB_CSRF_HEADER_NAME": "bad header",
+		},
+		"host prefix without secure": {
+			"SAFE_WEB_SESSION_COOKIE_NAME":   "__Host-proofline_session",
+			"SAFE_WEB_SESSION_COOKIE_SECURE": "false",
+		},
+		"insecure cookie without local origin": {
+			"SAFE_WEB_SESSION_COOKIE_NAME":   "proofline_session",
+			"SAFE_WEB_SESSION_COOKIE_SECURE": "false",
+		},
+		"insecure public origin": {
+			"SAFE_WEB_ALLOWED_ORIGINS":       "https://app.example.invalid",
+			"SAFE_WEB_SESSION_COOKIE_NAME":   "proofline_session",
+			"SAFE_WEB_SESSION_COOKIE_SECURE": "false",
+		},
+	}
+
+	for name, env := range tests {
+		t.Run(name, func(t *testing.T) {
+			if _, err := loadConfigForTestErr(t, env); err == nil {
+				t.Fatal("expected web auth config error")
+			}
+		})
+	}
+}
+
+func TestLoadDefaultWebAuthnConfig(t *testing.T) {
+	cfg := loadConfigForTest(t, nil)
+
+	if cfg.WebAuthn.Enabled {
+		t.Fatal("WebAuthn should default to disabled")
+	}
+	if cfg.WebAuthn.RPID != "" {
+		t.Fatalf("WebAuthn RP ID = %q, want empty", cfg.WebAuthn.RPID)
+	}
+	if cfg.WebAuthn.RPDisplayName != "Proofline" {
+		t.Fatalf("WebAuthn RP display name = %q, want Proofline", cfg.WebAuthn.RPDisplayName)
+	}
+	if len(cfg.WebAuthn.AllowedOrigins) != 0 {
+		t.Fatalf("WebAuthn origins = %v, want empty", cfg.WebAuthn.AllowedOrigins)
+	}
+	if cfg.WebAuthn.UserVerification != "required" {
+		t.Fatalf("WebAuthn user verification = %q, want required", cfg.WebAuthn.UserVerification)
+	}
+	if cfg.WebAuthn.ChallengeTTL != 5*time.Minute {
+		t.Fatalf("WebAuthn challenge ttl = %s, want 5m", cfg.WebAuthn.ChallengeTTL)
+	}
+}
+
+func TestLoadWebAuthnConfigFromEnv(t *testing.T) {
+	cfg := loadConfigForTest(t, map[string]string{
+		"SAFE_WEBAUTHN_ENABLED":           "true",
+		"SAFE_WEBAUTHN_RP_ID":             "app.example.invalid",
+		"SAFE_WEBAUTHN_RP_DISPLAY_NAME":   "Proofline Test",
+		"SAFE_WEBAUTHN_ALLOWED_ORIGINS":   "https://app.example.invalid, http://127.0.0.1:5173/",
+		"SAFE_WEBAUTHN_USER_VERIFICATION": "preferred",
+		"SAFE_WEBAUTHN_CHALLENGE_TTL":     "2m",
+	})
+
+	if !cfg.WebAuthn.Enabled {
+		t.Fatal("WebAuthn was not enabled")
+	}
+	if cfg.WebAuthn.RPID != "app.example.invalid" || cfg.WebAuthn.RPDisplayName != "Proofline Test" {
+		t.Fatalf("WebAuthn RP = id %q display %q", cfg.WebAuthn.RPID, cfg.WebAuthn.RPDisplayName)
+	}
+	wantOrigins := []string{"https://app.example.invalid", "http://127.0.0.1:5173"}
+	if !reflect.DeepEqual(cfg.WebAuthn.AllowedOrigins, wantOrigins) {
+		t.Fatalf("WebAuthn origins = %v, want %v", cfg.WebAuthn.AllowedOrigins, wantOrigins)
+	}
+	if cfg.WebAuthn.UserVerification != "preferred" || cfg.WebAuthn.ChallengeTTL != 2*time.Minute {
+		t.Fatalf("WebAuthn policy = uv %q ttl %s", cfg.WebAuthn.UserVerification, cfg.WebAuthn.ChallengeTTL)
+	}
+}
+
+func TestLoadWebAuthnRejectsUnsafeConfig(t *testing.T) {
+	tests := map[string]map[string]string{
+		"enabled missing rp": {
+			"SAFE_WEBAUTHN_ENABLED":         "true",
+			"SAFE_WEBAUTHN_ALLOWED_ORIGINS": "https://app.example.invalid",
+		},
+		"enabled missing origins": {
+			"SAFE_WEBAUTHN_ENABLED": "true",
+			"SAFE_WEBAUTHN_RP_ID":   "app.example.invalid",
+		},
+		"invalid rp id": {
+			"SAFE_WEBAUTHN_RP_ID": "https://app.example.invalid",
+		},
+		"wildcard origin": {
+			"SAFE_WEBAUTHN_ALLOWED_ORIGINS": "https://*.example.invalid",
+		},
+		"insecure public origin": {
+			"SAFE_WEBAUTHN_ALLOWED_ORIGINS": "http://app.example.invalid",
+		},
+		"invalid user verification": {
+			"SAFE_WEBAUTHN_USER_VERIFICATION": "always",
+		},
+		"invalid challenge ttl": {
+			"SAFE_WEBAUTHN_CHALLENGE_TTL": "0",
+		},
+	}
+
+	for name, env := range tests {
+		t.Run(name, func(t *testing.T) {
+			if _, err := loadConfigForTestErr(t, env); err == nil {
+				t.Fatal("expected WebAuthn config error")
+			}
+		})
 	}
 }
 
@@ -99,6 +609,34 @@ func TestLoadUploadCoordinationLeaseTTL(t *testing.T) {
 	}
 }
 
+func TestLoadAccountDefaultBlobQuotaBytes(t *testing.T) {
+	cfg := loadConfigForTest(t, nil)
+	if cfg.AccountDefaultBlobQuotaBytes != 10*1024*1024*1024 {
+		t.Fatalf("account default blob quota bytes = %d, want 10GB", cfg.AccountDefaultBlobQuotaBytes)
+	}
+
+	cfg = loadConfigForTest(t, map[string]string{
+		"SAFE_ACCOUNT_DEFAULT_BLOB_QUOTA_BYTES": "1.5GB",
+	})
+	if cfg.AccountDefaultBlobQuotaBytes != int64(3*1024*1024*1024/2) {
+		t.Fatalf("account default blob quota bytes = %d, want 1.5GB", cfg.AccountDefaultBlobQuotaBytes)
+	}
+}
+
+func TestLoadTempUploadStagingQuotaBytes(t *testing.T) {
+	cfg := loadConfigForTest(t, nil)
+	if cfg.TempUploadStagingQuotaBytes != 1024*1024*1024 {
+		t.Fatalf("temp upload staging quota bytes = %d, want 1GB", cfg.TempUploadStagingQuotaBytes)
+	}
+
+	cfg = loadConfigForTest(t, map[string]string{
+		"SAFE_TEMP_UPLOAD_STAGING_QUOTA_BYTES": "512MB",
+	})
+	if cfg.TempUploadStagingQuotaBytes != int64(512*1024*1024) {
+		t.Fatalf("temp upload staging quota bytes = %d, want 512MB", cfg.TempUploadStagingQuotaBytes)
+	}
+}
+
 func TestLoadUploadCoordinationLeaseTTLRejectsNonPositive(t *testing.T) {
 	for _, value := range []string{"0", "-1s"} {
 		t.Run(value, func(t *testing.T) {
@@ -138,6 +676,8 @@ func TestLoadDefaultMainAPIRateLimitConfig(t *testing.T) {
 		Enabled:            true,
 		Window:             time.Minute,
 		AuthLimit:          30,
+		AuthRegisterLimit:  10,
+		AuthEmailVerify:    30,
 		BootstrapLimit:     5,
 		AccountLimit:       120,
 		IncidentReadLimit:  300,
@@ -161,6 +701,381 @@ func TestLoadAuthBootstrapSecret(t *testing.T) {
 
 	if cfg.AuthBootstrapSecret != "bootstrap-secret" {
 		t.Fatalf("bootstrap secret was not trimmed")
+	}
+}
+
+func TestLoadRootExampleTOMLParses(t *testing.T) {
+	cfg := loadConfigWithOptionsForTest(t, LoadOptions{
+		ConfigFilePath: filepath.Join("..", "..", "proofline.toml"),
+	}, nil)
+
+	assertStringsEqual(t, cfg.MainBindAddrs, []string{"127.0.0.1:8080"})
+	assertStringsEqual(t, cfg.AdminBindAddrs, []string{"127.0.0.1:8081"})
+	if cfg.Backends != (BackendSelection{
+		Metadata:     MetadataBackendSQLite,
+		Blob:         BlobBackendLocal,
+		Coordination: CoordinationBackendNone,
+	}) {
+		t.Fatalf("root example backends = %+v", cfg.Backends)
+	}
+	if cfg.AuthBootstrapSecret != "" {
+		t.Fatal("root example must not contain a bootstrap secret")
+	}
+}
+
+func TestLoadExplicitTOMLConfig(t *testing.T) {
+	path := writeConfigFile(t, `
+[server]
+main_bind_addrs = ["127.0.0.1:19080"]
+admin_bind_addrs = ["127.0.0.1:19081"]
+
+[paths]
+data_dir = "/tmp/proofline-data"
+sqlite_db_path = "/tmp/proofline-data/proofline.db"
+
+[metadata]
+backend = "sqlite"
+
+[blob_storage]
+backend = "local"
+
+[coordination]
+backend = "none"
+
+[uploads]
+max_upload_bytes = "1KB"
+account_default_blob_quota_bytes = "3GB"
+temp_upload_staging_quota_bytes = "512MB"
+
+[auth]
+session_ttl = "6h"
+second_factor_email_challenge_ttl = "7m"
+
+[webauthn]
+enabled = true
+rp_id = "app.example.invalid"
+rp_display_name = "Proofline Preview"
+allowed_origins = ["https://app.example.invalid"]
+user_verification = "required"
+challenge_ttl = "4m"
+
+[retention]
+default_incident_token_ttl = "12h"
+
+[rate_limits.main_api]
+auth_register = 14
+
+[http.admin]
+read_timeout = "45s"
+`)
+
+	cfg := loadConfigWithOptionsForTest(t, LoadOptions{ConfigFilePath: path}, nil)
+
+	assertStringsEqual(t, cfg.MainBindAddrs, []string{"127.0.0.1:19080"})
+	assertStringsEqual(t, cfg.AdminBindAddrs, []string{"127.0.0.1:19081"})
+	if cfg.DataDir != "/tmp/proofline-data" || cfg.DBPath != "/tmp/proofline-data/proofline.db" {
+		t.Fatalf("paths = data_dir %q db_path %q", cfg.DataDir, cfg.DBPath)
+	}
+	if cfg.MaxUploadBytes != 1024 {
+		t.Fatalf("max upload bytes = %d, want 1024", cfg.MaxUploadBytes)
+	}
+	if cfg.AccountDefaultBlobQuotaBytes != 3*1024*1024*1024 {
+		t.Fatalf("account default blob quota bytes = %d, want 3GB", cfg.AccountDefaultBlobQuotaBytes)
+	}
+	if cfg.TempUploadStagingQuotaBytes != 512*1024*1024 {
+		t.Fatalf("temp upload staging quota bytes = %d, want 512MB", cfg.TempUploadStagingQuotaBytes)
+	}
+	if cfg.SessionTTL != 6*time.Hour || cfg.DefaultIncidentTokenTTL != 12*time.Hour || cfg.SecondFactorEmailChallengeTTL != 7*time.Minute {
+		t.Fatalf("durations = session %s token %s second factor %s", cfg.SessionTTL, cfg.DefaultIncidentTokenTTL, cfg.SecondFactorEmailChallengeTTL)
+	}
+	if !cfg.WebAuthn.Enabled || cfg.WebAuthn.RPID != "app.example.invalid" || cfg.WebAuthn.RPDisplayName != "Proofline Preview" {
+		t.Fatalf("WebAuthn TOML config = %+v", cfg.WebAuthn)
+	}
+	if !reflect.DeepEqual(cfg.WebAuthn.AllowedOrigins, []string{"https://app.example.invalid"}) || cfg.WebAuthn.ChallengeTTL != 4*time.Minute {
+		t.Fatalf("WebAuthn TOML policy = %+v", cfg.WebAuthn)
+	}
+	if cfg.MainAPIRateLimit.AuthRegisterLimit != 14 {
+		t.Fatalf("auth register limit = %d, want 14", cfg.MainAPIRateLimit.AuthRegisterLimit)
+	}
+	if cfg.AdminTimeouts.ReadTimeout != 45*time.Second {
+		t.Fatalf("admin read timeout = %s, want 45s", cfg.AdminTimeouts.ReadTimeout)
+	}
+}
+
+func TestLoadTOMLConfigFromEnvPath(t *testing.T) {
+	path := writeConfigFile(t, `
+[server]
+main_bind_addrs = ["127.0.0.1:19080"]
+`)
+
+	cfg := loadConfigForTest(t, map[string]string{
+		"SAFE_CONFIG_FILE": path,
+	})
+
+	assertStringsEqual(t, cfg.MainBindAddrs, []string{"127.0.0.1:19080"})
+}
+
+func TestLoadRejectsMissingExplicitTOMLConfig(t *testing.T) {
+	missingPath := filepath.Join(t.TempDir(), "missing-proofline.toml")
+
+	_, err := loadConfigWithOptionsForTestErr(t, LoadOptions{ConfigFilePath: missingPath}, nil)
+	if err == nil {
+		t.Fatal("expected missing explicit config error")
+	}
+	if !strings.Contains(err.Error(), "--config") || strings.Contains(err.Error(), missingPath) {
+		t.Fatalf("unexpected missing config error: %v", err)
+	}
+}
+
+func TestLoadEnvOverridesTOMLConfig(t *testing.T) {
+	path := writeConfigFile(t, `
+[server]
+main_bind_addrs = ["127.0.0.1:19080"]
+
+[uploads]
+max_upload_bytes = "1KB"
+account_default_blob_quota_bytes = "1GB"
+temp_upload_staging_quota_bytes = "256MB"
+`)
+
+	cfg := loadConfigWithOptionsForTest(t, LoadOptions{ConfigFilePath: path}, map[string]string{
+		"SAFE_MAIN_BIND_ADDRS":                  "127.0.0.1:29080",
+		"SAFE_MAX_UPLOAD_BYTES":                 "2KB",
+		"SAFE_ACCOUNT_DEFAULT_BLOB_QUOTA_BYTES": "2GB",
+		"SAFE_TEMP_UPLOAD_STAGING_QUOTA_BYTES":  "768MB",
+	})
+
+	assertStringsEqual(t, cfg.MainBindAddrs, []string{"127.0.0.1:29080"})
+	if cfg.MaxUploadBytes != 2048 {
+		t.Fatalf("max upload bytes = %d, want 2048", cfg.MaxUploadBytes)
+	}
+	if cfg.AccountDefaultBlobQuotaBytes != 2*1024*1024*1024 {
+		t.Fatalf("account default blob quota bytes = %d, want 2GB", cfg.AccountDefaultBlobQuotaBytes)
+	}
+	if cfg.TempUploadStagingQuotaBytes != 768*1024*1024 {
+		t.Fatalf("temp upload staging quota bytes = %d, want 768MB", cfg.TempUploadStagingQuotaBytes)
+	}
+}
+
+func TestLoadSingularBindEnvOverridesTOMLPluralBind(t *testing.T) {
+	path := writeConfigFile(t, `
+[server]
+main_bind_addrs = ["127.0.0.1:19080"]
+admin_bind_addrs = ["127.0.0.1:19081"]
+`)
+
+	cfg := loadConfigWithOptionsForTest(t, LoadOptions{ConfigFilePath: path}, map[string]string{
+		"SAFE_MAIN_BIND_ADDR":  "127.0.0.1:29080",
+		"SAFE_ADMIN_BIND_ADDR": "127.0.0.1:29081",
+	})
+
+	assertStringsEqual(t, cfg.MainBindAddrs, []string{"127.0.0.1:29080"})
+	assertStringsEqual(t, cfg.AdminBindAddrs, []string{"127.0.0.1:29081"})
+}
+
+func TestLoadLegacyMainBindEnvOverridesTOMLPluralBind(t *testing.T) {
+	path := writeConfigFile(t, `
+[server]
+main_bind_addrs = ["127.0.0.1:19080"]
+`)
+
+	cfg := loadConfigWithOptionsForTest(t, LoadOptions{ConfigFilePath: path}, map[string]string{
+		"SAFE_PRIVATE_BIND_ADDR": "127.0.0.1:29080",
+	})
+
+	assertStringsEqual(t, cfg.MainBindAddrs, []string{"127.0.0.1:29080"})
+}
+
+func TestLoadRejectsMalformedTOMLConfig(t *testing.T) {
+	path := writeConfigFile(t, `not = [`)
+
+	_, err := loadConfigWithOptionsForTestErr(t, LoadOptions{ConfigFilePath: path}, nil)
+	if err == nil {
+		t.Fatal("expected malformed TOML error")
+	}
+	if !strings.Contains(err.Error(), "config file") || !strings.Contains(err.Error(), "invalid TOML") {
+		t.Fatalf("unexpected malformed TOML error: %v", err)
+	}
+}
+
+func TestLoadRejectsUnknownTOMLKeys(t *testing.T) {
+	path := writeConfigFile(t, `
+[server]
+main_bind_addr = "127.0.0.1:8080"
+`)
+
+	_, err := loadConfigWithOptionsForTestErr(t, LoadOptions{ConfigFilePath: path}, nil)
+	if err == nil {
+		t.Fatal("expected unknown TOML key error")
+	}
+	if !strings.Contains(err.Error(), "unknown TOML key") || !strings.Contains(err.Error(), "server.main_bind_addr") {
+		t.Fatalf("unexpected unknown-key error: %v", err)
+	}
+}
+
+func TestLoadSecretFilesFromEnv(t *testing.T) {
+	secretPath := writeSecretFile(t, "file-bootstrap-secret\n")
+
+	cfg := loadConfigForTest(t, map[string]string{
+		"SAFE_AUTH_BOOTSTRAP_SECRET":      "direct-bootstrap-secret",
+		"SAFE_AUTH_BOOTSTRAP_SECRET_FILE": secretPath,
+	})
+
+	if cfg.AuthBootstrapSecret != "file-bootstrap-secret" {
+		t.Fatalf("bootstrap secret = %q, want file value", cfg.AuthBootstrapSecret)
+	}
+}
+
+func TestLoadTOMLSecretFile(t *testing.T) {
+	secretPath := writeSecretFile(t, "toml-bootstrap-secret\r\n")
+	configPath := writeConfigFile(t, fmt.Sprintf(`
+[auth]
+bootstrap_secret_file = %q
+`, secretPath))
+
+	cfg := loadConfigWithOptionsForTest(t, LoadOptions{ConfigFilePath: configPath}, nil)
+
+	if cfg.AuthBootstrapSecret != "toml-bootstrap-secret" {
+		t.Fatalf("bootstrap secret = %q, want toml file value", cfg.AuthBootstrapSecret)
+	}
+}
+
+func TestLoadEnvDirectSecretOverridesTOMLSecretFile(t *testing.T) {
+	secretPath := writeSecretFile(t, "toml-bootstrap-secret\n")
+	configPath := writeConfigFile(t, fmt.Sprintf(`
+[auth]
+bootstrap_secret_file = %q
+`, secretPath))
+
+	cfg := loadConfigWithOptionsForTest(t, LoadOptions{ConfigFilePath: configPath}, map[string]string{
+		"SAFE_AUTH_BOOTSTRAP_SECRET": "env-bootstrap-secret",
+	})
+
+	if cfg.AuthBootstrapSecret != "env-bootstrap-secret" {
+		t.Fatalf("bootstrap secret = %q, want env value", cfg.AuthBootstrapSecret)
+	}
+}
+
+func TestLoadRejectsSecretFileFailuresWithoutExposingValues(t *testing.T) {
+	missingPath := filepath.Join(t.TempDir(), "private-secret-path")
+	_, err := loadConfigForTestErr(t, map[string]string{
+		"SAFE_AUTH_BOOTSTRAP_SECRET_FILE": missingPath,
+	})
+	if err == nil {
+		t.Fatal("expected missing secret file error")
+	}
+	if strings.Contains(err.Error(), missingPath) || strings.Contains(err.Error(), "private-secret-path") {
+		t.Fatalf("secret file error exposed path: %v", err)
+	}
+
+	emptyPath := writeSecretFile(t, "")
+	_, err = loadConfigForTestErr(t, map[string]string{
+		"SAFE_AUTH_BOOTSTRAP_SECRET_FILE": emptyPath,
+	})
+	if err == nil {
+		t.Fatal("expected empty secret file error")
+	}
+	if strings.Contains(err.Error(), emptyPath) {
+		t.Fatalf("empty secret file error exposed path: %v", err)
+	}
+}
+
+func TestLoadRejectsTOMLDirectSecretAndSecretFileConflict(t *testing.T) {
+	secretPath := writeSecretFile(t, "file-secret\n")
+	configPath := writeConfigFile(t, fmt.Sprintf(`
+[auth]
+bootstrap_secret = "direct-secret"
+bootstrap_secret_file = %q
+`, secretPath))
+
+	_, err := loadConfigWithOptionsForTestErr(t, LoadOptions{ConfigFilePath: configPath}, nil)
+	if err == nil {
+		t.Fatal("expected direct/file conflict error")
+	}
+	if !strings.Contains(err.Error(), "SAFE_AUTH_BOOTSTRAP_SECRET") ||
+		strings.Contains(err.Error(), "direct-secret") ||
+		strings.Contains(err.Error(), secretPath) {
+		t.Fatalf("conflict error exposed sensitive detail or lacked field context: %v", err)
+	}
+}
+
+func TestResolveSecretTrimsOnlyOneTrailingLineEnding(t *testing.T) {
+	tests := map[string]struct {
+		contents string
+		want     string
+	}{
+		"lf":                  {"secret\n", "secret"},
+		"crlf":                {"secret\r\n", "secret"},
+		"one line only":       {"secret\n\n", "secret\n"},
+		"internal whitespace": {"a b\tc\n", "a b\tc"},
+	}
+
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			path := writeSecretFile(t, tt.contents)
+			got, err := ResolveSecret("SAFE_TEST_SECRET", SecretValue{File: path})
+			if err != nil {
+				t.Fatalf("ResolveSecret: %v", err)
+			}
+			if got != tt.want {
+				t.Fatalf("resolved secret = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestResolveSecretRejectsDirectAndFileConflict(t *testing.T) {
+	path := writeSecretFile(t, "file-secret\n")
+
+	_, err := ResolveSecret("SAFE_TEST_SECRET", SecretValue{Value: "direct-secret", File: path})
+	if err == nil {
+		t.Fatal("expected direct/file conflict")
+	}
+	if strings.Contains(err.Error(), "direct-secret") || strings.Contains(err.Error(), path) {
+		t.Fatalf("conflict error exposed sensitive detail: %v", err)
+	}
+}
+
+func TestLoadBackendSecretsFromFiles(t *testing.T) {
+	postgresDSN := writeSecretFile(t, "postgres://proofline:secret@example.invalid/proofline\n")
+	s3AccessKey := writeSecretFile(t, "test-access-key\n")
+	s3SecretKey := writeSecretFile(t, "test-secret-key\n")
+	s3SessionToken := writeSecretFile(t, "test-session-token\n")
+	valkeyPassword := writeSecretFile(t, "valkey-password\n")
+	smtpPassword := writeSecretFile(t, "smtp-password\n")
+
+	cfg := loadConfigForTest(t, map[string]string{
+		"SAFE_METADATA_BACKEND":          "postgresql",
+		"SAFE_POSTGRES_DSN_FILE":         postgresDSN,
+		"SAFE_BLOB_BACKEND":              "s3",
+		"SAFE_S3_ENDPOINT":               "https://s3.example.test",
+		"SAFE_S3_BUCKET":                 "proofline-evidence",
+		"SAFE_S3_ACCESS_KEY_ID_FILE":     s3AccessKey,
+		"SAFE_S3_SECRET_ACCESS_KEY_FILE": s3SecretKey,
+		"SAFE_S3_SESSION_TOKEN_FILE":     s3SessionToken,
+		"SAFE_COORDINATION_BACKEND":      "valkey",
+		"SAFE_VALKEY_ADDR":               "127.0.0.1:6379",
+		"SAFE_VALKEY_PASSWORD_FILE":      valkeyPassword,
+		"SAFE_EMAIL_BACKEND":             "smtp",
+		"SAFE_SMTP_HOST":                 "smtp.example.invalid",
+		"SAFE_SMTP_USERNAME":             "proofline",
+		"SAFE_SMTP_PASSWORD_FILE":        smtpPassword,
+		"SAFE_SMTP_FROM":                 "noreply@example.invalid",
+	})
+
+	if cfg.Postgres.DSN != "postgres://proofline:secret@example.invalid/proofline" {
+		t.Fatalf("postgres DSN was not read from file")
+	}
+	if cfg.S3Blob.AccessKeyID != "test-access-key" ||
+		cfg.S3Blob.SecretAccessKey != "test-secret-key" ||
+		cfg.S3Blob.SessionToken != "test-session-token" {
+		t.Fatalf("s3 secrets were not read from files: %+v", cfg.S3Blob)
+	}
+	if cfg.Valkey.Password != "valkey-password" {
+		t.Fatalf("valkey password = %q, want file value", cfg.Valkey.Password)
+	}
+	if cfg.Email.SMTP.Password != "smtp-password" {
+		t.Fatalf("smtp password = %q, want file value", cfg.Email.SMTP.Password)
 	}
 }
 
@@ -549,6 +1464,16 @@ func TestLoadSessionTTLFromEnv(t *testing.T) {
 	}
 }
 
+func TestLoadSecondFactorEmailChallengeTTLFromEnv(t *testing.T) {
+	cfg := loadConfigForTest(t, map[string]string{
+		"SAFE_SECOND_FACTOR_EMAIL_CHALLENGE_TTL": "5m",
+	})
+
+	if cfg.SecondFactorEmailChallengeTTL != 5*time.Minute {
+		t.Fatalf("second-factor email challenge ttl = %s, want 5m", cfg.SecondFactorEmailChallengeTTL)
+	}
+}
+
 func TestLoadDeletionRetentionConfigFromEnv(t *testing.T) {
 	cfg := loadConfigForTest(t, map[string]string{
 		"SAFE_DELETION_WORKER_INTERVAL":     "30s",
@@ -618,25 +1543,29 @@ func TestLoadPublicViewerRateLimitConfigFromEnv(t *testing.T) {
 
 func TestLoadMainAPIRateLimitConfigFromEnv(t *testing.T) {
 	cfg := loadConfigForTest(t, map[string]string{
-		"SAFE_MAIN_API_RATE_LIMIT_ENABLED":        "false",
-		"SAFE_MAIN_API_RATE_LIMIT_WINDOW":         "30s",
-		"SAFE_MAIN_API_RATE_LIMIT_AUTH":           "11",
-		"SAFE_MAIN_API_RATE_LIMIT_BOOTSTRAP":      "12",
-		"SAFE_MAIN_API_RATE_LIMIT_ACCOUNT":        "13",
-		"SAFE_MAIN_API_RATE_LIMIT_INCIDENT_READ":  "14",
-		"SAFE_MAIN_API_RATE_LIMIT_INCIDENT_WRITE": "15",
-		"SAFE_MAIN_API_RATE_LIMIT_UPLOAD":         "16",
-		"SAFE_MAIN_API_RATE_LIMIT_RECONCILE":      "17",
-		"SAFE_MAIN_API_RATE_LIMIT_STREAM":         "18",
-		"SAFE_MAIN_API_RATE_LIMIT_TOKEN":          "19",
-		"SAFE_MAIN_API_RATE_LIMIT_DOWNLOAD":       "20",
-		"SAFE_MAIN_API_RATE_LIMIT_ADMIN":          "21",
+		"SAFE_MAIN_API_RATE_LIMIT_ENABLED":           "false",
+		"SAFE_MAIN_API_RATE_LIMIT_WINDOW":            "30s",
+		"SAFE_MAIN_API_RATE_LIMIT_AUTH":              "11",
+		"SAFE_MAIN_API_RATE_LIMIT_AUTH_REGISTER":     "22",
+		"SAFE_MAIN_API_RATE_LIMIT_AUTH_EMAIL_VERIFY": "23",
+		"SAFE_MAIN_API_RATE_LIMIT_BOOTSTRAP":         "12",
+		"SAFE_MAIN_API_RATE_LIMIT_ACCOUNT":           "13",
+		"SAFE_MAIN_API_RATE_LIMIT_INCIDENT_READ":     "14",
+		"SAFE_MAIN_API_RATE_LIMIT_INCIDENT_WRITE":    "15",
+		"SAFE_MAIN_API_RATE_LIMIT_UPLOAD":            "16",
+		"SAFE_MAIN_API_RATE_LIMIT_RECONCILE":         "17",
+		"SAFE_MAIN_API_RATE_LIMIT_STREAM":            "18",
+		"SAFE_MAIN_API_RATE_LIMIT_TOKEN":             "19",
+		"SAFE_MAIN_API_RATE_LIMIT_DOWNLOAD":          "20",
+		"SAFE_MAIN_API_RATE_LIMIT_ADMIN":             "21",
 	})
 
 	want := MainAPIRateLimitConfig{
 		Enabled:            false,
 		Window:             30 * time.Second,
 		AuthLimit:          11,
+		AuthRegisterLimit:  22,
+		AuthEmailVerify:    23,
 		BootstrapLimit:     12,
 		AccountLimit:       13,
 		IncidentReadLimit:  14,
@@ -704,6 +1633,12 @@ func TestLoadRejectsInvalidMainAPIRateLimitConfig(t *testing.T) {
 		},
 		"invalid auth": {
 			"SAFE_MAIN_API_RATE_LIMIT_AUTH": "many",
+		},
+		"invalid auth register": {
+			"SAFE_MAIN_API_RATE_LIMIT_AUTH_REGISTER": "many",
+		},
+		"invalid auth email verify": {
+			"SAFE_MAIN_API_RATE_LIMIT_AUTH_EMAIL_VERIFY": "-1",
 		},
 		"negative bootstrap": {
 			"SAFE_MAIN_API_RATE_LIMIT_BOOTSTRAP": "-1",
@@ -794,6 +1729,29 @@ func TestLoadRejectsInvalidSessionTTL(t *testing.T) {
 	}
 }
 
+func TestLoadRejectsInvalidSecondFactorEmailChallengeTTL(t *testing.T) {
+	tests := map[string]string{
+		"zero":     "0",
+		"negative": "-1s",
+		"invalid":  "forever",
+		"empty":    "",
+	}
+
+	for name, value := range tests {
+		t.Run(name, func(t *testing.T) {
+			_, err := loadConfigForTestErr(t, map[string]string{
+				"SAFE_SECOND_FACTOR_EMAIL_CHALLENGE_TTL": value,
+			})
+			if err == nil {
+				t.Fatal("expected second-factor email challenge ttl config error")
+			}
+			if !strings.Contains(err.Error(), "parse SAFE_SECOND_FACTOR_EMAIL_CHALLENGE_TTL") {
+				t.Fatalf("expected SAFE_SECOND_FACTOR_EMAIL_CHALLENGE_TTL parse context, got %v", err)
+			}
+		})
+	}
+}
+
 func TestLoadRejectsInvalidDeletionRetentionConfig(t *testing.T) {
 	tests := map[string]map[string]string{
 		"negative worker": {
@@ -853,6 +1811,21 @@ func TestLoadHTTPTimeoutsFromEnv(t *testing.T) {
 		WriteTimeout:      5 * time.Minute,
 		IdleTimeout:       3 * time.Minute,
 	})
+}
+
+func TestLoadLegacyMainTimeoutEnvOverridesTOMLMainTimeout(t *testing.T) {
+	path := writeConfigFile(t, `
+[http.main]
+read_timeout = "20s"
+`)
+
+	cfg := loadConfigWithOptionsForTest(t, LoadOptions{ConfigFilePath: path}, map[string]string{
+		"SAFE_PRIVATE_READ_TIMEOUT": "40s",
+	})
+
+	if cfg.MainTimeouts.ReadTimeout != 40*time.Second {
+		t.Fatalf("main read timeout = %s, want 40s", cfg.MainTimeouts.ReadTimeout)
+	}
 }
 
 func TestLoadRejectsInvalidHTTPTimeouts(t *testing.T) {
@@ -1048,6 +2021,30 @@ func TestLoadRejectsUnsafeMaxUploadBytes(t *testing.T) {
 	}
 }
 
+func TestLoadRejectsUnsafeAccountDefaultBlobQuotaBytes(t *testing.T) {
+	_, err := loadConfigForTestErr(t, map[string]string{
+		"SAFE_ACCOUNT_DEFAULT_BLOB_QUOTA_BYTES": "0.0001B",
+	})
+	if err == nil {
+		t.Fatal("expected Load error")
+	}
+	if !strings.Contains(err.Error(), "parse SAFE_ACCOUNT_DEFAULT_BLOB_QUOTA_BYTES") {
+		t.Fatalf("expected SAFE_ACCOUNT_DEFAULT_BLOB_QUOTA_BYTES context, got %v", err)
+	}
+}
+
+func TestLoadRejectsUnsafeTempUploadStagingQuotaBytes(t *testing.T) {
+	_, err := loadConfigForTestErr(t, map[string]string{
+		"SAFE_TEMP_UPLOAD_STAGING_QUOTA_BYTES": "0.0001B",
+	})
+	if err == nil {
+		t.Fatal("expected Load error")
+	}
+	if !strings.Contains(err.Error(), "parse SAFE_TEMP_UPLOAD_STAGING_QUOTA_BYTES") {
+		t.Fatalf("expected SAFE_TEMP_UPLOAD_STAGING_QUOTA_BYTES context, got %v", err)
+	}
+}
+
 func loadConfigForTest(t *testing.T, env map[string]string) Config {
 	t.Helper()
 	cfg, err := loadConfigForTestErr(t, env)
@@ -1057,9 +2054,24 @@ func loadConfigForTest(t *testing.T, env map[string]string) Config {
 	return cfg
 }
 
+func loadConfigWithOptionsForTest(t *testing.T, opts LoadOptions, env map[string]string) Config {
+	t.Helper()
+	cfg, err := loadConfigWithOptionsForTestErr(t, opts, env)
+	if err != nil {
+		t.Fatalf("LoadWithOptions: %v", err)
+	}
+	return cfg
+}
+
 func loadConfigForTestErr(t *testing.T, env map[string]string) (Config, error) {
 	t.Helper()
+	return loadConfigWithOptionsForTestErr(t, LoadOptions{}, env)
+}
+
+func loadConfigWithOptionsForTestErr(t *testing.T, opts LoadOptions, env map[string]string) (Config, error) {
+	t.Helper()
 	names := []string{
+		"SAFE_CONFIG_FILE",
 		"SAFE_MAIN_BIND_ADDRS",
 		"SAFE_ADMIN_BIND_ADDRS",
 		"SAFE_MAIN_BIND_ADDR",
@@ -1074,9 +2086,31 @@ func loadConfigForTestErr(t *testing.T, env map[string]string) (Config, error) {
 		"SAFE_BLOB_BACKEND",
 		"SAFE_COORDINATION_BACKEND",
 		"SAFE_MAX_UPLOAD_BYTES",
+		"SAFE_ACCOUNT_DEFAULT_BLOB_QUOTA_BYTES",
+		"SAFE_TEMP_UPLOAD_STAGING_QUOTA_BYTES",
 		"SAFE_DEFAULT_INCIDENT_TOKEN_TTL",
 		"SAFE_SESSION_TTL",
+		"SAFE_SECOND_FACTOR_EMAIL_CHALLENGE_TTL",
+		"SAFE_RELAY_CAPABILITY_SECRET",
+		"SAFE_RELAY_CAPABILITY_SECRET_FILE",
+		"SAFE_RELAY_CAPABILITY_TTL",
+		"SAFE_RELAY_CAPABILITY_MAX_CHUNKS",
+		"SAFE_RELAY_SERVICE_AUTH_TOKEN",
+		"SAFE_RELAY_SERVICE_AUTH_TOKEN_FILE",
+		"SAFE_ACCOUNT_REGISTRATION_MODE",
+		"SAFE_EMAIL_VERIFICATION_TTL",
+		"SAFE_PUBLIC_WEB_ORIGIN",
+		"SAFE_EMAIL_BACKEND",
+		"SAFE_SMTP_HOST",
+		"SAFE_SMTP_PORT",
+		"SAFE_SMTP_USERNAME",
+		"SAFE_SMTP_PASSWORD",
+		"SAFE_SMTP_PASSWORD_FILE",
+		"SAFE_SMTP_FROM",
+		"SAFE_SMTP_STARTTLS",
+		"SAFE_SMTP_TIMEOUT",
 		"SAFE_AUTH_BOOTSTRAP_SECRET",
+		"SAFE_AUTH_BOOTSTRAP_SECRET_FILE",
 		"SAFE_DELETION_WORKER_INTERVAL",
 		"SAFE_CLOSED_INCIDENT_RETENTION",
 		"SAFE_TOKEN_METADATA_RETENTION",
@@ -1087,6 +2121,8 @@ func loadConfigForTestErr(t *testing.T, env map[string]string) (Config, error) {
 		"SAFE_MAIN_API_RATE_LIMIT_ENABLED",
 		"SAFE_MAIN_API_RATE_LIMIT_WINDOW",
 		"SAFE_MAIN_API_RATE_LIMIT_AUTH",
+		"SAFE_MAIN_API_RATE_LIMIT_AUTH_REGISTER",
+		"SAFE_MAIN_API_RATE_LIMIT_AUTH_EMAIL_VERIFY",
 		"SAFE_MAIN_API_RATE_LIMIT_BOOTSTRAP",
 		"SAFE_MAIN_API_RATE_LIMIT_ACCOUNT",
 		"SAFE_MAIN_API_RATE_LIMIT_INCIDENT_READ",
@@ -1103,6 +2139,18 @@ func loadConfigForTestErr(t *testing.T, env map[string]string) (Config, error) {
 		"SAFE_PUBLIC_VIEWER_RATE_LIMIT_DATA",
 		"SAFE_PUBLIC_VIEWER_RATE_LIMIT_DOWNLOAD",
 		"SAFE_PUBLIC_VIEWER_RATE_LIMIT_STATIC",
+		"SAFE_WEB_AUTH_ENABLED",
+		"SAFE_WEB_ALLOWED_ORIGINS",
+		"SAFE_WEB_SESSION_COOKIE_NAME",
+		"SAFE_WEB_SESSION_COOKIE_SECURE",
+		"SAFE_WEB_SESSION_COOKIE_SAMESITE",
+		"SAFE_WEB_CSRF_HEADER_NAME",
+		"SAFE_WEBAUTHN_ENABLED",
+		"SAFE_WEBAUTHN_RP_ID",
+		"SAFE_WEBAUTHN_RP_DISPLAY_NAME",
+		"SAFE_WEBAUTHN_ALLOWED_ORIGINS",
+		"SAFE_WEBAUTHN_USER_VERIFICATION",
+		"SAFE_WEBAUTHN_CHALLENGE_TTL",
 		"SAFE_MAIN_READ_HEADER_TIMEOUT",
 		"SAFE_MAIN_READ_TIMEOUT",
 		"SAFE_MAIN_WRITE_TIMEOUT",
@@ -1120,6 +2168,7 @@ func loadConfigForTestErr(t *testing.T, env map[string]string) (Config, error) {
 		"SAFE_PUBLIC_WRITE_TIMEOUT",
 		"SAFE_PUBLIC_IDLE_TIMEOUT",
 		"SAFE_POSTGRES_DSN",
+		"SAFE_POSTGRES_DSN_FILE",
 		"SAFE_POSTGRES_MAX_OPEN_CONNS",
 		"SAFE_POSTGRES_MAX_IDLE_CONNS",
 		"SAFE_POSTGRES_CONN_MAX_LIFETIME",
@@ -1129,12 +2178,16 @@ func loadConfigForTestErr(t *testing.T, env map[string]string) (Config, error) {
 		"SAFE_S3_BUCKET",
 		"SAFE_S3_PREFIX",
 		"SAFE_S3_ACCESS_KEY_ID",
+		"SAFE_S3_ACCESS_KEY_ID_FILE",
 		"SAFE_S3_SECRET_ACCESS_KEY",
+		"SAFE_S3_SECRET_ACCESS_KEY_FILE",
 		"SAFE_S3_SESSION_TOKEN",
+		"SAFE_S3_SESSION_TOKEN_FILE",
 		"SAFE_S3_FORCE_PATH_STYLE",
 		"SAFE_VALKEY_ADDR",
 		"SAFE_VALKEY_USERNAME",
 		"SAFE_VALKEY_PASSWORD",
+		"SAFE_VALKEY_PASSWORD_FILE",
 		"SAFE_VALKEY_DB",
 		"SAFE_VALKEY_TLS",
 		"SAFE_VALKEY_DIAL_TIMEOUT",
@@ -1147,7 +2200,25 @@ func loadConfigForTestErr(t *testing.T, env map[string]string) (Config, error) {
 			t.Fatalf("set %s: %v", name, err)
 		}
 	}
-	return Load()
+	return LoadWithOptions(opts)
+}
+
+func writeConfigFile(t *testing.T, contents string) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "proofline.toml")
+	if err := os.WriteFile(path, []byte(strings.TrimSpace(contents)+"\n"), 0o600); err != nil {
+		t.Fatalf("write config file: %v", err)
+	}
+	return path
+}
+
+func writeSecretFile(t *testing.T, contents string) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "secret")
+	if err := os.WriteFile(path, []byte(contents), 0o600); err != nil {
+		t.Fatalf("write secret file: %v", err)
+	}
+	return path
 }
 
 func restoreEnv(t *testing.T, names []string) {

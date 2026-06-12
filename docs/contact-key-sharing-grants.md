@@ -2,12 +2,16 @@
 
 This document designs the contact key-sharing model for Proofline. The current
 backend implements the server metadata steps for this model: account owners can
-register trusted-contact public-key metadata, create or revoke
-incident/stream-scoped sharing grants, and store or revoke grant-bound
-wrapped-key records through authenticated private `/v1` routes. It does not add
-bundle wrapped-key fields, trusted-contact accounts, browser decryption,
-backend decryption, server escrow, public account workflows, notifications,
-client code, or production key custody behavior.
+create account-to-account trusted-contact relationship invites, register
+trusted-contact public-key metadata, replace or mark contact keys revoked/lost,
+create or revoke incident/stream-scoped sharing grants, and store or revoke
+grant-bound wrapped-key records through authenticated private `/v1` routes.
+Signed-in accepted trusted contacts can read wrapped-key records only when an
+active relationship, recipient-bound active contact key, active unexpired
+ciphertext grant, and active wrapped-key record all authorize the request. It
+does not add bundle wrapped-key fields, browser decryption, backend decryption,
+server escrow, public account workflows, notifications, client code, or
+production key custody behavior.
 
 The design connects the long-term key custody direction in
 [key-custody.md](key-custody.md), the role and grant boundaries in
@@ -21,10 +25,10 @@ The backend remains ciphertext-only by default:
 
 - clients encrypt media before upload
 - the server stores encrypted chunks and metadata
-- the server may store contact public keys and wrapped media-key ciphertext
-- the server must not store raw media keys, contact private keys, plaintext,
-  unwrapped shared secrets, browser fragment secrets, or server-decryptable key
-  material in the default contact-sharing path
+- the server may store recipient public-key records and wrapped CEK ciphertext
+- the server must not store raw CEKs, raw media keys, recipient private keys,
+  plaintext, unwrapped shared secrets, browser fragment secrets, or
+  server-decryptable key material in the default contact-sharing path
 - server escrow, break-glass key access, browser decryption, and backend
   decryption remain separate security-sensitive designs
 
@@ -41,12 +45,22 @@ The future model should keep these concepts separate:
 |---|---|---|
 | Account owner | Owns incidents, contacts, sharing policy, and revocation decisions. | Authenticated product actor; can create and revoke grants for owned incidents. |
 | Trusted contact | A person authorized by the account owner or escalation policy. | Receives only grant-scoped metadata, ciphertext, and wrapped keys. |
-| Contact public key | Public key registered for a trusted contact device or account. | Server-visible metadata, but still privacy-sensitive because it links contacts and sharing history. |
-| Contact private key | Secret key controlled by the trusted contact. | Never stored, logged, backed up, or handled by the server. |
+| Recipient public-key record | Versioned public key material for an account, device, trusted contact, or future escrow target. | Server-visible metadata, but still privacy-sensitive because it links recipients and sharing history. |
+| Recipient private key | Secret key controlled by the account, device, trusted contact, or future escrow holder. | Never stored, logged, backed up, or handled by the server in the default contact-sharing model. |
+| CEK | Content-encryption key for an incident, stream, or bounded chunk group. | Never stored raw by the server in the default model. Existing `media_key_id` fields identify this key material until a protocol/API naming migration is accepted. |
 | Access grant | Authorization record for an actor, incident or stream, data classes, expiry, and state. | Does not itself contain decryption material. |
 | Viewer token | Bearer public-link capability for the read-only incident viewer. | Separate from trusted-contact identity and grants; not a general `/v1` credential. |
-| Media key | Symmetric key used by a client to encrypt an incident or stream. | Never stored raw by the server in the default model. |
-| Wrapped-key record | Encrypted copy of a media key for a contact key, owner device, recovery target, or future escrow target. | Access-enabling encrypted metadata; deliver only under explicit policy. |
+| Wrapped-key record | Encrypted copy of a CEK for a recipient public-key record. | Access-enabling encrypted metadata; deliver only under explicit policy. |
+
+Do not model an incident as its own long-term private-key identity. Long-term
+private keys belong to accounts, devices, and trusted contacts. Incidents,
+streams, and bounded chunk groups own CEKs, and wrapped-key records connect
+authorized recipient key versions to those CEKs.
+
+Prototype data or test fixtures that assumed per-incident private keys should
+be migrated or regenerated against this model when they are touched. Do not add
+unnecessary dual-stack compatibility just to preserve that prototype shape; use
+an explicit migration issue if old local data or fixtures need support.
 
 ## Contact Public-Key Lifecycle
 
@@ -61,7 +75,7 @@ Registration requirements:
 - record the wrapping profile, public key material, creation time, verification
   state, and non-sensitive display metadata
 - require explicit account-owner approval before a key can receive wrapped
-  media keys
+  CEKs
 - provide an out-of-band verification step, such as comparing a short
   fingerprint or safety number, before marking a key trusted
 
@@ -78,11 +92,16 @@ Suggested contact key states:
 - `revoked`: no longer eligible for new grants or new wrapping
 - `lost`: contact reports private-key loss; not eligible for new wrapping
 
-Replacing or rotating a contact key should not mutate old wrapped-key records.
-New media keys should be wrapped only to the active key version. Rewrapping
-older media keys is possible only when an authorized client or reviewed future
-service still has access to the raw media key; the server must not invent a
-rewrap path by decrypting existing wrapped-key ciphertext.
+The implemented `/v1/contact-public-keys/{public_key_id}/replace` route creates
+a successor version for the same contact and marks prior nonterminal versions
+`replaced`. `/lost` records contact private-key or device loss. Replacement,
+revocation, and lost-key states are terminal for future grants and wrapped-key
+records. They do not mutate old wrapped-key records; old records remain bound
+to the original contact public-key ID and version, and current delivery filters
+omit them once the referenced key is no longer active. Rewrapping older CEKs is
+possible only when an authorized client or reviewed future service still has
+access to the raw CEK; the server must not invent a rewrap path by decrypting
+existing wrapped-key ciphertext.
 
 ## Grants
 
@@ -139,14 +158,15 @@ Rules:
 Late-added contacts should not automatically receive old incident keys. The
 account owner must explicitly choose whether the new contact receives access to
 existing incidents or only future incidents. If the owner's client no longer
-has the raw media keys and no explicit escrow mode exists, the backend cannot
+has the raw CEKs and no explicit escrow mode exists, the backend cannot
 produce new wrapped keys for old evidence.
 
-Media-key rotation should use new `media_key_id` values. A stream can have one
-media key, or later designs may use key generations for long-running streams.
-Wrapped-key records must identify the exact media key or generation they wrap.
+CEK rotation should use new `media_key_id` values until a protocol/API naming
+migration introduces a CEK-named field. A stream can have one CEK, or later
+designs may use key generations for long-running streams.
+Wrapped-key records must identify the exact CEK or generation they wrap.
 Revoking a contact does not rotate already uploaded ciphertext; future clients
-may rotate media keys after revocation to limit future exposure.
+may rotate CEKs after revocation to limit future exposure.
 
 ## Wrapped-Key Records
 
@@ -159,7 +179,7 @@ Server-stored fields should include:
 - `wrapped_key_id`
 - incident ID
 - optional stream ID, or incident scope
-- `media_key_id` and optional media-key generation
+- `media_key_id` and optional CEK generation
 - recipient type
 - `grant_id` or recipient/grant binding identifier
 - contact ID, when recipient type is trusted contact
@@ -173,8 +193,9 @@ Server-stored fields should include:
 
 Server-stored wrapped-key records must not include:
 
+- raw CEKs
 - raw media keys
-- contact private keys
+- recipient private keys
 - plaintext
 - unwrapped shared secrets
 - browser fragment secrets
@@ -182,12 +203,27 @@ Server-stored wrapped-key records must not include:
 - request bodies, uploaded bytes, stored paths, staging paths, object keys, or
   private deployment details
 
+The first production wrapping format for v1 preview is the accepted
+post-quantum profile in [post-quantum-envelope.md](post-quantum-envelope.md).
+Future runtime code should store profile records through the existing fields
+with:
+
+```text
+wrapping_algorithm = proofline-pq-mlkem768-hkdfsha384-aes256gcm
+wrapping_algorithm_version = 1
+```
+
+The current routes remain generic metadata storage and delivery routes until
+runtime implementation adds profile validation. They must not be described as
+cryptographic validators merely because they can already store those strings.
+
 The wrapping format must use stable, documented cryptographic libraries or
 platform APIs. Do not implement custom public-key encryption, KDF, AEAD,
-padding, MAC, random generator, or secret-sharing primitives in this
-repository. A future implementation issue should choose a reviewed profile,
-such as HPKE with a maintained library or another documented recipient format,
-and document compatibility with future mobile or trusted-contact clients.
+padding, MAC, random generator, or secret-sharing primitives in this repository.
+Do not invent alternate undocumented encodings for wrapped-key records. Any
+future suite that replaces the accepted PQ profile needs explicit identifiers,
+compatibility tests, migration notes, and future mobile or trusted-contact
+client review.
 
 ## Delivery
 
@@ -197,6 +233,9 @@ Current implementation:
 
 - authenticated owner API responses deliver only active records for the
   authenticated account's owned incident
+- authenticated trusted-contact API responses deliver only active records whose
+  owner relationship, recipient-bound contact key, grant, and wrapped-key record
+  authorize the signed-in recipient account
 - records are omitted when the sharing grant is revoked or expired, the contact
   public key is no longer active, or the wrapped-key record is revoked or
   rotated
@@ -268,25 +307,31 @@ authorized responses only.
 
 ## Audit
 
-Useful audit fields:
+The current backend stores private repository-level sharing audit events for
+contact public-key registration, replacement, revocation, and lost-key marking;
+sharing-grant creation and revocation; wrapped-key record creation and
+revocation; and incident deletion-pruning of sharing and wrapped-key metadata.
+No public route exposes these records.
+
+Implemented audit fields:
 
 - timestamp
-- actor ID
-- actor role or grant type
+- actor account ID, or the owner account ID for owner-scoped automatic
+  pruning decisions that have no explicit account actor
 - action type
 - incident ID
 - optional stream ID
 - grant ID
 - contact ID or contact public key ID
-- wrapping profile ID
+- wrapped-key record ID
+- deletion decision ID
 - decision or outcome
-- safe reason category
 
 Audit records must not include raw viewer tokens, raw incident tokens, raw
 session tokens, Authorization headers, request bodies, uploaded bytes,
 plaintext, raw keys, contact private keys, unwrapped shared secrets, wrapped
-key ciphertext, stored paths, staging paths, object keys, private deployment
-details, or user safety narratives.
+key ciphertext, public wrapping metadata, stored paths, staging paths, object
+keys, private deployment details, or user safety narratives.
 
 ## Implementation Sequence
 
@@ -294,21 +339,28 @@ Implementation should stay split into narrow issues:
 
 1. Implemented: add metadata schema and repository coverage for contact public keys and
    sharing grants behind the existing reviewed `/v1` boundary.
-2. Implemented: add authenticated owner routes for contact key registration, verification,
-   replacement, revocation, and grant management behind the existing reviewed
-   `/v1` boundary.
+2. Implemented: add authenticated owner routes for contact key registration,
+   verification, replacement, revocation, lost-key marking, and grant
+   management behind the existing reviewed `/v1` boundary.
 3. Implemented: add wrapped-key metadata schema and repository behavior without
-   exposing raw media keys or contact private keys.
+   exposing raw CEKs, raw media keys, or recipient private keys.
 4. Implemented: add owner-authenticated wrapped-key delivery through private
    API responses, with bundle manifests remaining key-free and tests proving
    unauthorized actors do not receive wrapped-key records.
-5. Future: add trusted-contact authentication and grant-scoped read routes only
-   after the public product API exposure model is explicitly reviewed.
-6. Future: optionally add grant-scoped bundle manifests only after a separate
+5. Implemented: add account-to-account trusted-contact relationship lifecycle
+   metadata for owner invite/revoke/replace and recipient accept/decline
+   without granting key delivery.
+6. Implemented: add signed-in trusted-contact grant-scoped wrapped-key read
+   routes without changing token-only viewer routes, bundle manifests, or
+   decryption behavior.
+7. Future: add trusted-contact incident metadata, ciphertext bundle, and full
+   viewer read routes only after the public product API exposure model is
+   explicitly reviewed.
+8. Future: optionally add grant-scoped bundle manifests only after a separate
    design and tests prove unauthorized actors do not receive wrapped-key records.
-7. Update simulator/client tooling to generate production-shaped wrapped-key
+9. Update simulator/client tooling to generate production-shaped wrapped-key
    records using a reviewed wrapping profile.
-8. Update deployment, security, threat-model, API, and retention docs before
+10. Update deployment, security, threat-model, API, and retention docs before
    any public-authenticated contact route is exposed.
 
 Each implementation issue must include tests for:
@@ -317,10 +369,11 @@ Each implementation issue must include tests for:
 - grant scope by account owner, incident, stream, data class, and recipient
 - contact key replacement and revocation
 - late-contact behavior
-- media-key rotation or generation matching
-- no raw media keys, contact private keys, plaintext, request bodies, uploaded
-  bytes, raw tokens, stored paths, object keys, or private deployment details in
-  logs, manifests, API errors, tests, or public documentation
+- CEK rotation or generation matching
+- no raw CEKs, raw media keys, recipient private keys, plaintext, request
+  bodies, uploaded bytes, raw tokens, stored paths, object keys, or private
+  deployment details in logs, manifests, API errors, tests, or public
+  documentation
 - unchanged ciphertext-only backend behavior outside explicit future
   break-glass work
 

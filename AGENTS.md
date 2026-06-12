@@ -6,10 +6,10 @@
 - Prefer Go standard library where practical.
 - This repository is the Proofline Go server backend only. In the current organisation layout it is `open-proofline/server`.
 - Do not add web-client, iOS-client, Android-client, or shared-protocol implementation to this repository unless the maintainer explicitly changes the repository strategy.
-- Do not add React, Node, npm, Docker Compose, Kubernetes, OAuth, JWT, user accounts, SMS, Messenger, push notifications, cloud services, or public admin dashboards unless explicitly requested.
+- Do not add React, Node, npm, Docker Compose, Kubernetes, OAuth, JWT, new account-system features beyond the implemented local account/session and registration flows, SMS, Messenger, push notifications, cloud services, or public admin dashboards unless explicitly requested.
 - Treat uploaded chunks as immutable.
 - Never overwrite stored chunks or evidence bundle contents.
-- Never log raw viewer tokens, incident tokens, request bodies, uploaded file bytes, Authorization headers, plaintext, raw keys, or future token-like values.
+- Never log raw viewer tokens, incident tokens, request bodies, uploaded file bytes, Authorization headers, plaintext, raw keys, wrapped-key ciphertext, private deployment details, stored paths, object keys, user safety data, or future token-like values. Logging changes should follow `docs/logging-requirements.md`.
 - Keep the main API/viewer route tree and the private `/admin` dashboard route tree on separate listener groups and separate muxes.
 - Do not route private write/admin routes from public incident viewer edges.
 - Public incident viewer routes must remain read-only.
@@ -40,7 +40,7 @@
 - Current server repository: `open-proofline/server`.
 - Planned future companion repositories: `open-proofline/web-client`, `open-proofline/ios-client`, `open-proofline/android-client`, and `open-proofline/protocol`.
 - The Go module path is `github.com/open-proofline/server` at the repository root, release binaries use `proofline-server-*` names, and the published GHCR image is `ghcr.io/open-proofline/server`.
-- Some compatibility identifiers, including the v1 simulator encryption envelope and default SQLite filename, may still use earlier `safety-recorder` names until separate protocol or data-layout migrations are explicitly performed.
+- Current runtime protocol and default data-layout identifiers use Proofline names. Historical reports and archived prompts may still mention earlier `safety-recorder` identifiers.
 - SQLite metadata by default.
 - Optional PostgreSQL metadata when explicitly configured.
 - Local disk blob storage by default.
@@ -58,7 +58,7 @@
 - The current backend implements local username/password accounts, main `/v1` account/session authentication, admin account management routes, and owner/admin incident authorization.
 - The current backend implements optional incident mode, capture profile, escalation policy, and sharing state metadata fields on private incident create/read routes, but these fields do not grant access, send notifications, change retention, change key custody, expose trusted-contact workflows, or change public viewer and bundle behavior.
 - The current backend implements private owner-scoped and admin-global incident deletion routes, deletion tombstones, retryable blob deletion, and optional closed-incident retention through a background worker.
-- The current backend does not yet implement mode-driven access, trusted-contact accounts, dead-man switch notifications, public account workflows, or public `/v1` product authentication.
+- The current backend does not yet implement mode-driven access, trusted-contact accounts, dead-man switch notifications, public account workflows, or a complete public `/v1` product deployment model beyond local account sessions, optional browser cookie sessions, and route-class limits.
 - Planned production-cluster scope may add cluster-safe idempotent upload semantics and operation-level use of coordination. These additions must not remove SQLite, optional PostgreSQL metadata, local filesystem support, the optional S3-compatible blob backend, or the optional Valkey/Redis-compatible coordination backend.
 - Regional stream-ingress relay work is planning-only unless explicitly scoped for implementation; any future relay must stay upload-only, temporary, ciphertext-only, and subordinate to the core API for authorization, idempotency, durable blob commits, and metadata.
 - Future encryption direction should be a hybrid key custody model.
@@ -88,6 +88,7 @@ Before accepting Codex changes, check:
 - private/public route separation is preserved
 - raw tokens are not logged
 - plaintext and raw keys are not logged
+- wrapped-key ciphertext, private deployment details, stored paths, object keys, and user safety data are not logged
 - ZIP downloads use safe headers and controlled paths
 - documentation still matches `README.md`
 - future web, iOS, Android, or protocol work was not accidentally added to this server repository

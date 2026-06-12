@@ -26,7 +26,7 @@ func run(ctx context.Context, out io.Writer, args []string) error {
 		return runDesktopRecorder(ctx, out, cfg)
 	}
 
-	encryptionKey, err := prepareEncryption(out, cfg)
+	encryption, err := prepareEncryption(out, cfg)
 	if err != nil {
 		return err
 	}
@@ -35,6 +35,7 @@ func run(ctx context.Context, out io.Writer, args []string) error {
 		httpClient: newHTTPClient(cfg),
 		apiBase:    cfg.apiBase,
 		viewerBase: cfg.viewerBase,
+		relayBase:  cfg.relayBase,
 	}
 
 	fmt.Fprintln(out, "Logging in...")
@@ -43,6 +44,13 @@ func run(ctx context.Context, out io.Writer, args []string) error {
 		return err
 	}
 	sim.sessionToken = sessionToken
+	if cfg.setupTOTPSecondFactor {
+		fmt.Fprintln(out, "Setting up TOTP second factor...")
+		if err := sim.setupTOTPSecondFactor(ctx); err != nil {
+			return err
+		}
+		fmt.Fprintln(out, "TOTP second factor verified.")
+	}
 
 	fmt.Fprintln(out, "Creating incident...")
 	incidentID, err := sim.createIncident(ctx)
@@ -66,16 +74,29 @@ func run(ctx context.Context, out io.Writer, args []string) error {
 	}
 	fmt.Fprintf(out, "Stream: %s\n\n", streamID)
 
-	bundleVerificationKey := encryptionKey
-	contactWrappedVerification := false
-	if wrappedKey, ok, err := prepareContactWrappedKey(out, cfg, incidentID, streamID, encryptionKey); err != nil {
-		return err
-	} else if ok {
-		bundleVerificationKey = wrappedKey
-		contactWrappedVerification = true
+	var relaySession relaySession
+	if cfg.uploadMode == uploadModeRelay {
+		fmt.Fprintln(out, "Creating relay upload session...")
+		relaySession, err = sim.createRelaySession(ctx, incidentID, streamID)
+		if err != nil {
+			return err
+		}
+		fmt.Fprintln(out, "Relay upload session created; capability omitted from output.")
+		fmt.Fprintln(out)
 	}
 
-	if err := uploadChunks(ctx, out, sim, cfg, incidentID, streamID, encryptionKey); err != nil {
+	bundleVerification := encryption
+	contactWrappedVerification := false
+	if encryption.mode == envelopeModeV1 {
+		if wrappedKey, ok, err := prepareContactWrappedKey(out, cfg, incidentID, streamID, encryption.v1Key); err != nil {
+			return err
+		} else if ok {
+			bundleVerification = newV1SimulatorEncryption(wrappedKey)
+			contactWrappedVerification = true
+		}
+	}
+
+	if err := uploadChunks(ctx, out, sim, cfg, incidentID, streamID, encryption, relaySession); err != nil {
 		return err
 	}
 
@@ -88,7 +109,7 @@ func run(ctx context.Context, out io.Writer, args []string) error {
 	}
 
 	if cfg.downloadBundle {
-		if err := downloadAndVerifyBundle(ctx, out, sim, cfg, token, incidentID, streamID, bundleVerificationKey, contactWrappedVerification); err != nil {
+		if err := downloadAndVerifyBundle(ctx, out, sim, cfg, token, incidentID, streamID, bundleVerification, contactWrappedVerification); err != nil {
 			return err
 		}
 	}

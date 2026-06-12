@@ -41,19 +41,33 @@ func (r *Repository) CreateAccount(ctx context.Context, params auth.CreateAccoun
 	account := auth.Account{
 		ID:                id,
 		Username:          auth.NormalizeUsername(params.Username),
+		EmailNormalized:   auth.NormalizeEmail(params.EmailNormalized),
+		EmailVerifiedAt:   params.EmailVerifiedAt,
+		AccountState:      params.AccountState,
+		SecondFactorSetup: params.SecondFactorSetup,
 		PasswordHash:      params.PasswordHash,
 		Role:              params.Role,
 		CreatedAt:         now,
 		UpdatedAt:         now,
 		PasswordChangedAt: now,
 	}
+	if account.AccountState == "" {
+		account.AccountState = auth.AccountStateActive
+	}
+	if account.SecondFactorSetup == "" {
+		account.SecondFactorSetup = auth.SecondFactorSetupStateNotRequired
+	}
 	_, err = r.db.ExecContext(ctx, `
 		INSERT INTO accounts (
-			id, username, password_hash, role, created_at, updated_at, password_changed_at
+			id, username, email_normalized, email_verified_at, account_state, second_factor_setup_state, password_hash, role, created_at, updated_at, password_changed_at
 		)
-		VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
 		account.ID,
 		account.Username,
+		nullableString(account.EmailNormalized),
+		account.EmailVerifiedAt,
+		account.AccountState,
+		account.SecondFactorSetup,
 		account.PasswordHash,
 		account.Role,
 		account.CreatedAt,
@@ -74,7 +88,7 @@ func (r *Repository) CreateAccount(ctx context.Context, params auth.CreateAccoun
 
 func (r *Repository) GetAccountByUsername(ctx context.Context, username string) (auth.Account, error) {
 	row := r.db.QueryRowContext(ctx, `
-		SELECT id, username, password_hash, role, created_at, updated_at, password_changed_at
+		SELECT id, username, email_normalized, email_verified_at, account_state, second_factor_setup_state, password_hash, role, created_at, updated_at, password_changed_at
 		FROM accounts
 		WHERE username = $1`,
 		auth.NormalizeUsername(username),
@@ -84,7 +98,7 @@ func (r *Repository) GetAccountByUsername(ctx context.Context, username string) 
 
 func (r *Repository) GetAccountByID(ctx context.Context, accountID string) (auth.Account, error) {
 	row := r.db.QueryRowContext(ctx, `
-		SELECT id, username, password_hash, role, created_at, updated_at, password_changed_at
+		SELECT id, username, email_normalized, email_verified_at, account_state, second_factor_setup_state, password_hash, role, created_at, updated_at, password_changed_at
 		FROM accounts
 		WHERE id = $1`,
 		accountID,
@@ -94,7 +108,7 @@ func (r *Repository) GetAccountByID(ctx context.Context, accountID string) (auth
 
 func (r *Repository) ListAccounts(ctx context.Context) ([]auth.Account, error) {
 	rows, err := r.db.QueryContext(ctx, `
-		SELECT id, username, password_hash, role, created_at, updated_at, password_changed_at
+		SELECT id, username, email_normalized, email_verified_at, account_state, second_factor_setup_state, password_hash, role, created_at, updated_at, password_changed_at
 		FROM accounts
 		ORDER BY created_at, id`)
 	if err != nil {
@@ -181,7 +195,7 @@ func (r *Repository) CreateSession(ctx context.Context, accountID string, expire
 func (r *Repository) LookupSession(ctx context.Context, rawToken string) (auth.Session, error) {
 	tokenHash := auth.SessionTokenHash(rawToken)
 	row := r.db.QueryRowContext(ctx, `
-		SELECT id, account_id, token_hash, created_at, expires_at, revoked_at
+		SELECT id, account_id, token_hash, second_factor_verified_at, second_factor_factor_id, second_factor_method, created_at, expires_at, revoked_at
 		FROM auth_sessions
 		WHERE token_hash = $1`,
 		tokenHash,
@@ -197,6 +211,35 @@ func (r *Repository) LookupSession(ctx context.Context, rawToken string) (auth.S
 		return auth.Session{}, auth.ErrNotFound
 	}
 	return session, nil
+}
+
+func (r *Repository) MarkSessionSecondFactorVerified(ctx context.Context, sessionID, factorID, method string, verifiedAt time.Time) (auth.Session, error) {
+	result, err := r.db.ExecContext(ctx, `
+		UPDATE auth_sessions
+		SET second_factor_verified_at = $1, second_factor_factor_id = $2, second_factor_method = $3
+		WHERE id = $4 AND revoked_at IS NULL`,
+		verifiedAt.UTC(),
+		factorID,
+		method,
+		sessionID,
+	)
+	if err != nil {
+		return auth.Session{}, fmt.Errorf("mark postgres session second factor verified: %w", err)
+	}
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return auth.Session{}, fmt.Errorf("mark postgres session second factor verified rows affected: %w", err)
+	}
+	if rowsAffected == 0 {
+		return auth.Session{}, auth.ErrNotFound
+	}
+	row := r.db.QueryRowContext(ctx, `
+		SELECT id, account_id, token_hash, second_factor_verified_at, second_factor_factor_id, second_factor_method, created_at, expires_at, revoked_at
+		FROM auth_sessions
+		WHERE id = $1`,
+		sessionID,
+	)
+	return scanSession(row)
 }
 
 func (r *Repository) RevokeSession(ctx context.Context, sessionID string) error {
@@ -243,9 +286,15 @@ func (r *Repository) RevokeAccountSessions(ctx context.Context, accountID, excep
 
 func scanAccount(s scanner) (auth.Account, error) {
 	var account auth.Account
+	var emailNormalized sql.NullString
+	var emailVerifiedAt sql.NullTime
 	if err := s.Scan(
 		&account.ID,
 		&account.Username,
+		&emailNormalized,
+		&emailVerifiedAt,
+		&account.AccountState,
+		&account.SecondFactorSetup,
 		&account.PasswordHash,
 		&account.Role,
 		&account.CreatedAt,
@@ -257,6 +306,10 @@ func scanAccount(s scanner) (auth.Account, error) {
 		}
 		return auth.Account{}, err
 	}
+	if emailNormalized.Valid {
+		account.EmailNormalized = emailNormalized.String
+	}
+	account.EmailVerifiedAt = nullableDBTime(emailVerifiedAt)
 	account.CreatedAt = account.CreatedAt.UTC()
 	account.UpdatedAt = account.UpdatedAt.UTC()
 	account.PasswordChangedAt = account.PasswordChangedAt.UTC()
@@ -265,11 +318,17 @@ func scanAccount(s scanner) (auth.Account, error) {
 
 func scanSession(s scanner) (auth.Session, error) {
 	var session auth.Session
+	var secondFactorVerifiedAt sql.NullTime
+	var secondFactorFactorID sql.NullString
+	var secondFactorMethod sql.NullString
 	var revokedAt sql.NullTime
 	if err := s.Scan(
 		&session.ID,
 		&session.AccountID,
 		&session.TokenHash,
+		&secondFactorVerifiedAt,
+		&secondFactorFactorID,
+		&secondFactorMethod,
 		&session.CreatedAt,
 		&session.ExpiresAt,
 		&revokedAt,
@@ -278,6 +337,13 @@ func scanSession(s scanner) (auth.Session, error) {
 			return auth.Session{}, auth.ErrNotFound
 		}
 		return auth.Session{}, err
+	}
+	session.SecondFactorVerifiedAt = nullableDBTime(secondFactorVerifiedAt)
+	if secondFactorFactorID.Valid {
+		session.SecondFactorFactorID = secondFactorFactorID.String
+	}
+	if secondFactorMethod.Valid {
+		session.SecondFactorMethod = secondFactorMethod.String
 	}
 	session.CreatedAt = session.CreatedAt.UTC()
 	session.ExpiresAt = session.ExpiresAt.UTC()

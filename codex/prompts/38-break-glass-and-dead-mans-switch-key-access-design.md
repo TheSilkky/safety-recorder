@@ -11,7 +11,7 @@ Do **not** add API routes.
 Do **not** add background jobs.
 Do **not** implement dead-man-switch logic.
 Do **not** add dependencies.
-Do **not** add OAuth, JWT, user accounts, SMS, Messenger, push notifications, Docker Compose, Kubernetes, cloud integrations, or public admin dashboard features.
+Do **not** add OAuth, JWT, new account-system features beyond the implemented local account/session and registration flows, SMS, Messenger, push notifications, Docker Compose, Kubernetes, cloud integrations, or public admin dashboard features.
 
 ## Goal
 
@@ -31,6 +31,7 @@ Read:
 - `README.md`
 - `AGENTS.md`
 - `SECURITY.md`
+- `docs/v1-preview-direction.md`
 - `docs/encryption.md`
 - `docs/key-custody.md`, if present
 - `docs/security-model.md`
@@ -39,9 +40,12 @@ Read:
 - `docs/architecture.md`
 - GitHub issue `#9`, if available
 
-## Document to create
+## Document to create or update
 
-Create:
+Create or update the relevant design document. If the document already exists,
+update it rather than creating a duplicate.
+
+Path:
 
 ```text
 docs/break-glass-key-access.md
@@ -61,7 +65,7 @@ State clearly:
 
 ### 2. Availability requirement
 
-Document that the system must assume the iPhone may be lost, damaged, powered off, taken, or destroyed.
+Document that the system must assume the user's phone may be lost, damaged, powered off, taken, or destroyed.
 
 Explain why phone-only keys are not sufficient for this product.
 
@@ -227,6 +231,7 @@ Markdown-only:
 ```bash
 git diff --stat
 git diff -- docs CHANGELOG.md
+git diff --check
 ```
 
 If code changed, stop and explain why.

@@ -13,8 +13,6 @@ codex/
   README.md
   prompts/
   archive/
-  features/
-  refactors/
   work-orders/
 ```
 
@@ -28,8 +26,6 @@ Historical prompts live in:
 
 ```text
 codex/archive/
-codex/features/
-codex/refactors/
 codex/work-orders/
 ```
 
@@ -100,32 +96,40 @@ Use prompts in this rough order:
 9. `37-browser-decryption-design-spike.md`
 10. `38-break-glass-and-dead-mans-switch-key-access-design.md`
 11. `40-documentation-update.md`
-12. `50-mdn-web-security-header-review.md`, for web-facing changes
-13. `60-simulator-maintenance.md`, for API/client-flow changes
+12. `45-documentation-and-prompt-review.md`, for comprehensive documentation and reusable-prompt consistency review
+13. `50-mdn-web-security-header-review.md`, for web-facing changes
+14. `60-simulator-maintenance.md`, for API/client-flow changes
 
 ### Issue and PR workflow
 
-14. `70-work-on-github-issue.md`
-15. `75-create-draft-pr-from-current-branch.md`
-16. `76-request-codex-pr-review.md`
+15. `70-work-on-github-issue.md`
+16. `75-create-draft-pr-from-current-branch.md`
+17. `76-request-codex-pr-review.md`
 
 ### Backlog workflow
 
-17. `80-backlog-scan-issue-drafts.md`
-18. `81-backlog-drafts-structure-and-hygiene.md`
-19. `82-review-open-issues-for-stale-or-fixed.md`
-20. `85-create-github-issues-from-drafts.md`
+18. `80-backlog-scan-issue-drafts.md`
+19. `81-backlog-drafts-structure-and-hygiene.md`
+20. `82-review-open-issues-for-stale-or-fixed.md`
+21. `85-create-github-issues-from-drafts.md`
 
 ### Release workflow
 
-21. `90-release-check.md`
-22. `95-validate-deep-research-report.md`, for Phase 2 validation of public technical review reports
+22. `90-release-check.md`
+23. `95-validate-deep-research-report.md`, for Phase 2 validation of public technical review reports
+
+For any `v1 preview`, `v1.0.0`, or real-user evidence-upload readiness claim,
+run [docs/v1-preview-readiness-checklist.md](../docs/v1-preview-readiness-checklist.md)
+as part of the release workflow before using preview-ready language.
 
 ## Current project constraints
 
-Treat `README.md`, `AGENTS.md`, `SECURITY.md`, and the `docs/` directory as the current source of truth.
+Treat `README.md`, `AGENTS.md`, `SECURITY.md`, and the `docs/` directory as the current source of truth. For v1 preview terminology, repository roles, and current-versus-future product direction, read `docs/v1-preview-direction.md` before turning prototype gaps into backlog or implementation assumptions.
+For v1 preview release claims, also read
+`docs/v1-preview-readiness-checklist.md` and preserve its hard-blocker,
+non-goal, optional hosted-service, and issue-hygiene boundaries.
 
-Product documentation now uses the name Proofline. The repository URL is `open-proofline/server`, the root Go module path is `github.com/open-proofline/server`, release binaries use `proofline-server-*` names, and the published GHCR image is `ghcr.io/open-proofline/server`. Compatibility identifiers such as the v1 simulator encryption envelope and default SQLite filename may still use earlier `safety-recorder` names until separate protocol or data-layout migrations are explicitly performed.
+Product documentation now uses the name Proofline. The repository URL is `open-proofline/server`, the root Go module path is `github.com/open-proofline/server`, release binaries use `proofline-server-*` names, and the published GHCR image is `ghcr.io/open-proofline/server`. Current runtime protocol and default data-layout identifiers use Proofline names. Historical reports and archived prompts may still mention earlier `safety-recorder` identifiers.
 
 Core constraints:
 
@@ -135,7 +139,7 @@ Core constraints:
 - Keep the main API/viewer route tree and the private `/admin` dashboard route tree on separate listener groups and muxes.
 - Treat uploaded chunks as immutable.
 - Evidence bundles are encrypted chunk bundles, not decrypted/playable media exports.
-- Do not log raw viewer tokens, incident tokens, request bodies, uploaded bytes, Authorization headers, plaintext, raw keys, or future token-like values.
+- Do not log raw viewer tokens, incident tokens, request bodies, uploaded bytes, Authorization headers, plaintext, raw keys, wrapped-key ciphertext, private deployment details, stored paths, object keys, user safety data, or future token-like values. Logging changes should follow `docs/logging-requirements.md`.
 - Use stable, documented crypto libraries only. Do not implement cryptographic primitives.
 - Preserve the current backend ciphertext-only implementation unless the task explicitly concerns key custody, emergency access, or decryption design.
 - Do not introduce backend decryption, raw server-held decryption keys, key escrow, browser decryption, or key-sharing behaviour incidentally.
@@ -143,12 +147,12 @@ Core constraints:
 - Future production key custody should assume the user's phone may be unavailable; keys must not exist solely on the client device.
 - Server storage of wrapped/encrypted keys may be acceptable if explicitly designed.
 - Raw server-side key access or server-side decryption may be acceptable only as a deliberate break-glass/dead-man-switch/emergency-access mode with clear access controls, audit expectations, and deployment warnings.
-- Future product scope includes emergency incidents, non-emergency interaction records, timed safety checks, and evidence notes, but the current backend only stores generic incidents.
-- First-class incident modes, capture profiles, escalation policies, sharing
-  state, public account workflows, trusted-contact accounts, dead-man switch
-  notifications, and public `/v1` product authentication are not implemented
-  yet.
-- Do not add React, Node, npm, OAuth, JWT, user accounts, SMS, Messenger, push notifications, public admin dashboards, Docker Compose, Kubernetes, or cloud integrations unless explicitly requested.
+- Future product scope includes emergency incidents, non-emergency interaction records, timed safety checks, and evidence notes. The current backend stores generic incidents by default and can store optional incident-mode, capture-profile, escalation-policy, and sharing-state metadata as labels only.
+- Mode-driven access, first-class capture-profile behavior, escalation
+  policies, sharing-state behavior, trusted-contact accounts, dead-man switch
+  notifications, public account portals, and public `/v1` product
+  authentication are not implemented yet.
+- Do not add React, Node, npm, OAuth, JWT, new account-system features beyond the implemented local account/session and registration flows, SMS, Messenger, push notifications, public admin dashboards, Docker Compose, Kubernetes, or cloud integrations unless explicitly requested.
 - Put newly discovered future work into issues/backlog items unless it is required for the current task.
 - Backlog scanning creates draft Markdown files first, not GitHub issues directly.
 - Do not create public GitHub issues from backlog drafts until the maintainer has reviewed them.
@@ -166,19 +170,20 @@ When project scope, architecture, security posture, or workflow changes, update 
 | First-class incident modes, capture profiles, escalation policies, sharing state, safety checks, interaction records, or evidence notes | Update `docs/incident-modes.md`, `README.md`, API docs, security/threat docs, client prototype docs, and relevant review prompts. |
 | New API routes or listener exposure | Review `AGENTS.md`, `docs/api.md`, security/threat docs, and relevant review prompts. |
 | Private `/v1` exposure or authentication model changes | Review `AGENTS.md`, `docs/deployment.md`, `docs/security-model.md`, `docs/threat-model.md`, and every reusable prompt that references private/public route separation. |
-| Encryption envelope changes | Update `docs/encryption.md`, `60-simulator-maintenance.md`, `30-security-review.md`, and Deep Research review scope. |
+| Logging behavior, startup/config error logs, request logs, or worker/operator logs | Review `docs/logging-requirements.md`, `docs/security-model.md`, `docs/threat-model.md`, and relevant review prompts. |
+| Encryption envelope changes | Update `docs/encryption.md`, `docs/post-quantum-envelope.md`, `docs/simulator.md`, `60-simulator-maintenance.md`, `30-security-review.md`, and Deep Research review scope. |
 | Key custody, browser decryption, break-glass, or dead-man-switch design changes | Use or update the key-custody prompts and update threat model, security model, encryption docs, incident-mode docs, and operational guidance. |
 | Bundle, storage, schema, or manifest changes | Update API docs, code-map docs, simulator docs/prompts, and Deep Research scope. |
 | CI/CD, Docker, GHCR, or release workflow changes | Update release/development docs and release/report prompts. |
 | New repeated Codex workflow | Add one reusable `NN-short-kebab-title.md` prompt and list it in this README. |
-| One-off implementation, refactor, or work order | Add a dated historical prompt under `features/`, `refactors/`, or `work-orders/`. |
+| One-off implementation, refactor, or work order | Add a dated historical prompt under `archive/` or `work-orders/`. |
 | Validated Deep Research report finds a recurring false-positive pattern | Update the Deep Research Phase 1 and/or Codex Phase 2 validation prompts so the same mistake is less likely to recur. |
 
 Key custody guardrails need special care. Preserve the current backend ciphertext-only implementation unless the task explicitly concerns key custody, emergency access, or decryption design. Do not turn "no server keys ever" into a permanent absolute rule, and do not introduce backend decryption, browser decryption, raw server-held keys, key escrow, or key-sharing behaviour incidentally. Explicit key custody or decryption work must update the threat model, security model, encryption docs, tests, and operational guidance before or alongside implementation.
 
 For the public-safe report workflow, review Deep Research Phase 1 and Codex Phase 2 validation together when report workflow changes. Phase 1 lives in `docs/reports/prompts/phase-1-deep-research-technical-review.md`. Codex Phase 2 validation lives in `codex/prompts/95-validate-deep-research-report.md`. Keep portable citation keys, pin repository citations to reviewed commits, do not allow ChatGPT internal citation tokens in public reports, and add newly discovered recurring false positives to the Phase 2 checklist.
 
-Do not add a reusable prompt for every one-off idea. Add reusable prompts only for repeated workflows. One-off prompts belong in dated historical directories, and generated local artifacts belong outside `codex/`.
+Do not add a reusable prompt for every one-off idea. Add reusable prompts only for repeated workflows. One-off prompts belong in `archive/` or `work-orders/`, and generated local artifacts belong outside `codex/`.
 
 ## Issue And PR Workflow
 
@@ -222,14 +227,40 @@ Before accepting Codex changes that touch Go code:
 gofmt -w ./cmd ./internal ./migrations
 go test ./...
 go vet ./...
+git diff --check
 ```
 
-For docs-only changes, inspect the relevant Markdown and links manually. Go tests are not required unless code changed.
-
-For simulator/API flow changes, also run the simulator smoke test when practical:
+For docs-only changes, run `git diff --check` and inspect the relevant
+Markdown. Run the local Markdown link checker for documentation or reusable
+prompt changes:
 
 ```bash
-go run ./cmd/api
+scripts/check-markdown-links.py
+```
+
+The checker validates local links in `README.md`, `AGENTS.md`, `SECURITY.md`,
+`docs/**/*.md`, and `codex/**/*.md`, including simple GitHub-style Markdown
+heading anchors. It skips external URLs and fenced code examples, uses only the
+Python standard library, and does not require network access, Node/npm, Docker,
+cloud services, or secrets. When changing the checker itself, also run:
+
+```bash
+scripts/check-markdown-links.py --self-test
+```
+
+Go tests are not required unless code changed.
+
+For simulator/API flow changes, also run the simulator smoke test when
+practical. Prefer an explicit TOML config for repeatable smoke tests,
+especially when the test database still needs a bootstrap secret:
+
+```toml
+[auth]
+bootstrap_secret_file = "/path/to/local-bootstrap-secret"
+```
+
+```bash
+go run ./cmd/api --config /path/to/proofline-smoke.toml
 ```
 
 In another terminal:

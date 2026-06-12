@@ -18,11 +18,13 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/open-proofline/server/internal/auth"
 	"github.com/open-proofline/server/internal/db"
+	"github.com/open-proofline/server/internal/envelope/pq"
 	"github.com/open-proofline/server/internal/httpapi"
 	"github.com/open-proofline/server/internal/incidents"
 	"github.com/open-proofline/server/internal/storage"
@@ -93,7 +95,7 @@ func newTestAppWithOptionsAndTestAccount(t *testing.T, options httpapi.Options, 
 	t.Helper()
 
 	dataDir := t.TempDir()
-	conn, err := db.Open(context.Background(), filepath.Join(dataDir, "safety.db"))
+	conn, err := db.Open(context.Background(), filepath.Join(dataDir, "proofline.db"))
 	if err != nil {
 		t.Fatalf("open db: %v", err)
 	}
@@ -213,14 +215,9 @@ func createCheckin(t *testing.T, app *testApp, incidentID string) {
 func getIncidentDetail(t *testing.T, app *testApp, incidentID string) incidents.IncidentDetail {
 	t.Helper()
 
-	response, body := get(t, app, "/v1/incidents/"+incidentID)
-	defer response.Body.Close()
-	if response.StatusCode != http.StatusOK {
-		t.Fatalf("expected incident status 200, got %d: %s", response.StatusCode, body)
-	}
-	var detail incidents.IncidentDetail
-	if err := json.Unmarshal(body, &detail); err != nil {
-		t.Fatalf("decode incident detail: %v", err)
+	detail, err := incidents.NewRepository(app.db).GetIncidentDetail(context.Background(), incidentID)
+	if err != nil {
+		t.Fatalf("get incident detail: %v", err)
 	}
 	return detail
 }
@@ -302,6 +299,15 @@ func removeStoredStreamChunkFile(t *testing.T, app *testApp, incidentID, streamI
 	}
 }
 
+func replaceStoredStreamChunkFile(t *testing.T, app *testApp, incidentID, streamID, mediaType string, chunkIndex int, payload []byte) {
+	t.Helper()
+
+	chunkPath := filepath.Join(app.dataDir, "incidents", incidentID, "streams", streamID, fmt.Sprintf("%s_%06d.enc", mediaType, chunkIndex))
+	if err := os.WriteFile(chunkPath, payload, 0o600); err != nil {
+		t.Fatalf("replace stored stream chunk file: %v", err)
+	}
+}
+
 func updateStoredStreamChunkIndex(t *testing.T, app *testApp, incidentID, streamID string, currentIndex, nextIndex int) {
 	t.Helper()
 
@@ -347,6 +353,13 @@ func uploadChunkWithIdempotencyKey(t *testing.T, app *testApp, incidentID string
 func uploadChunkWithOptions(t *testing.T, app *testApp, incidentID string, streamID string, index int, mediaType string, payload []byte, hash string, originalFilename string, idempotencyKey string) (*http.Response, []byte) {
 	t.Helper()
 
+	payload, hash = testPQUploadPayloadAndHash(t, incidentID, streamID, index, mediaType, payload, hash)
+	return uploadRawChunkWithOptions(t, app, incidentID, streamID, index, mediaType, payload, hash, originalFilename, idempotencyKey)
+}
+
+func uploadRawChunkWithOptions(t *testing.T, app *testApp, incidentID string, streamID string, index int, mediaType string, payload []byte, hash string, originalFilename string, idempotencyKey string) (*http.Response, []byte) {
+	t.Helper()
+
 	var body bytes.Buffer
 	writer := multipart.NewWriter(&body)
 	if streamID != "" {
@@ -373,6 +386,90 @@ func uploadChunkWithOptions(t *testing.T, app *testApp, incidentID string, strea
 		headers["Idempotency-Key"] = idempotencyKey
 	}
 	return postWithHeaders(t, app, "/v1/incidents/"+incidentID+"/chunks", writer.FormDataContentType(), &body, headers)
+}
+
+var testPQPayloadCache = struct {
+	sync.Mutex
+	values map[string][]byte
+}{values: map[string][]byte{}}
+
+func testPQUploadPayloadAndHash(t *testing.T, incidentID, streamID string, index int, mediaType string, payload []byte, hash string) ([]byte, string) {
+	t.Helper()
+
+	if streamID == "" || index <= 0 {
+		return payload, hash
+	}
+	identity := pq.PayloadIdentity{
+		IncidentID:  incidentID,
+		StreamID:    streamID,
+		MediaType:   mediaType,
+		ChunkIndex:  index,
+		PayloadType: pq.PayloadTypeChunk,
+	}
+	if _, err := pq.ValidatePayloadFrameHeader(bytes.NewReader(payload), int64(len(payload)), identity); err == nil {
+		return payload, hash
+	}
+	wrapped := testPQPayload(t, incidentID, streamID, index, mediaType, payload)
+	if hash == sha256Hex(payload) {
+		hash = sha256Hex(wrapped)
+	}
+	return wrapped, hash
+}
+
+func testPQPayload(t *testing.T, incidentID, streamID string, index int, mediaType string, plaintext []byte) []byte {
+	t.Helper()
+
+	cacheKey := strings.Join([]string{
+		incidentID,
+		streamID,
+		strconv.Itoa(index),
+		mediaType,
+		sha256Hex(plaintext),
+	}, "\x00")
+	testPQPayloadCache.Lock()
+	if cached, ok := testPQPayloadCache.values[cacheKey]; ok {
+		out := append([]byte(nil), cached...)
+		testPQPayloadCache.Unlock()
+		return out
+	}
+	testPQPayloadCache.Unlock()
+
+	recipient, _, err := pq.GenerateRecipientKey(1)
+	if err != nil {
+		t.Fatalf("GenerateRecipientKey returned error: %v", err)
+	}
+	env, err := pq.Encrypt(plaintext, pq.PayloadContext{
+		EnvelopeID:  "env_test_" + sha256Hex([]byte(cacheKey))[:24],
+		IncidentID:  incidentID,
+		StreamID:    streamID,
+		MediaType:   mediaType,
+		ChunkIndex:  index,
+		PayloadType: pq.PayloadTypeChunk,
+		MediaKeyID:  "media-key-test-" + sha256Hex([]byte(cacheKey))[24:48],
+	}, []pq.Recipient{recipient})
+	if err != nil {
+		t.Fatalf("pq.Encrypt returned error: %v", err)
+	}
+	out := append([]byte(nil), env.PayloadFrame...)
+	testPQPayloadCache.Lock()
+	testPQPayloadCache.values[cacheKey] = append([]byte(nil), out...)
+	testPQPayloadCache.Unlock()
+	return out
+}
+
+func assertPQPayloadFrame(t *testing.T, payload []byte, incidentID, streamID string, index int, mediaType string) pq.PayloadMetadata {
+	t.Helper()
+	meta, err := pq.ValidatePayloadFrameHeader(bytes.NewReader(payload), int64(len(payload)), pq.PayloadIdentity{
+		IncidentID:  incidentID,
+		StreamID:    streamID,
+		MediaType:   mediaType,
+		ChunkIndex:  index,
+		PayloadType: pq.PayloadTypeChunk,
+	})
+	if err != nil {
+		t.Fatalf("ValidatePayloadFrameHeader returned error: %v", err)
+	}
+	return meta
 }
 
 func testChunkStartedAt() time.Time {

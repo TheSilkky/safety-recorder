@@ -238,6 +238,7 @@ After changes, if any:
 ```bash
 git diff --stat
 git diff -- .gitignore .backlog-drafts codex docs scripts
+git diff --check
 ```
 
 Validate draft metadata:

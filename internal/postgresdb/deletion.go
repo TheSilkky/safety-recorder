@@ -264,6 +264,65 @@ func (r *Repository) ListRetentionDeletionCandidates(ctx context.Context, cutoff
 	return candidates, nil
 }
 
+// ListModeAwareRetentionPreviewIncidents returns closed active incidents and
+// mode metadata for local dry-run classification without creating decisions.
+func (r *Repository) ListModeAwareRetentionPreviewIncidents(ctx context.Context, limit int) ([]incidents.ModeAwareRetentionPreviewIncident, error) {
+	if limit <= 0 {
+		limit = 25
+	}
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT id, updated_at, incident_mode, capture_profile, escalation_policy, sharing_state
+		FROM incidents
+		WHERE status = $1 AND deletion_state = $2
+		ORDER BY updated_at ASC, id ASC
+		LIMIT $3`,
+		incidents.StatusClosed,
+		incidents.IncidentDeletionStateActive,
+		limit,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("select postgres mode-aware retention preview incidents: %w", err)
+	}
+	defer rows.Close()
+
+	items := []incidents.ModeAwareRetentionPreviewIncident{}
+	for rows.Next() {
+		var item incidents.ModeAwareRetentionPreviewIncident
+		var incidentMode sql.NullString
+		var captureProfile sql.NullString
+		var escalationPolicy sql.NullString
+		var sharingState sql.NullString
+		if err := rows.Scan(
+			&item.IncidentID,
+			&item.UpdatedAt,
+			&incidentMode,
+			&captureProfile,
+			&escalationPolicy,
+			&sharingState,
+		); err != nil {
+			return nil, fmt.Errorf("scan postgres mode-aware retention preview incident: %w", err)
+		}
+		item.UpdatedAt = item.UpdatedAt.UTC()
+		if incidentMode.Valid {
+			item.IncidentMode = incidentMode.String
+		}
+		if captureProfile.Valid {
+			item.CaptureProfile = captureProfile.String
+		}
+		if escalationPolicy.Valid {
+			item.EscalationPolicy = escalationPolicy.String
+		}
+		if sharingState.Valid {
+			item.SharingState = sharingState.String
+		}
+		items = append(items, item)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate postgres mode-aware retention preview incidents: %w", err)
+	}
+	return items, nil
+}
+
 // GetIncidentDeletionJobStatus returns local-operator deletion job status using
 // only safe aggregates and deletion decision fields.
 func (r *Repository) GetIncidentDeletionJobStatus(ctx context.Context, limit int, staleDeletingBefore time.Time) (incidents.IncidentDeletionJobStatus, error) {
@@ -478,6 +537,23 @@ func (r *Repository) CompleteIncidentDeletion(ctx context.Context, decisionID st
 	}
 	if remaining != 0 {
 		return incidents.IncidentDeletionStatus{}, incidents.ErrInvalidState
+	}
+
+	ownerAccountID, err := incidentOwnerAccountIDTx(ctx, tx, status.IncidentID)
+	if err != nil {
+		return incidents.IncidentDeletionStatus{}, err
+	}
+	if ownerAccountID != "" {
+		if _, err := createSharingAuditEventTx(ctx, tx, incidents.SharingAuditEventParams{
+			OwnerAccountID:     ownerAccountID,
+			ActorAccountID:     sharingAuditActorAccountID(status.ActorAccountID, ownerAccountID),
+			Action:             incidents.SharingAuditActionIncidentMetadataPruned,
+			OutcomeCategory:    incidents.SharingAuditOutcomeDeleted,
+			IncidentID:         status.IncidentID,
+			DeletionDecisionID: status.DecisionID,
+		}, now); err != nil {
+			return incidents.IncidentDeletionStatus{}, err
+		}
 	}
 
 	for _, query := range []string{
@@ -836,7 +912,7 @@ func scanDeletionItem(s scanner) (incidents.IncidentDeletionItem, error) {
 
 func validDeletionSource(source string) bool {
 	switch source {
-	case incidents.IncidentDeletionSourceAccountRequest, incidents.IncidentDeletionSourceAdminRequest, incidents.IncidentDeletionSourceRetentionPolicy:
+	case incidents.IncidentDeletionSourceAccountRequest, incidents.IncidentDeletionSourceAdminRequest, incidents.IncidentDeletionSourceOperatorCLI, incidents.IncidentDeletionSourceRetentionPolicy:
 		return true
 	default:
 		return false

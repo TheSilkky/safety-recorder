@@ -1,0 +1,34 @@
+# Local Compose smoke configuration for the full PostgreSQL/MinIO/Valkey stack.
+# This file is for disposable tests only. Secret-bearing values point at fake
+# local smoke secret files mounted at /run/proofline-secrets.
+
+[server]
+main_bind_addrs = ["0.0.0.0:8080"]
+admin_bind_addrs = ["0.0.0.0:8081"]
+
+[paths]
+data_dir = "/var/lib/proofline"
+sqlite_db_path = "/var/lib/proofline/proofline.db"
+
+[metadata]
+backend = "postgresql"
+postgres_dsn_file = "/run/proofline-secrets/postgres-dsn.example"
+
+[blob_storage]
+backend = "s3"
+s3_endpoint = "http://minio:9000"
+s3_region = "us-east-1"
+s3_bucket = "proofline-evidence"
+s3_prefix = "smoke/full"
+s3_access_key_id_file = "/run/proofline-secrets/s3-access-key-id.example"
+s3_secret_access_key_file = "/run/proofline-secrets/s3-secret-access-key.example"
+s3_force_path_style = true
+
+[coordination]
+backend = "valkey"
+valkey_addr = "valkey:6379"
+valkey_password_file = "/run/proofline-secrets/valkey-password.example"
+
+[auth]
+bootstrap_secret_file = "/run/proofline-secrets/auth-bootstrap-secret.example"
+second_factor_email_challenge_ttl = "10m"

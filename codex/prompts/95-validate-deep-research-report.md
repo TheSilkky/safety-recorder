@@ -56,9 +56,9 @@ Allowed values:
 
 ## Product Context
 
-Product documentation now uses the name Proofline. Repository paths, the Go module path, Docker image names, GHCR package names, and release binary names use the `open-proofline/server` repository namespace. Compatibility identifiers such as the v1 simulator encryption envelope, default SQLite filename, legacy `/e/{token}` aliases, and historical migration names may still use `safety-recorder` or `emergency` until separate protocol or data-layout migrations are explicitly performed.
+Product documentation now uses the name Proofline. Repository paths, the Go module path, Docker image names, GHCR package names, release binary names, runtime protocol identifiers, and default data-layout identifiers use the `open-proofline/server` repository namespace and Proofline names. Historical reports, archived prompts, legacy `/e/{token}` aliases, and historical migration names may still mention `safety-recorder` or `emergency`.
 
-Proofline's planned product scope includes emergency incidents, non-emergency interaction records, timed safety checks, and evidence notes. The current backend stores generic incidents unless the reviewed tree explicitly implements first-class incident modes, capture profiles, escalation policies, or sharing state.
+Proofline's planned product scope includes emergency incidents, non-emergency interaction records, timed safety checks, and evidence notes. The current backend stores generic incidents by default; optional incident-mode, capture-profile, escalation-policy, and sharing-state metadata are labels only unless the reviewed tree explicitly implements first-class behavior for them. The post-quantum envelope is a v1 preview requirement, but it is not current runtime behavior unless implementation files prove it. Any report claim that Proofline is ready for `v1 preview`, `v1.0.0`, or real-user evidence upload must be checked against `docs/v1-preview-readiness-checklist.md`.
 
 ## Rules
 
@@ -71,7 +71,7 @@ Proofline's planned product scope includes emergency incidents, non-emergency in
 - Do not claim production readiness, platform-store approval, legal review, compliance certification, penetration test, or formal audit.
 - Do not treat absence of future-design features as a defect when source-of-truth docs mark them out of scope.
 - Preserve the current backend ciphertext-only implementation boundary unless the report identifies implemented behavior that contradicts it.
-- Treat future incident-mode, web/iOS/Android client, key-custody, browser-decryption, and break-glass documents as planning unless implementation files exist in the reviewed tree.
+- Treat future incident-mode, web/iOS/Android client, key-custody, browser-decryption, break-glass, and post-quantum envelope documents as planning or future preview requirements unless implementation files exist in the reviewed tree.
 
 ## First Steps
 
@@ -91,6 +91,8 @@ sed -n '1,240p' README.md
 sed -n '1,220p' SECURITY.md
 sed -n '1,260p' AGENTS.md
 sed -n '1,280p' docs/README.md
+cat docs/v1-preview-direction.md
+test -f docs/v1-preview-readiness-checklist.md && sed -n '1,260p' docs/v1-preview-readiness-checklist.md
 sed -n '1,260p' docs/incident-modes.md
 sed -n '1,320p' docs/security-model.md
 sed -n '1,340p' docs/threat-model.md
@@ -103,10 +105,17 @@ Read future-design docs when present:
 
 ```bash
 test -f docs/key-custody.md && sed -n '1,360p' docs/key-custody.md
+test -f docs/post-quantum-envelope.md && cat docs/post-quantum-envelope.md
 test -f docs/browser-decryption.md && sed -n '1,360p' docs/browser-decryption.md
 test -f docs/break-glass-key-access.md && sed -n '1,360p' docs/break-glass-key-access.md
 test -f docs/ios-local-recorder-prototype.md && sed -n '1,360p' docs/ios-local-recorder-prototype.md
 ```
+
+Do not replace the `docs/v1-preview-direction.md` or
+`docs/post-quantum-envelope.md` full-file reads with fixed line caps unless the
+replacement reports overflow visibly. These source-of-truth documents can grow
+between report-validation runs, and silent truncation can miss new v1 direction
+or post-quantum envelope requirements.
 
 Read the report:
 
@@ -154,9 +163,16 @@ Check and fix, if needed:
 - Product name is Proofline where describing current docs/product direction.
 - Compatibility names remain when describing current artifacts, APIs, routes, config, or packages.
 - Repository facts are pinned to `<REVIEWED_COMMIT_SHA>`.
-- Future incident modes are marked as planning unless implemented.
+- Mode-driven behavior is marked as planning unless implemented. Optional
+  incident-mode, capture-profile, escalation-policy, and sharing-state metadata
+  may be described as implemented labels only when the reviewed tree supports
+  them.
 - Current `/v1` private boundary and public incident-viewer separation remain clear.
 - Current backend ciphertext-only behavior is represented accurately.
+- V1 preview, v1.0.0, and real-user evidence-upload readiness claims are
+  checked against `docs/v1-preview-readiness-checklist.md`; if any hard
+  blocker remains incomplete, the report must use pre-v1 or experimental
+  language instead of preview-ready language.
 - Historical report names are not rewritten as if they used the new product name at the time.
 - ChatGPT internal citation tokens are removed or converted to portable citation keys.
 - Remove informal or conversational draft language, including humour, mascot references, assistant/meta commentary, and chat-only tone, unless it is quoted as reviewed evidence.
@@ -170,11 +186,15 @@ Check and fix, if needed:
 - Missing public product API authentication when docs state `/v1` is private
   and protected by local account sessions.
 - Missing web/iOS/Android clients when docs mark them as future work.
-- Missing first-class incident modes, capture profiles, escalation policies, sharing state, or dead-man switch when docs mark them as future work.
+- Missing first-class incident-mode behavior, capture-profile behavior,
+  escalation policies, sharing-state behavior, or dead-man switch when docs mark
+  them as future work.
 - Missing browser decryption, production key custody, or break-glass behavior when docs mark them as future work.
 - Preserved protocol, data-layout, route-alias, or migration compatibility names treated as stale after the repository/module/artifact rename.
 - Interaction-record planning treated as current implementation.
 - Backend decryption or server-held keys assumed from future design docs.
+- V1 preview readiness claimed only because ordinary tests passed, without
+  checking the v1 preview readiness checklist hard blockers.
 - Wording that says review constraints prohibited network calls, web access, or external source consultation unless the maintainer explicitly imposed that constraint.
 - Findings supported by the absence of external sources instead of by repository evidence plus authoritative sources.
 
@@ -184,8 +204,14 @@ For report/docs-only cleanup:
 
 ```bash
 git diff --stat
+scripts/check-markdown-links.py
 git diff --check
 ```
+
+If this prompt or the link checker changed, manually confirm the
+`docs/v1-preview-direction.md` and `docs/post-quantum-envelope.md` reads remain
+uncapped or fail visibly on overflow. If the Markdown link checker itself
+changed, also run `scripts/check-markdown-links.py --self-test`.
 
 If Go code changed unexpectedly, stop and report scope creep.
 

@@ -1,32 +1,83 @@
 # Deployment
 
-Proofline is experimental and not production-ready public infrastructure. Treat the main `/v1` API as authenticated but not automatically safe for broad public deployment.
+Proofline is experimental and not production-ready public infrastructure. Treat the main `/v1` API as authenticated and app-rate-limited, but not automatically safe for broad public deployment.
 
-> **Do not expose `/v1` publicly as-is.**
+> **Do not expose `/v1` as an unreviewed public catch-all.**
 >
 > Keep private-admin listeners behind localhost, LAN, WireGuard, firewall rules, or a strict reverse proxy. Separate bind addresses are a deployment boundary, not a complete security model.
 
 The `/v1` access-control direction is documented in
-[v1-access-control.md](v1-access-control.md). Current local account sessions
-do not by themselves make `/v1` production-ready public infrastructure.
-Existing `/v1/admin/...` JSON routes are authenticated admin-only routes on the
-main handler, but they are not public-ready routes and must be blocked by any
-public reverse proxy. The private-admin listener is the `/admin` dashboard
-surface only and can be bound to loopback, LAN, WireGuard, VPN, firewall, or a
-private reverse proxy. Private placement must not replace admin
+[v1-access-control.md](v1-access-control.md). Current local account sessions,
+optional browser cookie sessions, and app-level route-class limits do not by
+themselves make every `/v1` route suitable for broad public deployment.
+Existing `/admin/api/...` JSON routes are authenticated admin-only routes on the
+private-admin listener, alongside the `/admin` dashboard surface. The
+private-admin listener can be bound to loopback, LAN, WireGuard, VPN, firewall,
+or a private reverse proxy. Private placement must not replace admin
 authentication. The main API/public viewer listener split is documented in
 [public-api-listener-split.md](public-api-listener-split.md).
 
-The current module and artifact names use the `open-proofline/server` repository namespace. The published GHCR image is `ghcr.io/open-proofline/server`, local examples use the `proofline-server` image name, and release binaries use `proofline-server-*` names. Compatibility identifiers such as the v1 encryption envelope scheme and default SQLite filename may still use earlier `safety-recorder` names until separate protocol or data-layout migrations are explicitly performed.
+The current module and artifact names use the `open-proofline/server` repository namespace. The main server GHCR image is `ghcr.io/open-proofline/server`, the stream-ingress relay GHCR image is `ghcr.io/open-proofline/stream-ingress`, local examples use the `proofline-server` and `proofline-stream-ingress` image names, and release binaries use `proofline-server-*` names. Current runtime protocol and default data-layout identifiers use Proofline names. Historical reports and archived prompts may still mention earlier `safety-recorder` identifiers.
+
+Public web-client deployments have an additional route, CORS, CSRF, cookie,
+cache, edge, and logging boundary documented in
+[public-web-client-deployment-boundary.md](public-web-client-deployment-boundary.md).
+That document separates metadata-only account portals, evidence capture/review
+previews, no-account viewer replacement, and browser decrypting viewers.
+The no-account viewer route decision is documented in
+[web-client-viewer-routing.md](web-client-viewer-routing.md): future canonical
+viewer links should point at the web-client origin, while current `/i` and `/e`
+server routes are prototype/local compatibility until a later runtime issue
+changes them.
+Future trusted-contact alerts, missed-check-in notifications, and no-account
+viewer-link delivery must follow
+[notification-boundary.md](notification-boundary.md) before any provider,
+outbox, retry worker, callback, or message-template behavior is implemented.
 
 ## Local Development
 
 From the repository root:
 
+For repeatable local configuration, set the bootstrap secret through a private
+secret file referenced by TOML:
+
+```toml
+[auth]
+bootstrap_secret_file = "/path/to/local-bootstrap-secret"
+```
+
+Then run:
+
+```bash
+go run ./cmd/api --config /path/to/proofline.toml
+```
+
+For a one-off local shell, an environment override remains supported:
+
 ```bash
 SAFE_AUTH_BOOTSTRAP_SECRET='replace-with-local-bootstrap-secret' \
 go run ./cmd/api
 ```
+
+The repository root `proofline.toml` is loaded automatically when running from
+the root directory and matches the local built-in defaults. Use a custom TOML
+file with:
+
+```bash
+go run ./cmd/api --config /path/to/proofline.toml
+```
+
+or set:
+
+```bash
+SAFE_CONFIG_FILE=/path/to/proofline.toml
+```
+
+Existing `SAFE_*` variables remain supported and override TOML values. For
+secret-bearing settings such as the bootstrap secret, PostgreSQL DSN, S3
+credentials, Valkey password, and SMTP password, prefer `*_file` TOML keys or
+`SAFE_*_FILE` variables that point to private secret files. Do not publish real
+config files containing private endpoints or secret paths.
 
 Defaults:
 
@@ -36,7 +87,7 @@ Defaults:
 | Private admin dashboard | `127.0.0.1:8081` |
 
 The server fails closed until an admin account exists. For a new local
-database, create the first admin while `SAFE_AUTH_BOOTSTRAP_SECRET` is set:
+database, create the first admin while a bootstrap secret is configured:
 
 ```bash
 curl -sS -X POST http://127.0.0.1:8081/admin/bootstrap \
@@ -46,10 +97,104 @@ curl -sS -X POST http://127.0.0.1:8081/admin/bootstrap \
   --data-urlencode 'password=replace-with-a-long-local-password'
 ```
 
-After bootstrap, remove `SAFE_AUTH_BOOTSTRAP_SECRET` and restart. The
-bootstrap form is disabled after an admin account exists. Treat the bootstrap
-secret, account passwords, raw session tokens, raw idempotency keys, and
-Authorization headers as secrets.
+After bootstrap, remove the bootstrap secret from TOML, the environment, or
+the secret mount and restart. The bootstrap form is disabled after an admin
+account exists. Treat the bootstrap secret, account passwords, raw session
+tokens, raw idempotency keys, and Authorization headers as secrets.
+
+Browser cookie sessions for the future web client are disabled by default. For
+local plain-HTTP web-client development, enable them explicitly with a local
+allowed origin and a non-`__Host-` non-`Secure` cookie name:
+
+```toml
+[web_auth]
+enabled = true
+allowed_origins = ["http://127.0.0.1:5173"]
+session_cookie_name = "proofline_session"
+session_cookie_secure = false
+```
+
+Environment overrides remain supported:
+
+```bash
+SAFE_WEB_AUTH_ENABLED=true \
+SAFE_WEB_ALLOWED_ORIGINS=http://127.0.0.1:5173 \
+SAFE_WEB_SESSION_COOKIE_NAME=proofline_session \
+SAFE_WEB_SESSION_COOKIE_SECURE=false \
+go run ./cmd/api
+```
+
+Production browser-cookie deployments must use HTTPS, `Secure` cookies,
+explicit allowed origins, `credentials: "include"` from the web client, and the
+CSRF header from `GET /v1/auth/web/csrf` on unsafe requests. This does not make
+private-admin `/admin/api/...` routes public-ready; public reverse proxies must
+still block those admin JSON routes unless a future audited public-admin API is
+explicitly designed.
+
+The current web-client read surface is deliberately narrow. A public web edge
+may route account authentication, account self-service, contact/key/grant
+metadata, signed-in trusted-contact wrapped-key metadata reads, and owner-only
+`GET /v1/incidents` plus `GET /v1/incidents/{incident_id}` after the deployment
+has reviewed authentication, CORS, CSRF, rate limits, TLS, and logging. Those
+incident reads return only public-safe metadata and hide cross-account or
+legacy unowned incidents. Use
+[public-web-client-deployment-boundary.md](public-web-client-deployment-boundary.md)
+before widening into evidence capture/review routes. Do not treat this as
+approval to publish the whole main `/v1` tree: keep admin JSON routes on the
+private-admin listener and review uploads, chunk reads, bundle downloads,
+diagnostics, operator routes, raw error/debug endpoints, key custody, and any
+write routes separately before placing them on a public edge.
+
+Account-scoped committed blob quota is enabled by default as a preview
+abuse/cost control. `[uploads].account_default_blob_quota_bytes` defaults to
+`10GB` per owner account and applies to accepted encrypted chunk bytes for both
+local and S3-compatible committed blobs. Local temp-upload staging is also
+bounded by `[uploads].temp_upload_staging_quota_bytes`, which defaults to `1GB`
+and applies before final local or S3-compatible blob commit. These controls do
+not add billing, account plans, payment-gated access, public admin routes, or
+blanket evidence-capture route approval.
+
+Public self-registration is disabled by default. If a self-hosted deployment
+sets `[account_registration].mode = "open"` or uses the equivalent
+`SAFE_ACCOUNT_REGISTRATION_MODE=open` environment override, configure SMTP and
+a reviewed public web origin for verification links, keep SMTP credentials and
+private mail hostnames out of logs and issue drafts, and keep private-admin
+listener routes off any public edge. Open registration creates only pending
+accounts until email verification succeeds; it does not add password recovery,
+payment processing, public admin routes, or blanket public `/v1` readiness. The
+`paid` registration mode is a fail-closed placeholder and must not be used as
+a billing control.
+
+New admin-created, `/admin` bootstrap, and open-registration accounts also
+start with `second_factor_setup_state=setup_required`. That state allows
+primary login/session creation but blocks main product routes until email
+second-factor setup verifies a single-use challenge code, TOTP setup verifies a
+TOTP code, or WebAuthn setup verifies a configured RP/origin ceremony and marks
+the account `complete`; existing migrated accounts default to `not_required`
+for preview compatibility. WebAuthn remains disabled until `[webauthn]` is
+explicitly configured with an RP ID and exact allowed origins. Private-admin
+assisted second-factor reset is available for lost-factor recovery and must
+stay on the private-admin listener; it removes enrolled factors, marks setup
+required, revokes target sessions, and records controlled audit metadata
+without changing key custody or decrypting evidence. Do not claim a deployment
+has complete required 2FA until the selected factor set, recovery operations,
+and deployment-specific admin procedures have been reviewed.
+
+TOML open-registration shape:
+
+```toml
+[account_registration]
+mode = "open"
+public_web_origin = "https://app.example.invalid"
+
+[email]
+backend = "smtp"
+smtp_host = "smtp.example.invalid"
+smtp_port = 587
+smtp_from = "noreply@example.invalid"
+smtp_starttls = "required"
+smtp_password_file = "/run/secrets/proofline-smtp-password"
+```
 
 The current listener split does not mount `/v1/health/live` or
 `/v1/health/ready` on either listener. Private/local smoke checks can use the
@@ -59,16 +204,19 @@ metadata store accepts account operations.
 
 The deletion worker starts automatically by default and processes durable
 incident deletion decisions every minute. Set
-`SAFE_DELETION_WORKER_INTERVAL=0` only when an operator intentionally wants to
-pause deletion processing. Closed-incident retention is disabled by default;
-set `SAFE_CLOSED_INCIDENT_RETENTION` to a positive duration only after the
-deployment has reviewed backup expiry and restore implications.
-Expired/revoked viewer-token metadata pruning and completed tombstone pruning
-are also disabled by default. Set `SAFE_TOKEN_METADATA_RETENTION` or
-`SAFE_DELETION_TOMBSTONE_RETENTION` only after deciding how long token labels,
-token-hash metadata, deletion timestamps, and minimal tombstones are needed for
-audit and restore reconciliation. These pruning settings do not delete backups,
-object-store versions, snapshots, downloaded bundles, or endpoint copies.
+`[retention].deletion_worker_interval = "0"` only when an operator
+intentionally wants to pause deletion processing. Closed-incident retention is
+disabled by default; set `[retention].closed_incident_retention` to a positive
+duration only after the deployment has reviewed backup expiry and restore
+implications. Expired/revoked viewer-token metadata pruning and completed
+tombstone pruning are also disabled by default. Set
+`[retention].token_metadata_retention` or
+`[retention].deletion_tombstone_retention` only after deciding how long token
+labels, token-hash metadata, deletion timestamps, and minimal tombstones are
+needed for audit and restore reconciliation. The equivalent `SAFE_*`
+environment overrides remain supported. These pruning settings do not delete
+backups, object-store versions, snapshots, downloaded bundles, or endpoint
+copies.
 
 Before enabling or changing closed-incident retention, run the local read-only
 preview from a trusted operator shell that uses the same metadata configuration
@@ -84,6 +232,22 @@ deletion decisions or delete blobs. Record a backup/restore checkpoint before
 enabling live retention, and confirm older backups, snapshots, and downloaded
 bundles are handled by the deployment's own retention policy.
 
+To inspect the disabled mode-aware retention scaffold without creating live
+deletion decisions, pass explicit dry-run windows for one or more policy
+classes:
+
+```bash
+proofline-server operator mode-retention-preview \
+  --interaction-record-retention 720h \
+  --evidence-note-retention 168h
+```
+
+Mode-aware preview windows default to `0s`, do not change
+`SAFE_CLOSED_INCIDENT_RETENTION`, and do not enable mode-specific deletion. The
+JSON output groups eligible closed active incidents by policy class and reports
+missing, invalid, disabled, or not-yet-eligible policy inputs as ineligible.
+Keep this output private because it includes incident IDs.
+
 To inspect deletion maintenance without exposing stored paths or object keys:
 
 ```bash
@@ -94,13 +258,44 @@ The status output includes deletion decision counts, retry categories, and
 runnable job summaries. Keep this command local/private; do not proxy it through
 public viewer routes or a public dashboard.
 
+To request one incident deletion decision from a trusted local operator shell,
+use the configured metadata backend directly through the server binary:
+
+```bash
+proofline-server operator request-deletion \
+  --incident-id inc_... \
+  --reason-code operator_review
+```
+
+The command rejects open incidents unless `--allow-open` is supplied. It prints
+only non-sensitive JSON deletion status and must not be exposed through HTTP,
+public viewer routes, or dashboards. It does not claim secure erasure and does
+not automate object-store lifecycle, backups, snapshots, downloaded bundles, or
+endpoint copies.
+
 Orphan temp upload cleanup is disabled by default. Set
-`SAFE_TEMP_UPLOAD_CLEANUP_AGE` to a positive duration only when an operator
-wants startup cleanup of old local `upload-*` staging files under
-`SAFE_DATA_DIR/tmp`. Use `SAFE_TEMP_UPLOAD_CLEANUP_DRY_RUN=true` first when
-reviewing a deployment. Cleanup logs safe counts only and must never target
+`[uploads].temp_upload_cleanup_age` to a positive duration only when an
+operator wants startup cleanup of old local `upload-*` staging files under the
+configured data directory's `tmp` subdirectory. Use
+`[uploads].temp_upload_cleanup_dry_run = true` first when reviewing a
+deployment. The equivalent `SAFE_TEMP_UPLOAD_CLEANUP_*` environment overrides
+remain supported. Cleanup logs safe counts only and must never target
 committed chunks, stored object keys, bundle contents, SQLite/PostgreSQL
 metadata, or client-provided paths.
+
+TOML retention and temp-cleanup shape:
+
+```toml
+[retention]
+deletion_worker_interval = "1m"
+closed_incident_retention = "0"
+token_metadata_retention = "0"
+deletion_tombstone_retention = "0"
+
+[uploads]
+temp_upload_cleanup_age = "0"
+temp_upload_cleanup_dry_run = false
+```
 
 The same private-admin listener serves the admin web interface at:
 
@@ -108,18 +303,17 @@ The same private-admin listener serves the admin web interface at:
 http://127.0.0.1:8081/admin
 ```
 
-When no admin exists and `SAFE_AUTH_BOOTSTRAP_SECRET` is set, `/admin` shows a
+When no admin exists and a bootstrap secret is configured, `/admin` shows a
 first-admin bootstrap screen. After an admin exists, it shows an admin login
-screen and stores the resulting admin web session in an HttpOnly SameSite
-cookie scoped to `/admin`. Authenticated admin pages list local accounts and
-provide logout, password-change, and account password-reset forms with CSRF
-checks. The CSS under `/admin/static/...` is unauthenticated because it is
-token-neutral static source, but the admin pages and form handlers remain
-private-admin listener routes.
+screen and stores the resulting admin web session in an HttpOnly SameSite cookie
+scoped to `/admin`. Authenticated admin pages list local accounts and provide
+logout, password-change, and account password-reset forms with CSRF checks. The
+CSS under `/admin/static/...` is unauthenticated because it is token-neutral
+static source, but the admin pages and form handlers remain private-admin
+listener routes.
 
-This is not a public admin dashboard. Do not expose `/admin` or `/admin/...`
-outside the private-admin boundary. Existing `/v1/admin/...` JSON routes are on
-the main API handler and must not be routed from public entry points.
+This is not a public admin dashboard. Do not expose `/admin`, `/admin/...`, or
+`/admin/api/...` outside the private-admin boundary.
 
 ## Docker
 
@@ -127,6 +321,7 @@ Build from the repository root:
 
 ```bash
 docker build -t proofline-server .
+docker build -f Dockerfile.ingress -t proofline-stream-ingress .
 ```
 
 Run with localhost-only port publishing when everything that talks to the backend is on the same host:
@@ -136,12 +331,13 @@ docker run --rm \
   -e SAFE_AUTH_BOOTSTRAP_SECRET='replace-with-local-bootstrap-secret' \
   -p 127.0.0.1:8080:8080 \
   -p 127.0.0.1:8081:8081 \
-  -v proofline-server-data:/data \
+  -v proofline-server-data:/var/lib/proofline \
   proofline-server
 ```
 
 Create the first admin account through the private `/admin` bootstrap screen or
-`POST /admin/bootstrap`, then restart without `SAFE_AUTH_BOOTSTRAP_SECRET`.
+`POST /admin/bootstrap`, then restart without the bootstrap secret in TOML, the
+environment, or the secret mount.
 
 From the host, Docker deployments can confirm the private dashboard listener is
 serving through the loopback-published private-admin port:
@@ -152,19 +348,47 @@ curl -fsS http://127.0.0.1:8081/admin/static/styles.css
 
 In this shape both listeners are reachable only through the host loopback interface. It is useful for local testing, SSH port forwarding, or a same-host reverse proxy. It does not expose the main API, incident viewer, or private-admin listener directly to the network.
 
-Container defaults:
+Container TOML defaults:
 
-| Variable | Container default |
+| TOML key | Container default |
 |---|---|
-| `SAFE_MAIN_BIND_ADDRS` | `0.0.0.0:8080` |
-| `SAFE_ADMIN_BIND_ADDRS` | `0.0.0.0:8081` |
-| `SAFE_DATA_DIR` | `/data` |
-| `SAFE_DB_PATH` | `/data/safety.db` |
-| `SAFE_MAX_UPLOAD_BYTES` | `250MB` |
-| `SAFE_DELETION_WORKER_INTERVAL` | `1m` |
-| `SAFE_CLOSED_INCIDENT_RETENTION` | `0` |
+| `[server].main_bind_addrs` | `["0.0.0.0:8080"]` |
+| `[server].admin_bind_addrs` | `["0.0.0.0:8081"]` |
+| `[paths].data_dir` | `/var/lib/proofline` |
+| `[paths].sqlite_db_path` | `/var/lib/proofline/proofline.db` |
+| `[uploads].max_upload_bytes` | `250MB` |
+| `[uploads].account_default_blob_quota_bytes` | `10GB` |
+| `[uploads].temp_upload_staging_quota_bytes` | `1GB` |
+| `[retention].deletion_worker_interval` | `1m` |
+| `[retention].closed_incident_retention` | `0` |
 
 Inside containers, bind to container addresses such as `0.0.0.0`, then restrict host exposure with Docker port publishing, firewall rules, WireGuard, or a reverse proxy.
+
+For custom TOML-based container configuration, mount the config file read-only
+over `/etc/proofline/proofline.toml`. The image entrypoint already passes that
+path with `--config`:
+
+```bash
+docker run --rm \
+  -p 127.0.0.1:8080:8080 \
+  -p 127.0.0.1:8081:8081 \
+  -v ./proofline.toml:/etc/proofline/proofline.toml:ro \
+  -v proofline-server-data:/var/lib/proofline \
+  proofline-server
+```
+
+Mount secret files separately and reference them from TOML `*_file` keys or
+`SAFE_*_FILE` environment variables. Do not bake real secrets into images or
+committed config files.
+
+The stream-ingress relay image is built from `Dockerfile.ingress`, builds
+`cmd/stream-ingress` rather than the main `cmd/api` binary, runs as the same
+non-root container user style, and stores relay-local temporary ciphertext under
+`/var/lib/proofline-stream-ingress`. It is published separately from the main
+server image as `ghcr.io/open-proofline/stream-ingress`. Publishing the image is
+release packaging support only; it does not add cloud deployment automation,
+public metrics, admin routes, viewer routes, broad `/v1` routing, decryption, or
+production readiness.
 
 ## SQLite WAL Operations
 
@@ -173,9 +397,8 @@ foreign-key enforcement and verifies that SQLite accepted WAL journal mode.
 This is a local-disk deployment shape, not a cluster database mode.
 
 For SQLite deployments, `SAFE_DB_PATH` is the main database file. The default
-path is `./data/safety.db` locally and `/data/safety.db` in the container. The
-default file name still uses `safety.db` until a separate data-layout migration
-is explicitly designed.
+path is `./data/proofline.db` locally and `/var/lib/proofline/proofline.db` in the
+container.
 
 While the server is running in WAL mode, SQLite may also create sidecar files
 next to the database:
@@ -197,7 +420,7 @@ For backups, prefer one of the consistency strategies in
 [retention, backup, and deletion](retention-backup-deletion.md): stop the API
 process, take an atomic filesystem or volume snapshot that includes SQLite and
 encrypted blobs together, or use SQLite's backup mechanism while coordinating
-with a paused blob snapshot. Do not copy only the main `safety.db` file from a
+with a paused blob snapshot. Do not copy only the main `proofline.db` file from a
 running WAL-mode database and assume it is complete.
 
 Growing deployments should watch for WAL/checkpoint pressure. Useful symptoms
@@ -210,7 +433,7 @@ Simple local checks can inspect file sizes and free space without exposing
 incident contents:
 
 ```bash
-db=${SAFE_DB_PATH:-./data/safety.db}
+db=${SAFE_DB_PATH:-./data/proofline.db}
 ls -lh "$db" "$db-wal" "$db-shm" 2>/dev/null || true
 df -h "$(dirname "$db")"
 ```
@@ -225,7 +448,24 @@ as a separate scoped implementation task with tests.
 
 ## Optional S3-Compatible Blob Storage
 
-Local filesystem encrypted blob storage remains the default. To store committed encrypted chunks in an S3-compatible object store, explicitly set `SAFE_BLOB_BACKEND=s3` and configure the S3 endpoint and bucket:
+Local filesystem encrypted blob storage remains the default. To store
+committed encrypted chunks in an S3-compatible object store, explicitly select
+the S3 backend and configure the endpoint and bucket. Prefer secret files for
+static credentials:
+
+```toml
+[blob_storage]
+backend = "s3"
+s3_endpoint = "https://s3.example.invalid"
+s3_region = "us-east-1"
+s3_bucket = "proofline-evidence"
+s3_prefix = "prod/server"
+s3_access_key_id_file = "/run/secrets/proofline-s3-access-key-id"
+s3_secret_access_key_file = "/run/secrets/proofline-s3-secret-access-key"
+s3_force_path_style = true
+```
+
+Environment-only deployments remain supported:
 
 ```bash
 SAFE_BLOB_BACKEND=s3 \
@@ -238,9 +478,21 @@ SAFE_S3_SECRET_ACCESS_KEY=example-secret-key \
 go run ./cmd/api
 ```
 
-The S3 backend requires `SAFE_S3_ACCESS_KEY_ID` and `SAFE_S3_SECRET_ACCESS_KEY`. `SAFE_S3_SESSION_TOKEN` is optional. Treat static credentials, bucket names, private endpoints, and deployment-specific prefixes as private deployment details.
+The S3 backend requires an access key ID and secret access key. Prefer
+`[blob_storage].s3_access_key_id_file` and
+`[blob_storage].s3_secret_access_key_file`; environment-only deployments can
+use `SAFE_S3_ACCESS_KEY_ID_FILE` and `SAFE_S3_SECRET_ACCESS_KEY_FILE`, or the
+direct secret variables for short-lived local overrides. The session token is
+optional. Treat static credentials, bucket names, private endpoints, and
+deployment-specific prefixes as private deployment details.
 
-S3-compatible storage stores opaque encrypted chunk bytes only. It does not add backend decryption, key escrow, public `/v1` exposure, public account workflows, cloud deployment automation, or production readiness. Uploads still stage local temp files under `SAFE_DATA_DIR/tmp` before a final conditional object write, so the deployment must preserve enough local temp space for in-flight uploads and should configure conservative startup cleanup for abandoned temp files after crashes.
+S3-compatible storage stores opaque encrypted chunk bytes only. It does not add
+backend decryption, key escrow, broad public `/v1` exposure, public account
+workflows, cloud deployment automation, or production readiness. Uploads still
+stage local temp files under the configured data directory's `tmp` subdirectory
+before a final conditional object write, so the deployment must preserve
+enough local temp space for in-flight uploads and should configure
+conservative startup cleanup for abandoned temp files after crashes.
 
 Use HTTPS for S3-compatible endpoints unless the endpoint is reachable only on a
 local or private test network. Before storing real evidence, verify the selected
@@ -252,8 +504,22 @@ Final object keys are derived by the server from stored chunk metadata and the o
 ## Optional PostgreSQL Metadata
 
 SQLite metadata remains the default. To use PostgreSQL for metadata in a new
-deployment, explicitly set `SAFE_METADATA_BACKEND=postgresql` and provide a
-PostgreSQL DSN:
+deployment, explicitly select the PostgreSQL metadata backend and provide a
+PostgreSQL DSN. Prefer a secret file for the DSN:
+
+```toml
+[metadata]
+backend = "postgresql"
+postgres_dsn_file = "/run/secrets/proofline-postgres-dsn"
+
+[blob_storage]
+backend = "local"
+
+[coordination]
+backend = "none"
+```
+
+Environment-only deployments remain supported:
 
 ```bash
 SAFE_METADATA_BACKEND=postgresql \
@@ -273,7 +539,7 @@ automatically migrate existing SQLite metadata into PostgreSQL at startup. A
 SQLite-to-PostgreSQL migration should be a separate quiesced operation with
 metadata and encrypted blobs backed up and verified together.
 
-PostgreSQL does not add public `/v1` exposure, public account workflows, cloud
+PostgreSQL does not add broad public `/v1` exposure, public account workflows, cloud
 deployment automation, backend decryption, key escrow, or production readiness.
 It can store the implemented complete-upload idempotency state, but resumable
 uploads, partial-upload lease sessions, and broader production-cluster readiness remain
@@ -285,7 +551,19 @@ firewall rules, or a strict private proxy.
 
 No coordination backend is used by default. To connect to Valkey or another
 Redis-compatible service for short-lived coordination, explicitly set the
-coordination backend and connection settings:
+coordination backend and connection settings. Prefer a secret file for the
+password:
+
+```toml
+[coordination]
+backend = "valkey"
+valkey_addr = "valkey.example.invalid:6379"
+valkey_username = "proofline"
+valkey_password_file = "/run/secrets/proofline-valkey-password"
+valkey_tls = true
+```
+
+Environment-only deployments remain supported:
 
 ```bash
 SAFE_COORDINATION_BACKEND=valkey \
@@ -315,24 +593,90 @@ Treat Valkey passwords, private hostnames, network topology, rate-limit
 counters, upload lease keys, and future coordination keys as private
 deployment details. Do not expose them in public issues, logs, dashboards,
 screenshots, support tickets, or metrics labels.
-Valkey does not add public `/v1` exposure, public account workflows, cloud
+Valkey does not add broad public `/v1` exposure, public account workflows, cloud
 deployment automation, backend decryption, key escrow, or production readiness.
 
 ## Regional Stream Ingress Relay
 
-The regional stream-ingress relay is not implemented. The planning boundary is
-documented in
+The regional stream-ingress relay currently has a separate `cmd/stream-ingress`
+command plus core API issuance of configured short-lived upload and fanout
+capabilities for authorized open streams and service-authenticated core relay
+preflight/commit/fanout authorization endpoints. The relay command exposes
+token-neutral `GET /health/live`, token-neutral `GET /health/ready`,
+configured `POST /upload/complete-chunk` for complete encrypted chunk upload,
+and configured `GET /fanout/subscribe` for optimistic encrypted SSE fanout.
+The upload route requires client-supplied relay metadata/capability, calls
+core preflight before accepting the file part when metadata is ordered
+correctly, stages ciphertext temporarily, verifies `sha256_hex`, and returns
+success only after core commit succeeds. The fanout route requires relay
+session/fanout capability context in headers, calls core fanout authorization,
+emits `near_live_unconfirmed` encrypted chunks, and then emits bounded
+`confirmed`, `rejected`, or `terminal_failure` state after the core commit
+outcome without replay or durable relay metadata. The core relay endpoints
+require the separate
+`X-Proofline-Relay-Service-Token` header when `[relay_service]` auth is
+configured; user sessions and relay capabilities are not service identity.
+This does not implement replay, metrics, durable relay storage, production
+service-identity rotation, or production deployment automation.
+
+The full relay planning boundary is documented in
 [regional-stream-ingress-relay.md](regional-stream-ingress-relay.md).
 
-If implemented later, the relay should be deployed as a separate upload-only
-edge close to users. It should accept complete encrypted chunks over HTTPS,
-apply anonymous pre-body limits, ask the core API for a cheap upload preflight,
-stage ciphertext only in local temporary storage, verify `sha256_hex`, and
-return success only after the core API confirms committed or equivalent
-success. The core API remains the durable source of truth for authorization,
-incident and stream state, idempotency, final blob commits, and metadata.
+For a private listener smoke check, run the relay explicitly:
 
-Do not route `/admin`, `/v1/admin/...`, public incident viewer routes, bundle
+```bash
+go run ./cmd/stream-ingress
+```
+
+The default bind is `127.0.0.1:8090`. Keep the relay on loopback, LAN,
+WireGuard, firewall, or a private reverse proxy unless a later deployment
+issue explicitly reviews relay exposure. The readiness response intentionally
+does not return configured relay identity, region labels, core URLs, service
+tokens, data directories, temp paths, object keys, uploaded bytes, aggregate
+counts, per-session counters, per-client counters, or per-upload state. It
+reports only bounded categories for manual ready state, upload readiness, core
+forwarding configuration, and temp-staging pressure; `core: configured` means
+the relay has core forwarding settings, not that it performed a live upstream
+health probe. `GET /health/live` should return `200` for the listener smoke
+check. `GET /health/ready` remains `503 not_ready` with
+`uploads: core_unconfigured` until core forwarding settings and the manual
+ready flag are configured.
+
+To exercise the upload route locally, configure at least:
+
+```bash
+SAFE_STREAM_INGRESS_CORE_BASE_URL=http://127.0.0.1:8080 \
+SAFE_STREAM_INGRESS_CORE_SERVICE_AUTH_TOKEN_FILE=/path/to/relay-service-token \
+SAFE_STREAM_INGRESS_READY=true \
+go run ./cmd/stream-ingress
+```
+
+The same token must be configured on the core API with
+`SAFE_RELAY_SERVICE_AUTH_TOKEN_FILE` or `[relay_service].auth_token_file`, and
+the core API must also have relay capability issuance configured. The relay is
+a temporary relay edge only; the core API remains the durable source of truth
+for service-authenticated relay preflight/commit/fanout authorization
+decisions, authorization, incident and stream state, idempotency, final blob
+commits, and metadata. Current fanout chunks are optimistic and must remain
+viewer-labeled as unconfirmed until a matching `confirmed` relay state or
+other backend-confirmed state exists.
+
+For local packaging smoke, use the dedicated Compose variant from the
+repository root:
+
+```bash
+compose/smoke-test.sh relay-sqlite-local
+```
+
+This stack builds `Dockerfile` for the core API and `Dockerfile.ingress` for
+the relay, publishes the core main/private-admin listeners and relay listener
+on loopback host ports only, waits for the private admin static asset, checks
+`/health/live` and `/health/ready` on the relay, and asserts that `/admin`,
+`/admin/api/...`, `/v1/...`, viewer, and `/metrics` paths are not mounted on
+the relay. It intentionally does not run simulator relay-mode uploads; that is
+covered by the explicit relay mode in [simulator.md](simulator.md).
+
+Do not route `/admin`, `/admin/api/...`, public incident viewer routes, bundle
 downloads, deletion, retention, backup, restore, escrow, break-glass,
 decryption, raw-key, or operator routes through a future relay. Relay logs,
 metrics, rate-limit keys, readiness output, and temp paths must not expose raw
@@ -351,7 +695,7 @@ docker run --rm \
   -e SAFE_AUTH_BOOTSTRAP_SECRET='replace-with-local-bootstrap-secret' \
   -p 10.66.0.1:8080:8080 \
   -p 127.0.0.1:8081:8081 \
-  -v proofline-server-data:/data \
+  -v proofline-server-data:/var/lib/proofline \
   proofline-server
 ```
 
@@ -364,13 +708,27 @@ The same shape can be run without Docker by binding the main API/viewer
 listener to both loopback and a private interface while keeping private-admin
 routes on loopback:
 
+```toml
+[server]
+main_bind_addrs = ["127.0.0.1:8080", "10.66.0.1:8080"]
+admin_bind_addrs = ["127.0.0.1:8081"]
+```
+
+Then run:
+
+```bash
+go run ./cmd/api --config /path/to/proofline.toml
+```
+
+For short-lived local overrides, the environment shape remains supported:
+
 ```bash
 SAFE_MAIN_BIND_ADDRS=127.0.0.1:8080,10.66.0.1:8080 \
 SAFE_ADMIN_BIND_ADDRS=127.0.0.1:8081 \
 go run ./cmd/api
 ```
 
-This keeps authenticated `/v1` routes on a private network boundary. Local account sessions reduce accidental unauthenticated access, but they do not make `/v1` suitable for unaudited public exposure.
+This keeps authenticated `/v1` routes on a private network boundary. Local account sessions and route-class limits mean `/v1` is no longer an unauthenticated control plane, but they do not make broad `/v1` routing suitable without route-level public deployment review.
 
 ## Timeout Tuning
 
@@ -387,25 +745,47 @@ controls. If completed evidence bundles are large or clients are slow, tune
 does not cut off an encrypted ZIP download that the Go server is still willing
 to stream.
 
+For TOML:
+
+```toml
+[http.main]
+write_timeout = "10m"
+```
+
+For a one-off environment override:
+
+```bash
+SAFE_MAIN_WRITE_TIMEOUT=10m go run ./cmd/api
+```
+
 ## Public Incident Viewer Exposure
 
-If exposing only the incident viewer publicly, route only the viewer paths from
-the public edge to the main listener. Do not forward a public wildcard or host
-fallback to the main listener unless the deployment has explicitly reviewed
-public main-API exposure. Public edges must not route `/admin`, `/admin/...`,
-or `/v1/admin/...`.
+This section covers the current built-in token viewer. For the future
+no-account web-client viewer, use
+[web-client-viewer-routing.md](web-client-viewer-routing.md) and the public
+web-client deployment boundary instead of treating `/i/{token}` as the
+canonical public entry point.
+
+If exposing only the current incident viewer publicly for local, preview, or
+test use, route only the viewer paths from the public edge to the main
+listener. Do not forward a public wildcard or host fallback to the main
+listener unless the deployment has explicitly reviewed public main-API
+exposure. Public edges must not route `/admin`, `/admin/...`, or
+`/admin/api/...`.
 
 The checklist below is a deployment review aid. Completing it does not make
-Proofline production-ready public infrastructure, and it does not make `/v1`
-safe to expose publicly.
+Proofline production-ready public infrastructure, and it does not approve broad
+public `/v1` exposure beyond explicitly reviewed route groups.
 
 Before exposing the public incident viewer:
 
-- [ ] The public route group forwards only viewer paths (`/i/...`, `/e/...`,
-      and token-neutral `/static/...`) to the main listener configured by
-      `SAFE_MAIN_BIND_ADDRS`.
+- [ ] The public route group forwards only reviewed viewer paths to the main
+      listener configured by `SAFE_MAIN_BIND_ADDRS`. Include `/i/...` for the
+      current built-in viewer only while it is explicitly needed. Include
+      `/e/...` only for explicit local/test compatibility. Token-neutral
+      `/static/...` assets may be forwarded when the built-in viewer is used.
 - [ ] No public reverse-proxy route, service, wildcard rule, or fallback reaches
-      `/v1`, `/admin`, `/v1/admin/...`, or the private-admin listener
+      `/v1`, `/admin`, `/admin/api/...`, or the private-admin listener
       configured by `SAFE_ADMIN_BIND_ADDRS`.
 - [ ] TLS is terminated at the deployment edge for the public hostname.
 - [ ] HSTS is enabled at the HTTPS edge only after TLS is working reliably for
@@ -433,6 +813,9 @@ Before exposing the public incident viewer:
 - [ ] Restore testing confirms SQLite or PostgreSQL metadata and encrypted
       local blobs or S3 objects can be restored together without exposing `/v1`
       publicly.
+- [ ] Restore testing validates deletion-pending, deleting, deletion-failed,
+      deleted, and tombstone-pruned incidents privately, including public
+      viewer fail-closed behavior and sharing-grant/wrapped-key consistency.
 - [ ] Monitoring and timeout settings cover public viewer errors, storage or
       database failures, and long encrypted ZIP downloads without logging raw
       tokens, request bodies, uploaded bytes, raw idempotency keys, plaintext,
@@ -445,9 +828,20 @@ the expected viewing, polling, and download patterns.
 Future server-assisted break-glass, dead-man-switch key access, public account
 workflows, or trusted-contact workflows would add stronger operator and
 deployment trust requirements. They should remain disabled unless explicitly
-designed and configured; see [v1-access-control.md](v1-access-control.md),
+designed and configured. The first accepted break-glass implementation should
+release only eligible wrapped-key material; server escrow, server-side
+decryption, raw key access, plaintext export, and emergency-services
+integration require separate deployment warnings, audit, runbooks, and security
+review. See [v1-access-control.md](v1-access-control.md),
 [break-glass-key-access.md](break-glass-key-access.md),
 [key-custody.md](key-custody.md), and [incident-modes.md](incident-modes.md).
+
+Future notification delivery adds its own deployment boundary: provider
+selection, provider logs, token-bearing links, callbacks, retries, suppression,
+opt-out, rate limits, audit records, and provider secrets must be reviewed
+before enabling any SMS, push, Messenger, chat, or email-alert path. Proofline
+notifications must not be described as emergency dispatch or guaranteed live
+tracking; see [notification-boundary.md](notification-boundary.md).
 
 Optional PostgreSQL metadata deployment remains experimental. Schema parity,
 migration tracking, transaction boundaries, configuration shape, integration
@@ -467,9 +861,11 @@ https://developer.mozilla.org/en-US/observatory
 
 ### HTTPS Incident Viewer With Traefik
 
-The reverse proxy should route only viewer paths to the main listener. Private
-dashboard routes should stay on localhost, WireGuard, LAN, or another private
-boundary, and public edges must block `/v1/admin/...`.
+The reverse proxy should route only reviewed current-viewer paths to the main
+listener. Private dashboard routes should stay on localhost, WireGuard, LAN, or
+another private boundary, and public edges must block `/admin/api/...`. For a
+future web-client viewer, point shared viewer links at the web-client origin
+instead of making this built-in viewer route the canonical public entry point.
 
 One same-host shape is:
 
@@ -478,14 +874,15 @@ docker run --rm \
   -e SAFE_AUTH_BOOTSTRAP_SECRET='replace-with-local-bootstrap-secret' \
   -p 127.0.0.1:8080:8080 \
   -p 127.0.0.1:8081:8081 \
-  -v proofline-server-data:/data \
+  -v proofline-server-data:/var/lib/proofline \
   proofline-server
 ```
 
-Then configure Traefik to forward only viewer paths on the public HTTPS
-hostname to `http://127.0.0.1:8080`. This example is documentation, not a
-maintained deployment file; review it against the Traefik version you run
-before use:
+Then configure Traefik to forward only reviewed current-viewer paths on the
+public HTTPS hostname to `http://127.0.0.1:8080`. This example is
+documentation, not a maintained deployment file; review it against the Traefik
+version you run before use. Remove `/e/` from the rule unless explicit
+local/test compatibility needs it:
 
 ```yaml
 # traefik.yml
@@ -546,8 +943,8 @@ http:
         stsPreload: false
 ```
 
-There should be no public Traefik router, service, or rule for `/v1`, `/admin`,
-`/v1/admin/...`, or `127.0.0.1:8081`. If Traefik
+There should be no public Traefik router, service, or rule for unreviewed
+`/v1` route groups, `/admin`, `/admin/api/...`, or `127.0.0.1:8081`. If Traefik
 runs in a different container or on another host, point it at a private address
 that only Traefik can reach, and keep private-admin addresses off the public
 internet.
@@ -566,20 +963,78 @@ Suggested route groups:
 | Viewer JSON polling | `GET /i/{token}/data` | Allow normal viewer polling, but keep it lower than static assets. |
 | Viewer ZIP downloads | `GET /i/{token}/streams/{stream_id}/download`, `GET /i/{token}/incident/download` | Limit download starts without cutting off long encrypted ZIP responses; coordinate with proxy and app timeouts. |
 | Public static assets | `GET /static/...` | Static assets are token-neutral and can usually tolerate a looser limit. |
+| Owner incident metadata reads | `GET /v1/incidents`, `GET /v1/incidents/{incident_id}` | Public-safe for reviewed authenticated web-client deployments, but still requires account auth, edge review, and route-class limits. |
 | Main chunk uploads | `POST /v1/incidents/{incident_id}/chunks` | Tune for expected chunk cadence, upload retries, body size limits, and client network conditions. |
 | Main incident, stream, check-in, and token actions | Other product `/v1/...` routes | Use limits as an abuse backstop, not as the only security control. |
+| Registration and email verification | `POST /v1/auth/register`, `POST /v1/auth/email/verify` | Keep separate from login limits and never include raw emails, usernames, verification tokens, or request bodies in logs or metrics. |
+| Required setup status and factor setup | `GET /v1/account`, email/TOTP/WebAuthn second-factor setup and verification routes | Setup-incomplete accounts may inspect their account state and complete email, TOTP, or WebAuthn setup routes, and active TOTP/WebAuthn accounts may verify a primary-authenticated session before product access. Main product routes should fail closed until setup and required session verification are complete. Never log raw challenge codes, TOTP codes, TOTP seeds, `otpauth_url` values, WebAuthn challenge/client data, credential bytes, or request bodies. |
 | Private admin dashboard actions | `/admin/...` | Keep on the private-admin listener and do not route from public entry points. |
-| Admin JSON API actions | `/v1/admin/...` | Authenticated admin-only routes on the main handler; do not route from public entry points. |
+| Admin JSON API actions | `/admin/api/...` | Authenticated admin-only routes on the private-admin listener; do not route from public entry points. |
 
 Rate limiting does not make `/v1` production-ready public infrastructure by
-itself. Keep the main API behind the reviewed deployment boundary for the
+itself. Keep main API route groups behind the reviewed deployment boundary for the
 deployment, and keep private-admin dashboard routes on localhost, LAN, WireGuard,
 firewall rules, or a private reverse-proxy entry point.
 
 Exact limits are deployment-specific. Start with conservative values, watch legitimate simulator/client behavior, then adjust. Avoid sending raw `/i/{token}` paths or pre-rename compatibility `/e/{token}` paths to metrics, dashboards, or logs while measuring limiter behavior.
 
-The Go app also applies route-class-aware limits to the public incident viewer
-by default:
+Using TOML, route-class limits are grouped by listener surface:
+
+```toml
+[rate_limits.main_api]
+enabled = true
+window = "1m"
+auth = 30
+auth_register = 10
+auth_email_verify = 30
+account = 120
+incident_read = 300
+incident_write = 120
+upload = 120
+download = 30
+
+[rate_limits.public_viewer]
+enabled = true
+window = "1m"
+page = 60
+data = 300
+download = 12
+static = 600
+```
+
+The Go app also applies route-class-aware limits to main API routes by default:
+
+| App route class | Default |
+|---|---|
+| Bearer and browser login/logout/CSRF | 30 requests per 1 minute |
+| Public registration | 10 requests per 1 minute |
+| Email verification | 30 requests per 1 minute |
+| Account self-service, recipient-key, trusted-contact relationship, and contact public-key metadata | 120 requests per 1 minute |
+| Incident, sharing-grant, and wrapped-key metadata reads | 300 requests per 1 minute |
+| Incident, sharing-grant, and wrapped-key metadata writes | 120 requests per 1 minute |
+| Chunk uploads | 120 requests per 1 minute |
+| Duplicate reconciliation | 120 requests per 1 minute |
+| Stream actions | 120 requests per 1 minute |
+| Token actions | 60 requests per 1 minute |
+| Authenticated downloads | 30 request starts per 1 minute |
+| Legacy main-handler admin compatibility setting | 60 requests per 1 minute |
+
+The main API limits are configured under `[rate_limits.main_api]` in TOML.
+Environment overrides such as `SAFE_MAIN_API_RATE_LIMIT_WINDOW`,
+`SAFE_MAIN_API_RATE_LIMIT_AUTH`, `SAFE_MAIN_API_RATE_LIMIT_AUTH_REGISTER`,
+`SAFE_MAIN_API_RATE_LIMIT_AUTH_EMAIL_VERIFY`,
+`SAFE_MAIN_API_RATE_LIMIT_ACCOUNT`, and the other
+`SAFE_MAIN_API_RATE_LIMIT_*` variables documented in
+[configuration.md](configuration.md) remain supported. Set an individual limit
+to `0` to disable that route-class limit, or set `enabled = false` in TOML
+or `SAFE_MAIN_API_RATE_LIMIT_ENABLED=false` to disable the app-level main API
+limiter.
+
+Current `/admin/api/...` JSON routes are on the private-admin listener and are
+not classified by the main API limiter. The admin setting remains as a
+compatibility setting for older main-handler configuration.
+
+Public viewer limits are configured separately:
 
 | App route class | Default |
 |---|---|
@@ -588,13 +1043,14 @@ by default:
 | Viewer ZIP downloads | 12 request starts per 1 minute |
 | Public static assets | 600 requests per 1 minute |
 
-Configure these with `SAFE_PUBLIC_VIEWER_RATE_LIMIT_WINDOW`,
-`SAFE_PUBLIC_VIEWER_RATE_LIMIT_PAGE`,
-`SAFE_PUBLIC_VIEWER_RATE_LIMIT_DATA`,
+Configure these under `[rate_limits.public_viewer]` in TOML. Environment
+overrides such as `SAFE_PUBLIC_VIEWER_RATE_LIMIT_WINDOW`,
+`SAFE_PUBLIC_VIEWER_RATE_LIMIT_PAGE`, `SAFE_PUBLIC_VIEWER_RATE_LIMIT_DATA`,
 `SAFE_PUBLIC_VIEWER_RATE_LIMIT_DOWNLOAD`, and
-`SAFE_PUBLIC_VIEWER_RATE_LIMIT_STATIC`. Set an individual limit to `0` to
-disable that route-class limit, or set
-`SAFE_PUBLIC_VIEWER_RATE_LIMIT_ENABLED=false` to disable the app-level limiter.
+`SAFE_PUBLIC_VIEWER_RATE_LIMIT_STATIC` remain supported. Set an individual
+limit to `0` to disable that route-class limit, or set `enabled = false` in
+TOML or `SAFE_PUBLIC_VIEWER_RATE_LIMIT_ENABLED=false` to disable the app-level
+limiter.
 
 The app-level limiter groups requests by route class and a hash of the socket
 peer identity. It does not trust `X-Forwarded-For`; when the app sits behind a
@@ -701,8 +1157,8 @@ http:
 
 If the main API is also routed through Traefik, it should use a reviewed
 entry point, private address, or private network unless the deployment has
-completed a public main-API exposure review. Do not attach broad `/v1` routers
-to public viewer-only entry points. A private-only file-provider shape can
+completed a route-level public main-API exposure review. Do not attach broad
+`/v1` routers to public viewer-only entry points. A private-only file-provider shape can
 split uploads from other main API actions.
 
 Define the private entry point in Traefik's static configuration first. This example uses `wireguard` as a placeholder entry point name and `10.66.0.1:80` as a placeholder private HTTP interface address:
@@ -780,12 +1236,17 @@ Avoid logging:
 
 ### Proxy And App Timeout Coordination
 
-Completed stream and incident downloads can be large encrypted ZIP responses. Keep Traefik entry point, upstream, and client-response timeouts at least as permissive as the expected download window, and review them together with `SAFE_MAIN_WRITE_TIMEOUT`.
+Completed stream and incident downloads can be large encrypted ZIP responses.
+Keep Traefik entry point, upstream, and client-response timeouts at least as
+permissive as the expected download window, and review them together with
+`[http.main].write_timeout` or the `SAFE_MAIN_WRITE_TIMEOUT` environment
+override.
 
 For example, if the public viewer runs with:
 
-```bash
-SAFE_MAIN_WRITE_TIMEOUT=10m
+```toml
+[http.main]
+write_timeout = "10m"
 ```
 
 then the Traefik route serving the incident viewer should also allow a slow client to receive the response for roughly that long. If the proxy timeout is shorter than the Go server timeout, downloads may fail even though the backend is configured to keep streaming.
@@ -798,9 +1259,10 @@ The CI workflow:
 - builds a Linux amd64 binary artifact
 - generates release binary attestations from a tag-only attestation job
 - creates a minimal GitHub Release when needed and uploads the Linux amd64 binary as a Release asset for `v*` tags
-- builds the Docker image from `Dockerfile` with the repository root as build context
-- publishes `ghcr.io/open-proofline/server` on pushes to `main` and `v*` tags
+- builds the main server Docker image from `Dockerfile` with the repository root as build context
+- builds the stream-ingress relay Docker image from `Dockerfile.ingress` with the repository root as build context
+- publishes `ghcr.io/open-proofline/server` and `ghcr.io/open-proofline/stream-ingress` on trusted pushes to `main`, `develop`, and `v*` tags
 - attaches attestations to published GHCR images
 - keeps workflow-level token permissions read-only and grants write permissions only to the tag-only binary attestation, release binary upload, and trusted Docker publish jobs
 
-The previous `ghcr.io/thesilkky/safety-recorder` package name is historical. New release and deployment references should use `ghcr.io/open-proofline/server`; deployments pinned to old images should migrate deliberately.
+The previous `ghcr.io/thesilkky/safety-recorder` package name is historical. New release and deployment references should use `ghcr.io/open-proofline/server` for the main API image and `ghcr.io/open-proofline/stream-ingress` for the relay image; deployments pinned to old images should migrate deliberately.

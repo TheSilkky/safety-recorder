@@ -39,7 +39,7 @@ If no target base branch is supplied, infer it from the maintainer's explicit ta
 - Do not add unrelated features.
 - Do not change public API behaviour unless the issue requires it.
 - Do not weaken security warnings.
-- Do not expose `/v1` publicly.
+- Do not expose `/v1` as an unreviewed public catch-all; keep `/admin/api/...` and `/admin` off public edges.
 - Preserve private/public listener separation.
 - If the issue appears security-sensitive, stop and state whether public issue handling is appropriate before making changes.
 
@@ -49,15 +49,15 @@ If no target base branch is supplied, infer it from the maintainer's explicit ta
 - Do not add unrelated features.
 - Do not weaken security warnings.
 - Do not claim production readiness.
-- Do not expose `/v1` publicly.
-- Do not log raw tokens, request bodies, uploaded bytes, Authorization headers, plaintext, raw keys, or future token-like values.
-- Do not add React, Node, npm, OAuth, JWT, user accounts, SMS, Messenger, push notifications, Docker Compose, Kubernetes, cloud integrations, or public admin dashboard features unless explicitly requested.
+- Do not expose `/v1` as an unreviewed public catch-all; keep `/admin/api/...` and `/admin` off public edges.
+- Do not log raw tokens, request bodies, uploaded bytes, Authorization headers, plaintext, raw keys, wrapped-key ciphertext, private deployment details, stored paths, object keys, user safety data, or future token-like values; check logging changes against `docs/logging-requirements.md`.
+- Do not add React, Node, npm, OAuth, JWT, new account-system features beyond the implemented local account/session and registration flows, SMS, Messenger, push notifications, Docker Compose, Kubernetes, cloud integrations, or public admin dashboard features unless explicitly requested.
 - Prefer Go standard library where practical.
 - Preserve private/public listener separation.
 - Preserve the current backend ciphertext-only implementation unless the task explicitly concerns key custody, emergency access, or decryption design.
 - Do not introduce backend decryption, raw server-held decryption keys, key escrow, browser decryption, or key-sharing behaviour as an incidental implementation detail.
 - Any key custody/decryption change must be an explicit security-sensitive task that updates the threat model, security model, encryption docs, tests, and operational guidance before or alongside implementation.
-- Future production key custody should assume the iPhone may be unavailable; keys must not exist solely on the client device.
+- Future production key custody should assume the user's phone may be unavailable; keys must not exist solely on the client device.
 - Server storage of wrapped/encrypted keys may be acceptable if explicitly designed.
 - Raw server-side key access or server-side decryption may be acceptable only as a deliberate break-glass/dead-man-switch/emergency-access mode with clear access controls, audit expectations, and deployment warnings.
 
@@ -85,6 +85,7 @@ Then read:
 - `AGENTS.md`
 - `CHANGELOG.md`
 - `SECURITY.md`
+- `docs/v1-preview-direction.md`
 - relevant files in `docs/`
 - relevant source files
 - relevant tests
@@ -121,14 +122,22 @@ If Go code changed:
 gofmt -w ./cmd ./internal ./migrations
 go test ./...
 go vet ./...
+git diff --check
 ```
 
-If only Markdown changed, inspect docs and links manually. Go tests are not required unless code changed.
+If only Markdown changed, run `git diff --check` and inspect docs and links
+manually. Go tests are not required unless code changed.
 
-If behaviour changed and the simulator is relevant:
+If behaviour changed and the simulator is relevant, prefer TOML for repeatable
+smoke:
+
+```toml
+[auth]
+bootstrap_secret_file = "/path/to/local-bootstrap-secret"
+```
 
 ```bash
-SAFE_AUTH_BOOTSTRAP_SECRET='replace-with-local-bootstrap-secret' go run ./cmd/api
+go run ./cmd/api --config /path/to/proofline-smoke.toml
 ```
 
 In another terminal, create the first local admin if the test database does not

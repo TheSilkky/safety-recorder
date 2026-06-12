@@ -5,7 +5,7 @@ or upload leases for partially sent encrypted chunks.
 
 It is a planning document only. It does not implement resumable uploads,
 partial-upload lease sessions, changes to the current local account/session
-model, public `/v1` exposure, public account workflows, browser decryption,
+model, broad public `/v1` exposure, public account workflows, browser decryption,
 backend decryption, key custody, or playable media export. Complete-upload
 idempotency keys and short-lived Valkey complete-upload leases are implemented
 separately and documented in
@@ -90,7 +90,7 @@ Server behavior stays unchanged for this simulator client:
 - no upload lease routes
 - no server-visible client queue summary endpoint
 - no partial upload commit state
-- no public `/v1` exposure
+- no new broad public `/v1` exposure model
 - no additional account-management routes, OAuth, JWT, trusted-contact accounts,
   or public account workflows added only for simulator scaffolding
 - no backend decryption or server-held media keys
@@ -195,19 +195,26 @@ A future private queue-summary endpoint may be useful for telemetry or support,
 but it should be designed separately from resumable upload commit semantics.
 Such an endpoint should be metadata-only, should not accept local file paths,
 should not expose uploaded bytes or plaintext, and should not become public
-`/v1` authentication or a trusted-contact access model.
+`/v1` authentication or a trusted-contact access model. The current upload
+telemetry boundary keeps these signals client-local before v1 preview and is
+documented in [upload-telemetry-boundary.md](upload-telemetry-boundary.md).
 
 ## Size Limits And Expiry
 
 The current complete-chunk API applies `SAFE_MAX_UPLOAD_BYTES` to the uploaded
-file bytes. A future resumable protocol should preserve a final ciphertext size
-limit at least as strict as the current complete upload limit unless an
+file bytes, `SAFE_TEMP_UPLOAD_STAGING_QUOTA_BYTES` to local temp staging
+pressure, and `SAFE_ACCOUNT_DEFAULT_BLOB_QUOTA_BYTES` to committed encrypted
+chunk bytes per owner account. A future resumable protocol should preserve a
+final ciphertext size limit, staging pressure control, and committed account
+quota at least as strict as the current complete upload limits unless an
 explicit configuration change is designed and documented.
 
 For a future resumable session:
 
 - the declared or accumulated total ciphertext size must stay within the
   configured upload limit
+- committing the final ciphertext must respect the account's committed blob
+  quota without counting abandoned temporary parts as durable evidence
 - range or part uploads may have additional per-request limits, but those
   limits must not allow a final oversized chunk to be committed
 - expiry should apply to incomplete upload sessions and short-lived leases
@@ -333,7 +340,7 @@ Until then, the simulator keeps using complete encrypted chunk uploads.
 
 - Implementing resumable upload routes.
 - Implementing resumable upload leases or partial-upload sessions.
-- Adding public `/v1` product authentication or exposing `/v1` publicly.
+- Adding a broad public `/v1` deployment model or changing public route exposure.
 - Adding web, iOS, Android, or protocol repository code.
 - Adding new PostgreSQL, S3-compatible object storage, or background-worker
   behavior.

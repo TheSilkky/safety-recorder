@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
+	"log/slog"
 	"strings"
 	"testing"
 	"time"
@@ -57,6 +59,156 @@ func TestRunOperatorRetentionPreviewRequiresRetentionWindow(t *testing.T) {
 	err := runOperatorRetentionPreview(context.Background(), nil, &bytes.Buffer{}, config.Config{}, &fakeOperatorRepository{})
 	if err == nil || !strings.Contains(err.Error(), "closed-incident-retention") {
 		t.Fatalf("expected retention window error, got %v", err)
+	}
+	var operatorErr operatorError
+	if !errors.As(err, &operatorErr) {
+		t.Fatalf("expected operator error wrapper, got %T", err)
+	}
+	if operatorErr.operation != "retention_preview" || operatorErr.category != "invalid_config_value" {
+		t.Fatalf("operator error operation=%q category=%q", operatorErr.operation, operatorErr.category)
+	}
+}
+
+func TestRunOperatorModeAwareRetentionPreviewOutputsSafeDryRun(t *testing.T) {
+	ctx := context.Background()
+	repo := &fakeOperatorRepository{
+		modeAwareIncidents: []incidents.ModeAwareRetentionPreviewIncident{
+			{
+				IncidentID:       "inc_candidate",
+				UpdatedAt:        time.Date(2026, 5, 30, 9, 0, 0, 0, time.UTC),
+				IncidentMode:     incidents.IncidentModeInteractionRecord,
+				CaptureProfile:   incidents.CaptureProfileAudioLocation,
+				EscalationPolicy: incidents.EscalationPolicyNone,
+				SharingState:     incidents.SharingStatePrivate,
+			},
+			{
+				IncidentID: "inc_missing",
+				UpdatedAt:  time.Date(2026, 5, 30, 10, 0, 0, 0, time.UTC),
+			},
+			{
+				IncidentID:       "inc_recent",
+				UpdatedAt:        time.Date(2026, 6, 1, 9, 30, 0, 0, time.UTC),
+				IncidentMode:     incidents.IncidentModeEvidenceNote,
+				CaptureProfile:   incidents.CaptureProfileNoteOrAttachment,
+				EscalationPolicy: incidents.EscalationPolicyNone,
+				SharingState:     incidents.SharingStatePrivate,
+			},
+		},
+	}
+	var out bytes.Buffer
+
+	err := runOperatorModeAwareRetentionPreview(ctx, []string{
+		"--interaction-record-retention", "24h",
+		"--evidence-note-retention", "24h",
+		"--limit", "11",
+		"--now", "2026-06-01T10:00:00Z",
+	}, &out, config.Config{
+		Backends: config.BackendSelection{Metadata: config.MetadataBackendSQLite},
+	}, repo)
+	if err != nil {
+		t.Fatalf("run mode-aware retention preview: %v", err)
+	}
+
+	var decoded operatorModeAwareRetentionPreviewOutput
+	if err := json.Unmarshal(out.Bytes(), &decoded); err != nil {
+		t.Fatalf("decode output: %v", err)
+	}
+	if decoded.Type != "mode_retention_preview" ||
+		!decoded.ReadOnly ||
+		decoded.LiveDeletion ||
+		decoded.CandidateCount != 1 ||
+		decoded.IneligibleCount != 2 ||
+		len(decoded.CandidatesByMode[incidents.IncidentModeInteractionRecord]) != 1 ||
+		decoded.CandidatesByMode[incidents.IncidentModeInteractionRecord][0].IncidentID != "inc_candidate" {
+		t.Fatalf("unexpected mode-aware preview output: %+v", decoded)
+	}
+	if decoded.Ineligible[0].Reason != "missing_policy_input" ||
+		decoded.Ineligible[1].Reason != "not_past_policy_cutoff" {
+		t.Fatalf("unexpected ineligible reasons: %+v", decoded.Ineligible)
+	}
+	if repo.limit != 11 {
+		t.Fatalf("repo limit = %d, want 11", repo.limit)
+	}
+	assertOperatorOutputSafe(t, out.String())
+}
+
+func TestRunOperatorModeAwareRetentionPreviewDisabledByDefault(t *testing.T) {
+	ctx := context.Background()
+	repo := &fakeOperatorRepository{
+		modeAwareIncidents: []incidents.ModeAwareRetentionPreviewIncident{
+			{
+				IncidentID:       "inc_disabled",
+				UpdatedAt:        time.Date(2026, 5, 30, 9, 0, 0, 0, time.UTC),
+				IncidentMode:     incidents.IncidentModeEmergency,
+				CaptureProfile:   incidents.CaptureProfileAudioVideoLocation,
+				EscalationPolicy: incidents.EscalationPolicyTrustedContactsOnStart,
+				SharingState:     incidents.SharingStatePrivate,
+			},
+		},
+	}
+	var out bytes.Buffer
+
+	err := runOperatorModeAwareRetentionPreview(ctx, []string{
+		"--now", "2026-06-01T10:00:00Z",
+	}, &out, config.Config{
+		Backends: config.BackendSelection{Metadata: config.MetadataBackendSQLite},
+	}, repo)
+	if err != nil {
+		t.Fatalf("run default mode-aware preview: %v", err)
+	}
+
+	var decoded operatorModeAwareRetentionPreviewOutput
+	if err := json.Unmarshal(out.Bytes(), &decoded); err != nil {
+		t.Fatalf("decode output: %v", err)
+	}
+	if decoded.CandidateCount != 0 ||
+		decoded.IneligibleCount != 1 ||
+		decoded.Ineligible[0].Reason != "policy_class_disabled" ||
+		decoded.PolicyWindows[incidents.IncidentModeEmergency] != "0s" {
+		t.Fatalf("unexpected disabled preview output: %+v", decoded)
+	}
+}
+
+func TestOperatorErrorLogUsesSafeOperatorFields(t *testing.T) {
+	ctx := context.Background()
+	repo := &fakeOperatorRepository{
+		err: errors.New("metadata dependency failure with <private endpoint> and <credential>"),
+	}
+	var out bytes.Buffer
+
+	err := runOperatorRetentionPreview(ctx, []string{
+		"--closed-incident-retention", "24h",
+		"--now", "2026-06-01T10:00:00Z",
+	}, &out, config.Config{
+		Backends: config.BackendSelection{Metadata: config.MetadataBackendSQLite},
+	}, repo)
+	if err == nil {
+		t.Fatal("expected retention preview metadata error")
+	}
+
+	var logs bytes.Buffer
+	logger := slog.New(slog.NewTextHandler(&logs, nil))
+	logCommandError(logger, err)
+
+	for _, want := range []string{
+		"component=operator",
+		"operation=retention_preview",
+		"status=failed",
+		"error_category=metadata",
+	} {
+		if !strings.Contains(logs.String(), want) {
+			t.Fatalf("operator log omitted %q: %s", want, logs.String())
+		}
+	}
+	for _, disallowed := range []string{
+		"component=startup",
+		"<private endpoint>",
+		"<credential>",
+		"err=",
+	} {
+		if strings.Contains(logs.String(), disallowed) {
+			t.Fatalf("operator log exposed %q: %s", disallowed, logs.String())
+		}
 	}
 }
 
@@ -114,28 +266,177 @@ func TestRunOperatorDeletionStatusOutputsSafeRetryCategories(t *testing.T) {
 	assertOperatorOutputSafe(t, out.String())
 }
 
+func TestRunOperatorRequestDeletionOutputsSafeJSON(t *testing.T) {
+	ctx := context.Background()
+	repo := &fakeOperatorRepository{
+		requestStatus: incidents.IncidentDeletionStatus{
+			DecisionID:     "del_safe",
+			IncidentID:     "inc_safe",
+			Source:         incidents.IncidentDeletionSourceOperatorCLI,
+			ReasonCode:     "operator_review",
+			ActorAccountID: "acct_operator",
+			AllowOpen:      true,
+			State:          incidents.IncidentDeletionStatePending,
+			ItemCount:      2,
+			RequestedAt:    time.Date(2026, 6, 1, 10, 0, 0, 0, time.UTC),
+			UpdatedAt:      time.Date(2026, 6, 1, 10, 0, 0, 0, time.UTC),
+		},
+	}
+	var out bytes.Buffer
+
+	err := runOperatorRequestDeletion(ctx, []string{
+		"--incident-id", "inc_safe",
+		"--reason-code", " operator_review ",
+		"--actor-account-id", "acct_operator",
+		"--allow-open",
+	}, &out, config.Config{
+		Backends: config.BackendSelection{Metadata: config.MetadataBackendSQLite},
+	}, repo)
+	if err != nil {
+		t.Fatalf("run request deletion: %v", err)
+	}
+
+	var decoded operatorRequestDeletionOutput
+	if err := json.Unmarshal(out.Bytes(), &decoded); err != nil {
+		t.Fatalf("decode output: %v", err)
+	}
+	if decoded.Type != "request_deletion" ||
+		decoded.ReadOnly ||
+		decoded.Status.DecisionID != "del_safe" ||
+		decoded.Status.Source != incidents.IncidentDeletionSourceOperatorCLI ||
+		decoded.Status.ReasonCode != "operator_review" ||
+		!decoded.Status.AllowOpen {
+		t.Fatalf("unexpected request deletion output: %+v", decoded)
+	}
+	if repo.request.IncidentID != "inc_safe" ||
+		repo.request.Source != incidents.IncidentDeletionSourceOperatorCLI ||
+		repo.request.ReasonCode != "operator_review" ||
+		repo.request.ActorAccountID != "acct_operator" ||
+		!repo.request.AllowOpen {
+		t.Fatalf("unexpected request params: %+v", repo.request)
+	}
+	assertOperatorOutputSafe(t, out.String())
+}
+
+func TestRunOperatorRequestDeletionRequiresExplicitInputs(t *testing.T) {
+	ctx := context.Background()
+	tests := []struct {
+		name string
+		args []string
+		want string
+	}{
+		{
+			name: "missing incident",
+			args: []string{"--reason-code", "operator_review"},
+			want: "incident-id",
+		},
+		{
+			name: "missing reason",
+			args: []string{"--incident-id", "inc_safe"},
+			want: "reason-code",
+		},
+		{
+			name: "free-form reason",
+			args: []string{"--incident-id", "inc_safe", "--reason-code", "private note text"},
+			want: "short non-sensitive code",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := runOperatorRequestDeletion(ctx, tt.args, &bytes.Buffer{}, config.Config{}, &fakeOperatorRepository{})
+			if err == nil || !strings.Contains(err.Error(), tt.want) {
+				t.Fatalf("error = %v, want containing %q", err, tt.want)
+			}
+			var operatorErr operatorError
+			if !errors.As(err, &operatorErr) {
+				t.Fatalf("expected operator error wrapper, got %T", err)
+			}
+			if operatorErr.operation != "request_deletion" || operatorErr.category != "invalid_config_value" {
+				t.Fatalf("operator error operation=%q category=%q", operatorErr.operation, operatorErr.category)
+			}
+		})
+	}
+}
+
+func TestRunOperatorRequestDeletionRejectsOpenIncidentByDefault(t *testing.T) {
+	ctx := context.Background()
+	repo := &fakeOperatorRepository{requestErr: incidents.ErrInvalidState}
+	var out bytes.Buffer
+
+	err := runOperatorRequestDeletion(ctx, []string{
+		"--incident-id", "inc_open",
+		"--reason-code", "operator_review",
+	}, &out, config.Config{
+		Backends: config.BackendSelection{Metadata: config.MetadataBackendSQLite},
+	}, repo)
+	if !errors.Is(err, incidents.ErrInvalidState) {
+		t.Fatalf("error = %v, want ErrInvalidState", err)
+	}
+	if repo.request.AllowOpen {
+		t.Fatalf("allow_open = true, want default false")
+	}
+	var operatorErr operatorError
+	if !errors.As(err, &operatorErr) {
+		t.Fatalf("expected operator error wrapper, got %T", err)
+	}
+	if operatorErr.operation != "request_deletion" || operatorErr.category != "invalid_state" {
+		t.Fatalf("operator error operation=%q category=%q", operatorErr.operation, operatorErr.category)
+	}
+	assertOperatorOutputSafe(t, out.String())
+}
+
 type fakeOperatorRepository struct {
 	candidates          []incidents.RetentionDeletionCandidate
+	modeAwareIncidents  []incidents.ModeAwareRetentionPreviewIncident
 	status              incidents.IncidentDeletionJobStatus
+	requestStatus       incidents.IncidentDeletionStatus
+	request             incidents.IncidentDeletionRequest
+	err                 error
+	requestErr          error
 	cutoff              time.Time
 	staleDeletingBefore time.Time
 	limit               int
 }
 
 func (r *fakeOperatorRepository) Check(context.Context) error {
-	return nil
+	return r.err
 }
 
 func (r *fakeOperatorRepository) ListRetentionDeletionCandidates(_ context.Context, cutoff time.Time, limit int) ([]incidents.RetentionDeletionCandidate, error) {
+	if r.err != nil {
+		return nil, r.err
+	}
 	r.cutoff = cutoff
 	r.limit = limit
 	return r.candidates, nil
 }
 
+func (r *fakeOperatorRepository) ListModeAwareRetentionPreviewIncidents(_ context.Context, limit int) ([]incidents.ModeAwareRetentionPreviewIncident, error) {
+	if r.err != nil {
+		return nil, r.err
+	}
+	r.limit = limit
+	return r.modeAwareIncidents, nil
+}
+
 func (r *fakeOperatorRepository) GetIncidentDeletionJobStatus(_ context.Context, limit int, staleDeletingBefore time.Time) (incidents.IncidentDeletionJobStatus, error) {
+	if r.err != nil {
+		return incidents.IncidentDeletionJobStatus{}, r.err
+	}
 	r.limit = limit
 	r.staleDeletingBefore = staleDeletingBefore
 	return r.status, nil
+}
+
+func (r *fakeOperatorRepository) RequestIncidentDeletion(_ context.Context, params incidents.IncidentDeletionRequest) (incidents.IncidentDeletionStatus, error) {
+	r.request = params
+	if r.requestErr != nil {
+		return incidents.IncidentDeletionStatus{}, r.requestErr
+	}
+	if r.err != nil {
+		return incidents.IncidentDeletionStatus{}, r.err
+	}
+	return r.requestStatus, nil
 }
 
 func assertOperatorOutputSafe(t *testing.T, output string) {

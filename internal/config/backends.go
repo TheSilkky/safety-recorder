@@ -2,7 +2,6 @@ package config
 
 import (
 	"fmt"
-	"os"
 	"strings"
 )
 
@@ -16,8 +15,9 @@ const (
 	CoordinationBackendRedis  = "redis"
 )
 
-func backendSelectionFromEnv() (BackendSelection, error) {
-	metadata, err := backendFromEnv(
+func backendSelectionFromSource(source configSource) (BackendSelection, error) {
+	metadata, err := backendFromSource(
+		source,
 		"SAFE_METADATA_BACKEND",
 		MetadataBackendSQLite,
 		[]string{MetadataBackendSQLite, MetadataBackendPostgres},
@@ -25,7 +25,8 @@ func backendSelectionFromEnv() (BackendSelection, error) {
 	if err != nil {
 		return BackendSelection{}, err
 	}
-	blob, err := backendFromEnv(
+	blob, err := backendFromSource(
+		source,
 		"SAFE_BLOB_BACKEND",
 		BlobBackendLocal,
 		[]string{BlobBackendLocal, BlobBackendS3},
@@ -33,7 +34,8 @@ func backendSelectionFromEnv() (BackendSelection, error) {
 	if err != nil {
 		return BackendSelection{}, err
 	}
-	coordination, err := backendFromEnv(
+	coordination, err := backendFromSource(
+		source,
 		"SAFE_COORDINATION_BACKEND",
 		CoordinationBackendNone,
 		[]string{CoordinationBackendNone, CoordinationBackendValkey, CoordinationBackendRedis},
@@ -49,8 +51,8 @@ func backendSelectionFromEnv() (BackendSelection, error) {
 	}, nil
 }
 
-func backendFromEnv(name, fallback string, supported []string) (string, error) {
-	raw, ok := os.LookupEnv(name)
+func backendFromSource(source configSource, name, fallback string, supported []string) (string, error) {
+	raw, ok := source.Lookup(name)
 	if !ok {
 		return fallback, nil
 	}

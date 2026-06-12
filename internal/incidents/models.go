@@ -101,6 +101,9 @@ const (
 	IncidentDeletionSourceAccountRequest = "account_request"
 	// IncidentDeletionSourceAdminRequest records an admin-wide private request.
 	IncidentDeletionSourceAdminRequest = "admin_request"
+	// IncidentDeletionSourceOperatorCLI records a trusted-shell local operator
+	// command request.
+	IncidentDeletionSourceOperatorCLI = "operator_cli"
 	// IncidentDeletionSourceRetentionPolicy records an automatic retention decision.
 	IncidentDeletionSourceRetentionPolicy = "retention_policy"
 
@@ -111,6 +114,19 @@ const (
 	IncidentDeletionItemStateDeleted = "deleted"
 	// IncidentDeletionItemStateFailed means deletion should be retried.
 	IncidentDeletionItemStateFailed = "failed"
+
+	// LegacyIncidentReassignmentActionAssignOwner records an operator-reviewed
+	// assignment from a legacy unowned incident to an existing account.
+	LegacyIncidentReassignmentActionAssignOwner = "assign_owner"
+	// LegacyIncidentReassignmentActionKeepUnowned records an operator-reviewed
+	// decision to keep a legacy incident admin-only.
+	LegacyIncidentReassignmentActionKeepUnowned = "keep_unowned"
+
+	// LegacyIncidentReassignmentSourceAdminAPI records the private admin JSON API.
+	LegacyIncidentReassignmentSourceAdminAPI = "admin_api"
+	// LegacyIncidentReassignmentSourceOperatorCLI is reserved for future local
+	// operator tooling that uses the same metadata boundary.
+	LegacyIncidentReassignmentSourceOperatorCLI = "operator_cli"
 )
 
 // Incident is the top-level recording session tracked by the backend.
@@ -127,6 +143,51 @@ type Incident struct {
 	EscalationPolicy string    `json:"escalation_policy,omitempty"`
 	SharingState     string    `json:"sharing_state,omitempty"`
 	DeletionState    string    `json:"deletion_state"`
+}
+
+// LegacyUnownedIncidentCandidate is safe count-oriented metadata for private
+// review of legacy incidents that have no owner account.
+type LegacyUnownedIncidentCandidate struct {
+	IncidentID            string    `json:"incident_id"`
+	Status                string    `json:"status"`
+	DeletionState         string    `json:"deletion_state"`
+	CreatedAt             time.Time `json:"created_at"`
+	UpdatedAt             time.Time `json:"updated_at"`
+	StreamCount           int       `json:"stream_count"`
+	ChunkCount            int       `json:"chunk_count"`
+	CheckinCount          int       `json:"checkin_count"`
+	IncidentTokenCount    int       `json:"incident_token_count"`
+	HasActiveViewerTokens bool      `json:"has_active_viewer_tokens"`
+	IncidentMode          string    `json:"incident_mode,omitempty"`
+	CaptureProfile        string    `json:"capture_profile,omitempty"`
+	EscalationPolicy      string    `json:"escalation_policy,omitempty"`
+	SharingState          string    `json:"sharing_state,omitempty"`
+}
+
+// LegacyIncidentReassignmentEvent records a private admin/operator decision for
+// one legacy unowned incident without free-form notes.
+type LegacyIncidentReassignmentEvent struct {
+	ID                     string    `json:"id"`
+	IncidentID             string    `json:"incident_id"`
+	PreviousOwnerAccountID string    `json:"previous_owner_account_id,omitempty"`
+	NewOwnerAccountID      string    `json:"new_owner_account_id,omitempty"`
+	ActorAccountID         string    `json:"actor_account_id"`
+	Action                 string    `json:"action"`
+	ReasonCode             string    `json:"reason_code"`
+	Source                 string    `json:"source"`
+	CreatedAt              time.Time `json:"created_at"`
+	CompletedAt            time.Time `json:"completed_at"`
+}
+
+// LegacyIncidentReassignmentParams contains the controlled fields required to
+// assign a legacy incident or keep it unowned.
+type LegacyIncidentReassignmentParams struct {
+	IncidentID        string
+	NewOwnerAccountID string
+	ActorAccountID    string
+	Action            string
+	ReasonCode        string
+	Source            string
 }
 
 // MediaStream groups encrypted chunks that belong to one recording stream.
@@ -195,16 +256,17 @@ type CreateIncidentParams struct {
 // CreateChunkParams contains metadata saved after a chunk file has been safely
 // written and hash-verified.
 type CreateChunkParams struct {
-	IncidentID       string
-	StreamID         string
-	ChunkIndex       int
-	MediaType        string
-	StartedAt        time.Time
-	EndedAt          time.Time
-	OriginalFilename string
-	StoredPath       string
-	ByteSize         int64
-	SHA256Hex        string
+	IncidentID            string
+	StreamID              string
+	ChunkIndex            int
+	MediaType             string
+	StartedAt             time.Time
+	EndedAt               time.Time
+	OriginalFilename      string
+	StoredPath            string
+	ByteSize              int64
+	SHA256Hex             string
+	AccountBlobQuotaBytes int64
 }
 
 // UploadOperation records durable idempotency state for one authenticated write
@@ -282,6 +344,44 @@ type IncidentDeletionStatus struct {
 type RetentionDeletionCandidate struct {
 	IncidentID string    `json:"incident_id"`
 	UpdatedAt  time.Time `json:"updated_at"`
+}
+
+// ModeAwareRetentionPreviewIncident is a safe local-operator preview item for
+// closed active incidents that may eventually be evaluated by mode-aware
+// retention policy. It excludes notes, paths, tokens, keys, and location data.
+type ModeAwareRetentionPreviewIncident struct {
+	IncidentID       string    `json:"incident_id"`
+	UpdatedAt        time.Time `json:"updated_at"`
+	IncidentMode     string    `json:"incident_mode,omitempty"`
+	CaptureProfile   string    `json:"capture_profile,omitempty"`
+	EscalationPolicy string    `json:"escalation_policy,omitempty"`
+	SharingState     string    `json:"sharing_state,omitempty"`
+}
+
+// ModeAwareRetentionCandidate is a safe local-operator dry-run item grouped by
+// an explicit mode-aware policy class. It does not create deletion decisions.
+type ModeAwareRetentionCandidate struct {
+	IncidentID       string    `json:"incident_id"`
+	PolicyClass      string    `json:"policy_class"`
+	IncidentMode     string    `json:"incident_mode"`
+	CaptureProfile   string    `json:"capture_profile"`
+	EscalationPolicy string    `json:"escalation_policy"`
+	SharingState     string    `json:"sharing_state"`
+	UpdatedAt        time.Time `json:"updated_at"`
+	Cutoff           time.Time `json:"cutoff"`
+}
+
+// ModeAwareRetentionIneligible is a safe local-operator dry-run item for a
+// closed active incident that lacks explicit policy inputs or is not yet past a
+// configured mode-aware cutoff.
+type ModeAwareRetentionIneligible struct {
+	IncidentID       string    `json:"incident_id"`
+	Reason           string    `json:"reason"`
+	IncidentMode     string    `json:"incident_mode,omitempty"`
+	CaptureProfile   string    `json:"capture_profile,omitempty"`
+	EscalationPolicy string    `json:"escalation_policy,omitempty"`
+	SharingState     string    `json:"sharing_state,omitempty"`
+	UpdatedAt        time.Time `json:"updated_at"`
 }
 
 // IncidentDeletionStateCount is a safe aggregate count for deletion decisions.

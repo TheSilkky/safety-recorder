@@ -11,18 +11,24 @@ Do **not** change encryption code.
 Do **not** change API behaviour.
 Do **not** change database schema.
 Do **not** add new dependencies.
-Do **not** add React, Node, npm, OAuth, JWT, user accounts, SMS, Messenger, push notifications, Docker Compose, Kubernetes, cloud integrations, or public admin dashboard features.
+Do **not** add React, Node, npm, OAuth, JWT, new account-system features beyond the implemented local account/session and registration flows, SMS, Messenger, push notifications, Docker Compose, Kubernetes, cloud integrations, or public admin dashboard features.
 
 ## Goal
 
-Create a design document for the future production key custody model.
+Create or update the relevant design document for the future production key
+custody model. If the document already exists, update it rather than creating a
+duplicate.
 
 The ultimate target should be a **hybrid key custody model**:
 
 - chunks/streams are encrypted client-side
-- keys are not stored solely on the iPhone
+- private keys belong to accounts, devices, and trusted contacts
+- content-encryption keys belong to incidents, streams, or bounded chunk groups
+- wrapped access records connect recipient key versions to content keys
+- keys are not stored solely on the user's phone
 - trusted contacts can eventually access emergency evidence without needing the phone to survive
 - the backend may store wrapped/encrypted keys
+- current runtime behavior remains ciphertext-only unless separately implemented
 - browser/client-side decryption may be supported
 - server escrow or server-side decryption may be supported only as an explicit break-glass/dead-man-switch mode
 - all key custody and decryption changes must be deliberate, documented, tested, and threat-modeled
@@ -38,7 +44,7 @@ The system must assume the client device may be:
 - destroyed
 - unavailable during a dead-man-switch event
 
-Therefore, production key material must not exist solely on the iPhone client.
+Therefore, production key material must not exist solely on the client device.
 
 ## Current implementation baseline
 
@@ -47,9 +53,13 @@ The current repository implementation is simulator/development only:
 - backend stores opaque encrypted chunk bytes
 - backend validates SHA-256 over ciphertext bytes
 - backend creates encrypted ZIP evidence bundles
-- simulator encrypts fake chunks with the documented v1 AES-256-GCM envelope
+- server upload validation and simulator defaults use the accepted PQ payload
+  envelope when the current branch implements it; the older v1 AES-256-GCM
+  envelope is explicit compatibility only
 - simulator can decrypt-verify downloaded bundles locally
-- backend does not currently store keys
+- backend can store grant-bound wrapped-key metadata for explicitly designed
+  owner-scoped sharing flows
+- backend does not currently store raw keys
 - backend does not currently decrypt chunks
 - evidence bundles are not playable media exports
 
@@ -64,7 +74,12 @@ Read current files before drafting:
 - `CHANGELOG.md`
 - `SECURITY.md`
 - `docs/README.md`
+- `docs/v1-preview-direction.md`
 - `docs/encryption.md`
+- `docs/contacts-and-viewer-replacement.md`, if present
+- `docs/post-quantum-envelope.md`, if present
+- `docs/browser-decryption.md`, if present
+- `docs/break-glass-key-access.md`, if present
 - `docs/security-model.md`
 - `docs/threat-model.md`
 - `docs/architecture.md`
@@ -84,11 +99,14 @@ If GitHub CLI is unavailable, continue from local docs.
 
 ## Design document
 
-Create:
+Create or update:
 
 ```text
 docs/key-custody.md
 ```
+
+If `docs/key-custody.md` already exists, update it rather than creating a
+duplicate fixed-path design document.
 
 The document should be professional, explicit, and security-focused.
 
@@ -101,7 +119,7 @@ Explain the future key custody goal in plain language.
 State clearly:
 
 - current backend remains ciphertext-only for now
-- future product requires keys to be recoverable/usable without the iPhone
+- future product requires keys to be recoverable/usable without the user's phone
 - the preferred long-term direction is a hybrid model
 - server-side decryption is not forbidden, but it must never be introduced accidentally
 
@@ -115,7 +133,7 @@ Include:
 - support future live GPS/emergency dashboard use
 - support future live audio/video streaming design
 - support future dead-man-switch flows
-- avoid single point of failure on the iPhone
+- avoid single point of failure on the user's phone
 - avoid casual/raw server access to media keys
 - make key custody decisions auditable and documented
 
@@ -131,7 +149,7 @@ Include:
 - no database schema changes
 - no playable media export
 - no push/SMS/Messenger delivery
-- no user account system
+- no new account-system implementation
 
 ### 4. Key custody models considered
 
@@ -185,11 +203,15 @@ Propose a key hierarchy.
 
 Consider:
 
+- account, device, and trusted-contact recipient keys
+- recipient key versions
 - per-incident media key
 - per-stream media key
+- content-encryption keys for incidents, streams, or bounded chunk groups
 - per-chunk nonce
 - key IDs
 - wrapped media keys
+- wrapped access records that connect recipient key versions to content keys
 - contact public keys
 - server escrow keys
 - future rotation/revocation implications
@@ -262,7 +284,7 @@ Discuss impacts on:
 - compromised incident viewer token
 - malicious/compromised reverse proxy
 - compromised trusted contact device
-- destroyed iPhone
+- destroyed phone
 - maintainer/operator misuse
 - dead-man-switch false positive/false negative
 
@@ -287,7 +309,7 @@ Phase 6: optional server escrow/break-glass implementation
 
 ## Docs to update
 
-After creating `docs/key-custody.md`, update only small references in:
+After creating or updating `docs/key-custody.md`, update only small references in:
 
 - `docs/README.md`
 - `docs/encryption.md`
@@ -306,6 +328,7 @@ Because this is a documentation-only task:
 ```bash
 git diff --stat
 git diff -- docs README.md CHANGELOG.md
+git diff --check
 ```
 
 If any code changed, stop and explain why.

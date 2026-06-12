@@ -70,6 +70,35 @@ type incidentViewData struct {
 	GeneratedAt            time.Time                              `json:"generated_at"`
 }
 
+type webClientViewerPayload struct {
+	PayloadVersion       string                        `json:"payload_version"`
+	Incident             incidentViewerIncidentSummary `json:"incident"`
+	LatestCheckin        *webClientViewerCheckin       `json:"latest_checkin,omitempty"`
+	LatestSharedLocation *webClientViewerLocation      `json:"latest_shared_location,omitempty"`
+	Warning              string                        `json:"warning"`
+	GeneratedAt          time.Time                     `json:"generated_at"`
+}
+
+type webClientViewerCheckin struct {
+	ServerReceivedAt time.Time                   `json:"server_received_at"`
+	SafeDeviceState  *webClientViewerDeviceState `json:"safe_device_state,omitempty"`
+}
+
+type webClientViewerDeviceState struct {
+	DeviceBatteryPercent *int    `json:"device_battery_percent,omitempty"`
+	DeviceNetwork        *string `json:"device_network,omitempty"`
+}
+
+type webClientViewerLocation struct {
+	Latitude         float64    `json:"latitude"`
+	Longitude        float64    `json:"longitude"`
+	AccuracyMeters   *float64   `json:"accuracy_meters,omitempty"`
+	Source           string     `json:"source"`
+	ServerReceivedAt time.Time  `json:"server_received_at"`
+	ClientReportedAt *time.Time `json:"client_reported_at,omitempty"`
+	FreshnessStatus  string     `json:"freshness_status"`
+}
+
 type createIncidentTokenResponse struct {
 	TokenID    string     `json:"token_id"`
 	IncidentID string     `json:"incident_id"`
@@ -77,6 +106,16 @@ type createIncidentTokenResponse struct {
 	Label      string     `json:"label,omitempty"`
 	CreatedAt  time.Time  `json:"created_at"`
 	ExpiresAt  *time.Time `json:"expires_at,omitempty"`
+}
+
+type incidentTokenMetadataResponse struct {
+	TokenID    string     `json:"token_id"`
+	IncidentID string     `json:"incident_id"`
+	Label      string     `json:"label,omitempty"`
+	TokenState string     `json:"token_state"`
+	CreatedAt  time.Time  `json:"created_at"`
+	ExpiresAt  *time.Time `json:"expires_at,omitempty"`
+	RevokedAt  *time.Time `json:"revoked_at,omitempty"`
 }
 
 type createIncidentTokenRequest struct {
@@ -118,6 +157,13 @@ func (request *createIncidentTokenRequest) UnmarshalJSON(data []byte) error {
 }
 
 const incidentWarning = "If you are concerned about immediate safety, call emergency services now."
+const webClientViewerPayloadVersion = "proofline.viewer.basic.v1"
+const webClientViewerLocationRecentWindow = 15 * time.Minute
+const (
+	incidentTokenStateActive  = "active"
+	incidentTokenStateExpired = "expired"
+	incidentTokenStateRevoked = "revoked"
+)
 
 // createIncidentToken is an authenticated main API route that mints a read-only
 // incident viewer capability for one incident.
@@ -154,6 +200,67 @@ func (a *API) createIncidentToken(w http.ResponseWriter, r *http.Request) {
 		CreatedAt:  token.CreatedAt,
 		ExpiresAt:  token.ExpiresAt,
 	})
+}
+
+func (a *API) listIncidentTokens(w http.ResponseWriter, r *http.Request) {
+	incidentID := r.PathValue("incident_id")
+	if _, ok := a.authorizeOwnedIncident(w, r, incidentID, actionReadPublicLink, dataClassPublicLinkGrant); !ok {
+		return
+	}
+	tokens, err := a.repo.ListIncidentTokens(r.Context(), incidentID)
+	if err != nil {
+		a.internalError(w, "list incident tokens", err)
+		return
+	}
+	response := make([]incidentTokenMetadataResponse, 0, len(tokens))
+	now := time.Now().UTC()
+	for _, token := range tokens {
+		response = append(response, makeIncidentTokenMetadataResponse(token, now))
+	}
+	writeJSON(w, http.StatusOK, map[string][]incidentTokenMetadataResponse{
+		"incident_tokens": response,
+	})
+}
+
+func (a *API) getIncidentTokenMetadata(w http.ResponseWriter, r *http.Request) {
+	incidentID := r.PathValue("incident_id")
+	if _, ok := a.authorizeOwnedIncident(w, r, incidentID, actionReadPublicLink, dataClassPublicLinkGrant); !ok {
+		return
+	}
+	token, err := a.repo.GetIncidentTokenForIncident(r.Context(), incidentID, r.PathValue("token_id"))
+	if errors.Is(err, incidents.ErrNotFound) {
+		writeError(w, http.StatusNotFound, "incident_token_not_found", "incident token was not found")
+		return
+	}
+	if err != nil {
+		a.internalError(w, "get incident token metadata", err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]incidentTokenMetadataResponse{
+		"incident_token": makeIncidentTokenMetadataResponse(token, time.Now().UTC()),
+	})
+}
+
+func makeIncidentTokenMetadataResponse(token incidents.IncidentToken, now time.Time) incidentTokenMetadataResponse {
+	return incidentTokenMetadataResponse{
+		TokenID:    token.ID,
+		IncidentID: token.IncidentID,
+		Label:      token.Label,
+		TokenState: incidentTokenMetadataState(token, now),
+		CreatedAt:  token.CreatedAt,
+		ExpiresAt:  token.ExpiresAt,
+		RevokedAt:  token.RevokedAt,
+	}
+}
+
+func incidentTokenMetadataState(token incidents.IncidentToken, now time.Time) string {
+	if token.RevokedAt != nil {
+		return incidentTokenStateRevoked
+	}
+	if token.ExpiresAt != nil && !token.ExpiresAt.After(now) {
+		return incidentTokenStateExpired
+	}
+	return incidentTokenStateActive
 }
 
 func (a *API) incidentTokenExpiresAt(requestExpiresAt *time.Time, requestExpiresAtSet bool) *time.Time {
@@ -203,7 +310,7 @@ func (a *API) incidentViewerPage(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if err := incidentViewerPageTemplate.Execute(w, data); err != nil {
-		a.logger.Error("render incident viewer page", "err", err)
+		a.logInternalError("render incident viewer page", err)
 	}
 }
 
@@ -215,6 +322,22 @@ func (a *API) incidentViewData(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, data)
+}
+
+// webClientViewerPayload returns a minimal token-scoped payload for the future
+// web-client no-account viewer without changing the built-in viewer data route.
+func (a *API) webClientViewerPayload(w http.ResponseWriter, r *http.Request) {
+	setIncidentViewerPrivacyHeaders(w)
+	token, ok := a.loadIncidentToken(w, r)
+	if !ok {
+		return
+	}
+	detail, err := a.repo.GetIncidentDetail(r.Context(), token.IncidentID)
+	if err != nil {
+		a.internalError(w, "load web-client viewer payload", err)
+		return
+	}
+	writeJSON(w, http.StatusOK, summarizeWebClientViewerPayload(detail, time.Now().UTC()))
 }
 
 func setIncidentViewerPrivacyHeaders(w http.ResponseWriter) {
@@ -279,6 +402,18 @@ func summarizeIncidentViewData(detail incidents.IncidentDetail) incidentViewData
 	}
 }
 
+func summarizeWebClientViewerPayload(detail incidents.IncidentDetail, generatedAt time.Time) webClientViewerPayload {
+	latestCheckin := latestCheckin(detail.Checkins)
+	return webClientViewerPayload{
+		PayloadVersion:       webClientViewerPayloadVersion,
+		Incident:             summarizeIncident(detail.Incident),
+		LatestCheckin:        summarizeWebClientViewerCheckin(latestCheckin),
+		LatestSharedLocation: summarizeWebClientViewerLocation(latestCheckin, generatedAt),
+		Warning:              incidentWarning,
+		GeneratedAt:          generatedAt,
+	}
+}
+
 type incidentViewerChunkStats struct {
 	chunkCountByMediaType  map[string]int
 	latestChunkByMediaType map[string]*incidentViewerChunkSummary
@@ -320,11 +455,19 @@ func summarizeIncident(incident incidents.Incident) incidentViewerIncidentSummar
 }
 
 func summarizeLatestCheckin(checkins []incidents.Checkin) *incidentViewerCheckinSummary {
+	checkin := latestCheckin(checkins)
+	if checkin == nil {
+		return nil
+	}
+	summary := summarizeCheckin(*checkin)
+	return &summary
+}
+
+func latestCheckin(checkins []incidents.Checkin) *incidents.Checkin {
 	if len(checkins) == 0 {
 		return nil
 	}
-	summary := summarizeCheckin(checkins[len(checkins)-1])
-	return &summary
+	return &checkins[len(checkins)-1]
 }
 
 func summarizeCheckin(checkin incidents.Checkin) incidentViewerCheckinSummary {
@@ -336,6 +479,51 @@ func summarizeCheckin(checkin incidents.Checkin) incidentViewerCheckinSummary {
 		Longitude:            checkin.Longitude,
 		AccuracyMeters:       checkin.AccuracyMeters,
 	}
+}
+
+func summarizeWebClientViewerCheckin(checkin *incidents.Checkin) *webClientViewerCheckin {
+	if checkin == nil {
+		return nil
+	}
+	summary := webClientViewerCheckin{
+		ServerReceivedAt: checkin.CreatedAt,
+		SafeDeviceState:  summarizeWebClientViewerDeviceState(*checkin),
+	}
+	return &summary
+}
+
+func summarizeWebClientViewerDeviceState(checkin incidents.Checkin) *webClientViewerDeviceState {
+	if checkin.DeviceBatteryPercent == nil && checkin.DeviceNetwork == nil {
+		return nil
+	}
+	return &webClientViewerDeviceState{
+		DeviceBatteryPercent: checkin.DeviceBatteryPercent,
+		DeviceNetwork:        checkin.DeviceNetwork,
+	}
+}
+
+func summarizeWebClientViewerLocation(checkin *incidents.Checkin, generatedAt time.Time) *webClientViewerLocation {
+	if checkin == nil || checkin.Latitude == nil || checkin.Longitude == nil {
+		return nil
+	}
+	return &webClientViewerLocation{
+		Latitude:         *checkin.Latitude,
+		Longitude:        *checkin.Longitude,
+		AccuracyMeters:   checkin.AccuracyMeters,
+		Source:           "checkin",
+		ServerReceivedAt: checkin.CreatedAt,
+		FreshnessStatus:  webClientViewerLocationFreshness(generatedAt, checkin.CreatedAt),
+	}
+}
+
+func webClientViewerLocationFreshness(generatedAt, reportedAt time.Time) string {
+	if reportedAt.IsZero() {
+		return "unavailable"
+	}
+	if reportedAt.After(generatedAt) || generatedAt.Sub(reportedAt) <= webClientViewerLocationRecentWindow {
+		return "recent"
+	}
+	return "stale"
 }
 
 func summarizeIncidentViewerMedia(stats incidentViewerChunkStats) []incidentViewerMediaSummary {

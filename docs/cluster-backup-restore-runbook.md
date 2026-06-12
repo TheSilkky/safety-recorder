@@ -6,7 +6,7 @@ encrypted blob backend, and optional Valkey/Redis-compatible coordination
 backend.
 
 Proofline is still experimental and not production-ready public
-infrastructure. These runbooks do not add public `/v1` exposure, public account
+infrastructure. These runbooks do not add broad public `/v1` exposure, public account
 workflows, retention enforcement, observability, abuse controls, backup
 automation, cloud deployment scripts, backend decryption, key escrow, or key
 custody behavior.
@@ -27,7 +27,7 @@ together. Coordination state is intentionally not evidence storage.
 
 | System | Role | Backup source of truth |
 |---|---|---|
-| PostgreSQL metadata | Incidents, streams, chunk metadata, checkins, viewer-token hashes, migrations, and durable upload-operation state for complete chunk upload idempotency. | Yes, when `SAFE_METADATA_BACKEND=postgresql`. |
+| PostgreSQL metadata | Accounts, account/device recipient-key metadata, trusted-contact relationship metadata, contact public-key metadata, sharing grants, wrapped-key records, incidents, streams, chunk metadata, checkins, viewer-token hashes, migrations, and durable upload-operation state for complete chunk upload idempotency. | Yes, when `SAFE_METADATA_BACKEND=postgresql`. |
 | S3-compatible encrypted blob storage | Committed encrypted chunk bytes addressed by server-controlled final object keys. | Yes, when `SAFE_BLOB_BACKEND=s3`. |
 | Deployment configuration | Backend selectors, bind addresses, data paths, upload limits, token TTL defaults, S3 settings, PostgreSQL settings, Valkey settings, reverse-proxy routing, and secret references. | Yes, but keep secret values in a private secret-management backup, not in public docs or tickets. |
 | Local `SAFE_DATA_DIR/tmp` | Temporary upload staging before final commit. Current S3 support uses local temp files and does not create S3 staging objects. | No, except for forensic review during a private incident response. |
@@ -67,6 +67,11 @@ details in private operator documentation.
    - Use a PostgreSQL backup method appropriate for the deployment, such as a
      logical dump, physical backup, or managed database snapshot.
    - Include schema migrations and all Proofline metadata tables.
+   - Include account/device recipient-key rows, trusted-contact relationship
+     rows, contact public-key rows, sharing-grant rows, and wrapped-key rows
+     with the same recovery point as
+     account and incident rows. These rows are key-access metadata, not raw
+     keys, and must remain consistent with restored incidents and blobs.
    - Treat database backup output, backup logs, and failure output as sensitive
      if they can include IDs, labels, timestamps, private paths, or connection
      details.
@@ -141,12 +146,39 @@ main `/v1` routes publicly without a reviewed deployment boundary.
 5. Validate metadata and blob consistency.
    - Start the API in the isolated environment.
    - Load known incident metadata through authenticated main `/v1` routes only.
+   - Load account/device recipient-key metadata and trusted-contact
+     relationship/contact/sharing/wrapped-key metadata through authenticated
+     owner routes when the backup set includes those rows.
    - Generate completed stream or incident encrypted ZIP bundles.
    - Confirm generated manifests match expected stream and chunk metadata.
    - Confirm completed bundle generation fails closed when a required blob is
      missing or when metadata and blobs do not match.
 
-6. Validate coordination loss behavior.
+6. Validate deletion state and restore reconciliation.
+   - In the private restored environment, sample active, deletion-pending,
+     deleting, deletion-failed, deleted, and tombstone-pruned incidents when the
+     backup set contains those states.
+   - Confirm private owner/admin deletion status routes and
+     `proofline-server operator deletion-status` report only non-sensitive
+     deletion state, retry categories, item counts, and timestamps.
+   - Confirm deleted incidents retain only minimal tombstone fields and that
+     sensitive child rows such as streams, chunks, checkins, viewer-token rows,
+     incident-scoped sharing grants, and wrapped-key records have been pruned
+     after deletion completes.
+   - Confirm completed bundle generation works for active incidents and fails
+     closed for deleting, deleted, tombstone-pruned, or blob-mismatched
+     incidents.
+   - Confirm public viewer routes fail closed for deleting, deleted, expired,
+     revoked-token, tombstone-pruned, and metadata/blob-mismatch cases without
+     revealing deletion state, incident mode, stored paths, object keys,
+     private endpoints, or grant/wrapped-key metadata.
+   - If an older backup reintroduces an incident that live state has since
+     deleted, keep the restored copy private and reconcile it through private
+     operator notes, backup expiry, storage-key retirement, or a separate
+     reviewed deletion decision. Do not use public routes, public issue text,
+     or public screenshots for that reconciliation.
+
+7. Validate coordination loss behavior.
    - If Valkey/Redis coordination is configured and unavailable at startup, the
      server should fail closed.
    - For restore drills that do not need coordination, use
@@ -156,8 +188,8 @@ main `/v1` routes publicly without a reviewed deployment boundary.
      operational failure, not as evidence loss, because durable state belongs in
      PostgreSQL and committed blob storage.
 
-7. Keep restored environments private.
-   - Do not expose `/v1` publicly during validation.
+8. Keep restored environments private.
+   - Do not broaden `/v1` public routing during validation.
    - Do not use restore drills to claim production readiness.
    - Tear down or lock down restored copies according to the deployment's
      private retention and backup policy.

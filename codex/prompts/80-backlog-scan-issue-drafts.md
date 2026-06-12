@@ -59,6 +59,7 @@ Read current repository files where present:
 - `SECURITY.md`
 - `LICENSE`
 - `docs/README.md`
+- `docs/v1-preview-direction.md`
 - `docs/api.md`
 - `docs/architecture.md`
 - `docs/configuration.md`
@@ -290,6 +291,7 @@ What should change.
 - [ ] `gofmt -w ./cmd ./internal ./migrations`, if Go files change
 - [ ] `go test ./...`, if code changes
 - [ ] `go vet ./...`, if code changes or CI/testing changes
+- [ ] `git diff --check`, if files change
 - [ ] simulator smoke test, if relevant
 - [ ] docs updated, if relevant
 - [ ] revalidate on target branch before public issue creation, if branch-scoped
@@ -367,6 +369,7 @@ After creating drafts:
 ```bash
 git diff --stat
 git diff -- .backlog-drafts
+git diff --check
 ```
 
 Check required metadata:

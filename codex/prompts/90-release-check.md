@@ -49,6 +49,9 @@ Before making changes, read current source-of-truth files as relevant:
 - `CHANGELOG.md`
 - `SECURITY.md`
 - `docs/README.md`
+- `docs/v1-preview-direction.md`
+- `docs/v1-preview-readiness-checklist.md`, for `v1 preview`, `v1.0.0`, or
+  real-user evidence-upload readiness claims
 - relevant files in `docs/`
 - relevant source files
 - relevant tests
@@ -80,15 +83,15 @@ If this is a release-prep branch, verify:
 - Do not add unrelated features.
 - Do not weaken security warnings.
 - Do not claim production readiness.
-- Do not expose `/v1` publicly.
-- Do not log raw tokens, request bodies, uploaded bytes, Authorization headers, plaintext, raw keys, or future token-like values.
-- Do not add React, Node, npm, OAuth, JWT, user accounts, SMS, Messenger, push notifications, Docker Compose, Kubernetes, cloud integrations, or public admin dashboard features unless explicitly requested.
+- Do not expose `/v1` as an unreviewed public catch-all; keep `/admin/api/...` and `/admin` off public edges.
+- Do not log raw tokens, request bodies, uploaded bytes, Authorization headers, plaintext, raw keys, wrapped-key ciphertext, private deployment details, stored paths, object keys, user safety data, or future token-like values; check logging changes against `docs/logging-requirements.md`.
+- Do not add React, Node, npm, OAuth, JWT, new account-system features beyond the implemented local account/session and registration flows, SMS, Messenger, push notifications, Docker Compose, Kubernetes, cloud integrations, or public admin dashboard features unless explicitly requested.
 - Prefer Go standard library where practical.
 - Preserve private/public listener separation.
 - Preserve the current backend ciphertext-only implementation unless the task explicitly concerns key custody, emergency access, or decryption design.
 - Do not introduce backend decryption, raw server-held decryption keys, key escrow, browser decryption, or key-sharing behaviour as an incidental implementation detail.
 - Any key custody/decryption change must be an explicit security-sensitive task that updates the threat model, security model, encryption docs, tests, and operational guidance before or alongside implementation.
-- Future production key custody should assume the iPhone may be unavailable; keys must not exist solely on the client device.
+- Future production key custody should assume the user's phone may be unavailable; keys must not exist solely on the client device.
 - Server storage of wrapped/encrypted keys may be acceptable if explicitly designed.
 - Raw server-side key access or server-side decryption may be acceptable only as a deliberate break-glass/dead-man-switch/emergency-access mode with clear access controls, audit expectations, and deployment warnings.
 
@@ -113,6 +116,7 @@ Check:
 - `docs/codex-change-control.md` and `codex/README.md` match prompt workflow, if present
 - issue/PR/backlog workflow prompts are listed in `codex/README.md`
 - PR creation/review prompts support non-`main` base branches where applicable
+- local Markdown links and simple heading anchors pass
 - Docker/GHCR notes are current
 - GitHub Actions workflow names and badges are correct
 - environment variable docs match implementation
@@ -131,6 +135,12 @@ Check:
 - no stale generated artifacts are committed
 - no accidental `.env` files are committed
 - `.backlog-drafts/` contents are intentional, or excluded if they are local-only drafts
+
+For any `v1 preview`, `v1.0.0`, or real-user evidence-upload readiness claim,
+also run `docs/v1-preview-readiness-checklist.md` and record whether the
+outcome is `Ready for v1 preview claim`, `Not ready for v1 preview claim`, or
+`Ready for ordinary pre-v1 release`. Do not use preview-ready language if any
+hard blocker remains incomplete.
 
 ## Security review items
 
@@ -161,16 +171,23 @@ From the repository root, run:
 gofmt -w ./cmd ./internal ./migrations
 go test ./...
 go vet ./...
+scripts/check-markdown-links.py
+git diff --check
 ```
 
 If `go vet ./...` fails because of a known harmless issue, document the reason rather than silently ignoring it.
 
 ## Manual smoke tests
 
-If practical, run the backend:
+If practical, run the backend. Prefer TOML for repeatable smoke:
+
+```toml
+[auth]
+bootstrap_secret_file = "/path/to/local-bootstrap-secret"
+```
 
 ```bash
-SAFE_AUTH_BOOTSTRAP_SECRET='replace-with-local-bootstrap-secret' go run ./cmd/api
+go run ./cmd/api --config /path/to/proofline-smoke.toml
 ```
 
 In another terminal, create the first local admin if the test database does not
@@ -233,6 +250,7 @@ Return:
 7. Suggested version tag
 8. Suggested changelog entry
 9. Any backlog follow-ups
+10. V1 preview readiness checklist outcome, if applicable
 
 If you make fixes:
 

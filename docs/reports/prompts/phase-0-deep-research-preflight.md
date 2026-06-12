@@ -12,7 +12,7 @@ This prompt exists because the Phase 1 report prompt is strict. Phase 0 should l
 open-proofline/server
 ```
 
-Product documentation currently uses the name Proofline. Repository URLs, the Go module path, Docker image names, GHCR package names, and release binary names use the `open-proofline/server` repository namespace. Compatibility identifiers such as the v1 simulator encryption envelope, default SQLite filename, legacy `/e/{token}` aliases, and historical migration names may still use `safety-recorder` or `emergency` until separate protocol or data-layout migrations are explicitly performed.
+Product documentation currently uses the name Proofline. Repository URLs, the Go module path, Docker image names, GHCR package names, release binary names, runtime protocol identifiers, and default data-layout identifiers use the `open-proofline/server` repository namespace and Proofline names. Historical reports, archived prompts, legacy `/e/{token}` aliases, and historical migration names may still mention `safety-recorder` or `emergency`.
 
 ## Inputs
 
@@ -167,7 +167,7 @@ Do **not** claim production readiness.
 
 Do **not** claim formal security audit, penetration test, compliance certification, legal review, App Store review, Play Store review, or production-readiness endorsement.
 
-Do **not** describe future incident modes, account access, key custody, browser decryption, break-glass access, mobile clients, or web clients as implemented features unless the reviewed tree contains implementation code.
+Do **not** describe future incident modes, account access, key custody, browser decryption, break-glass access, mobile clients, web clients, or the post-quantum envelope as implemented features unless the reviewed tree contains implementation code. The post-quantum envelope is a v1 preview requirement, not current runtime behavior unless implementation has landed.
 
 ## Expected Source Plan
 

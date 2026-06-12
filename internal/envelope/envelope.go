@@ -1,7 +1,7 @@
 package envelope
 
 const (
-	SchemeV1           = "safety-recorder-chunk-encryption-v1"
+	SchemeV1           = "proofline-chunk-encryption-v1"
 	AlgorithmAES256GCM = "AES-256-GCM"
 
 	keyVersion      = 1
@@ -9,7 +9,7 @@ const (
 	nonceSize       = 12
 	maxHeaderLength = 16 * 1024
 
-	magic = "SRCENC1\n"
+	magic = "PLCHNK1\n"
 )
 
 // ChunkContext is the metadata bound to a chunk through AES-GCM associated data.

@@ -12,13 +12,17 @@ import (
 )
 
 func runVerifyBundle(out io.Writer, cfg config) error {
-	key, err := loadExistingSimulatorKey(cfg.keyFile)
+	encryption, err := loadExistingSimulatorEncryption(cfg)
 	if err != nil {
 		return err
 	}
 
 	fmt.Fprintln(out, "Encryption: enabled")
-	fmt.Fprintf(out, "Key ID: %s\n", key.KeyID)
+	switch encryption.mode {
+	case envelopeModeV1:
+		fmt.Fprintln(out, "Envelope: v1 compatibility")
+		fmt.Fprintf(out, "Key ID: %s\n", encryption.v1Key.KeyID)
+	}
 	fmt.Fprintln(out, "Key file configured; path omitted from output.")
 	fmt.Fprintln(out)
 
@@ -27,7 +31,7 @@ func runVerifyBundle(out io.Writer, cfg config) error {
 	if err != nil {
 		return err
 	}
-	verified, err := verifyStreamBundleDecryption(bundleBytes, key, "", "", "")
+	verified, err := verifyStreamBundleDecryption(bundleBytes, encryption, "", "", "")
 	if err != nil {
 		return err
 	}

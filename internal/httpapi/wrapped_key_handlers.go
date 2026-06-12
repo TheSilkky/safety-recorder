@@ -4,8 +4,10 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"strconv"
 	"strings"
 
+	"github.com/open-proofline/server/internal/envelope/pq"
 	"github.com/open-proofline/server/internal/incidents"
 )
 
@@ -112,6 +114,42 @@ func (a *API) getWrappedKeyRecord(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+func (a *API) listTrustedContactWrappedKeyRecords(w http.ResponseWriter, r *http.Request) {
+	principal, ok := principalFromContext(r.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "authentication_required", "authentication is required")
+		return
+	}
+	records, err := a.repo.ListTrustedContactWrappedKeyRecords(r.Context(), principal.Account.ID, r.PathValue("incident_id"))
+	if err != nil {
+		a.internalError(w, "list trusted contact wrapped key records", err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string][]incidents.WrappedKeyRecord{
+		"wrapped_keys": records,
+	})
+}
+
+func (a *API) getTrustedContactWrappedKeyRecord(w http.ResponseWriter, r *http.Request) {
+	principal, ok := principalFromContext(r.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "authentication_required", "authentication is required")
+		return
+	}
+	record, err := a.repo.GetTrustedContactWrappedKeyRecord(r.Context(), principal.Account.ID, r.PathValue("wrapped_key_id"))
+	if errors.Is(err, incidents.ErrNotFound) {
+		writeError(w, http.StatusNotFound, "wrapped_key_not_found", "wrapped key record was not found")
+		return
+	}
+	if err != nil {
+		a.internalError(w, "get trusted contact wrapped key record", err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]incidents.WrappedKeyRecord{
+		"wrapped_key": record,
+	})
+}
+
 func (a *API) revokeWrappedKeyRecord(w http.ResponseWriter, r *http.Request) {
 	principal, ok := principalFromContext(r.Context())
 	if !ok {
@@ -166,6 +204,18 @@ func createWrappedKeyRecordParams(w http.ResponseWriter, ownerAccountID, inciden
 	}
 	if !validPublicWrappingMetadata(params.PublicWrappingMetadata) {
 		writeError(w, http.StatusBadRequest, "invalid_public_wrapping_metadata", "public_wrapping_metadata is required, must be a JSON object, and must be 4096 bytes or less")
+		return incidents.CreateWrappedKeyRecordParams{}, false
+	}
+	if params.WrappingAlgorithm != pq.WrappingAlgorithm {
+		writeError(w, http.StatusBadRequest, "invalid_wrapping_algorithm", "wrapping_algorithm must use the accepted post-quantum profile")
+		return incidents.CreateWrappedKeyRecordParams{}, false
+	}
+	if params.WrappingAlgorithmVersion != strconv.Itoa(pq.WrappingAlgorithmVersion) {
+		writeError(w, http.StatusBadRequest, "invalid_wrapping_algorithm_version", "wrapping_algorithm_version must use the accepted post-quantum profile version")
+		return incidents.CreateWrappedKeyRecordParams{}, false
+	}
+	if err := pq.ValidateWrappingRecord(params.MediaKeyID, params.WrappedKeyCiphertext, params.PublicWrappingMetadata); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid_wrapped_key_profile", "wrapped-key metadata must use the accepted post-quantum profile")
 		return incidents.CreateWrappedKeyRecordParams{}, false
 	}
 	return params, true

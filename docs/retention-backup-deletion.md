@@ -21,6 +21,9 @@ The current backend stores:
 
 - SQLite metadata at `SAFE_DB_PATH` by default, or PostgreSQL metadata when
   `SAFE_METADATA_BACKEND=postgresql`
+- account/device recipient public-key metadata, trusted-contact relationship
+  metadata, trusted-contact public-key metadata, sharing grants, and
+  wrapped-key records in the metadata backend
 - encrypted chunk blobs under `SAFE_DATA_DIR` for the local backend, or committed encrypted objects in the configured S3-compatible bucket for the S3 backend
 - temporary upload files under `SAFE_DATA_DIR/tmp`
 - on-demand encrypted ZIP bundle responses generated from completed streams
@@ -29,7 +32,9 @@ Optional Valkey/Redis-compatible coordination is not durable evidence storage
 and is not a backup source of truth. Any current or future coordination keys
 must be treated as short-lived operational state.
 
-The backend stores ciphertext only. It does not store raw media keys, decrypt chunks, produce playable media, or persist generated ZIP bundle files.
+The backend stores ciphertext and public or encrypted key-access metadata only.
+It does not store raw media keys, raw CEKs, recipient private keys, decrypt
+chunks, produce playable media, or persist generated ZIP bundle files.
 
 Incident mode metadata such as emergency incidents, interaction records, safety
 checks, and evidence notes may eventually need different retention defaults. The
@@ -44,6 +49,10 @@ implementation. The future policy boundary is documented in
 - Keep metadata and encrypted blobs in sync; either both are retained, or both
   are removed by the deletion workflow.
 - Treat failed and open streams as possible evidence. Do not discard them just because they are not downloadable as completed stream bundles.
+- Treat reduced-quality, audio-priority, or near-live chunks as preserved
+  evidence when they are backend-confirmed. A future higher-quality variant can
+  change canonical selection only after source-time coverage validation; it does
+  not by itself authorize deletion.
 - Keep raw viewer/incident tokens out of storage and logs. Only token hashes are retained in metadata.
 - Treat non-emergency interaction records as potentially sensitive even when they are not urgent safety incidents.
 - Do not promise unrecoverable deletion from normal file removal.
@@ -64,6 +73,8 @@ the open-incident guard.
 | Media streams | Retain open, complete, and failed stream metadata with the incident until incident deletion. | Failed streams may still contain useful uploaded chunks and are deleted with the parent incident. |
 | Checkins | Retain checkin rows with the incident until incident deletion. | Checkins may contain location and device-status metadata, so deletion prunes them with the incident. |
 | Viewer token rows | Retain token-hash metadata with the incident until incident deletion, including expired and revoked tokens. | Raw tokens are returned only once and are not stored. Future pruning may remove expired or revoked token rows after an audit window. |
+| Account/device recipient-key rows | Retain account-owned public recipient-key metadata until an explicit future account/key cleanup or account deletion workflow removes it. | Revoked, replaced, and lost states stop future wrapping eligibility but do not delete historical public metadata by themselves. |
+| Trusted-contact relationship, contact public-key, sharing-grant, and wrapped-key rows | Retain with the owning account or incident until incident deletion or explicit future account/key cleanup removes them. | Wrapped-key rows are encrypted access-enabling metadata. They are pruned with incident deletion; relationship, contact, and account/device public-key records remain account metadata unless an explicit account/key lifecycle removes them. |
 | Generated ZIP bundles | Do not retain on the server. | Stream and incident bundles are generated on demand as HTTP responses. Downloaded copies are outside backend control. |
 | Temporary upload files | Remove after successful commit or failed upload cleanup. | Orphaned temp files may exist after crashes and need a future cleanup policy. |
 
@@ -101,6 +112,14 @@ Back up at least:
   `<SAFE_DB_PATH>-wal` and `<SAFE_DB_PATH>-shm` when present
 - deployment configuration needed to restore backend selectors, bind addresses, data paths, upload limits, token TTL defaults, and reverse-proxy routing
 
+Metadata backups must include account/device recipient-key rows together with
+trusted-contact relationship rows, contact public-key rows, sharing grants,
+wrapped-key records, account rows, and
+incident rows. Restoring encrypted blobs without the matching key-access
+metadata can make future wrapped-key delivery or audit incomplete; restoring
+key-access metadata without matching encrypted blobs can leave otherwise valid
+metadata unable to reconstruct evidence bundles.
+
 Do not treat Valkey/Redis-compatible coordination data as a substitute for
 metadata or blob backups. Loss of coordination state must be recoverable through
 durable metadata, immutable committed blobs, and client retry behavior.
@@ -114,12 +133,11 @@ Use one of these consistency strategies:
 - use SQLite's backup mechanism for the database and coordinate it with a blob snapshot taken while uploads are paused
 - pause uploads, back up SQLite with its live state, and take an S3 bucket or prefix inventory/copy for the matching committed objects
 
-Do not copy only `safety.db` from a running WAL-mode database and assume that
+Do not copy only `proofline.db` from a running WAL-mode database and assume that
 is a complete backup. Include the live SQLite state correctly, including WAL
 sidecar files when using a direct live copy, or use a database backup
-operation. The file name still uses `safety.db` until a separate data-layout
-migration is performed. SQLite WAL operational notes, same-host storage
-expectations, and simple local size checks are documented in
+operation. SQLite WAL operational notes, same-host storage expectations, and
+simple local size checks are documented in
 [deployment.md](deployment.md#sqlite-wal-operations).
 
 Backups should be encrypted at rest and access-controlled. Backup logs, filenames, tickets, and monitoring should not contain raw viewer tokens, private deployment details, request bodies, uploaded bytes, plaintext, or raw keys.
@@ -137,7 +155,18 @@ A restore test should:
 3. Load known incident metadata through authenticated main `/v1` routes.
 4. Verify completed stream or incident bundle downloads can be generated.
 5. Confirm generated manifests match expected stream and chunk metadata.
-6. Confirm missing blobs or database/blob mismatches fail closed rather than producing partial evidence.
+6. Confirm missing blobs or database/blob byte-count or SHA-256 mismatches fail closed before ZIP headers or body bytes are sent rather than producing partial evidence.
+7. Validate deletion state in private only: active incidents should remain
+   readable, deletion-pending/deleting/deletion-failed incidents should expose
+   only private status, deleted incidents should contain only minimal tombstone
+   fields, and tombstone-pruned incident IDs should no longer be treated as
+   active evidence.
+8. Confirm public viewer routes fail closed for deleting, deleted,
+   tombstone-pruned, expired/revoked-token, and metadata/blob-mismatch cases
+   without revealing deletion state, incident mode, stored paths, object keys,
+   grant metadata, wrapped-key metadata, or private deployment details.
+9. Confirm incident-scoped sharing-grant and wrapped-key rows are consistent
+   with restored incidents and are pruned when incident deletion has completed.
 
 The restore target must preserve the main/private-admin listener split. Do not
 use a restore drill as a reason to expose `/v1` publicly.
@@ -161,18 +190,29 @@ sensitive child metadata and leaves a minimal tombstone.
 Deletion behavior:
 
 - account-scoped deletion is available at `POST /v1/incidents/{incident_id}/deletion` for the incident owner
-- admin-global deletion is available at `POST /v1/admin/incidents/{incident_id}/deletion`
+- admin-global deletion is available at `POST /admin/api/incidents/{incident_id}/deletion`
 - deletion status is available through the matching private `GET` routes
+- local private operator deletion request is available through
+  `proofline-server operator request-deletion --incident-id <id> --reason-code <code>`
 - local read-only operator status is available through
   `proofline-server operator deletion-status`
 - local read-only closed-incident retention preview is available through
   `proofline-server operator retention-preview --closed-incident-retention <duration>`
+- local read-only mode-aware retention preview is available through
+  `proofline-server operator mode-retention-preview --<mode>-retention <duration>`
+  as a disabled-by-default scaffold that does not create deletion decisions
 - encrypted blob files or objects are removed by server-controlled stored paths only
 - client-provided filesystem paths, object keys, and object-store URLs are never accepted for deletion
 - repeated deletion requests return the existing deletion status instead of creating competing work
 - public incident viewer routes remain read-only and fail closed for deleting or deleted incidents
 - open incidents are rejected unless the request explicitly sets `allow_open: true`
+- open incidents requested through the local operator command are rejected
+  unless the operator explicitly passes `--allow-open`
 - deletion decisions retain only non-sensitive status fields, such as decision ID, incident ID, source, reason code, actor account ID, item count, timestamps, state, and error class
+- incident deletion prunes incident-scoped sharing-grant and wrapped-key rows
+  with the deleted incident, while account/device recipient-key,
+  trusted-contact relationship, and contact public-key rows are account-level
+  metadata and are not tombstoned by deleting one incident
 
 Current deletion policy still distinguishes:
 
@@ -183,9 +223,16 @@ Current deletion policy still distinguishes:
   audit window through `SAFE_TOKEN_METADATA_RETENTION`
 - pruning completed minimal deletion tombstones after an operator-defined
   window through `SAFE_DELETION_TOMBSTONE_RETENTION`
-- applying different retention to emergency incidents, interaction records,
-  safety checks, and evidence notes after incident-mode, capture-profile,
-  escalation-policy, and sharing-state fields exist
+- applying live different retention to emergency incidents, interaction
+  records, safety checks, and evidence notes after the disabled mode-aware
+  preview scaffold is promoted through a separately reviewed implementation
+- account-level recipient-key, trusted-contact relationship, and contact-key
+  cleanup, account deletion, and key tombstone retention after those account
+  lifecycle workflows are explicitly designed
+- retaining or pruning lower-quality stream variants only after the capture
+  stream variant and supersession model proves equivalent backend-confirmed
+  source-time coverage; see
+  [capture-stream-variants.md](capture-stream-variants.md)
 - identifying orphaned blobs or rows after interrupted manual operations
 - deleting downloaded bundles or plaintext exports if such derived files are ever implemented
 
@@ -236,6 +283,5 @@ Likely future work includes:
 
 - retention policy fields or settings for mode-driven incident, capture-profile,
   escalation-policy, and sharing-state behavior
-- a local operator CLI to request deletion decisions
 - backup and restore runbooks with deployment-specific commands
 - documentation updates for any future derived plaintext or persisted bundle outputs

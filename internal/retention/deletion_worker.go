@@ -106,7 +106,12 @@ func (w *Worker) loop(ctx context.Context) {
 func (w *Worker) runAndLog(ctx context.Context) {
 	summary, err := w.RunOnce(ctx)
 	if err != nil && !errors.Is(err, context.Canceled) {
-		w.logger.Warn("incident deletion maintenance failed", "error_category", deletionMaintenanceErrorCategory(err))
+		w.logger.Warn("incident deletion maintenance failed",
+			"component", "retention",
+			"operation", "incident_deletion_maintenance",
+			"status", "failed",
+			"error_category", deletionMaintenanceErrorCategory(err),
+		)
 		return
 	}
 	if summary.RetentionQueued > 0 ||
@@ -115,6 +120,9 @@ func (w *Worker) runAndLog(ctx context.Context) {
 		summary.Completed > 0 ||
 		summary.Failed > 0 {
 		w.logger.Info("incident deletion maintenance completed",
+			"component", "retention",
+			"operation", "incident_deletion_maintenance",
+			"status", "completed",
 			"retention_queued", summary.RetentionQueued,
 			"token_metadata_pruned", summary.TokenMetadataPruned,
 			"tombstones_pruned", summary.TombstonesPruned,
@@ -245,7 +253,7 @@ func deletionMaintenanceErrorCategory(err error) string {
 	case errors.Is(err, context.Canceled):
 		return "canceled"
 	case errors.Is(err, context.DeadlineExceeded):
-		return "deadline_exceeded"
+		return "timeout"
 	case errors.Is(err, storage.ErrUnsafePath):
 		return "unsafe_path"
 	case errors.Is(err, storage.ErrAlreadyExists):
@@ -259,6 +267,6 @@ func deletionMaintenanceErrorCategory(err error) string {
 	case errors.Is(err, os.ErrPermission):
 		return "permission"
 	default:
-		return "maintenance_error"
+		return "metadata"
 	}
 }

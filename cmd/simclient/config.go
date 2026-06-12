@@ -14,6 +14,8 @@ import (
 type config struct {
 	apiBase               string
 	viewerBase            string
+	relayBase             string
+	uploadMode            string
 	username              string
 	password              string
 	chunks                int
@@ -23,15 +25,18 @@ type config struct {
 	closeIncident         bool
 	completeStream        bool
 	downloadBundle        bool
+	setupTOTPSecondFactor bool
 	bundleOutput          string
 	verifyBundlePath      string
 	encrypt               bool
+	envelopeMode          string
 	keyFile               string
 	wrappedKeyOutput      string
 	contactKeyFile        string
 	wrappedKeyContactID   string
 	verifyBundleDecrypt   bool
 	simulateFailureEvery  int
+	reconcileDuplicate    bool
 	desktopRecorder       bool
 	desktopStageDir       string
 	desktopResume         bool
@@ -66,6 +71,8 @@ func parseConfig(args []string) (config, error) {
 	cfg := config{}
 	fs.StringVar(&cfg.apiBase, "api", defaultAPIBase, "Main API base URL")
 	fs.StringVar(&cfg.viewerBase, "viewer", defaultViewerBase, "Incident viewer base URL")
+	fs.StringVar(&cfg.uploadMode, "upload-mode", uploadModeDirect, "Chunk upload mode: direct or relay")
+	fs.StringVar(&cfg.relayBase, "relay-url", "", "Stream-ingress relay base URL when --upload-mode=relay")
 	fs.StringVar(&cfg.username, "username", os.Getenv("PROOFLINE_SIM_USERNAME"), "Proofline account username")
 	fs.StringVar(&cfg.password, "password", os.Getenv("PROOFLINE_SIM_PASSWORD"), "Proofline account password")
 	fs.IntVar(&cfg.chunks, "chunks", defaultChunks, "Number of chunks to upload")
@@ -75,15 +82,18 @@ func parseConfig(args []string) (config, error) {
 	fs.BoolVar(&cfg.closeIncident, "close", false, "Close the incident when complete")
 	fs.BoolVar(&cfg.completeStream, "complete-stream", true, "Mark the uploaded media stream complete")
 	fs.BoolVar(&cfg.downloadBundle, "download-bundle", false, "Download the completed stream bundle through the incident viewer")
+	fs.BoolVar(&cfg.setupTOTPSecondFactor, "setup-totp-second-factor", false, "Enroll and verify a TOTP second factor before product-route simulator calls")
 	fs.StringVar(&cfg.bundleOutput, "bundle-output", "", "Write the downloaded encrypted stream bundle ZIP to this path")
 	fs.StringVar(&cfg.verifyBundlePath, "verify-bundle", "", "Verify an existing encrypted stream bundle ZIP and exit")
 	fs.BoolVar(&cfg.encrypt, "encrypt", true, "Encrypt simulated chunk bytes before upload")
+	fs.StringVar(&cfg.envelopeMode, "envelope", envelopeModePQ, "Encrypted chunk envelope profile: pq or v1")
 	fs.StringVar(&cfg.keyFile, "key-file", "", "Optional simulator encryption key file")
 	fs.StringVar(&cfg.wrappedKeyOutput, "wrapped-key-output", "", "Write simulator-only contact-wrapped key metadata artifact to this path")
 	fs.StringVar(&cfg.contactKeyFile, "contact-key-file", "", "Local simulator trusted-contact private key file for wrapped-key metadata")
 	fs.StringVar(&cfg.wrappedKeyContactID, "wrapped-key-contact-id", defaultWrappedKeyContactID, "Local simulator trusted-contact ID for wrapped-key metadata")
 	fs.BoolVar(&cfg.verifyBundleDecrypt, "verify-bundle-decryption", true, "Decrypt downloaded stream bundles locally when encryption is enabled")
 	fs.IntVar(&cfg.simulateFailureEvery, "simulate-failure-every", 0, "Every Nth chunk should intentionally fail hash verification before retrying")
+	fs.BoolVar(&cfg.reconcileDuplicate, "reconcile-duplicate", false, "After uploading chunk 1, call the private duplicate chunk reconciliation route and verify a safe conflict drill")
 	fs.BoolVar(&cfg.desktopRecorder, "desktop-recorder", false, "Use durable desktop recorder simulator mode")
 	fs.StringVar(&cfg.desktopStageDir, "stage-dir", "", "Durable local staging directory for desktop recorder mode")
 	fs.BoolVar(&cfg.desktopResume, "resume-staged", false, "Resume uploading an existing desktop recorder staging queue")
@@ -131,6 +141,15 @@ func parseConfig(args []string) (config, error) {
 	if !offlineBundleVerify && cfg.password == "" {
 		return config{}, fmt.Errorf("--password or PROOFLINE_SIM_PASSWORD is required")
 	}
+	cfg.envelopeMode = strings.ToLower(strings.TrimSpace(cfg.envelopeMode))
+	if cfg.envelopeMode == "" {
+		cfg.envelopeMode = envelopeModePQ
+	}
+	switch cfg.envelopeMode {
+	case envelopeModePQ, envelopeModeV1:
+	default:
+		return config{}, fmt.Errorf("--envelope must be pq or v1")
+	}
 	chunkSize, err := parseByteSize(chunkSizeRaw)
 	if err != nil {
 		return config{}, fmt.Errorf("--chunk-size: %w", err)
@@ -140,6 +159,30 @@ func parseConfig(args []string) (config, error) {
 	}
 	if cfg.simulateFailureEvery < 0 {
 		return config{}, fmt.Errorf("--simulate-failure-every must be non-negative")
+	}
+	cfg.uploadMode = strings.ToLower(strings.TrimSpace(cfg.uploadMode))
+	if cfg.uploadMode == "" {
+		cfg.uploadMode = uploadModeDirect
+	}
+	switch cfg.uploadMode {
+	case uploadModeDirect, uploadModeRelay:
+	default:
+		return config{}, fmt.Errorf("--upload-mode must be direct or relay")
+	}
+	if cfg.uploadMode == uploadModeRelay && strings.TrimSpace(cfg.relayBase) == "" {
+		return config{}, fmt.Errorf("--relay-url is required when --upload-mode=relay")
+	}
+	if cfg.uploadMode == uploadModeDirect && strings.TrimSpace(cfg.relayBase) != "" {
+		return config{}, fmt.Errorf("--relay-url requires --upload-mode=relay")
+	}
+	if cfg.reconcileDuplicate && cfg.chunks == 0 {
+		return config{}, fmt.Errorf("--reconcile-duplicate requires at least one chunk")
+	}
+	if cfg.reconcileDuplicate && cfg.desktopRecorder {
+		return config{}, fmt.Errorf("--reconcile-duplicate is only supported in the standard simulator flow")
+	}
+	if cfg.reconcileDuplicate && cfg.uploadMode == uploadModeRelay {
+		return config{}, fmt.Errorf("--reconcile-duplicate is only supported with --upload-mode=direct")
 	}
 	if cfg.networkLatency < 0 {
 		return config{}, fmt.Errorf("--network-latency must be non-negative")
@@ -176,8 +219,14 @@ func parseConfig(args []string) (config, error) {
 		return config{}, fmt.Errorf("--bundle-output requires --encrypt=true")
 	}
 	if offlineBundleVerify {
+		if cfg.uploadMode == uploadModeRelay {
+			return config{}, fmt.Errorf("--verify-bundle cannot be combined with --upload-mode=relay")
+		}
 		if !cfg.encrypt {
 			return config{}, fmt.Errorf("--verify-bundle requires --encrypt=true")
+		}
+		if cfg.envelopeMode != envelopeModeV1 {
+			return config{}, fmt.Errorf("--verify-bundle currently requires --envelope v1")
 		}
 		if cfg.keyFile == "" {
 			return config{}, fmt.Errorf("--verify-bundle requires --key-file or --stage-dir")
@@ -207,10 +256,14 @@ func parseConfig(args []string) (config, error) {
 	if err := validateDesktopConfig(cfg); err != nil {
 		return config{}, err
 	}
+	if cfg.desktopRecorder && cfg.uploadMode == uploadModeRelay {
+		return config{}, fmt.Errorf("--upload-mode=relay is only supported in the standard simulator flow")
+	}
 
 	cfg.chunkSize = chunkSize
 	cfg.apiBase = cleanBaseURL(cfg.apiBase)
 	cfg.viewerBase = cleanBaseURL(cfg.viewerBase)
+	cfg.relayBase = cleanBaseURL(cfg.relayBase)
 	cfg.username = strings.TrimSpace(cfg.username)
 	return cfg, nil
 }
@@ -231,6 +284,9 @@ func applyWrappedKeyDefaults(cfg *config, offlineBundleVerify bool) error {
 	}
 	if !cfg.encrypt {
 		return fmt.Errorf("--wrapped-key-output requires --encrypt=true")
+	}
+	if cfg.envelopeMode != envelopeModeV1 {
+		return fmt.Errorf("--wrapped-key-output requires --envelope v1")
 	}
 	if strings.TrimSpace(cfg.contactKeyFile) == "" {
 		cfg.contactKeyFile = filepath.Join(filepath.Dir(cfg.wrappedKeyOutput), defaultContactKeyFileName)

@@ -65,6 +65,77 @@ func scanIncident(s scanner) (incidents.Incident, error) {
 	return incident, nil
 }
 
+func scanIncidents(rows *sql.Rows) ([]incidents.Incident, error) {
+	var list []incidents.Incident
+	for rows.Next() {
+		incident, err := scanIncident(rows)
+		if err != nil {
+			return nil, err
+		}
+		list = append(list, incident)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if list == nil {
+		list = []incidents.Incident{}
+	}
+	return list, nil
+}
+
+func scanLegacyUnownedIncidentCandidates(rows *sql.Rows) ([]incidents.LegacyUnownedIncidentCandidate, error) {
+	var candidates []incidents.LegacyUnownedIncidentCandidate
+	for rows.Next() {
+		var candidate incidents.LegacyUnownedIncidentCandidate
+		var activeTokenCount int
+		var incidentMode sql.NullString
+		var captureProfile sql.NullString
+		var escalationPolicy sql.NullString
+		var sharingState sql.NullString
+		if err := rows.Scan(
+			&candidate.IncidentID,
+			&candidate.CreatedAt,
+			&candidate.UpdatedAt,
+			&candidate.Status,
+			&candidate.DeletionState,
+			&candidate.StreamCount,
+			&candidate.ChunkCount,
+			&candidate.CheckinCount,
+			&candidate.IncidentTokenCount,
+			&activeTokenCount,
+			&incidentMode,
+			&captureProfile,
+			&escalationPolicy,
+			&sharingState,
+		); err != nil {
+			return nil, err
+		}
+		candidate.CreatedAt = candidate.CreatedAt.UTC()
+		candidate.UpdatedAt = candidate.UpdatedAt.UTC()
+		candidate.HasActiveViewerTokens = activeTokenCount > 0
+		if incidentMode.Valid {
+			candidate.IncidentMode = incidentMode.String
+		}
+		if captureProfile.Valid {
+			candidate.CaptureProfile = captureProfile.String
+		}
+		if escalationPolicy.Valid {
+			candidate.EscalationPolicy = escalationPolicy.String
+		}
+		if sharingState.Valid {
+			candidate.SharingState = sharingState.String
+		}
+		candidates = append(candidates, candidate)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if candidates == nil {
+		candidates = []incidents.LegacyUnownedIncidentCandidate{}
+	}
+	return candidates, nil
+}
+
 func scanChunk(s scanner) (incidents.Chunk, error) {
 	var chunk incidents.Chunk
 	var streamID sql.NullString
@@ -254,11 +325,16 @@ func scanIncidentToken(s scanner) (incidents.IncidentToken, error) {
 func scanContactPublicKey(s scanner) (incidents.ContactPublicKey, error) {
 	var contactKey incidents.ContactPublicKey
 	var displayLabel sql.NullString
+	var recipientAccountID sql.NullString
 	var revokedAt sql.NullTime
+	var replacedAt sql.NullTime
+	var lostAt sql.NullTime
+	var replacedByPublicKeyID sql.NullString
 	if err := s.Scan(
 		&contactKey.ID,
 		&contactKey.OwnerAccountID,
 		&contactKey.ContactID,
+		&recipientAccountID,
 		&contactKey.Version,
 		&displayLabel,
 		&contactKey.WrappingAlgorithm,
@@ -268,6 +344,9 @@ func scanContactPublicKey(s scanner) (incidents.ContactPublicKey, error) {
 		&contactKey.CreatedAt,
 		&contactKey.UpdatedAt,
 		&revokedAt,
+		&replacedAt,
+		&lostAt,
+		&replacedByPublicKeyID,
 	); err != nil {
 		return incidents.ContactPublicKey{}, err
 	}
@@ -276,8 +355,106 @@ func scanContactPublicKey(s scanner) (incidents.ContactPublicKey, error) {
 	if displayLabel.Valid {
 		contactKey.DisplayLabel = displayLabel.String
 	}
+	if recipientAccountID.Valid {
+		contactKey.RecipientAccountID = recipientAccountID.String
+	}
 	contactKey.RevokedAt = nullableDBTime(revokedAt)
+	contactKey.ReplacedAt = nullableDBTime(replacedAt)
+	contactKey.LostAt = nullableDBTime(lostAt)
+	if replacedByPublicKeyID.Valid {
+		contactKey.ReplacedByPublicKeyID = replacedByPublicKeyID.String
+	}
 	return contactKey, nil
+}
+
+func scanAccountRecipientKey(s scanner) (incidents.AccountRecipientKey, error) {
+	var key incidents.AccountRecipientKey
+	var displayLabel sql.NullString
+	var revokedAt sql.NullTime
+	var replacedAt sql.NullTime
+	var lostAt sql.NullTime
+	var replacedByRecipientKeyID sql.NullString
+	if err := s.Scan(
+		&key.ID,
+		&key.OwnerAccountID,
+		&key.RecipientID,
+		&key.RecipientType,
+		&key.KeyID,
+		&key.Version,
+		&displayLabel,
+		&key.Scheme,
+		&key.SuiteID,
+		&key.PublicKey,
+		&key.PublicKeyFingerprint,
+		&key.KeyState,
+		&key.CreatedAt,
+		&key.UpdatedAt,
+		&revokedAt,
+		&replacedAt,
+		&lostAt,
+		&replacedByRecipientKeyID,
+	); err != nil {
+		return incidents.AccountRecipientKey{}, err
+	}
+	key.CreatedAt = key.CreatedAt.UTC()
+	key.UpdatedAt = key.UpdatedAt.UTC()
+	if displayLabel.Valid {
+		key.DisplayLabel = displayLabel.String
+	}
+	key.RevokedAt = nullableDBTime(revokedAt)
+	key.ReplacedAt = nullableDBTime(replacedAt)
+	key.LostAt = nullableDBTime(lostAt)
+	if replacedByRecipientKeyID.Valid {
+		key.ReplacedByRecipientKeyID = replacedByRecipientKeyID.String
+	}
+	return key, nil
+}
+
+func scanTrustedContactRelationship(s scanner) (incidents.TrustedContactRelationship, error) {
+	var relationship incidents.TrustedContactRelationship
+	var displayLabel sql.NullString
+	var acceptedAt sql.NullTime
+	var declinedAt sql.NullTime
+	var revokedAt sql.NullTime
+	var revokedByAccountID sql.NullString
+	var replacedAt sql.NullTime
+	var replacedByRelationshipID sql.NullString
+	if err := s.Scan(
+		&relationship.ID,
+		&relationship.OwnerAccountID,
+		&relationship.RecipientAccountID,
+		&relationship.RelationshipRole,
+		&relationship.RelationshipState,
+		&displayLabel,
+		&relationship.CreatedAt,
+		&relationship.UpdatedAt,
+		&relationship.InvitedAt,
+		&acceptedAt,
+		&declinedAt,
+		&revokedAt,
+		&revokedByAccountID,
+		&replacedAt,
+		&replacedByRelationshipID,
+	); err != nil {
+		return incidents.TrustedContactRelationship{}, err
+	}
+	relationship.CreatedAt = relationship.CreatedAt.UTC()
+	relationship.UpdatedAt = relationship.UpdatedAt.UTC()
+	relationship.InvitedAt = relationship.InvitedAt.UTC()
+	if displayLabel.Valid {
+		relationship.DisplayLabel = displayLabel.String
+	}
+	relationship.AcceptedAt = nullableDBTime(acceptedAt)
+	relationship.DeclinedAt = nullableDBTime(declinedAt)
+	relationship.RevokedAt = nullableDBTime(revokedAt)
+	if revokedByAccountID.Valid {
+		relationship.RevokedByAccountID = revokedByAccountID.String
+	}
+	relationship.ReplacedAt = nullableDBTime(replacedAt)
+	if replacedByRelationshipID.Valid {
+		relationship.ReplacedByRelationshipID = replacedByRelationshipID.String
+	}
+	return relationship, nil
 }
 
 func scanSharingGrant(s scanner) (incidents.SharingGrant, error) {

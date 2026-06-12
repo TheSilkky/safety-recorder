@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/open-proofline/server/internal/auth"
 	"github.com/open-proofline/server/internal/incidents"
 )
 
@@ -212,6 +213,147 @@ func TestIncidentRawTokenIsNotStored(t *testing.T) {
 	}
 }
 
+func TestOwnerCanListAndReadIncidentTokenMetadata(t *testing.T) {
+	app := newTestApp(t)
+	ownerToken := createAccountAndLogin(t, app, "viewer-token-owner", "owner-password", auth.RoleUser)
+	incidentID := createIncidentWithAuth(t, app, ownerToken, `{"client_label":"owner phone"}`)
+	expiredAt := time.Now().UTC().Add(-time.Minute)
+	expired := createIncidentTokenWithExpiryAndAuth(t, app, ownerToken, incidentID, "expired viewer", &expiredAt)
+	active := createIncidentTokenWithAuth(t, app, ownerToken, incidentID, "active viewer")
+	revoked := createIncidentTokenWithAuth(t, app, ownerToken, incidentID, "revoked viewer")
+	response, body := requestWithAuth(t, app.privateHandler, http.MethodPost, "/v1/incident-tokens/"+revoked.TokenID+"/revoke", "application/json", bytes.NewBufferString(`{}`), ownerToken)
+	response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("expected revoke status 200, got %d: %s", response.StatusCode, body)
+	}
+
+	response, body = requestWithAuth(t, app.privateHandler, http.MethodGet, "/v1/incidents/"+incidentID+"/incident-tokens", "", nil, ownerToken)
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("expected list incident tokens status 200, got %d: %s", response.StatusCode, body)
+	}
+	assertMainJSONSecurityHeaders(t, response)
+	assertIncidentTokenMetadataBodyIsRedacted(t, body, active.Token, expired.Token, revoked.Token)
+
+	var list struct {
+		IncidentTokens []struct {
+			TokenID    string    `json:"token_id"`
+			IncidentID string    `json:"incident_id"`
+			Label      string    `json:"label"`
+			TokenState string    `json:"token_state"`
+			CreatedAt  time.Time `json:"created_at"`
+		} `json:"incident_tokens"`
+	}
+	if err := json.Unmarshal(body, &list); err != nil {
+		t.Fatalf("decode incident token list: %v", err)
+	}
+	if len(list.IncidentTokens) != 3 {
+		t.Fatalf("expected three incident tokens, got %+v", list.IncidentTokens)
+	}
+	states := map[string]string{}
+	for _, token := range list.IncidentTokens {
+		if token.IncidentID != incidentID || token.CreatedAt.IsZero() {
+			t.Fatalf("unexpected token metadata: %+v", token)
+		}
+		states[token.TokenID] = token.TokenState
+	}
+	if states[active.TokenID] != "active" || states[expired.TokenID] != "expired" || states[revoked.TokenID] != "revoked" {
+		t.Fatalf("unexpected token states: %+v", states)
+	}
+
+	response, body = requestWithAuth(t, app.privateHandler, http.MethodGet, "/v1/incidents/"+incidentID+"/incident-tokens/"+active.TokenID, "", nil, ownerToken)
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("expected get incident token status 200, got %d: %s", response.StatusCode, body)
+	}
+	assertIncidentTokenMetadataBodyIsRedacted(t, body, active.Token, expired.Token, revoked.Token)
+	var get struct {
+		IncidentToken struct {
+			TokenID    string `json:"token_id"`
+			IncidentID string `json:"incident_id"`
+			Label      string `json:"label"`
+			TokenState string `json:"token_state"`
+		} `json:"incident_token"`
+	}
+	if err := json.Unmarshal(body, &get); err != nil {
+		t.Fatalf("decode incident token metadata: %v", err)
+	}
+	if get.IncidentToken.TokenID != active.TokenID ||
+		get.IncidentToken.IncidentID != incidentID ||
+		get.IncidentToken.Label != "active viewer" ||
+		get.IncidentToken.TokenState != "active" {
+		t.Fatalf("unexpected token metadata: %+v", get.IncidentToken)
+	}
+}
+
+func TestIncidentTokenMetadataRequiresOwnerAndExistingToken(t *testing.T) {
+	app := newTestApp(t)
+	ownerToken := createAccountAndLogin(t, app, "viewer-token-owner-denied", "owner-password", auth.RoleUser)
+	otherToken := createAccountAndLogin(t, app, "viewer-token-other-denied", "other-password", auth.RoleUser)
+	incidentID := createIncidentWithAuth(t, app, ownerToken, `{}`)
+	token := createIncidentTokenWithAuth(t, app, ownerToken, incidentID, "owner viewer")
+
+	for _, target := range []string{
+		"/v1/incidents/" + incidentID + "/incident-tokens",
+		"/v1/incidents/" + incidentID + "/incident-tokens/" + token.TokenID,
+	} {
+		response, body := requestWithAuth(t, app.privateHandler, http.MethodGet, target, "", nil, otherToken)
+		response.Body.Close()
+		if response.StatusCode != http.StatusForbidden {
+			t.Fatalf("expected wrong owner GET %s status 403, got %d: %s", target, response.StatusCode, body)
+		}
+		assertMainJSONSecurityHeaders(t, response)
+	}
+
+	response, body := requestWithAuth(t, app.privateHandler, http.MethodGet, "/v1/incidents/"+incidentID+"/incident-tokens/itk_missing", "", nil, ownerToken)
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusNotFound {
+		t.Fatalf("expected missing token status 404, got %d: %s", response.StatusCode, body)
+	}
+	assertErrorCode(t, body, "incident_token_not_found")
+}
+
+func createIncidentTokenWithExpiryAndAuth(t *testing.T, app *testApp, token, incidentID, label string, expiresAt *time.Time) incidentTokenResponse {
+	t.Helper()
+	requestBody, err := json.Marshal(struct {
+		Label     string     `json:"label"`
+		ExpiresAt *time.Time `json:"expires_at,omitempty"`
+	}{
+		Label:     label,
+		ExpiresAt: expiresAt,
+	})
+	if err != nil {
+		t.Fatalf("marshal incident token request: %v", err)
+	}
+	response, body := requestWithAuth(t, app.privateHandler, http.MethodPost, "/v1/incidents/"+incidentID+"/incident-tokens", "application/json", bytes.NewReader(requestBody), token)
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusCreated {
+		t.Fatalf("expected create incident token status 201, got %d: %s", response.StatusCode, body)
+	}
+	var result incidentTokenResponse
+	if err := json.Unmarshal(body, &result); err != nil {
+		t.Fatalf("decode create incident token response: %v", err)
+	}
+	if result.Token == "" {
+		t.Fatal("raw incident token was empty")
+	}
+	return result
+}
+
+func assertIncidentTokenMetadataBodyIsRedacted(t *testing.T, body []byte, rawTokens ...string) {
+	t.Helper()
+	for _, rawToken := range rawTokens {
+		if bytes.Contains(body, []byte(rawToken)) {
+			t.Fatalf("incident token metadata exposed raw token: %s", body)
+		}
+	}
+	for _, disallowed := range []string{"token_hash", "Authorization", "request_body"} {
+		if bytes.Contains(body, []byte(disallowed)) {
+			t.Fatalf("incident token metadata exposed %q: %s", disallowed, body)
+		}
+	}
+}
+
 func TestMainServerDoesNotMountAdminDashboardOrOperatorRoutes(t *testing.T) {
 	app := newTestApp(t)
 
@@ -229,6 +371,24 @@ func TestMainServerDoesNotMountAdminDashboardOrOperatorRoutes(t *testing.T) {
 		{http.MethodPost, "/admin/password"},
 		{http.MethodPost, "/admin/accounts/acct_missing/password"},
 		{http.MethodGet, "/admin/static/styles.css"},
+		{http.MethodGet, "/admin/api/accounts"},
+		{http.MethodPost, "/admin/api/accounts"},
+		{http.MethodPost, "/admin/api/accounts/acct_missing/password"},
+		{http.MethodPost, "/admin/api/accounts/acct_missing/second-factor/recovery/reset"},
+		{http.MethodPost, "/admin/api/accounts/acct_missing/sessions/revoke"},
+		{http.MethodGet, "/admin/api/incidents/unowned"},
+		{http.MethodGet, "/admin/api/incidents/inc_missing/deletion"},
+		{http.MethodPost, "/admin/api/incidents/inc_missing/deletion"},
+		{http.MethodPost, "/admin/api/incidents/inc_missing/reassignment"},
+		{http.MethodGet, "/v1/admin/accounts"},
+		{http.MethodPost, "/v1/admin/accounts"},
+		{http.MethodPost, "/v1/admin/accounts/acct_missing/password"},
+		{http.MethodPost, "/v1/admin/accounts/acct_missing/second-factor/recovery/reset"},
+		{http.MethodPost, "/v1/admin/accounts/acct_missing/sessions/revoke"},
+		{http.MethodGet, "/v1/admin/incidents/unowned"},
+		{http.MethodGet, "/v1/admin/incidents/inc_missing/deletion"},
+		{http.MethodPost, "/v1/admin/incidents/inc_missing/deletion"},
+		{http.MethodPost, "/v1/admin/incidents/inc_missing/reassignment"},
 	}
 
 	for _, tt := range tests {
@@ -237,6 +397,50 @@ func TestMainServerDoesNotMountAdminDashboardOrOperatorRoutes(t *testing.T) {
 		if response.StatusCode != http.StatusNotFound {
 			t.Fatalf("%s %s: expected main server status 404, got %d: %s", tt.method, tt.target, response.StatusCode, body)
 		}
+	}
+}
+
+func TestPublicViewerServerDoesNotMountAdminSurfaces(t *testing.T) {
+	app := newTestApp(t)
+
+	tests := []struct {
+		method string
+		target string
+	}{
+		{http.MethodGet, "/admin"},
+		{http.MethodPost, "/admin/login"},
+		{http.MethodPost, "/admin/bootstrap"},
+		{http.MethodPost, "/admin/logout"},
+		{http.MethodPost, "/admin/password"},
+		{http.MethodPost, "/admin/accounts/acct_missing/password"},
+		{http.MethodGet, "/admin/static/styles.css"},
+		{http.MethodGet, "/admin/api/accounts"},
+		{http.MethodPost, "/admin/api/accounts"},
+		{http.MethodPost, "/admin/api/accounts/acct_missing/password"},
+		{http.MethodPost, "/admin/api/accounts/acct_missing/second-factor/recovery/reset"},
+		{http.MethodPost, "/admin/api/accounts/acct_missing/sessions/revoke"},
+		{http.MethodGet, "/admin/api/incidents/unowned"},
+		{http.MethodGet, "/admin/api/incidents/inc_missing/deletion"},
+		{http.MethodPost, "/admin/api/incidents/inc_missing/deletion"},
+		{http.MethodPost, "/admin/api/incidents/inc_missing/reassignment"},
+		{http.MethodGet, "/v1/admin/accounts"},
+		{http.MethodPost, "/v1/admin/accounts"},
+		{http.MethodPost, "/v1/admin/accounts/acct_missing/password"},
+		{http.MethodPost, "/v1/admin/accounts/acct_missing/second-factor/recovery/reset"},
+		{http.MethodPost, "/v1/admin/accounts/acct_missing/sessions/revoke"},
+		{http.MethodGet, "/v1/admin/incidents/unowned"},
+		{http.MethodGet, "/v1/admin/incidents/inc_missing/deletion"},
+		{http.MethodPost, "/v1/admin/incidents/inc_missing/deletion"},
+		{http.MethodPost, "/v1/admin/incidents/inc_missing/reassignment"},
+	}
+
+	for _, tt := range tests {
+		response, body := request(t, app.publicHandler, tt.method, tt.target, "application/json", bytes.NewBufferString(`{}`))
+		response.Body.Close()
+		if response.StatusCode != http.StatusNotFound {
+			t.Fatalf("%s %s: expected public viewer server status 404, got %d: %s", tt.method, tt.target, response.StatusCode, body)
+		}
+		assertErrorCode(t, body, "not_found")
 	}
 }
 
@@ -300,12 +504,6 @@ func TestAdminServerDoesNotMountMainOrIncidentViewerRoutes(t *testing.T) {
 		{http.MethodPost, "/v1/bootstrap/admin"},
 		{http.MethodGet, "/v1/health/live"},
 		{http.MethodGet, "/v1/health/ready"},
-		{http.MethodGet, "/v1/admin/accounts"},
-		{http.MethodPost, "/v1/admin/accounts"},
-		{http.MethodPost, "/v1/admin/accounts/acct_missing/password"},
-		{http.MethodPost, "/v1/admin/accounts/acct_missing/sessions/revoke"},
-		{http.MethodGet, "/v1/admin/incidents/inc_missing/deletion"},
-		{http.MethodPost, "/v1/admin/incidents/inc_missing/deletion"},
 		{http.MethodGet, "/i/" + token.Token},
 		{http.MethodGet, "/i/" + token.Token + "/data"},
 		{http.MethodGet, "/i/" + token.Token + "/streams/str_missing/download"},
@@ -588,8 +786,9 @@ func TestLegacyIncidentTokenPathIsRedactedFromRequestLogs(t *testing.T) {
 func TestIncidentTokenCannotMutateIncidentChunkOrCheckinData(t *testing.T) {
 	app := newTestApp(t)
 	incidentID := createIncident(t, app, `{}`)
+	stream := createMediaStream(t, app, incidentID, incidents.MediaTypeAudio, "audio recording")
 	payload := []byte("encrypted audio data")
-	response, body := uploadChunk(t, app, incidentID, 1, "audio", payload, sha256Hex(payload))
+	response, body := uploadChunkWithStream(t, app, incidentID, stream.ID, 1, "audio", payload, sha256Hex(payload))
 	response.Body.Close()
 	if response.StatusCode != http.StatusCreated {
 		t.Fatalf("expected upload status 201, got %d: %s", response.StatusCode, body)
@@ -655,8 +854,9 @@ func TestIncidentViewerReadsDoNotMutateIncidentTokenRows(t *testing.T) {
 func TestIncidentViewDataReturnsExpectedReadOnlyJSON(t *testing.T) {
 	app := newTestApp(t)
 	incidentID := createIncident(t, app, `{"client_label":"iphone"}`)
+	stream := createMediaStream(t, app, incidentID, incidents.MediaTypeMetadata, "metadata")
 	payload := []byte("encrypted metadata")
-	response, body := uploadChunk(t, app, incidentID, 2, "metadata", payload, sha256Hex(payload))
+	response, body := uploadChunkWithStream(t, app, incidentID, stream.ID, 2, "metadata", payload, sha256Hex(payload))
 	response.Body.Close()
 	if response.StatusCode != http.StatusCreated {
 		t.Fatalf("expected upload status 201, got %d: %s", response.StatusCode, body)
@@ -708,6 +908,127 @@ func TestIncidentViewDataReturnsExpectedReadOnlyJSON(t *testing.T) {
 	}
 	if data.Warning == "" {
 		t.Fatal("expected safety warning")
+	}
+}
+
+func TestWebClientViewerPayloadReturnsMinimalMapReadyContext(t *testing.T) {
+	app := newTestApp(t)
+	incidentID := createIncident(t, app, `{"client_label":"iphone","notes":"private narrative"}`)
+	stream := createMediaStream(t, app, incidentID, incidents.MediaTypeLocation, "encrypted location")
+	payload := []byte("encrypted location chunk")
+	response, body := uploadChunkWithStream(t, app, incidentID, stream.ID, 1, incidents.MediaTypeLocation, payload, sha256Hex(payload))
+	response.Body.Close()
+	if response.StatusCode != http.StatusCreated {
+		t.Fatalf("expected upload status 201, got %d: %s", response.StatusCode, body)
+	}
+	createCheckin(t, app, incidentID)
+	token := createIncidentToken(t, app, incidentID, "trusted contact", nil)
+
+	response, body = getPublic(t, app, "/i/"+token.Token+"/viewer-payload")
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("expected web-client viewer payload status 200, got %d: %s", response.StatusCode, body)
+	}
+	assertIncidentViewerPrivacyHeaders(t, response)
+
+	for _, disallowed := range []string{
+		token.Token,
+		"private narrative",
+		"chunk_count_by_media_type",
+		"latest_chunk_by_media_type",
+		"completed_streams",
+		"stored_path",
+		"owner_account_id",
+		"token_hash",
+		"wrapped_key",
+		"sha256_hex",
+		"byte_size",
+	} {
+		if bytes.Contains(body, []byte(disallowed)) {
+			t.Fatalf("web-client viewer payload exposed %q: %s", disallowed, body)
+		}
+	}
+
+	var data struct {
+		PayloadVersion string `json:"payload_version"`
+		Incident       struct {
+			ID          string `json:"id"`
+			Status      string `json:"status"`
+			ClientLabel string `json:"client_label"`
+		} `json:"incident"`
+		LatestCheckin *struct {
+			ServerReceivedAt time.Time `json:"server_received_at"`
+			SafeDeviceState  *struct {
+				DeviceBatteryPercent *int    `json:"device_battery_percent"`
+				DeviceNetwork        *string `json:"device_network"`
+			} `json:"safe_device_state"`
+		} `json:"latest_checkin"`
+		LatestSharedLocation *struct {
+			Latitude         float64    `json:"latitude"`
+			Longitude        float64    `json:"longitude"`
+			AccuracyMeters   *float64   `json:"accuracy_meters"`
+			Source           string     `json:"source"`
+			ServerReceivedAt time.Time  `json:"server_received_at"`
+			ClientReportedAt *time.Time `json:"client_reported_at"`
+			FreshnessStatus  string     `json:"freshness_status"`
+		} `json:"latest_shared_location"`
+		Warning     string    `json:"warning"`
+		GeneratedAt time.Time `json:"generated_at"`
+	}
+	if err := json.Unmarshal(body, &data); err != nil {
+		t.Fatalf("decode web-client viewer payload: %v", err)
+	}
+	if data.PayloadVersion != "proofline.viewer.basic.v1" {
+		t.Fatalf("unexpected payload version %q", data.PayloadVersion)
+	}
+	if data.Incident.ID != incidentID || data.Incident.Status != incidents.StatusOpen || data.Incident.ClientLabel != "iphone" {
+		t.Fatalf("unexpected incident summary: %+v", data.Incident)
+	}
+	if data.LatestCheckin == nil || data.LatestCheckin.SafeDeviceState == nil ||
+		data.LatestCheckin.SafeDeviceState.DeviceBatteryPercent == nil ||
+		*data.LatestCheckin.SafeDeviceState.DeviceBatteryPercent != 82 {
+		t.Fatalf("unexpected latest checkin: %+v", data.LatestCheckin)
+	}
+	if data.LatestSharedLocation == nil {
+		t.Fatal("expected latest shared location")
+	}
+	if data.LatestSharedLocation.Latitude != -37 || data.LatestSharedLocation.Longitude != 145 {
+		t.Fatalf("unexpected latest shared location: %+v", data.LatestSharedLocation)
+	}
+	if data.LatestSharedLocation.AccuracyMeters == nil || *data.LatestSharedLocation.AccuracyMeters != 20 {
+		t.Fatalf("unexpected latest shared location accuracy: %+v", data.LatestSharedLocation)
+	}
+	if data.LatestSharedLocation.Source != "checkin" || data.LatestSharedLocation.FreshnessStatus != "recent" {
+		t.Fatalf("unexpected latest shared location context: %+v", data.LatestSharedLocation)
+	}
+	if data.LatestSharedLocation.ClientReportedAt != nil {
+		t.Fatalf("client reported timestamp should be omitted until clients submit it: %+v", data.LatestSharedLocation)
+	}
+	if data.Warning == "" || data.GeneratedAt.IsZero() {
+		t.Fatalf("expected warning and generated_at, got warning=%q generated_at=%s", data.Warning, data.GeneratedAt)
+	}
+}
+
+func TestWebClientViewerPayloadRejectsInvalidExpiredAndRevokedTokens(t *testing.T) {
+	app := newTestApp(t)
+	incidentID := createIncident(t, app, `{}`)
+	expiredAt := time.Now().UTC().Add(-time.Minute)
+	expired := createIncidentToken(t, app, incidentID, "expired", &expiredAt)
+	revoked := createIncidentToken(t, app, incidentID, "revoked", nil)
+	response, body := post(t, app, "/v1/incident-tokens/"+revoked.TokenID+"/revoke", "application/json", bytes.NewBufferString(`{}`))
+	response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("expected revoke status 200, got %d: %s", response.StatusCode, body)
+	}
+
+	for _, token := range []string{"not-a-real-token", expired.Token, revoked.Token} {
+		response, body := getPublic(t, app, "/i/"+token+"/viewer-payload")
+		response.Body.Close()
+		if response.StatusCode != http.StatusNotFound {
+			t.Fatalf("expected token %q status 404, got %d: %s", token, response.StatusCode, body)
+		}
+		assertIncidentViewerPrivacyHeaders(t, response)
+		assertErrorCode(t, body, "incident_token_invalid")
 	}
 }
 
@@ -767,6 +1088,7 @@ func TestIncidentViewDataLatestChunkUsesReceivedTimeAcrossStreamScopedIndexes(t 
 	firstPayload := []byte("first stream encrypted audio")
 	firstLaterIndexPayload := []byte("first stream encrypted audio index two")
 	secondPayload := []byte("second stream encrypted audio")
+	secondPQPayload := testPQPayload(t, incidentID, secondStream.ID, 1, incidents.MediaTypeAudio, secondPayload)
 
 	response, body := uploadChunkWithStream(t, app, incidentID, firstStream.ID, 1, incidents.MediaTypeAudio, firstPayload, sha256Hex(firstPayload))
 	response.Body.Close()
@@ -810,7 +1132,7 @@ func TestIncidentViewDataLatestChunkUsesReceivedTimeAcrossStreamScopedIndexes(t 
 	if latestAudio.ChunkIndex != 1 {
 		t.Fatalf("expected latest audio chunk to use later stream-local index 1, got %+v", latestAudio)
 	}
-	if latestAudio.ByteSize != int64(len(secondPayload)) || latestAudio.SHA256Hex != sha256Hex(secondPayload) {
+	if latestAudio.ByteSize != int64(len(secondPQPayload)) || latestAudio.SHA256Hex != sha256Hex(secondPQPayload) {
 		t.Fatalf("expected latest audio chunk to match second stream payload, got %+v", latestAudio)
 	}
 }

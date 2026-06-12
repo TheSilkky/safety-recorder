@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"strings"
+	"sync"
 	"testing"
 )
 
@@ -109,6 +110,112 @@ func TestLocalStoreRejectsUnsafeStoredPaths(t *testing.T) {
 		if err := store.Remove(ctx, storedPath); !errors.Is(err, ErrUnsafePath) {
 			t.Fatalf("remove %q error = %v, want ErrUnsafePath", storedPath, err)
 		}
+	}
+}
+
+func TestLocalStoreTempStagingQuota(t *testing.T) {
+	store, err := NewWithOptions(t.TempDir(), Options{TempStagingQuotaBytes: 10})
+	if err != nil {
+		t.Fatalf("new store: %v", err)
+	}
+	ctx := context.Background()
+
+	first, err := store.SaveTemp(ctx, strings.NewReader("123456"), 100)
+	if err != nil {
+		t.Fatalf("save first temp: %v", err)
+	}
+	t.Cleanup(first.Cleanup)
+	if used, err := tempStagingUsedBytes(store.tempDir); err != nil || used != 6 {
+		t.Fatalf("temp staging used bytes = %d, err %v; want 6", used, err)
+	}
+
+	_, err = store.SaveTemp(ctx, strings.NewReader("12345"), 100)
+	if !errors.Is(err, ErrTempStagingQuotaExceeded) {
+		t.Fatalf("over quota save error = %v, want ErrTempStagingQuotaExceeded", err)
+	}
+	if used, err := tempStagingUsedBytes(store.tempDir); err != nil || used != 6 {
+		t.Fatalf("temp staging used bytes after reject = %d, err %v; want 6", used, err)
+	}
+
+	first.Cleanup()
+	next, err := store.SaveTemp(ctx, strings.NewReader("12345"), 100)
+	if err != nil {
+		t.Fatalf("save after cleanup: %v", err)
+	}
+	next.Cleanup()
+}
+
+func TestLocalStoreTempStagingUsage(t *testing.T) {
+	store, err := NewWithOptions(t.TempDir(), Options{TempStagingQuotaBytes: 10})
+	if err != nil {
+		t.Fatalf("new store: %v", err)
+	}
+	ctx := context.Background()
+	used, quota, configured, err := store.TempStagingUsage(ctx)
+	if err != nil {
+		t.Fatalf("initial temp staging usage: %v", err)
+	}
+	if used != 0 || quota != 10 || !configured {
+		t.Fatalf("initial temp staging usage = used %d quota %d configured %v, want 0/10/true", used, quota, configured)
+	}
+
+	upload, err := store.SaveTemp(ctx, strings.NewReader("abcd"), 4)
+	if err != nil {
+		t.Fatalf("save temp: %v", err)
+	}
+	defer upload.Cleanup()
+	used, quota, configured, err = store.TempStagingUsage(ctx)
+	if err != nil {
+		t.Fatalf("temp staging usage after save: %v", err)
+	}
+	if used != 4 || quota != 10 || !configured {
+		t.Fatalf("temp staging usage after save = used %d quota %d configured %v, want 4/10/true", used, quota, configured)
+	}
+}
+
+func TestLocalStoreTempStagingQuotaRejectsConcurrentPressure(t *testing.T) {
+	store, err := NewWithOptions(t.TempDir(), Options{TempStagingQuotaBytes: 10})
+	if err != nil {
+		t.Fatalf("new store: %v", err)
+	}
+	ctx := context.Background()
+	start := make(chan struct{})
+	successes := make(chan *TempUpload, 4)
+	errs := make(chan error, 4)
+
+	var wg sync.WaitGroup
+	for i := 0; i < 4; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			<-start
+			upload, err := store.SaveTemp(ctx, strings.NewReader("12345678"), 100)
+			if err != nil {
+				errs <- err
+				return
+			}
+			successes <- upload
+		}()
+	}
+	close(start)
+	wg.Wait()
+	close(successes)
+	close(errs)
+
+	successCount := 0
+	for upload := range successes {
+		successCount++
+		upload.Cleanup()
+	}
+	quotaErrCount := 0
+	for err := range errs {
+		if !errors.Is(err, ErrTempStagingQuotaExceeded) {
+			t.Fatalf("concurrent save error = %v, want ErrTempStagingQuotaExceeded", err)
+		}
+		quotaErrCount++
+	}
+	if successCount != 1 || quotaErrCount != 3 {
+		t.Fatalf("successes=%d quotaErrs=%d, want 1 success and 3 quota errors", successCount, quotaErrCount)
 	}
 }
 

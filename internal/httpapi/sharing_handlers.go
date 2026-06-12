@@ -16,8 +16,22 @@ const (
 	maxContactPublicKeyFingerprintBytes = 256
 )
 
+var forbiddenContactPublicKeyMaterialMarkers = []string{
+	"beginprivatekey",
+	"beginecprivatekey",
+	"beginrsaprivatekey",
+	"privatekey",
+	"rawmediakey",
+	"contentencryptionkey",
+	"mlkemsharedsecret",
+	"derivedkek",
+	"plaintext",
+	"decryptedcache",
+}
+
 type createContactPublicKeyRequest struct {
 	ContactID            string `json:"contact_id"`
+	RecipientAccountID   string `json:"recipient_account_id"`
 	DisplayLabel         string `json:"display_label"`
 	WrappingAlgorithm    string `json:"wrapping_algorithm"`
 	PublicKey            string `json:"public_key"`
@@ -28,6 +42,14 @@ type createContactPublicKeyRequest struct {
 type updateContactPublicKeyRequest struct {
 	DisplayLabel *string `json:"display_label"`
 	KeyState     *string `json:"key_state"`
+}
+
+type replaceContactPublicKeyRequest struct {
+	DisplayLabel         string `json:"display_label"`
+	WrappingAlgorithm    string `json:"wrapping_algorithm"`
+	PublicKey            string `json:"public_key"`
+	PublicKeyFingerprint string `json:"public_key_fingerprint"`
+	KeyState             string `json:"key_state"`
 }
 
 type createSharingGrantRequest struct {
@@ -56,6 +78,10 @@ func (a *API) createContactPublicKey(w http.ResponseWriter, r *http.Request) {
 	contactKey, err := a.repo.CreateContactPublicKey(r.Context(), params)
 	if errors.Is(err, incidents.ErrNotFound) {
 		writeError(w, http.StatusNotFound, "contact_not_found", "contact was not found")
+		return
+	}
+	if errors.Is(err, incidents.ErrInvalidState) {
+		writeError(w, http.StatusConflict, "invalid_contact_recipient", "contact recipient account is not valid for this contact")
 		return
 	}
 	if err != nil {
@@ -123,7 +149,7 @@ func (a *API) updateContactPublicKey(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if errors.Is(err, incidents.ErrInvalidState) {
-		writeError(w, http.StatusConflict, "invalid_contact_key_state", "revoked contact keys cannot be reactivated")
+		writeError(w, http.StatusConflict, "invalid_contact_key_state", "contact key state transition is not allowed")
 		return
 	}
 	if err != nil {
@@ -146,11 +172,71 @@ func (a *API) revokeContactPublicKey(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "contact_public_key_not_found", "contact public key was not found")
 		return
 	}
+	if errors.Is(err, incidents.ErrInvalidState) {
+		writeError(w, http.StatusConflict, "invalid_contact_key_state", "contact key state transition is not allowed")
+		return
+	}
 	if err != nil {
 		a.internalError(w, "revoke contact public key", err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]incidents.ContactPublicKey{
+		"contact_public_key": contactKey,
+	})
+}
+
+func (a *API) markContactPublicKeyLost(w http.ResponseWriter, r *http.Request) {
+	principal, ok := principalFromContext(r.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "authentication_required", "authentication is required")
+		return
+	}
+	contactKey, err := a.repo.MarkContactPublicKeyLost(r.Context(), principal.Account.ID, r.PathValue("public_key_id"))
+	if errors.Is(err, incidents.ErrNotFound) {
+		writeError(w, http.StatusNotFound, "contact_public_key_not_found", "contact public key was not found")
+		return
+	}
+	if errors.Is(err, incidents.ErrInvalidState) {
+		writeError(w, http.StatusConflict, "invalid_contact_key_state", "contact key state transition is not allowed")
+		return
+	}
+	if err != nil {
+		a.internalError(w, "mark contact public key lost", err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]incidents.ContactPublicKey{
+		"contact_public_key": contactKey,
+	})
+}
+
+func (a *API) replaceContactPublicKey(w http.ResponseWriter, r *http.Request) {
+	principal, ok := principalFromContext(r.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "authentication_required", "authentication is required")
+		return
+	}
+	var request replaceContactPublicKeyRequest
+	if !decodeJSON(w, r, &request) {
+		return
+	}
+	params, ok := replaceContactPublicKeyParams(w, principal.Account.ID, r.PathValue("public_key_id"), request)
+	if !ok {
+		return
+	}
+	contactKey, err := a.repo.ReplaceContactPublicKey(r.Context(), params)
+	if errors.Is(err, incidents.ErrNotFound) {
+		writeError(w, http.StatusNotFound, "contact_public_key_not_found", "contact public key was not found")
+		return
+	}
+	if errors.Is(err, incidents.ErrInvalidState) {
+		writeError(w, http.StatusConflict, "invalid_contact_key_state", "contact key state transition is not allowed")
+		return
+	}
+	if err != nil {
+		a.internalError(w, "replace contact public key", err)
+		return
+	}
+	writeJSON(w, http.StatusCreated, map[string]incidents.ContactPublicKey{
 		"contact_public_key": contactKey,
 	})
 }
@@ -247,6 +333,7 @@ func createContactPublicKeyParams(w http.ResponseWriter, ownerAccountID string, 
 	params := incidents.CreateContactPublicKeyParams{
 		OwnerAccountID:       ownerAccountID,
 		ContactID:            strings.TrimSpace(request.ContactID),
+		RecipientAccountID:   strings.TrimSpace(request.RecipientAccountID),
 		DisplayLabel:         strings.TrimSpace(request.DisplayLabel),
 		WrappingAlgorithm:    strings.TrimSpace(request.WrappingAlgorithm),
 		PublicKey:            strings.TrimSpace(request.PublicKey),
@@ -257,8 +344,8 @@ func createContactPublicKeyParams(w http.ResponseWriter, ownerAccountID string, 
 		writeError(w, http.StatusBadRequest, "invalid_wrapping_algorithm", "wrapping_algorithm is required and must be 80 bytes or less")
 		return incidents.CreateContactPublicKeyParams{}, false
 	}
-	if params.PublicKey == "" || len(params.PublicKey) > maxContactPublicKeyBytes {
-		writeError(w, http.StatusBadRequest, "invalid_public_key", "public_key is required and must be 4096 bytes or less")
+	if params.PublicKey == "" || len(params.PublicKey) > maxContactPublicKeyBytes || containsForbiddenContactKeyMaterial(params.PublicKey) {
+		writeError(w, http.StatusBadRequest, "invalid_public_key", "public_key must be public key material only and 4096 bytes or less")
 		return incidents.CreateContactPublicKeyParams{}, false
 	}
 	if params.PublicKeyFingerprint == "" || len(params.PublicKeyFingerprint) > maxContactPublicKeyFingerprintBytes {
@@ -271,6 +358,10 @@ func createContactPublicKeyParams(w http.ResponseWriter, ownerAccountID string, 
 	}
 	if !incidents.ValidContactKeyState(params.KeyState) {
 		writeError(w, http.StatusBadRequest, "invalid_key_state", "key_state is not supported")
+		return incidents.CreateContactPublicKeyParams{}, false
+	}
+	if incidents.TerminalContactKeyState(params.KeyState) {
+		writeError(w, http.StatusBadRequest, "invalid_key_state", "new contact public keys must start pending_verification or active")
 		return incidents.CreateContactPublicKeyParams{}, false
 	}
 	return params, true
@@ -296,6 +387,26 @@ func updateContactPublicKeyParams(w http.ResponseWriter, ownerAccountID, publicK
 			return incidents.UpdateContactPublicKeyParams{}, false
 		}
 		params.KeyState = &keyState
+	}
+	return params, true
+}
+
+func replaceContactPublicKeyParams(w http.ResponseWriter, ownerAccountID, publicKeyID string, request replaceContactPublicKeyRequest) (incidents.ReplaceContactPublicKeyParams, bool) {
+	keyState := strings.TrimSpace(request.KeyState)
+	if keyState == "" {
+		keyState = incidents.ContactKeyStatePendingVerification
+	}
+	params := incidents.ReplaceContactPublicKeyParams{
+		OwnerAccountID:       ownerAccountID,
+		PublicKeyID:          publicKeyID,
+		DisplayLabel:         strings.TrimSpace(request.DisplayLabel),
+		WrappingAlgorithm:    strings.TrimSpace(request.WrappingAlgorithm),
+		PublicKey:            strings.TrimSpace(request.PublicKey),
+		PublicKeyFingerprint: strings.TrimSpace(request.PublicKeyFingerprint),
+		KeyState:             keyState,
+	}
+	if !validateContactPublicKeyMaterial(w, params.DisplayLabel, params.WrappingAlgorithm, params.PublicKey, params.PublicKeyFingerprint, params.KeyState) {
+		return incidents.ReplaceContactPublicKeyParams{}, false
 	}
 	return params, true
 }
@@ -336,4 +447,42 @@ func createSharingGrantParams(w http.ResponseWriter, ownerAccountID, incidentID 
 		return incidents.CreateSharingGrantParams{}, false
 	}
 	return params, true
+}
+
+func validateContactPublicKeyMaterial(w http.ResponseWriter, displayLabel, wrappingAlgorithm, publicKey, publicKeyFingerprint, keyState string) bool {
+	if wrappingAlgorithm == "" || len(wrappingAlgorithm) > maxWrappingAlgorithmBytes {
+		writeError(w, http.StatusBadRequest, "invalid_wrapping_algorithm", "wrapping_algorithm is required and must be 80 bytes or less")
+		return false
+	}
+	if publicKey == "" || len(publicKey) > maxContactPublicKeyBytes || containsForbiddenContactKeyMaterial(publicKey) {
+		writeError(w, http.StatusBadRequest, "invalid_public_key", "public_key must be public key material only and 4096 bytes or less")
+		return false
+	}
+	if publicKeyFingerprint == "" || len(publicKeyFingerprint) > maxContactPublicKeyFingerprintBytes {
+		writeError(w, http.StatusBadRequest, "invalid_public_key_fingerprint", "public_key_fingerprint is required and must be 256 bytes or less")
+		return false
+	}
+	if len(displayLabel) > maxContactDisplayLabelBytes {
+		writeError(w, http.StatusBadRequest, "invalid_display_label", "display_label must be 200 bytes or less")
+		return false
+	}
+	if !incidents.ValidContactKeyState(keyState) {
+		writeError(w, http.StatusBadRequest, "invalid_key_state", "key_state is not supported")
+		return false
+	}
+	if incidents.TerminalContactKeyState(keyState) {
+		writeError(w, http.StatusBadRequest, "invalid_key_state", "new contact public keys must start pending_verification or active")
+		return false
+	}
+	return true
+}
+
+func containsForbiddenContactKeyMaterial(value string) bool {
+	normalized := strings.NewReplacer("-", "", "_", "", " ", "", "\n", "", "\r", "", "\t", "").Replace(strings.ToLower(value))
+	for _, marker := range forbiddenContactPublicKeyMaterialMarkers {
+		if strings.Contains(normalized, marker) {
+			return true
+		}
+	}
+	return false
 }

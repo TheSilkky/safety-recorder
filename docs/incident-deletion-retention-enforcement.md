@@ -6,17 +6,17 @@ retention enforcement in Proofline Server, plus remaining future work.
 The backend implements private owner-scoped and admin-global deletion request
 routes, durable deletion decisions, deletion item retry state, SQLite and
 PostgreSQL metadata support, blob deletion through the storage boundary, and an
-automatic background scheduler. It also includes local read-only operator
-commands for retention preview and deletion job status. It does not add public
-`/v1` exposure, public account workflows, backend decryption, key custody, key
-escrow, mode-specific retention, object-bucket lifecycle enforcement, or
-playable media export.
+automatic background scheduler. It also includes local operator commands for
+requesting one incident deletion decision, retention preview, and deletion job
+status. It does not add public `/v1` exposure, public account workflows,
+backend decryption, key custody, key escrow, mode-specific retention,
+object-bucket lifecycle enforcement, or playable media export.
 
 ## Current Behavior
 
 The current backend preserves accepted evidence by default:
 
-- incidents remain until explicit operator action outside the application
+- incidents remain until an explicit private deletion decision
 - closing an incident stops later uploads but does not delete evidence
 - open, complete, and failed media streams remain with the incident
 - checkins remain with the incident
@@ -34,8 +34,8 @@ The backend now has private deletion APIs and a background deletion worker:
 
 - `POST /v1/incidents/{incident_id}/deletion` lets the owning account request
   deletion for its own incident
-- `POST /v1/admin/incidents/{incident_id}/deletion` lets an admin request
-  deletion for any incident
+- private-admin `POST /admin/api/incidents/{incident_id}/deletion` lets an admin
+  request deletion for any incident
 - matching private `GET` routes return non-sensitive deletion status
 - `SAFE_DELETION_WORKER_INTERVAL` controls the automatic scheduler and defaults
   to `1m`
@@ -49,6 +49,8 @@ The backend now has private deletion APIs and a background deletion worker:
   retention window without creating deletion decisions
 - `operator deletion-status` reports deletion decision counts, retry
   categories, and runnable jobs without exposing stored paths
+- `operator request-deletion` creates or returns one deletion decision from a
+  trusted local shell without exposing HTTP routes or stored paths
 
 Manual database or blob deletion outside the application should be avoided
 because the metadata and encrypted blob stores need to stay consistent.
@@ -57,7 +59,8 @@ because the metadata and encrypted blob stores need to stay consistent.
 
 - Preserve uploaded evidence unless there is an explicit deletion decision.
 - Keep public incident viewer routes read-only.
-- Keep deletion entry points private/admin-only.
+- Keep deletion entry points private, admin-only, or trusted-shell local
+  operator-only.
 - Delete encrypted blobs only through server-controlled stored paths from
   metadata, never through client-provided filesystem paths, object keys, or
   object-store URLs.
@@ -78,7 +81,7 @@ because the metadata and encrypted blob stores need to stay consistent.
 - No public deletion route or public deletion status route.
 - No deletion of generated bundles, downloaded copies, backups, reverse-proxy
   caches, snapshots, or endpoint copies.
-- No public admin routes, public `/v1` exposure, OAuth, JWT, public account
+- No public admin routes, broad public `/v1` exposure, OAuth, JWT, public account
   workflows, cloud service automation, Docker Compose, Kubernetes, or public
   dashboard.
 - No promise of unrecoverable secure erasure from normal file, object, or
@@ -277,10 +280,10 @@ viewer routes:
 
 - account owner request: `POST /v1/incidents/{incident_id}/deletion`
 - account owner status: `GET /v1/incidents/{incident_id}/deletion`
-- admin-global request: `POST /v1/admin/incidents/{incident_id}/deletion`
-- admin-global status: `GET /v1/admin/incidents/{incident_id}/deletion`
+- admin-global private-admin request: `POST /admin/api/incidents/{incident_id}/deletion`
+- admin-global private-admin status: `GET /admin/api/incidents/{incident_id}/deletion`
 
-Deletion entry points must:
+HTTP deletion entry points must:
 
 - run only on authenticated main `/v1` or private-admin surfaces
 - require local account authentication and owner/admin authorization
@@ -291,20 +294,34 @@ Deletion entry points must:
 - avoid logging raw tokens, request bodies, uploaded bytes, plaintext, raw keys,
   private deployment details, or sensitive evidence metadata
 
-Local read-only operator commands are available through the server binary:
+Local operator commands are available through the server binary:
 
 ```bash
 proofline-server operator retention-preview --closed-incident-retention 720h
+proofline-server operator mode-retention-preview --interaction-record-retention 720h
 proofline-server operator deletion-status
+proofline-server operator request-deletion --incident-id inc_... --reason-code operator_review
 ```
 
 The preview command uses the configured metadata backend and reports closed
 incident IDs and update times that match the requested retention window. It does
-not queue deletion decisions. The status command reports deletion decision
-counts, retry categories, and runnable jobs. Both commands produce JSON and
-must be run from a trusted local operator environment with the same metadata
-configuration as the server. They must not be exposed through public viewer
-routes or public dashboards.
+not queue deletion decisions. The mode-aware preview scaffold is also read-only
+and disabled by default: each policy class has a `0s` window unless the operator
+passes an explicit dry-run flag. It groups eligible closed active incidents by
+mode policy class and reports missing, invalid, disabled, or not-yet-eligible
+policy inputs as ineligible instead of guessing from labels. It does not use or
+change `SAFE_CLOSED_INCIDENT_RETENTION` and does not add live mode-specific
+deletion. The status command reports deletion decision counts, retry
+categories, and runnable jobs. The request command creates or returns a single
+deletion decision through the configured SQLite or PostgreSQL metadata backend,
+requires a short non-sensitive `--reason-code`, and rejects open incidents
+unless `--allow-open` is supplied. It prints only non-sensitive JSON deletion
+status and never accepts stored paths, object keys, request bodies, uploaded
+bytes, plaintext, raw keys, original filenames, location values, notes, or
+private deployment details. All commands produce JSON and must be run from a
+trusted local operator environment with the same metadata configuration as the
+server. They must not be exposed through public viewer routes or public
+dashboards.
 
 Public incident viewer routes must remain read-only. They should never expose
 deletion controls, deletion job status, tombstone details, retention policy, or
@@ -364,13 +381,20 @@ Restore drills should verify both sides of the lifecycle:
 - a restored active incident can still reconstruct completed encrypted bundles
 - a restored deleted incident remains deleted or is clearly marked as a
   tombstone
+- deletion-pending, deleting, and deletion-failed incidents remain private
+  operator/admin concerns and do not become public viewer-visible state
+- incident-scoped sharing grants and wrapped-key rows are present for active
+  restored incidents when expected and pruned after completed incident deletion
 - restoring from an older backup may resurrect data that was deleted after the
   backup was taken, unless backup expiry or key retirement prevents it
-- public viewer routes still fail closed for deleted incidents after restore
+- public viewer routes still fail closed for deleting, deleted,
+  tombstone-pruned, expired/revoked-token, or blob-mismatched incidents after
+  restore
 
 If a restore reintroduces an incident that was deleted in live state, the
 operator must have a documented reconciliation process. That process is
-deployment-specific and should not rely on public routes.
+deployment-specific, must stay in private operator notes, and should not rely
+on public routes, public issue text, or public screenshots.
 
 ## Remaining Future Implementation Tasks
 
@@ -392,7 +416,6 @@ Storage tasks:
 
 Private-admin or CLI tasks:
 
-- add a local operator CLI to request incident deletion
 - extend local previews if future deletion policies need additional candidate
   classes
 - keep all deletion controls off token-scoped public viewer routes
@@ -407,11 +430,8 @@ Test tasks:
 
 - keep optional S3-compatible deletion smoke coverage current as deletion,
   retention, and blob-store behavior changes
-- test failed stream retention and deletion with the parent incident
 - test backup and restore documentation examples where practical
 
 Documentation tasks:
 
-- update deployment and backup runbooks for live deletion, backup expiry, and
-  restore reconciliation
 - document that normal deletion is not guaranteed secure erasure

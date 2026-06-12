@@ -12,20 +12,43 @@ import (
 )
 
 type accountResponse struct {
-	ID                string    `json:"id"`
-	Username          string    `json:"username"`
-	Role              string    `json:"role"`
-	CreatedAt         time.Time `json:"created_at"`
-	UpdatedAt         time.Time `json:"updated_at"`
-	PasswordChangedAt time.Time `json:"password_changed_at"`
+	ID                string     `json:"id"`
+	Username          string     `json:"username"`
+	Email             string     `json:"email,omitempty"`
+	EmailVerifiedAt   *time.Time `json:"email_verified_at,omitempty"`
+	AccountState      string     `json:"account_state"`
+	SecondFactorSetup string     `json:"second_factor_setup_state"`
+	RequiresSetup     bool       `json:"second_factor_setup_required"`
+	Role              string     `json:"role"`
+	CreatedAt         time.Time  `json:"created_at"`
+	UpdatedAt         time.Time  `json:"updated_at"`
+	PasswordChangedAt time.Time  `json:"password_changed_at"`
 }
 
 type authSessionResponse struct {
-	SessionID string          `json:"session_id"`
-	Account   accountResponse `json:"account"`
-	Token     string          `json:"token"`
-	CreatedAt time.Time       `json:"created_at"`
-	ExpiresAt time.Time       `json:"expires_at"`
+	SessionID                        string          `json:"session_id"`
+	Account                          accountResponse `json:"account"`
+	Token                            string          `json:"token"`
+	SecondFactorVerificationRequired bool            `json:"second_factor_verification_required"`
+	SecondFactorVerifiedAt           *time.Time      `json:"second_factor_verified_at,omitempty"`
+	SecondFactorMethod               string          `json:"second_factor_method,omitempty"`
+	CreatedAt                        time.Time       `json:"created_at"`
+	ExpiresAt                        time.Time       `json:"expires_at"`
+}
+
+type accountRecoveryEventResponse struct {
+	ID                             string    `json:"id"`
+	AccountID                      string    `json:"account_id"`
+	AdminAccountID                 string    `json:"admin_account_id"`
+	Action                         string    `json:"action"`
+	Reason                         string    `json:"reason"`
+	PreviousSecondFactorSetupState string    `json:"previous_second_factor_setup_state"`
+	NewSecondFactorSetupState      string    `json:"new_second_factor_setup_state"`
+	SessionsRevoked                int64     `json:"sessions_revoked"`
+	EmailFactorsRemoved            int64     `json:"email_factors_removed"`
+	TOTPFactorsRemoved             int64     `json:"totp_factors_removed"`
+	WebAuthnCredentialsRemoved     int64     `json:"webauthn_credentials_removed"`
+	CreatedAt                      time.Time `json:"created_at"`
 }
 
 func (a *API) login(w http.ResponseWriter, r *http.Request) {
@@ -51,18 +74,29 @@ func (a *API) login(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusUnauthorized, "invalid_credentials", "username or password is invalid")
 		return
 	}
+	if !a.loginAccountAllowed(w, account) {
+		return
+	}
 
 	session, rawToken, err := a.repo.CreateSession(r.Context(), account.ID, time.Now().UTC().Add(a.sessionTTL))
 	if err != nil {
 		a.internalError(w, "create auth session", err)
 		return
 	}
+	requiresSecondFactor, err := a.sessionRequiresSecondFactorVerification(r.Context(), account, session)
+	if err != nil {
+		a.internalError(w, "check login second factor requirement", err)
+		return
+	}
 	writeJSON(w, http.StatusCreated, authSessionResponse{
-		SessionID: session.ID,
-		Account:   makeAccountResponse(account),
-		Token:     rawToken,
-		CreatedAt: session.CreatedAt,
-		ExpiresAt: session.ExpiresAt,
+		SessionID:                        session.ID,
+		Account:                          makeAccountResponse(account),
+		Token:                            rawToken,
+		SecondFactorVerificationRequired: requiresSecondFactor,
+		SecondFactorVerifiedAt:           session.SecondFactorVerifiedAt,
+		SecondFactorMethod:               session.SecondFactorMethod,
+		CreatedAt:                        session.CreatedAt,
+		ExpiresAt:                        session.ExpiresAt,
 	})
 }
 
@@ -205,6 +239,46 @@ func (a *API) revokeAccountSessions(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+func (a *API) resetAccountSecondFactorRecovery(w http.ResponseWriter, r *http.Request) {
+	if !a.requireAdmin(w, r) {
+		return
+	}
+	principal, ok := principalFromContext(r.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "authentication_required", "authentication is required")
+		return
+	}
+	var request struct {
+		Reason string `json:"reason"`
+	}
+	if !decodeJSON(w, r, &request) {
+		return
+	}
+	reason := strings.TrimSpace(request.Reason)
+	if !auth.ValidAccountRecoveryReason(reason) {
+		writeError(w, http.StatusBadRequest, "invalid_recovery_reason", "recovery reason is not supported")
+		return
+	}
+	event, account, err := a.repo.ResetAccountSecondFactorRecovery(r.Context(), auth.ResetAccountSecondFactorRecoveryParams{
+		AccountID:      r.PathValue("account_id"),
+		AdminAccountID: principal.Account.ID,
+		Reason:         reason,
+	})
+	if errors.Is(err, auth.ErrNotFound) {
+		writeError(w, http.StatusNotFound, "account_not_found", "account was not found")
+		return
+	}
+	if err != nil {
+		a.internalError(w, "reset account second-factor recovery", err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"account":  makeAccountResponse(account),
+		"recovery": makeAccountRecoveryEventResponse(event),
+		"status":   auth.AccountRecoveryActionSecondFactorReset,
+	})
+}
+
 func (a *API) requireAdmin(w http.ResponseWriter, r *http.Request) bool {
 	principal, ok := principalFromContext(r.Context())
 	if !ok {
@@ -235,9 +309,10 @@ func (a *API) createAccountFromRequest(w http.ResponseWriter, r *http.Request, u
 		return auth.Account{}, false
 	}
 	account, err := a.repo.CreateAccount(r.Context(), auth.CreateAccountParams{
-		Username:     username,
-		PasswordHash: passwordHash,
-		Role:         role,
+		Username:          username,
+		SecondFactorSetup: auth.SecondFactorSetupStateSetupRequired,
+		PasswordHash:      passwordHash,
+		Role:              role,
 	})
 	if errors.Is(err, auth.ErrDuplicate) {
 		writeError(w, http.StatusConflict, "username_conflict", "username is already in use")
@@ -277,13 +352,47 @@ func sameSecret(want, got string) bool {
 	return subtle.ConstantTimeCompare(wantHash[:], gotHash[:]) == 1
 }
 
+func makeAccountRecoveryEventResponse(event auth.AccountRecoveryEvent) accountRecoveryEventResponse {
+	return accountRecoveryEventResponse{
+		ID:                             event.ID,
+		AccountID:                      event.AccountID,
+		AdminAccountID:                 event.AdminAccountID,
+		Action:                         event.Action,
+		Reason:                         event.Reason,
+		PreviousSecondFactorSetupState: event.PreviousSecondFactorSetupState,
+		NewSecondFactorSetupState:      event.NewSecondFactorSetupState,
+		SessionsRevoked:                event.SessionsRevoked,
+		EmailFactorsRemoved:            event.EmailFactorsRemoved,
+		TOTPFactorsRemoved:             event.TOTPFactorsRemoved,
+		WebAuthnCredentialsRemoved:     event.WebAuthnCredentialsRemoved,
+		CreatedAt:                      event.CreatedAt,
+	}
+}
+
 func makeAccountResponse(account auth.Account) accountResponse {
 	return accountResponse{
 		ID:                account.ID,
 		Username:          account.Username,
+		Email:             account.EmailNormalized,
+		EmailVerifiedAt:   account.EmailVerifiedAt,
+		AccountState:      account.AccountState,
+		SecondFactorSetup: account.SecondFactorSetup,
+		RequiresSetup:     auth.RequiresSecondFactorSetup(account),
 		Role:              account.Role,
 		CreatedAt:         account.CreatedAt,
 		UpdatedAt:         account.UpdatedAt,
 		PasswordChangedAt: account.PasswordChangedAt,
 	}
+}
+
+func (a *API) loginAccountAllowed(w http.ResponseWriter, account auth.Account) bool {
+	if auth.CanAuthenticate(account) {
+		return true
+	}
+	if account.AccountState == auth.AccountStatePendingEmailVerification {
+		writeError(w, http.StatusForbidden, "email_verification_required", "email verification is required before login")
+		return false
+	}
+	writeError(w, http.StatusUnauthorized, "invalid_credentials", "username or password is invalid")
+	return false
 }

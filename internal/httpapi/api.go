@@ -7,26 +7,38 @@ import (
 	"time"
 
 	"github.com/open-proofline/server/internal/coordination"
+	"github.com/open-proofline/server/internal/email"
 	"github.com/open-proofline/server/internal/storage"
 	"golang.org/x/crypto/bcrypt"
 )
 
 const (
-	defaultMaxUploadBytes   = int64(250 * 1024 * 1024)
-	defaultIncidentTokenTTL = 24 * time.Hour
-	defaultSessionTTL       = 12 * time.Hour
-	jsonBodyLimit           = int64(64 * 1024)
-	fieldLimit              = int64(64 * 1024)
-	multipartOverhead       = int64(1024 * 1024)
-	maxSafeUploadBytes      = int64(1<<63 - 1 - multipartOverhead)
+	defaultMaxUploadBytes        = int64(250 * 1024 * 1024)
+	defaultAccountBlobQuotaBytes = int64(10 * 1024 * 1024 * 1024)
+	defaultIncidentTokenTTL      = 24 * time.Hour
+	defaultSessionTTL            = 12 * time.Hour
+	defaultVerificationTTL       = 24 * time.Hour
+	defaultSecondFactorEmailTTL  = 10 * time.Minute
+	jsonBodyLimit                = int64(64 * 1024)
+	fieldLimit                   = int64(64 * 1024)
+	multipartOverhead            = int64(1024 * 1024)
+	maxSafeUploadBytes           = int64(1<<63 - 1 - multipartOverhead)
 )
 
 // Options configures API construction.
 type Options struct {
 	MaxUploadBytes             int64
+	AccountBlobQuotaBytes      int64
 	DefaultIncidentTokenTTL    *time.Duration
 	SessionTTL                 time.Duration
 	BootstrapSecret            string
+	WebAuth                    WebAuthConfig
+	WebAuthn                   WebAuthnConfig
+	AccountRegistration        AccountRegistrationConfig
+	SecondFactorEmailTTL       time.Duration
+	RelayCapability            RelayCapabilityConfig
+	RelayService               RelayServiceConfig
+	EmailSender                email.Sender
 	MainRateLimit              MainRateLimitConfig
 	MainRateLimiter            RateLimiter
 	PublicRateLimit            PublicRateLimitConfig
@@ -42,6 +54,8 @@ type MainRateLimitConfig struct {
 	Enabled            bool
 	Window             time.Duration
 	AuthLimit          int
+	AuthRegisterLimit  int
+	AuthEmailVerify    int
 	BootstrapLimit     int
 	AccountLimit       int
 	IncidentReadLimit  int
@@ -65,6 +79,56 @@ type PublicRateLimitConfig struct {
 	StaticLimit   int
 }
 
+// WebAuthConfig configures optional browser cookie-session authentication for
+// the main API route tree.
+type WebAuthConfig struct {
+	Enabled               bool
+	AllowedOrigins        []string
+	SessionCookieName     string
+	SessionCookieSecure   bool
+	SessionCookieSameSite http.SameSite
+	CSRFHeaderName        string
+}
+
+// WebAuthnConfig configures optional WebAuthn passkey/security-key
+// second-factor support for the main API route tree.
+type WebAuthnConfig struct {
+	Enabled          bool
+	RPID             string
+	RPDisplayName    string
+	AllowedOrigins   []string
+	UserVerification string
+	ChallengeTTL     time.Duration
+}
+
+// AccountRegistrationConfig controls unauthenticated account registration.
+type AccountRegistrationConfig struct {
+	Mode                 string
+	EmailVerificationTTL time.Duration
+	PublicWebOrigin      string
+}
+
+// RelayCapabilityConfig configures backend-issued regional relay session
+// capabilities. Empty Secret disables issuance while keeping existing routes.
+type RelayCapabilityConfig struct {
+	Secret    string
+	TTL       time.Duration
+	MaxChunks int
+}
+
+// RelayServiceConfig configures relay-to-core service authentication. Empty
+// AuthToken disables relay preflight/commit endpoints.
+type RelayServiceConfig struct {
+	AuthToken string
+}
+
+const (
+	AccountRegistrationDisabled  = "disabled"
+	AccountRegistrationAdminOnly = "admin_only"
+	AccountRegistrationOpen      = "open"
+	AccountRegistrationPaid      = "paid"
+)
+
 // RateLimiter records one request against a safe limiter key.
 type RateLimiter interface {
 	Allow(ctx context.Context, key string, limit int, window time.Duration) (bool, error)
@@ -79,9 +143,17 @@ type API struct {
 	repo                       MetadataRepository
 	store                      storage.BlobStore
 	maxUploadBytes             int64
+	accountBlobQuotaBytes      int64
 	defaultIncidentTokenTTL    time.Duration
 	sessionTTL                 time.Duration
 	bootstrapSecret            string
+	webAuth                    WebAuthConfig
+	webAuthn                   WebAuthnConfig
+	accountRegistration        AccountRegistrationConfig
+	secondFactorEmailTTL       time.Duration
+	relayCapability            RelayCapabilityConfig
+	relayService               RelayServiceConfig
+	emailSender                email.Sender
 	mainRateLimit              MainRateLimitConfig
 	mainRateLimiter            RateLimiter
 	publicRateLimit            PublicRateLimitConfig
@@ -130,6 +202,10 @@ func newAPI(repo MetadataRepository, store storage.BlobStore, opts Options) *API
 	if maxUploadBytes > maxSafeUploadBytes {
 		maxUploadBytes = maxSafeUploadBytes
 	}
+	accountBlobQuotaBytes := opts.AccountBlobQuotaBytes
+	if accountBlobQuotaBytes <= 0 {
+		accountBlobQuotaBytes = defaultAccountBlobQuotaBytes
+	}
 	incidentTokenTTL := defaultIncidentTokenTTL
 	if opts.DefaultIncidentTokenTTL != nil {
 		incidentTokenTTL = *opts.DefaultIncidentTokenTTL
@@ -157,14 +233,60 @@ func newAPI(repo MetadataRepository, store storage.BlobStore, opts Options) *API
 	if opts.PublicRateLimit.Enabled && publicRateLimiter == nil {
 		publicRateLimiter = NewMemoryRateLimiter()
 	}
+	webAuth := opts.WebAuth
+	if webAuth.SessionCookieName == "" {
+		webAuth.SessionCookieName = "__Host-proofline_session"
+	}
+	if webAuth.SessionCookieSameSite == 0 {
+		webAuth.SessionCookieSameSite = http.SameSiteLaxMode
+	}
+	if webAuth.CSRFHeaderName == "" {
+		webAuth.CSRFHeaderName = "X-CSRF-Token"
+	}
+	webAuthn := opts.WebAuthn
+	if webAuthn.RPDisplayName == "" {
+		webAuthn.RPDisplayName = "Proofline"
+	}
+	if webAuthn.UserVerification == "" {
+		webAuthn.UserVerification = "required"
+	}
+	if webAuthn.ChallengeTTL <= 0 {
+		webAuthn.ChallengeTTL = 5 * time.Minute
+	}
+	accountRegistration := opts.AccountRegistration
+	if accountRegistration.Mode == "" {
+		accountRegistration.Mode = AccountRegistrationDisabled
+	}
+	if accountRegistration.EmailVerificationTTL <= 0 {
+		accountRegistration.EmailVerificationTTL = defaultVerificationTTL
+	}
+	secondFactorEmailTTL := opts.SecondFactorEmailTTL
+	if secondFactorEmailTTL <= 0 {
+		secondFactorEmailTTL = defaultSecondFactorEmailTTL
+	}
+	relayCapability := opts.RelayCapability
+	if relayCapability.TTL <= 0 {
+		relayCapability.TTL = 5 * time.Minute
+	}
+	if relayCapability.MaxChunks <= 0 {
+		relayCapability.MaxChunks = 64
+	}
 
 	return &API{
 		repo:                       repo,
 		store:                      store,
 		maxUploadBytes:             maxUploadBytes,
+		accountBlobQuotaBytes:      accountBlobQuotaBytes,
 		defaultIncidentTokenTTL:    incidentTokenTTL,
 		sessionTTL:                 sessionTTL,
 		bootstrapSecret:            opts.BootstrapSecret,
+		webAuth:                    webAuth,
+		webAuthn:                   webAuthn,
+		accountRegistration:        accountRegistration,
+		secondFactorEmailTTL:       secondFactorEmailTTL,
+		relayCapability:            relayCapability,
+		relayService:               opts.RelayService,
+		emailSender:                opts.EmailSender,
 		mainRateLimit:              opts.MainRateLimit,
 		mainRateLimiter:            mainRateLimiter,
 		publicRateLimit:            opts.PublicRateLimit,

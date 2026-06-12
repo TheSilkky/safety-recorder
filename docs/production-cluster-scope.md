@@ -107,10 +107,25 @@ Object-storage support includes:
 - final immutable object keys for committed encrypted chunks
 - conditional no-overwrite writes for final objects
 - local temp-file staging before final object writes
+- staging quota enforcement before final object writes
 - cleanup guidance for abandoned local staging files
 - backup and restore guidance that keeps metadata and blobs consistent
 
-The implementation stages upload bytes under `SAFE_DATA_DIR/tmp`, computes SHA-256 over the uploaded ciphertext, verifies the client-provided hash, and then writes the final S3 object with `If-None-Match: *`. It does not create S3 staging objects. The local filesystem backend remains supported and continues to use relative server-controlled stored paths.
+The implementation stages upload bytes under `SAFE_DATA_DIR/tmp`, enforces the
+local temp staging quota, computes SHA-256 over the uploaded ciphertext,
+verifies the client-provided hash, and then writes the final S3 object with
+`If-None-Match: *`. It does not create S3 staging objects. The local filesystem
+backend remains supported and continues to use relative server-controlled
+stored paths.
+
+Account-scoped committed blob quota is implemented in metadata and applies to
+both local filesystem and S3-compatible committed chunks. The server sums
+accepted chunk `byte_size` values through incident ownership, checks the quota
+before final commit, and rechecks it when chunk metadata is inserted. Pending
+or retrying deletion still counts because chunk metadata is removed only after
+durable blob deletion completes. Temp/staged upload pressure is separate and
+is bounded by `SAFE_TEMP_UPLOAD_STAGING_QUOTA_BYTES`; it must not be treated as
+committed evidence quota.
 
 Backup, restore, and failure-mode guidance for PostgreSQL metadata plus
 S3-compatible encrypted blobs is documented in the
@@ -158,21 +173,31 @@ chunk retries while deferring resumable uploads and partial-upload sessions.
 A safe cluster upload flow should be designed around these steps:
 
 1. Reserve or identify the upload operation using stable incident, stream, chunk index, media type, and idempotency metadata.
-2. Stage encrypted bytes while computing SHA-256 over the uploaded ciphertext.
+2. Stage encrypted bytes while enforcing staging pressure limits and computing SHA-256 over the uploaded ciphertext.
 3. Verify the computed hash against the client-provided hash.
-4. Commit encrypted bytes to the final immutable blob location.
-5. Insert or confirm chunk metadata in PostgreSQL.
-6. Return an idempotent success response when an equivalent chunk already exists.
-7. Return a conflict when the same chunk identity is attempted with different ciphertext or metadata.
-8. Clean up abandoned staging state conservatively.
+4. Check committed account quota from authoritative metadata before final commit.
+5. Commit encrypted bytes to the final immutable blob location.
+6. Insert or confirm chunk metadata in PostgreSQL, including a final committed-quota check.
+7. Return an idempotent success response when an equivalent chunk already exists.
+8. Return a conflict when the same chunk identity is attempted with different ciphertext or metadata.
+9. Clean up abandoned staging state conservatively.
 
 A successful chunk upload should mean encrypted bytes are durably committed outside the staging backend and metadata has been written or confirmed. Loss of pre-commit staging state must be recoverable by client retry.
 
 ## Regional Stream Ingress Relay Scope
 
-The future regional stream-ingress relay is planned as an optional upload-only
-edge that can run close to users while the core API remains authoritative. It
-is documented in
+The regional stream-ingress relay currently has separate health/readiness
+routes, core API issuance of configured short-lived upload and fanout
+capabilities for authorized open streams, service-authenticated core relay
+preflight/commit/fanout authorization endpoints, a configured complete-chunk
+upload route with temporary ciphertext staging, hash verification, and core
+forwarding, optimistic encrypted unconfirmed fanout, and bounded fanout
+confirmation, rejection, or terminal-failure state after the core commit
+outcome. Readiness reports only safe aggregate categories for upload readiness,
+core forwarding configuration, and temp-staging pressure. Future slices may add
+relay Valkey counters, production service identity, and deployment hardening
+while the core API remains authoritative.
+The full relay design is documented in
 [regional-stream-ingress-relay.md](regional-stream-ingress-relay.md).
 
 The relay may use local in-memory counters for single-node/dev deployments or

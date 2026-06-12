@@ -23,7 +23,7 @@ imply emergency response.
   deletion decisions.
 - Keep public viewer routes read-only and fail-closed.
 - Avoid introducing notifications, key custody, browser decryption, backend
-  decryption, public account workflows, or public `/v1` exposure.
+  decryption, public account workflows, or broad public `/v1` exposure.
 
 ## Non-Goals
 
@@ -65,7 +65,8 @@ Future mode-aware retention should use explicit policy inputs, not labels alone:
 | Input | Example values | Retention use |
 |---|---|---|
 | Incident mode | emergency, interaction record, safety check, evidence note | Select the default policy class after owner review. |
-| Capture profile | audio/video/location, location check-in, note or attachment | Decide whether failed/open streams and attachments inherit incident retention. |
+| Capture profile | audio/video/location, location check-in, note or attachment | Decide whether failed/open streams, variants, and attachments inherit incident retention. |
+| Capture stream variant state | live preview, evidence master, audio priority, missing master coverage | Preserve fallback evidence and avoid deleting the only confirmed coverage for a source segment. |
 | Escalation policy | none, trusted contacts on start, trusted contacts on missed check-in | Delay retention decisions while escalation or review is active. |
 | Sharing state | private, trusted-contact access, public link, legal export, revoked/expired | Preserve grant, token, export, and audit metadata long enough for review. |
 | Safety-check state | active, completed, canceled, missed, false alarm | Select completion and missed-check handling without adding notifications here. |
@@ -186,6 +187,23 @@ Mode-aware retention must have a dry-run path before live deletion:
 The existing closed-incident retention preview is the model: it reports safe
 counts and IDs without mutating state.
 
+The current server includes a local/private `operator mode-retention-preview`
+dry-run scaffold. It is disabled by default because every mode policy window
+defaults to `0s`. A private operator may provide one or more dry-run windows,
+for example:
+
+```bash
+proofline-server operator mode-retention-preview \
+  --interaction-record-retention 720h \
+  --evidence-note-retention 168h
+```
+
+The command reads closed active incidents, groups eligible rows by explicit
+policy class using `incident_mode`, and reports rows with missing, invalid,
+disabled, or not-yet-eligible policy inputs as ineligible. It is read-only, does
+not use or change `SAFE_CLOSED_INCIDENT_RETENTION`, and does not create deletion
+decisions.
+
 ## Deletion, Tombstones, And Backup Interaction
 
 Mode-aware retention should create ordinary deletion decisions through the same
@@ -199,6 +217,9 @@ Policy rules:
   automatic retention deletion.
 - Failed streams stay with their parent incident unless a later issue designs
   stream-level deletion semantics.
+- Superseded stream variants stay with their parent incident unless a later
+  issue designs deletion semantics that prove equivalent backend-confirmed
+  source-time coverage and preserve encrypted context links.
 - Minimal tombstones should retain only non-sensitive fields needed for
   idempotency, audit, and restore reconciliation.
 - Tombstone pruning must wait until deletion is complete and retry state is
@@ -238,5 +259,5 @@ A future implementation issue should include:
 - security-model, threat-model, API, deployment, and retention docs updates
 - clear changelog entry and operational warnings
 
-Until that implementation exists, the current backend remains generic and
-evidence-preserving by default.
+Until live mode-aware deletion is explicitly implemented, the current backend
+remains generic and evidence-preserving by default.

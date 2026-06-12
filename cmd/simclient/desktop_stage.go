@@ -9,8 +9,6 @@ import (
 	"sort"
 	"strings"
 	"time"
-
-	"github.com/open-proofline/server/internal/envelope"
 )
 
 const (
@@ -154,9 +152,9 @@ func validateDesktopManifest(manifest desktopStageManifest) error {
 	return nil
 }
 
-func (s *desktopStage) stageChunk(manifest *desktopStageManifest, key envelope.Key, sourceBytes []byte, startedAt, endedAt time.Time) error {
+func (s *desktopStage) stageChunk(manifest *desktopStageManifest, encryption simulatorEncryption, sourceBytes []byte, startedAt, endedAt time.Time) error {
 	chunkIndex := len(manifest.Chunks) + 1
-	body, err := envelope.EncryptChunk(key, chunkContext(manifest.IncidentID, manifest.StreamID, manifest.MediaType, chunkIndex), sourceBytes)
+	body, err := encryption.encryptChunk(manifest.IncidentID, manifest.StreamID, manifest.MediaType, chunkIndex, sourceBytes)
 	if err != nil {
 		return fmt.Errorf("encrypt staged chunk: %w", err)
 	}

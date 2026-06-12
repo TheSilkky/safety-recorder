@@ -1,32 +1,49 @@
 # Security Model
 
-This document summarizes the current Proofline backend security assumptions and controls. For a threat-oriented view, see [threat-model.md](threat-model.md). For planned incident-mode behavior, see [incident-modes.md](incident-modes.md). For `/v1` role and grant boundaries, see [v1-access-control.md](v1-access-control.md). For future production key custody and emergency access design, see [key-custody.md](key-custody.md), the contact key-sharing and wrapped-key grant design in [contact-key-sharing-grants.md](contact-key-sharing-grants.md), the simulator-only wrapped-key metadata prototype in [contact-wrapped-key-metadata-simulator.md](contact-wrapped-key-metadata-simulator.md), [browser-decryption.md](browser-decryption.md), [live-partial-stream-access-boundary.md](live-partial-stream-access-boundary.md), [regional-stream-ingress-relay.md](regional-stream-ingress-relay.md), and [break-glass-key-access.md](break-glass-key-access.md). For vulnerability reporting, see [../SECURITY.md](../SECURITY.md).
+This document summarizes the current Proofline backend security assumptions and controls. For a threat-oriented view, see [threat-model.md](threat-model.md). For planned incident-mode behavior, see [incident-modes.md](incident-modes.md). For `/v1` role and grant boundaries, see [v1-access-control.md](v1-access-control.md). For future production key custody and emergency access design, see [key-custody.md](key-custody.md), the contact key-sharing and wrapped-key grant design in [contact-key-sharing-grants.md](contact-key-sharing-grants.md), the simulator-only wrapped-key metadata prototype in [contact-wrapped-key-metadata-simulator.md](contact-wrapped-key-metadata-simulator.md), [browser-decryption.md](browser-decryption.md), [live-partial-stream-access-boundary.md](live-partial-stream-access-boundary.md), [encrypted-location-context.md](encrypted-location-context.md), [regional-stream-ingress-relay.md](regional-stream-ingress-relay.md), [notification-boundary.md](notification-boundary.md), and [break-glass-key-access.md](break-glass-key-access.md). For vulnerability reporting, see [../SECURITY.md](../SECURITY.md).
 
 ## Maturity
 
-Proofline is experimental and not production-ready public infrastructure. The main `/v1` API has local username/password accounts and opaque server-side sessions. It still has no OAuth, no JWT protection, no complete public product API hardening, and no public account portal.
+Proofline is experimental and not production-ready public infrastructure. The main `/v1` API has local username/password accounts, opaque server-side sessions, email challenge, TOTP, disabled-by-default WebAuthn/FIDO2 second-factor setup for account gating, private-admin assisted second-factor reset for lost-factor recovery, and app-level route-class rate limits. Public self-registration is disabled by default and, when explicitly enabled for self-hosted deployments, requires SMTP-backed email verification before login. Proofline still has no self-service recovery codes, OAuth, JWT protection, complete public product deployment model, password recovery, or public account portal.
 
 The current backend stores incidents owned by local accounts. Incidents are
 generic by default and may include optional incident-mode, capture-profile,
 escalation-policy, and sharing-state metadata. Those fields are not behavior
 flags and do not grant access, send notifications, change retention, change key
 custody, expose trusted-contact workflows, or change public viewer and bundle
-behavior. The backend implements account-owner contact public-key metadata and
-owner-scoped sharing-grant records and wrapped-key records for owned incidents,
-but it does not yet implement trusted-contact accounts, dead-man switch
-notifications, mode-driven sharing, browser decryption, backend decryption, or
-public account-based product access.
+behavior. The backend implements account/device recipient public-key metadata,
+account-to-account trusted-contact relationship metadata, account-owner contact
+public-key metadata, and owner-scoped sharing-grant records and wrapped-key
+records for owned incidents. It also implements read-only signed-in
+trusted-contact wrapped-key delivery when an accepted relationship,
+recipient-bound active contact key, active unexpired ciphertext grant, and
+active wrapped-key record all authorize the request. It does not yet implement
+account/device wrapped-key delivery, trusted-contact incident reads,
+dead-man-switch notifications, provider-backed trusted-contact alerts,
+mode-driven sharing, browser decryption, backend decryption, or public
+account-based product access beyond the narrow owner incident metadata
+list/detail read surface for the future web client. Future notification
+delivery boundaries are documented in
+[notification-boundary.md](notification-boundary.md).
 
 The `/v1` access-control direction is documented in
 [v1-access-control.md](v1-access-control.md). The current implementation covers
-local account sessions, owner-scoped incident access, owner-scoped contact
-public-key, sharing-grant, and wrapped-key metadata routes, admin account
-routes, and route authentication. It does not make `/v1` safe to expose publicly as a
-product API. Existing `/v1/admin/...` JSON routes are authenticated admin-only
-routes on the main handler and must not be routed from public entry points. The
-current topology separates the main API/viewer listener from a separately bound
-private `/admin` dashboard listener; see
+local account sessions, owner-scoped incident access, owner-scoped account/device
+recipient-key metadata, trusted-contact relationship metadata, contact
+public-key metadata, sharing-grant metadata, and wrapped-key metadata routes,
+admin account routes, route authentication, and route-class limits. It does not
+by itself approve broad public `/v1` routing as a product API. The implemented
+account incident list/detail routes are owner-only and public-safe, but uploads,
+chunk reads, bundle downloads, diagnostics, operator routes, write routes, and
+key-custody behavior still need separate review before public exposure.
+Existing `/admin/api/...` JSON routes are
+authenticated admin-only routes on the private-admin listener and must not be
+routed from public entry points. The current topology separates the main
+API/viewer listener from a separately bound private admin listener; see
 [public-api-listener-split.md](public-api-listener-split.md).
+Future public web-client deployments must also follow the route, browser
+credential, CORS, CSRF, cache, edge, and logging boundary in
+[public-web-client-deployment-boundary.md](public-web-client-deployment-boundary.md).
 
 ## Listener Boundary
 
@@ -34,8 +51,8 @@ The API binary starts separate listener groups:
 
 | Listener group | Routes | Intended exposure |
 |---|---|---|
-| Main API and viewer | Authenticated `/v1/...` routes, existing admin-only JSON APIs, `/i/{token}` and related read-only routes, plus pre-rename `/e/{token}` compatibility aliases | Reviewed main API deployment boundary; viewer paths may be routed publicly when only viewer paths are forwarded. Public edges must not route `/v1/admin/...`. |
-| Private admin dashboard | `/admin`, `/admin/...`, and `/admin/static/...` | Localhost, LAN, WireGuard, firewall, or strict reverse proxy only. |
+| Main API and viewer | Authenticated non-admin `/v1/...` routes, current prototype/local `/i/{token}` read-only viewer routes, and pre-rename `/e/{token}` aliases only when explicit local/test compatibility needs them | Reviewed main API deployment boundary; viewer paths may be routed publicly when only reviewed viewer paths are forwarded. Future canonical no-account viewer links belong to the web-client origin. Public edges must not route `/admin/api/...`. |
+| Private admin listener | Authenticated admin-only `/admin/api/...` JSON routes, `/admin`, `/admin/...`, and `/admin/static/...` | Localhost, LAN, WireGuard, firewall, or strict reverse proxy only. |
 
 The `/admin` dashboard must not be mounted on the main listener. Incident
 viewer routes are read-only.
@@ -44,21 +61,85 @@ viewer routes are read-only.
 
 Local accounts are stored in the configured metadata backend. Passwords are
 stored as bcrypt password hashes, not plaintext. Session tokens are opaque
-server-side bearer credentials. The raw session token is returned only by
-login; the metadata backend stores only a SHA-256 hash. Sessions expire after
-`SAFE_SESSION_TTL`, defaulting to 12 hours, and can be revoked by logout,
-account password change, admin password reset, or admin session revocation.
+server-side credentials. The raw bearer session token is returned only by
+`POST /v1/auth/login`; the optional browser login route sets the raw token only
+as an HttpOnly session cookie and does not return it in JSON. The metadata
+backend stores only a SHA-256 hash. Sessions expire after `SAFE_SESSION_TTL`,
+defaulting to 12 hours, and can be revoked by logout, account password change,
+admin password reset, or admin session revocation.
+
+Open account registration creates `pending_email_verification` accounts and
+sends a verification email only when `SAFE_ACCOUNT_REGISTRATION_MODE=open`, an
+SMTP backend, and `SAFE_PUBLIC_WEB_ORIGIN` are configured. Verification tokens
+are opaque single-use credentials. The raw token is sent only in the email link
+fragment and accepted only in the verification request body; metadata stores
+only a SHA-256 hash, purpose, expiry, and consumed timestamp. Pending accounts
+cannot authenticate until verification activates them. The paid registration
+mode is a fail-closed placeholder and does not create an active account.
+
+New admin-created accounts, `/admin` bootstrap accounts, and open-registration
+accounts start with `second_factor_setup_state=setup_required`. Password login
+and browser-cookie login can still create primary-authenticated sessions for
+active setup-incomplete accounts, but main product routes fail closed with
+`403 second_factor_setup_required` until email challenge, TOTP, or WebAuthn
+setup verifies the account and marks the state `complete`. `GET /v1/account`,
+browser CSRF metadata, second-factor setup routes, logout, and private-admin
+listener routes remain available to setup-incomplete accounts. Existing
+migrated accounts default to `not_required` for preview compatibility, which
+must be revisited before real required-2FA preview deployments. Registration
+email verification is distinct from second-factor setup and does not complete
+it. Email challenge codes are sent only through the configured email sender,
+stored only as hashes, expire, and are consumed once. TOTP setup stores
+authenticator-app seeds in the metadata database because TOTP verification
+requires the reusable shared seed; operators must protect database files,
+PostgreSQL storage, backups, and support artifacts accordingly. TOTP uses
+six-digit SHA-1 codes with 30-second steps, accepts one adjacent step of clock
+skew on either side, records the last accepted time step, and rejects
+equal-or-older steps as replay. WebAuthn is disabled by default and fails
+closed until an RP ID and exact allowed origins are configured; it stores public
+credential material, sign counters, transports, attachment and backup flags,
+and single-use expiring challenge session data. WebAuthn does not store raw
+private keys or add backend decryption. Accounts with active TOTP or WebAuthn
+factors can create primary-authenticated sessions after password login, but
+product routes fail closed with `403 second_factor_verification_required` until
+the session verifies an active factor.
+
+Lost-factor recovery is limited to an authenticated private-admin
+`POST /admin/api/accounts/{account_id}/second-factor/recovery/reset` route. The
+route accepts controlled reason codes only, removes enrolled email, TOTP, and
+WebAuthn factors and pending second-factor challenges for the target account,
+marks the account `setup_required`, revokes that account's active sessions, and
+records an `account_recovery_events` audit row with safe counts. It is not a
+self-service bypass and does not change password hashes, account/device
+recipient keys, contact keys, sharing grants, wrapped-key records, incidents,
+encrypted blobs, key custody, backend decryption, browser decryption, raw-key
+access, or key escrow.
+
+When enabled, main `/v1` browser cookie auth uses a dedicated session cookie
+for future web-client calls. Bearer auth remains supported for CLI, simulator,
+and API clients. If bearer and browser-cookie credentials are sent together,
+the request is rejected as ambiguous. Cookie-authenticated unsafe requests
+require a session-bound HMAC CSRF token in the configured header; bearer
+requests do not require this CSRF header. Credentialed CORS is emitted only for
+exact configured web origins and never with a wildcard origin.
 
 The server fails closed on startup unless an admin account exists or
-`SAFE_AUTH_BOOTSTRAP_SECRET` is set for the one-time private `/admin`
-bootstrap form. The bootstrap form is disabled once an admin account exists. Treat the bootstrap
-secret, account passwords, session tokens, and Authorization headers as
-secrets.
+`SAFE_AUTH_BOOTSTRAP_SECRET` or `SAFE_AUTH_BOOTSTRAP_SECRET_FILE` is set for
+the one-time private `/admin` bootstrap form. The bootstrap form is disabled
+once an admin account exists. Treat the bootstrap secret, account passwords,
+session tokens, and Authorization headers as secrets.
+
+The server can load configuration from built-in defaults, TOML files,
+`SAFE_*` environment variables, and selected `SAFE_*_FILE` secret files. Secret
+files are read once at startup for the bootstrap secret, PostgreSQL DSN, S3
+credentials, Valkey password, and SMTP password. Startup errors for missing,
+empty, or conflicting secret files are categorized as configuration errors and
+must not log secret values, secret file contents, request bodies, tokens,
+plaintext, raw keys, or Authorization headers.
 
 The current listener split does not mount `/v1/health/live` or
 `/v1/health/ready` on either listener. Avoid publishing operator readiness
-details on the main API/viewer origin or on the dashboard-only private-admin
-listener.
+details on the main API/viewer origin or on the private-admin listener.
 
 The private `/admin` page, login form, bootstrap form, and account password
 workflows are mounted only on the private-admin mux, not on the main API/viewer
@@ -71,24 +152,55 @@ because it is public source code and contains no incident data, secrets, tokens,
 keys, or deployment details. This does not add a public admin dashboard or
 public product API exposure model.
 
-Incident viewer tokens are scoped to one incident. The raw token is returned only at creation time; the configured metadata backend stores only a SHA-256 hash. Tokens created without an explicit `expires_at` default to a 24-hour lifetime unless `SAFE_DEFAULT_INCIDENT_TOKEN_TTL` is configured differently. Expired, revoked, and invalid tokens return the same public error.
+Incident viewer tokens are scoped to one incident. The raw token is returned
+only at creation time; the configured metadata backend stores only a SHA-256
+hash. Owner-authenticated viewer-token metadata routes can list and read only
+non-secret metadata for owned incidents: token ID, incident ID, label, active,
+expired, or revoked state, and creation/expiry/revocation timestamps. They do
+not return raw viewer tokens, token hashes, public token lookup by token ID,
+token replay capability, contact/trusted-contact access, wrapped-key
+ciphertext, plaintext, raw keys, backend diagnostics, or private deployment
+details. Tokens created without an explicit `expires_at` default to a 24-hour
+lifetime unless `SAFE_DEFAULT_INCIDENT_TOKEN_TTL` is configured differently.
+Expired, revoked, and invalid tokens return the same public error on public
+viewer routes.
 
-Viewer URLs contain bearer tokens and should be treated as secrets. Reverse proxies and operational logs should avoid recording raw `/i/{token}` paths. During upgrades from pre-rename releases, `/e/{token}` compatibility links may also reach the edge proxy and should be redacted.
+Viewer URLs contain bearer tokens and should be treated as secrets. The future
+canonical no-account viewer link should use the web-client origin and a
+fragment token as documented in
+[web-client-viewer-routing.md](web-client-viewer-routing.md). Reverse proxies
+and operational logs should avoid recording raw `/i/{token}` paths. There are
+no current public deployments that require long-lived `/e/{token}`
+compatibility; if `/e` aliases are enabled for local/test compatibility, those
+paths are also token-bearing and must be redacted.
 
 ## Upload And Storage Controls
 
 - Uploads are streamed to a temp directory while SHA-256 is computed.
 - Upload file bytes are limited by `SAFE_MAX_UPLOAD_BYTES`.
+- Committed encrypted chunk bytes are limited by
+  `SAFE_ACCOUNT_DEFAULT_BLOB_QUOTA_BYTES`, which defaults to 10 GB per owner
+  account. Usage is calculated from accepted chunk metadata across the
+  account's incidents and applies to both local and S3-compatible blob
+  backends.
+- Local temp-upload staging bytes are limited by
+  `SAFE_TEMP_UPLOAD_STAGING_QUOTA_BYTES`, which defaults to 1 GB and applies to
+  regular `upload-*` staging files before local or S3-compatible final commit.
 - Final chunk storage happens only after hash verification.
 - Stored chunks are immutable and never overwritten.
 - Local storage commits use no-overwrite hard links. Optional S3-compatible storage commits final objects with conditional no-overwrite writes.
-- Streamed uploads require positive chunk indexes, while legacy unstreamed uploads may still use index `0`.
+- Streamed uploads require positive chunk indexes. New uploads must pass the
+  accepted PQ payload-frame validation for the stream-bound identity; legacy
+  unstreamed upload attempts fail closed under the v1 preview default.
 - `original_filename` is optional client-supplied display metadata. The server
   strips it to a basename and may return it in authenticated chunk metadata,
   token-scoped public incident viewer summaries, and bundle manifests. Future
   clients should omit it by default or use a generic basename unless preserving
   filename context is an explicit user or protocol decision.
-- The simulator can wrap chunks in the documented v1 AES-256-GCM client-side encryption envelope before upload. Desktop-recorder mode can stage encrypted chunks locally and retry complete encrypted uploads without adding server-visible partial upload state.
+- The simulator wraps chunks in the accepted PQ client-side envelope by default.
+  Desktop-recorder mode can stage encrypted chunks locally and retry complete
+  encrypted uploads without adding server-visible partial upload state. The old
+  v1 AES-GCM envelope remains an explicit simulator compatibility mode.
 - The backend validates and stores ciphertext bytes only; it does not store encryption keys or decrypt chunk contents.
 - SQLite and optional PostgreSQL metadata enforce media type, chunk index, byte size, SHA-256 shape, foreign keys, and unique chunk identity.
 - Complete chunk uploads can include an `Idempotency-Key` header. The backend
@@ -96,6 +208,10 @@ Viewer URLs contain bearer tokens and should be treated as secrets. Reverse prox
   normalized chunk identity and immutable request fingerprint, and can return
   `200 OK` with `Idempotency-Replayed: true` for equivalent retries without
   overwriting chunks or evidence metadata.
+- Equivalent duplicate or idempotent retries do not add committed quota.
+  Pending or retrying incident deletion continues to count against quota until
+  durable blob deletion has completed and chunk metadata is pruned. Failed,
+  staged, or orphan temp uploads are separate from committed quota.
 - When Valkey/Redis-compatible coordination is configured, complete chunk
   uploads use a short-lived server-controlled lease key derived from a hash of
   normalized chunk identity. Busy leases return `409 upload_in_progress` with
@@ -103,12 +219,21 @@ Viewer URLs contain bearer tokens and should be treated as secrets. Reverse prox
   keys and errors do not include raw tokens, raw idempotency keys, request
   bodies, uploaded bytes, stored paths, object keys, plaintext, or raw keys.
 - Main API route-class rate limiting is enabled by default for authentication,
-  bootstrap, account, incident, upload, reconciliation, stream, token,
-  download, and admin API classes. Limiter keys use server-controlled class
-  labels and a hash of the socket peer identity. They do not include raw
-  session tokens, Authorization headers, raw idempotency keys, request bodies,
-  uploaded bytes, incident IDs, stored paths, object keys, plaintext, raw keys,
-  or private deployment details.
+  public registration, email verification, email/TOTP/WebAuthn second-factor setup,
+  bootstrap, account metadata,
+  account/device recipient-key metadata, trusted-contact relationship metadata,
+  contact-key metadata, incident metadata, sharing-grant metadata,
+  wrapped-key metadata, upload,
+  reconciliation, stream, token, and download classes. The legacy admin API
+  limit setting is retained only as a documented compatibility setting because
+  current `/admin/api/...` JSON routes are on the private-admin listener. Limiter
+  keys use server-controlled class labels and a hash of the socket peer
+  identity. They do not include raw email addresses, raw usernames,
+  verification tokens, second-factor challenge codes, TOTP codes, TOTP seeds,
+  WebAuthn challenge or client-data values, raw session tokens, Authorization
+  headers, raw idempotency keys, request bodies, uploaded bytes, incident IDs,
+  stored paths, object keys, plaintext, raw keys, wrapped-key ciphertext, or
+  private deployment details.
 - The authenticated duplicate chunk reconciliation route compares a requested
   normalized chunk identity and expected immutable fingerprint against accepted
   chunk metadata without re-uploading ciphertext, reading stored bytes, or
@@ -116,27 +241,74 @@ Viewer URLs contain bearer tokens and should be treated as secrets. Reverse prox
   tokens, or conflicting stored values.
 - Chunk metadata inserts recheck incident and stream state in the repository so uploads racing with close or completion are rejected.
 - Media stream completion verifies contiguous chunks and readable stored files, then rechecks chunk rows transactionally before committing completion.
+- Future capture stream groups, variant roles, source-timeline matching, and
+  evidence supersession are planning-only in
+  [capture-stream-variants.md](capture-stream-variants.md). The current backend
+  does not select canonical evidence across variants, and a future supersession
+  decision must not overwrite immutable chunks or delete the only
+  backend-confirmed evidence for a source time range.
 - Local account authorization binds authenticated incident access to the
-  authenticated account, the incident owner, and the role. Current private
-  incident routes also pass route-level action and data-class labels, but all
-  current incident actions share the same owner-or-admin policy. Regular users
-  can access their own incidents. Admins can access incidents across accounts.
-  Legacy unowned incidents are admin-only until a future private reassignment
-  or quarantine workflow exists; see
+  authenticated account, the incident owner, and the role. Account incident
+  list/detail reads are owner-only and return public-safe metadata only; admins
+  do not get cross-account reads through those product routes unless the admin
+  account also owns the incident. Other current private incident routes still
+  pass route-level action and data-class labels and use the established
+  owner-or-admin policy where documented. Legacy unowned incidents are hidden
+  from account list/detail reads unless an admin uses the private-admin
+  reassignment API to assign one incident to an existing account; see
   [legacy unowned incident reassignment](legacy-unowned-incident-reassignment.md).
-- Contact public-key, sharing-grant, and wrapped-key routes are authenticated
-  main `/v1` routes. Contact public-key records are scoped to the authenticated
-  account. Sharing-grant and wrapped-key creation, listing, lookup, and
-  revocation require the authenticated account to own the incident or record;
-  admins do not manage another account's sharing grants or wrapped-key records
-  through the product routes unless the admin account also owns that incident.
-  New grants require an active contact public key owned by the same account and
-  can be scoped to an incident or one stream. Wrapped-key records require an
-  active, unexpired grant that authorizes ciphertext access and an active
-  contact public key. These routes do not store or return contact private keys,
-  raw media keys, plaintext, browser fragment secrets, request bodies, uploaded
-  bytes, stored paths, staging paths, object keys, or private deployment
-  details.
+- The private-admin legacy unowned incident review route returns only
+  count-oriented candidate metadata. The reassignment route records controlled
+  audit fields for `assign_owner` or `keep_unowned` decisions and rejects
+  free-form notes, already-owned incidents, and non-active deletion states.
+  Reassignment changes only private owner-scoped access; public viewer routes,
+  token hashes, bundles, deletion state, retention state, encrypted blobs, and
+  key custody remain unchanged.
+- Account/device recipient-key, trusted-contact relationship, contact
+  public-key, sharing-grant, and wrapped-key routes are authenticated main
+  `/v1` routes. Account/device recipient-key, trusted-contact relationship, and
+  contact public-key records are scoped to the authenticated account.
+  Trusted-contact relationships record owner account, recipient account, role,
+  state, timestamps, and revocation or replacement metadata only. The owner can
+  create, revoke, or replace relationships; the recipient can accept or decline
+  an invite. A viewer-token holder does not become a trusted contact by opening
+  a link. Relationship state does not grant raw keys, wrapped keys, plaintext,
+  notification delivery, emergency dispatch, or public viewer privileges.
+  Account/device recipient-key records store only public key material,
+  non-secret key IDs, scheme/suite identifiers, fingerprints, state,
+  timestamps, and optional display labels. Contact public-key records store
+  trusted-contact public key material, wrapping algorithm names, fingerprints,
+  version, state, timestamps, replacement links, and optional display labels.
+  Revoked, replaced, and lost account/device or contact keys are terminal for
+  future wrapping eligibility; those state changes do not rewrite old
+  wrapped-key records, delete ciphertext, or revoke material already downloaded
+  by a future authorized client. Sharing-grant and wrapped-key creation, listing,
+  lookup, and revocation require the authenticated account to own the incident
+  or record; admins do not manage another account's sharing grants or
+  wrapped-key records through the product routes unless the admin account also
+  owns that incident. Read-only trusted-contact wrapped-key routes require the
+  authenticated recipient account to match the contact public-key
+  `recipient_account_id`, have an active accepted relationship with the owner,
+  and satisfy the active grant and active record filters. New grants require an
+  active contact public key owned by the same account and can be scoped to an
+  incident or one stream. Current wrapped-key records remain trusted-contact
+  grant scoped and require an active, unexpired grant that authorizes ciphertext
+  access and an active contact public key. Wrapped-key record creation validates
+  the accepted PQ wrapping
+  profile and public metadata without unwrapping CEKs. In the future key model,
+  wrapped-key records connect recipient public-key versions to CEKs scoped to
+  incidents, streams, or bounded chunk groups; current `media_key_id` fields
+  remain compatibility identifiers for that CEK. These routes do not store or
+  return recipient private keys, raw CEKs, raw media keys, ML-KEM shared
+  secrets, derived KEKs, plaintext, decrypted caches, browser fragment secrets,
+  request bodies, uploaded bytes, stored paths, staging paths, object keys,
+  private deployment details, or server escrow material. The metadata backends
+  also store private sharing-audit events for contact-key, sharing-grant,
+  wrapped-key, and deletion-pruning lifecycle changes using controlled IDs,
+  action names, outcome categories, and timestamps only. Those audit events do
+  not include tokens, request bodies, uploaded bytes, plaintext, raw keys,
+  wrapped-key ciphertext, public wrapping metadata, stored paths, object keys,
+  private deployment details, or user safety narratives.
 
 Optional S3-compatible storage preserves ciphertext-only behavior for committed
 encrypted chunks. It uses server-controlled object keys, does not expose object
@@ -155,6 +327,12 @@ retention decisions, plaintext, or keys, and does not change the private
 `/v1` boundary. Its upload leases are retry hints only; metadata constraints,
 upload-operation rows, and blob no-overwrite behavior remain authoritative.
 
+Configuration files and secret-file references are deployment inputs, not
+incident evidence. The committed example TOML and Compose smoke secret files
+contain only local placeholder values. Real deployments should mount reviewed
+configuration and secret files outside public source history and keep raw
+credentials out of logs and support artifacts.
+
 The current HTTP listener split does not expose readiness checks. Future
 operator readiness routes should report only coarse metadata, blob, and
 coordination backend status; they should not become public diagnostics,
@@ -168,19 +346,30 @@ lease sessions are still planning-only. The current API still accepts complete
 encrypted chunks and retries should resend the complete chunk.
 See
 [resumable-upload-lease-protocol.md](resumable-upload-lease-protocol.md).
+Future upload telemetry is also planning-only and should remain client-local
+before v1 preview unless a later issue implements the narrow authenticated
+coarse-code boundary documented in
+[upload-telemetry-boundary.md](upload-telemetry-boundary.md). Telemetry must
+not become evidence truth or drive idempotency, duplicate reconciliation,
+retention, deletion, escalation, sharing, or viewer behavior.
 
 ## Bundle Controls
 
-Completed stream and incident bundles are generated on demand as ZIP responses. ZIP entry names are controlled by the server. Manifests are generated from database metadata and do not expose server filesystem paths.
+Completed stream and incident bundles are generated on demand as ZIP responses. ZIP entry names are controlled by the server. Manifests are generated from database metadata and do not expose server filesystem paths. Before ZIP headers or body bytes are sent, the server verifies committed chunk byte counts and SHA-256 hashes against metadata.
 
 Bundle manifests may include `original_filename` basenames because those values
 are current chunk display metadata. They are user/client metadata, not server
 stored paths, staging paths, object-storage keys, ZIP entry names, or download
 paths.
 
-Incident bundle generation fails closed if any completed stream cannot be reconstructed. It does not silently omit inconsistent completed streams from the ZIP or manifest.
+Bundle generation fails closed if any completed stream cannot be reconstructed or any committed chunk fails byte-count or SHA-256 verification. It does not silently omit inconsistent completed streams from the ZIP or manifest.
 
 Bundles contain encrypted chunk bytes and JSON manifests only. They are not decrypted, playable, or merged media exports.
+
+Future canonical bundle or export manifests may use capture stream variant
+evidence resolution only after a separate manifest design is accepted. Until
+then, completed bundle behavior remains stream-based and does not delete
+near-live, audio-priority, or failed-stream fallback evidence.
 
 Bundle manifests may include a non-secret client-side encryption hint. They do
 not include keys. Contact public-key, sharing-grant, and wrapped-key metadata
@@ -211,7 +400,46 @@ Future incident-mode access must follow the role and grant boundaries in
 or sharing-state summaries must not silently grant trusted-contact, public-link,
 admin/operator, escrow, key, or plaintext access.
 
+## Location Privacy Boundary
+
+Full-fidelity GPS, speed, heading, route history, and freshness context are
+high-sensitivity user safety data. Future location context should be Class A
+encrypted evidence by default, bound to chunks, streams, source segments, or
+bounded chunk groups as documented in
+[encrypted-location-context.md](encrypted-location-context.md). The current
+backend does not implement encrypted location sidecars, live tracking, browser
+decryption, trusted-contact incident reads, or map-provider backend
+integration.
+
+The basic web-client no-account viewer payload at
+`GET /i/{token}/viewer-payload` is token-scoped and read-only. It may include
+incident status, latest check-in time, deliberately limited safe device state,
+and a single latest shared or last reported location from check-in metadata
+when both coordinates are present. It must not include full routes,
+chunk-by-chunk GPS samples, speed histories, heading histories, live tracking
+claims, encrypted evidence bytes, chunk or stream inventories, wrapped-key
+ciphertext, raw tokens, token hashes, session tokens, Authorization headers,
+request bodies, uploaded bytes, stored paths, object keys, plaintext, raw keys,
+backend diagnostics, admin/operator details, private deployment details, or
+user safety narrative. Signed-in trusted-contact access remains
+account-authenticated and grant-scoped rather than inferred from a bearer
+viewer link.
+
+Implementation tests cover the token-viewer field allowlist, redaction
+assertions, and indistinguishable invalid, expired, and revoked token behavior.
+Future encrypted location-context envelope or authenticated metadata binding
+work still needs separate relay/logging and privacy validation.
+
+`GET /i/{token}/viewer-payload` is a backend data primitive for the future
+web-client viewer, not a decision to keep the server-rendered `/i/{token}` page
+as the canonical viewer. The routing decision for future no-account viewer
+links is documented in [web-client-viewer-routing.md](web-client-viewer-routing.md).
+
 ## Logging And Headers
+
+Logging requirements, standard safe fields, raw-error restrictions, and test
+expectations are documented in
+[logging-requirements.md](logging-requirements.md).
 
 Request logging records method, redacted route pattern, status, byte count, and duration. It does not log request bodies, uploaded bytes, Authorization headers, raw session tokens, raw viewer tokens, raw incident tokens, raw idempotency keys, plaintext, or raw keys.
 
@@ -277,15 +505,17 @@ Normal file or object removal is not treated as guaranteed secure erasure. Deplo
 
 ## Known Security Gaps
 
-- No implemented public product API exposure model for `/v1`; local account
-  sessions are an authenticated main-API control, not a complete public security
-  model
+- No complete public product API deployment model for `/v1`; local account
+  sessions, optional browser cookie sessions, app-level route-class limits, and
+  the narrow owner incident metadata list/detail reads are authenticated
+  main-API controls. The public web-client deployment boundary is documented,
+  but it is still a review gate and not a runtime deployment change.
 - No built-in TLS
-- No general-purpose abuse-throttling system beyond main API and public viewer
-  route-class rate limiting
+- No deployment-edge abuse-throttling system beyond app-level main API and
+  public viewer route-class rate limiting
 - PostgreSQL metadata and Valkey/Redis-compatible coordination are optional
   and experimental; they do not by themselves complete all cluster-safe upload
-  semantics or make `/v1` safe for public exposure
+  semantics or make every `/v1` route safe for broad public exposure
 - Cluster backup, restore, and failure runbooks are operational guidance only;
   they do not add access control, retention enforcement, observability, abuse
   controls, or production readiness
@@ -295,17 +525,41 @@ Normal file or object removal is not treated as guaranteed secure erasure. Deplo
 - No implemented resumable upload or upload lease protocol; the future design
   is planned in
   [resumable-upload-lease-protocol.md](resumable-upload-lease-protocol.md)
-- No implemented regional stream-ingress relay; the future design is planned
-  in
+- The regional stream-ingress relay currently implements health/readiness,
+  core API relay upload and fanout capability issuance,
+  service-authenticated core relay preflight/commit/fanout authorization
+  endpoints, a configured complete-chunk upload route with temporary
+  ciphertext staging, hash verification, core forwarding, and optimistic
+  encrypted unconfirmed fanout followed by bounded backend confirmation,
+  rejection, or terminal-failure state. Relay readiness reports only safe
+  aggregate categories for upload readiness, core forwarding configuration, and
+  temp-staging pressure. Replay, metrics, production service-identity rotation,
+  durable relay storage, relay Valkey coordination, and production deployment
+  automation remain planned in
   [regional-stream-ingress-relay.md](regional-stream-ingress-relay.md)
 - No implemented mode-driven access, escalation, retention, key-custody,
-  trusted-contact account, dead-man switch notification, browser decryption,
-  backend decryption, or public account portal behavior
+  trusted-contact incident delivery, dead-man switch notification, browser
+  decryption, backend decryption, payment-gated registration, password
+  recovery, or public account portal behavior
 - No implemented production client key storage, browser decryption, server-assisted break-glass key access, or emergency-contact key access model; the future designs are documented in [key-custody.md](key-custody.md), [contact-key-sharing-grants.md](contact-key-sharing-grants.md), [browser-decryption.md](browser-decryption.md), and [break-glass-key-access.md](break-glass-key-access.md)
+- The accepted break-glass boundary for future planning is wrapped-key release
+  first: any initial implementation should authorize delivery of eligible
+  wrapped-key material only, not server unwrapping, raw server-held keys,
+  backend decryption, plaintext export, or emergency-services contact.
+- No implemented production browser decryption or client key-custody UX.
+  Current wrapped-key metadata routes validate and store encrypted PQ key
+  metadata only and do not introduce recipient private-key custody, raw CEK
+  storage, or decryption. A production trusted-contact browser decrypt path
+  requires the static/signed or native/offline trust gate documented in
+  [browser-decryption.md](browser-decryption.md).
 - No implemented live or partial stream access beyond current read-only stream
   metadata summaries and completed encrypted bundle downloads; the future
   boundary is documented in
   [live-partial-stream-access-boundary.md](live-partial-stream-access-boundary.md)
+- No implemented capture stream group, variant-role, source-timeline
+  supersession, or canonical evidence resolution behavior beyond the current
+  concrete media stream model; the future design is documented in
+  [capture-stream-variants.md](capture-stream-variants.md)
 - No mode-specific retention, backup lifecycle enforcement, or built-in disk
   encryption; the operational policy is
   documented in [retention-backup-deletion.md](retention-backup-deletion.md),
@@ -314,5 +568,8 @@ Normal file or object removal is not treated as guaranteed secure erasure. Deplo
   and future policy boundaries in
   [mode-aware retention policy](mode-aware-retention-policy.md)
 - No malware/content scanning for uploaded encrypted blobs
-- No implemented account self-service recovery, email verification, second
-  factor authentication, delegated identity provider, or public account portal
+- No implemented account self-service recovery, delegated identity provider,
+  or public account portal. The current backend has email challenge, TOTP,
+  disabled-by-default WebAuthn second-factor setup, and private-admin assisted
+  second-factor reset; it does not implement recovery codes, public
+  lost-factor workflows, password recovery, or delegated identity.

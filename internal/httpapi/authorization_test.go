@@ -40,6 +40,12 @@ func TestIncidentAuthorizationScopeAllowed(t *testing.T) {
 			want:      true,
 		},
 		{
+			name:      "read public link",
+			action:    actionReadPublicLink,
+			dataClass: dataClassPublicLinkGrant,
+			want:      true,
+		},
+		{
 			name:      "revoke public link",
 			action:    actionRevokePublicLink,
 			dataClass: dataClassPublicLinkGrant,

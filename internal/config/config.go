@@ -9,10 +9,21 @@ const (
 	defaultMainBindAddr                       = "127.0.0.1:8080"
 	defaultAdminBindAddr                      = "127.0.0.1:8081"
 	defaultDataDir                            = "./data"
-	defaultDBPath                             = "./data/safety.db"
+	defaultDBPath                             = "./data/proofline.db"
 	defaultMaxUploadBytes                     = int64(250 * 1024 * 1024)
+	defaultAccountDefaultBlobQuotaBytes       = int64(10 * 1024 * 1024 * 1024)
+	defaultTempUploadStagingQuotaBytes        = int64(1024 * 1024 * 1024)
 	defaultIncidentTokenTTL                   = 24 * time.Hour
 	defaultSessionTTL                         = 12 * time.Hour
+	defaultEmailVerificationTTL               = 24 * time.Hour
+	defaultSecondFactorEmailChallengeTTL      = 10 * time.Minute
+	defaultRelayCapabilityTTL                 = 5 * time.Minute
+	defaultRelayCapabilityMaxChunks           = 64
+	minRelayServiceAuthTokenBytes             = 32
+	defaultWebAuthnEnabled                    = false
+	defaultWebAuthnRPDisplayName              = "Proofline"
+	defaultWebAuthnUserVerification           = "required"
+	defaultWebAuthnChallengeTTL               = 5 * time.Minute
 	defaultDeletionInterval                   = time.Minute
 	defaultTempUploadCleanupAge               = 0
 	defaultTempUploadCleanupDryRun            = false
@@ -20,6 +31,8 @@ const (
 	defaultMainAPIRateLimitEnabled            = true
 	defaultMainAPIRateLimitWindow             = time.Minute
 	defaultMainAPIRateLimitAuthLimit          = 30
+	defaultMainAPIRateLimitAuthRegisterLimit  = 10
+	defaultMainAPIRateLimitAuthEmailVerify    = 30
 	defaultMainAPIRateLimitBootstrapLimit     = 5
 	defaultMainAPIRateLimitAccountLimit       = 120
 	defaultMainAPIRateLimitIncidentReadLimit  = 300
@@ -51,31 +64,92 @@ const (
 	defaultAdminIdleTimeout       = 120 * time.Second
 )
 
+const (
+	AccountRegistrationModeDisabled  = "disabled"
+	AccountRegistrationModeAdminOnly = "admin_only"
+	AccountRegistrationModeOpen      = "open"
+	AccountRegistrationModePaid      = "paid"
+
+	EmailBackendNone = "none"
+	EmailBackendSMTP = "smtp"
+
+	SMTPStartTLSRequired      = "required"
+	SMTPStartTLSOpportunistic = "opportunistic"
+	SMTPStartTLSDisabled      = "disabled"
+)
+
 // Config contains the runtime settings needed by the API server.
 type Config struct {
-	MainBindAddrs              []string
-	AdminBindAddrs             []string
-	Backends                   BackendSelection
-	Postgres                   PostgresConfig
-	S3Blob                     S3BlobConfig
-	Valkey                     ValkeyConfig
-	DataDir                    string
-	DBPath                     string
-	MaxUploadBytes             int64
-	DefaultIncidentTokenTTL    time.Duration
-	SessionTTL                 time.Duration
-	AuthBootstrapSecret        string
-	DeletionWorkerInterval     time.Duration
-	ClosedIncidentRetention    time.Duration
-	TokenMetadataRetention     time.Duration
-	TombstoneRetention         time.Duration
-	TempUploadCleanupAge       time.Duration
-	TempUploadCleanupDryRun    bool
-	UploadCoordinationLeaseTTL time.Duration
-	MainAPIRateLimit           MainAPIRateLimitConfig
-	PublicViewerRateLimit      PublicViewerRateLimitConfig
-	MainTimeouts               HTTPTimeouts
-	AdminTimeouts              HTTPTimeouts
+	MainBindAddrs                 []string
+	AdminBindAddrs                []string
+	Backends                      BackendSelection
+	Postgres                      PostgresConfig
+	S3Blob                        S3BlobConfig
+	Valkey                        ValkeyConfig
+	DataDir                       string
+	DBPath                        string
+	MaxUploadBytes                int64
+	AccountDefaultBlobQuotaBytes  int64
+	TempUploadStagingQuotaBytes   int64
+	DefaultIncidentTokenTTL       time.Duration
+	SessionTTL                    time.Duration
+	AccountRegistration           AccountRegistrationConfig
+	SecondFactorEmailChallengeTTL time.Duration
+	RelayCapability               RelayCapabilityConfig
+	RelayService                  RelayServiceConfig
+	Email                         EmailConfig
+	AuthBootstrapSecret           string
+	DeletionWorkerInterval        time.Duration
+	ClosedIncidentRetention       time.Duration
+	TokenMetadataRetention        time.Duration
+	TombstoneRetention            time.Duration
+	TempUploadCleanupAge          time.Duration
+	TempUploadCleanupDryRun       bool
+	UploadCoordinationLeaseTTL    time.Duration
+	MainAPIRateLimit              MainAPIRateLimitConfig
+	PublicViewerRateLimit         PublicViewerRateLimitConfig
+	WebAuth                       WebAuthConfig
+	WebAuthn                      WebAuthnConfig
+	MainTimeouts                  HTTPTimeouts
+	AdminTimeouts                 HTTPTimeouts
+}
+
+// AccountRegistrationConfig controls public self-registration behavior.
+type AccountRegistrationConfig struct {
+	Mode                 string
+	EmailVerificationTTL time.Duration
+	PublicWebOrigin      string
+}
+
+// EmailConfig contains outbound verification email settings.
+type EmailConfig struct {
+	Backend string
+	SMTP    SMTPConfig
+}
+
+// RelayCapabilityConfig controls backend-issued regional relay session
+// capabilities. Empty Secret disables issuance while preserving normal startup.
+type RelayCapabilityConfig struct {
+	Secret    string
+	TTL       time.Duration
+	MaxChunks int
+}
+
+// RelayServiceConfig controls relay-to-core service authentication for narrow
+// core relay preflight/commit endpoints. Empty AuthToken disables the routes.
+type RelayServiceConfig struct {
+	AuthToken string
+}
+
+// SMTPConfig contains SMTP settings for verification email delivery.
+type SMTPConfig struct {
+	Host     string
+	Port     int
+	Username string
+	Password string
+	From     string
+	StartTLS string
+	Timeout  time.Duration
 }
 
 // BackendSelection records the configured storage and coordination backends.
@@ -123,6 +197,8 @@ type MainAPIRateLimitConfig struct {
 	Enabled            bool
 	Window             time.Duration
 	AuthLimit          int
+	AuthRegisterLimit  int
+	AuthEmailVerify    int
 	BootstrapLimit     int
 	AccountLimit       int
 	IncidentReadLimit  int
@@ -146,6 +222,30 @@ type PublicViewerRateLimitConfig struct {
 	StaticLimit   int
 }
 
+// WebAuthConfig contains optional browser cookie-session settings for the main
+// API. It is disabled by default so existing bearer clients keep their current
+// behavior unless a deployment explicitly opts in.
+type WebAuthConfig struct {
+	Enabled               bool
+	AllowedOrigins        []string
+	SessionCookieName     string
+	SessionCookieSecure   bool
+	SessionCookieSameSite string
+	CSRFHeaderName        string
+}
+
+// WebAuthnConfig contains optional WebAuthn passkey/security-key second-factor
+// settings. It is disabled by default and fails closed when enabled without an
+// explicit relying-party ID and exact origin allow-list.
+type WebAuthnConfig struct {
+	Enabled          bool
+	RPID             string
+	RPDisplayName    string
+	AllowedOrigins   []string
+	UserVerification string
+	ChallengeTTL     time.Duration
+}
+
 // HTTPTimeouts groups net/http server timeout settings.
 type HTTPTimeouts struct {
 	ReadHeaderTimeout time.Duration
@@ -154,72 +254,132 @@ type HTTPTimeouts struct {
 	IdleTimeout       time.Duration
 }
 
-// Load reads configuration from environment variables and applies defaults for
-// unset values.
+// Load reads configuration from the discovered config file and environment
+// variables, then applies defaults for unset values.
 func Load() (Config, error) {
-	mainBindAddrs, err := mainBindAddrsFromEnv()
+	return LoadWithOptions(LoadOptions{})
+}
+
+// LoadWithOptions reads configuration from the selected config file and
+// environment variables, then applies defaults for unset values.
+func LoadWithOptions(opts LoadOptions) (Config, error) {
+	configFilePath, ok, err := resolveConfigFilePath(opts.ConfigFilePath)
 	if err != nil {
 		return Config{}, err
 	}
-	adminBindAddrs, err := adminBindAddrsFromEnv()
+	fileValues := map[string]string{}
+	if ok {
+		fileValues, err = configValuesFromFile(configFilePath)
+		if err != nil {
+			return Config{}, err
+		}
+	}
+	return loadFromSource(newConfigSource(fileValues))
+}
+
+func loadFromSource(source configSource) (Config, error) {
+	mainBindAddrs, err := mainBindAddrsFromSource(source)
+	if err != nil {
+		return Config{}, err
+	}
+	adminBindAddrs, err := adminBindAddrsFromSource(source)
 	if err != nil {
 		return Config{}, err
 	}
 
-	backends, err := backendSelectionFromEnv()
+	backends, err := backendSelectionFromSource(source)
 	if err != nil {
 		return Config{}, err
 	}
-	postgres, err := postgresConfigFromEnv(backends.Metadata)
+	postgres, err := postgresConfigFromSource(source, backends.Metadata)
 	if err != nil {
 		return Config{}, err
 	}
-	s3Blob, err := s3BlobConfigFromEnv(backends.Blob)
+	s3Blob, err := s3BlobConfigFromSource(source, backends.Blob)
 	if err != nil {
 		return Config{}, err
 	}
-	valkey, err := valkeyConfigFromEnv(backends.Coordination)
+	valkey, err := valkeyConfigFromSource(source, backends.Coordination)
 	if err != nil {
 		return Config{}, err
 	}
 
-	maxUploadBytes, err := maxUploadBytesFromEnv()
+	maxUploadBytes, err := maxUploadBytesFromSource(source)
 	if err != nil {
 		return Config{}, err
 	}
-	incidentTokenTTL, err := durationFromEnv("SAFE_DEFAULT_INCIDENT_TOKEN_TTL", defaultIncidentTokenTTL)
+	accountDefaultBlobQuotaBytes, err := accountDefaultBlobQuotaBytesFromSource(source)
 	if err != nil {
 		return Config{}, err
 	}
-	sessionTTL, err := durationFromEnv("SAFE_SESSION_TTL", defaultSessionTTL)
+	tempUploadStagingQuotaBytes, err := tempUploadStagingQuotaBytesFromSource(source)
 	if err != nil {
 		return Config{}, err
 	}
-	deletionWorkerInterval, err := durationFromEnv("SAFE_DELETION_WORKER_INTERVAL", defaultDeletionInterval)
+	incidentTokenTTL, err := durationFromSource(source, "SAFE_DEFAULT_INCIDENT_TOKEN_TTL", defaultIncidentTokenTTL)
 	if err != nil {
 		return Config{}, err
 	}
-	closedIncidentRetention, err := durationFromEnv("SAFE_CLOSED_INCIDENT_RETENTION", 0)
+	sessionTTL, err := durationFromSource(source, "SAFE_SESSION_TTL", defaultSessionTTL)
 	if err != nil {
 		return Config{}, err
 	}
-	tokenMetadataRetention, err := durationFromEnv("SAFE_TOKEN_METADATA_RETENTION", 0)
+	accountRegistration, err := accountRegistrationConfigFromSource(source)
 	if err != nil {
 		return Config{}, err
 	}
-	tombstoneRetention, err := durationFromEnv("SAFE_DELETION_TOMBSTONE_RETENTION", 0)
+	email, err := emailConfigFromSource(source)
 	if err != nil {
 		return Config{}, err
 	}
-	tempUploadCleanupAge, err := durationFromEnv("SAFE_TEMP_UPLOAD_CLEANUP_AGE", defaultTempUploadCleanupAge)
+	accountRegistration, err = validateAccountRegistrationConfig(accountRegistration, email)
 	if err != nil {
 		return Config{}, err
 	}
-	tempUploadCleanupDryRun, err := boolFromEnv("SAFE_TEMP_UPLOAD_CLEANUP_DRY_RUN", defaultTempUploadCleanupDryRun)
+	secondFactorEmailChallengeTTL, err := durationFromSource(source, "SAFE_SECOND_FACTOR_EMAIL_CHALLENGE_TTL", defaultSecondFactorEmailChallengeTTL)
 	if err != nil {
 		return Config{}, err
 	}
-	uploadCoordinationLeaseTTL, err := durationFromEnv("SAFE_UPLOAD_COORDINATION_LEASE_TTL", defaultUploadCoordinationLeaseTTL)
+	if secondFactorEmailChallengeTTL <= 0 {
+		return Config{}, fmt.Errorf("parse SAFE_SECOND_FACTOR_EMAIL_CHALLENGE_TTL: duration must be positive")
+	}
+	relayCapability, err := relayCapabilityConfigFromSource(source)
+	if err != nil {
+		return Config{}, err
+	}
+	relayService, err := relayServiceConfigFromSource(source)
+	if err != nil {
+		return Config{}, err
+	}
+	authBootstrapSecret, err := secretFromSource(source, "SAFE_AUTH_BOOTSTRAP_SECRET", "SAFE_AUTH_BOOTSTRAP_SECRET_FILE")
+	if err != nil {
+		return Config{}, err
+	}
+	deletionWorkerInterval, err := durationFromSource(source, "SAFE_DELETION_WORKER_INTERVAL", defaultDeletionInterval)
+	if err != nil {
+		return Config{}, err
+	}
+	closedIncidentRetention, err := durationFromSource(source, "SAFE_CLOSED_INCIDENT_RETENTION", 0)
+	if err != nil {
+		return Config{}, err
+	}
+	tokenMetadataRetention, err := durationFromSource(source, "SAFE_TOKEN_METADATA_RETENTION", 0)
+	if err != nil {
+		return Config{}, err
+	}
+	tombstoneRetention, err := durationFromSource(source, "SAFE_DELETION_TOMBSTONE_RETENTION", 0)
+	if err != nil {
+		return Config{}, err
+	}
+	tempUploadCleanupAge, err := durationFromSource(source, "SAFE_TEMP_UPLOAD_CLEANUP_AGE", defaultTempUploadCleanupAge)
+	if err != nil {
+		return Config{}, err
+	}
+	tempUploadCleanupDryRun, err := boolFromSource(source, "SAFE_TEMP_UPLOAD_CLEANUP_DRY_RUN", defaultTempUploadCleanupDryRun)
+	if err != nil {
+		return Config{}, err
+	}
+	uploadCoordinationLeaseTTL, err := durationFromSource(source, "SAFE_UPLOAD_COORDINATION_LEASE_TTL", defaultUploadCoordinationLeaseTTL)
 	if err != nil {
 		return Config{}, err
 	}
@@ -227,47 +387,64 @@ func Load() (Config, error) {
 		return Config{}, fmt.Errorf("parse SAFE_UPLOAD_COORDINATION_LEASE_TTL: duration must be positive")
 	}
 
-	mainAPIRateLimit, err := mainAPIRateLimitConfigFromEnv()
+	mainAPIRateLimit, err := mainAPIRateLimitConfigFromSource(source)
 	if err != nil {
 		return Config{}, err
 	}
-	publicViewerRateLimit, err := publicViewerRateLimitConfigFromEnv()
+	publicViewerRateLimit, err := publicViewerRateLimitConfigFromSource(source)
+	if err != nil {
+		return Config{}, err
+	}
+	webAuth, err := webAuthConfigFromSource(source)
+	if err != nil {
+		return Config{}, err
+	}
+	webAuthn, err := webAuthnConfigFromSource(source)
 	if err != nil {
 		return Config{}, err
 	}
 
-	mainTimeouts, err := mainTimeoutsFromEnv()
+	mainTimeouts, err := mainTimeoutsFromSource(source)
 	if err != nil {
 		return Config{}, err
 	}
-	adminTimeouts, err := adminTimeoutsFromEnv()
+	adminTimeouts, err := adminTimeoutsFromSource(source)
 	if err != nil {
 		return Config{}, err
 	}
 
 	return Config{
-		MainBindAddrs:              mainBindAddrs,
-		AdminBindAddrs:             adminBindAddrs,
-		Backends:                   backends,
-		Postgres:                   postgres,
-		S3Blob:                     s3Blob,
-		Valkey:                     valkey,
-		DataDir:                    envOrDefault("SAFE_DATA_DIR", defaultDataDir),
-		DBPath:                     envOrDefault("SAFE_DB_PATH", defaultDBPath),
-		MaxUploadBytes:             maxUploadBytes,
-		DefaultIncidentTokenTTL:    incidentTokenTTL,
-		SessionTTL:                 sessionTTL,
-		AuthBootstrapSecret:        secretFromEnv("SAFE_AUTH_BOOTSTRAP_SECRET"),
-		DeletionWorkerInterval:     deletionWorkerInterval,
-		ClosedIncidentRetention:    closedIncidentRetention,
-		TokenMetadataRetention:     tokenMetadataRetention,
-		TombstoneRetention:         tombstoneRetention,
-		TempUploadCleanupAge:       tempUploadCleanupAge,
-		TempUploadCleanupDryRun:    tempUploadCleanupDryRun,
-		UploadCoordinationLeaseTTL: uploadCoordinationLeaseTTL,
-		MainAPIRateLimit:           mainAPIRateLimit,
-		PublicViewerRateLimit:      publicViewerRateLimit,
-		MainTimeouts:               mainTimeouts,
-		AdminTimeouts:              adminTimeouts,
+		MainBindAddrs:                 mainBindAddrs,
+		AdminBindAddrs:                adminBindAddrs,
+		Backends:                      backends,
+		Postgres:                      postgres,
+		S3Blob:                        s3Blob,
+		Valkey:                        valkey,
+		DataDir:                       envOrDefault(source, "SAFE_DATA_DIR", defaultDataDir),
+		DBPath:                        envOrDefault(source, "SAFE_DB_PATH", defaultDBPath),
+		MaxUploadBytes:                maxUploadBytes,
+		AccountDefaultBlobQuotaBytes:  accountDefaultBlobQuotaBytes,
+		TempUploadStagingQuotaBytes:   tempUploadStagingQuotaBytes,
+		DefaultIncidentTokenTTL:       incidentTokenTTL,
+		SessionTTL:                    sessionTTL,
+		AccountRegistration:           accountRegistration,
+		SecondFactorEmailChallengeTTL: secondFactorEmailChallengeTTL,
+		RelayCapability:               relayCapability,
+		RelayService:                  relayService,
+		Email:                         email,
+		AuthBootstrapSecret:           authBootstrapSecret,
+		DeletionWorkerInterval:        deletionWorkerInterval,
+		ClosedIncidentRetention:       closedIncidentRetention,
+		TokenMetadataRetention:        tokenMetadataRetention,
+		TombstoneRetention:            tombstoneRetention,
+		TempUploadCleanupAge:          tempUploadCleanupAge,
+		TempUploadCleanupDryRun:       tempUploadCleanupDryRun,
+		UploadCoordinationLeaseTTL:    uploadCoordinationLeaseTTL,
+		MainAPIRateLimit:              mainAPIRateLimit,
+		PublicViewerRateLimit:         publicViewerRateLimit,
+		WebAuth:                       webAuth,
+		WebAuthn:                      webAuthn,
+		MainTimeouts:                  mainTimeouts,
+		AdminTimeouts:                 adminTimeouts,
 	}, nil
 }

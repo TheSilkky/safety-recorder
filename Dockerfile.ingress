@@ -1,0 +1,32 @@
+FROM golang:1.26-alpine@sha256:7a3e50096189ad57c9f9f865e7e4aa8585ed1585248513dc5cda498e2f41812c AS builder
+
+WORKDIR /src
+
+RUN apk add --no-cache build-base
+
+COPY go.mod go.sum ./
+RUN go mod download
+
+COPY cmd ./cmd
+COPY internal ./internal
+RUN CGO_ENABLED=1 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/proofline-stream-ingress ./cmd/stream-ingress
+
+FROM alpine:3.24@sha256:a2d49ea686c2adfe3c992e47dc3b5e7fa6e6b5055609400dc2acaeb241c829f4
+
+RUN apk add --no-cache ca-certificates tzdata \
+	&& addgroup -S proofline \
+	&& adduser -S -G proofline -h /nonexistent -s /sbin/nologin proofline \
+	&& mkdir -p /var/lib/proofline-stream-ingress \
+	&& chown -R proofline:proofline /var/lib/proofline-stream-ingress
+
+COPY --from=builder /out/proofline-stream-ingress /usr/local/bin/proofline-stream-ingress
+
+ENV SAFE_STREAM_INGRESS_BIND_ADDR=0.0.0.0:8090
+ENV SAFE_STREAM_INGRESS_DATA_DIR=/var/lib/proofline-stream-ingress
+
+USER proofline
+WORKDIR /var/lib/proofline-stream-ingress
+VOLUME ["/var/lib/proofline-stream-ingress"]
+EXPOSE 8090
+
+ENTRYPOINT ["proofline-stream-ingress"]

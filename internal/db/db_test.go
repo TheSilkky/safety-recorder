@@ -48,6 +48,205 @@ func TestMigrateIsIdempotent(t *testing.T) {
 	}
 }
 
+func TestMigrateAddsSecondFactorSetupState(t *testing.T) {
+	ctx := context.Background()
+	conn := openMemoryDB(t)
+	defer conn.Close()
+
+	if err := Migrate(ctx, conn); err != nil {
+		t.Fatalf("Migrate: %v", err)
+	}
+	if !hasColumn(t, ctx, conn, "accounts", "second_factor_setup_state") {
+		t.Fatal("expected accounts.second_factor_setup_state column")
+	}
+	if _, err := conn.ExecContext(ctx, `
+		INSERT INTO accounts (id, username, password_hash, role, created_at, updated_at, password_changed_at)
+		VALUES ('acct_default_2fa', 'default-2fa', 'hash', 'user', '2026-06-10T00:00:00Z', '2026-06-10T00:00:00Z', '2026-06-10T00:00:00Z')`); err != nil {
+		t.Fatalf("insert default second-factor setup account: %v", err)
+	}
+	var state string
+	if err := conn.QueryRowContext(ctx, `
+		SELECT second_factor_setup_state
+		FROM accounts
+		WHERE id = 'acct_default_2fa'`,
+	).Scan(&state); err != nil {
+		t.Fatalf("read second-factor setup state: %v", err)
+	}
+	if state != "not_required" {
+		t.Fatalf("default second-factor setup state = %q, want not_required", state)
+	}
+	if _, err := conn.ExecContext(ctx, `
+		INSERT INTO accounts (id, username, password_hash, role, second_factor_setup_state, created_at, updated_at, password_changed_at)
+		VALUES ('acct_bad_2fa', 'bad-2fa', 'hash', 'user', 'bypassed', '2026-06-10T00:00:00Z', '2026-06-10T00:00:00Z', '2026-06-10T00:00:00Z')`); err == nil {
+		t.Fatal("expected invalid second_factor_setup_state to fail")
+	}
+}
+
+func TestMigrateAddsEmailSecondFactorChallengeSchema(t *testing.T) {
+	ctx := context.Background()
+	conn := openMemoryDB(t)
+	defer conn.Close()
+
+	if err := Migrate(ctx, conn); err != nil {
+		t.Fatalf("Migrate: %v", err)
+	}
+	for _, tableName := range []string{"account_second_factors", "account_second_factor_challenges"} {
+		if !hasTable(t, ctx, conn, tableName) {
+			t.Fatalf("expected %s table", tableName)
+		}
+		for _, forbidden := range []string{"raw_token", "raw_code", "code", "token", "plaintext", "request_body", "authorization_header"} {
+			if hasColumn(t, ctx, conn, tableName, forbidden) {
+				t.Fatalf("%s must not include %s", tableName, forbidden)
+			}
+		}
+	}
+	if _, err := conn.ExecContext(ctx, `
+		INSERT INTO accounts (id, username, password_hash, role, created_at, updated_at, password_changed_at)
+		VALUES ('acct_email_2fa', 'email-2fa', 'hash', 'user', '2026-06-10T00:00:00Z', '2026-06-10T00:00:00Z', '2026-06-10T00:00:00Z')`); err != nil {
+		t.Fatalf("insert second-factor account: %v", err)
+	}
+	if _, err := conn.ExecContext(ctx, `
+		INSERT INTO account_second_factors (
+			id, account_id, factor_type, email_normalized, factor_state, created_at, updated_at
+		)
+		VALUES (
+			'sf_valid',
+			'acct_email_2fa',
+			'email_challenge',
+			'user@example.invalid',
+			'pending',
+			'2026-06-10T00:00:00Z',
+			'2026-06-10T00:00:00Z'
+		)`); err != nil {
+		t.Fatalf("insert valid second factor: %v", err)
+	}
+	if _, err := conn.ExecContext(ctx, `
+		INSERT INTO account_second_factor_challenges (
+			id, account_id, factor_id, challenge_type, token_hash,
+			email_normalized, created_at, expires_at
+		)
+		VALUES (
+			'sfc_valid',
+			'acct_email_2fa',
+			'sf_valid',
+			'email_setup',
+			'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+			'user@example.invalid',
+			'2026-06-10T00:00:00Z',
+			'2026-06-10T00:10:00Z'
+		)`); err != nil {
+		t.Fatalf("insert valid second-factor challenge: %v", err)
+	}
+	if _, err := conn.ExecContext(ctx, `
+		INSERT INTO account_second_factors (
+			id, account_id, factor_type, email_normalized, factor_state, created_at, updated_at
+		)
+		VALUES (
+			'sf_bad_state',
+			'acct_email_2fa',
+			'email_challenge',
+			'user2@example.invalid',
+			'verified',
+			'2026-06-10T00:00:00Z',
+			'2026-06-10T00:00:00Z'
+		)`); err == nil {
+		t.Fatal("expected invalid second-factor state to fail")
+	}
+	if _, err := conn.ExecContext(ctx, `
+		INSERT INTO account_second_factor_challenges (
+			id, account_id, factor_id, challenge_type, token_hash,
+			email_normalized, created_at, expires_at
+		)
+		VALUES (
+			'sfc_bad_hash',
+			'acct_email_2fa',
+			'sf_valid',
+			'email_setup',
+			'not-a-hash',
+			'user@example.invalid',
+			'2026-06-10T00:00:00Z',
+			'2026-06-10T00:10:00Z'
+		)`); err == nil {
+		t.Fatal("expected invalid challenge hash to fail")
+	}
+}
+
+func TestMigrateAddsTOTPSecondFactorSchema(t *testing.T) {
+	ctx := context.Background()
+	conn := openMemoryDB(t)
+	defer conn.Close()
+
+	if err := Migrate(ctx, conn); err != nil {
+		t.Fatalf("Migrate: %v", err)
+	}
+	if !hasTable(t, ctx, conn, "account_totp_second_factors") {
+		t.Fatal("expected account_totp_second_factors table")
+	}
+	for _, columnName := range []string{"second_factor_verified_at", "second_factor_factor_id", "second_factor_method"} {
+		if !hasColumn(t, ctx, conn, "auth_sessions", columnName) {
+			t.Fatalf("expected auth_sessions.%s column", columnName)
+		}
+	}
+	for _, forbidden := range []string{"raw_code", "code", "request_body", "authorization_header"} {
+		if hasColumn(t, ctx, conn, "account_totp_second_factors", forbidden) {
+			t.Fatalf("account_totp_second_factors must not include %s", forbidden)
+		}
+	}
+	if _, err := conn.ExecContext(ctx, `
+		INSERT INTO accounts (id, username, password_hash, role, created_at, updated_at, password_changed_at)
+		VALUES ('acct_totp_2fa', 'totp-2fa', 'hash', 'user', '2026-06-10T00:00:00Z', '2026-06-10T00:00:00Z', '2026-06-10T00:00:00Z')`); err != nil {
+		t.Fatalf("insert TOTP account: %v", err)
+	}
+	if _, err := conn.ExecContext(ctx, `
+		INSERT INTO account_totp_second_factors (
+			id, account_id, factor_state, secret, period_seconds, digits, algorithm, created_at, updated_at
+		)
+		VALUES (
+			'sf_totp_valid',
+			'acct_totp_2fa',
+			'pending',
+			'JBSWY3DPEHPK3PXP',
+			30,
+			6,
+			'SHA1',
+			'2026-06-10T00:00:00Z',
+			'2026-06-10T00:00:00Z'
+		)`); err != nil {
+		t.Fatalf("insert valid TOTP second factor: %v", err)
+	}
+	if _, err := conn.ExecContext(ctx, `
+		INSERT INTO account_totp_second_factors (
+			id, account_id, factor_state, secret, period_seconds, digits, algorithm, created_at, updated_at
+		)
+		VALUES (
+			'sf_totp_bad_digits',
+			'acct_totp_2fa',
+			'pending',
+			'JBSWY3DPEHPK3PXQ',
+			30,
+			7,
+			'SHA1',
+			'2026-06-10T00:00:00Z',
+			'2026-06-10T00:00:00Z'
+		)`); err == nil {
+		t.Fatal("expected invalid TOTP digits to fail")
+	}
+	if _, err := conn.ExecContext(ctx, `
+		INSERT INTO auth_sessions (
+			id, account_id, token_hash, second_factor_method, created_at, expires_at
+		)
+		VALUES (
+			'ses_bad_method',
+			'acct_totp_2fa',
+			'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+			'sms',
+			'2026-06-10T00:00:00Z',
+			'2026-06-10T01:00:00Z'
+		)`); err == nil {
+		t.Fatal("expected invalid session second-factor method to fail")
+	}
+}
+
 func TestMigrateAddsIncidentModeColumns(t *testing.T) {
 	ctx := context.Background()
 	conn := openMemoryDB(t)
@@ -126,7 +325,7 @@ func TestMigrateAddsContactKeyAndSharingGrantSchema(t *testing.T) {
 			t.Fatalf("expected %s table", tableName)
 		}
 	}
-	for _, columnName := range []string{"owner_account_id", "contact_id", "version", "public_key", "public_key_fingerprint", "key_state"} {
+	for _, columnName := range []string{"owner_account_id", "contact_id", "recipient_account_id", "version", "public_key", "public_key_fingerprint", "key_state"} {
 		if !hasColumn(t, ctx, conn, "contact_public_keys", columnName) {
 			t.Fatalf("expected contact_public_keys.%s column", columnName)
 		}
@@ -147,6 +346,78 @@ func TestMigrateAddsContactKeyAndSharingGrantSchema(t *testing.T) {
 				t.Fatalf("%s must not include %s", tableName, forbidden)
 			}
 		}
+	}
+}
+
+func TestMigrateAddsLegacyIncidentReassignmentSchema(t *testing.T) {
+	ctx := context.Background()
+	conn := openMemoryDB(t)
+	defer conn.Close()
+
+	if err := Migrate(ctx, conn); err != nil {
+		t.Fatalf("Migrate: %v", err)
+	}
+	if !hasTable(t, ctx, conn, "legacy_incident_reassignment_events") {
+		t.Fatal("expected legacy_incident_reassignment_events table")
+	}
+	for _, columnName := range []string{
+		"incident_id",
+		"previous_owner_account_id",
+		"new_owner_account_id",
+		"actor_account_id",
+		"action",
+		"reason_code",
+		"source",
+		"created_at",
+		"completed_at",
+	} {
+		if !hasColumn(t, ctx, conn, "legacy_incident_reassignment_events", columnName) {
+			t.Fatalf("expected legacy_incident_reassignment_events.%s column", columnName)
+		}
+	}
+	for _, forbidden := range []string{"notes", "stored_path", "object_key", "raw_token", "raw_key", "plaintext", "request_body", "authorization_header"} {
+		if hasColumn(t, ctx, conn, "legacy_incident_reassignment_events", forbidden) {
+			t.Fatalf("legacy_incident_reassignment_events must not include %s", forbidden)
+		}
+	}
+	if _, err := conn.ExecContext(ctx, `
+		INSERT INTO incidents (id, created_at, updated_at, status)
+		VALUES ('inc_legacy_reassign', '2026-05-21T10:00:00Z', '2026-05-21T10:00:00Z', 'open')`); err != nil {
+		t.Fatalf("insert legacy incident: %v", err)
+	}
+	if _, err := conn.ExecContext(ctx, `
+		INSERT INTO legacy_incident_reassignment_events (
+			id, incident_id, actor_account_id, action, reason_code, source,
+			created_at, completed_at
+		)
+		VALUES (
+			'lra_valid',
+			'inc_legacy_reassign',
+			'acct_admin',
+			'keep_unowned',
+			'keep_admin_only',
+			'admin_api',
+			'2026-05-21T10:00:00Z',
+			'2026-05-21T10:00:00Z'
+		)`); err != nil {
+		t.Fatalf("insert valid legacy reassignment event: %v", err)
+	}
+	if _, err := conn.ExecContext(ctx, `
+		INSERT INTO legacy_incident_reassignment_events (
+			id, incident_id, actor_account_id, action, reason_code, source,
+			created_at, completed_at
+		)
+		VALUES (
+			'lra_bad_reason',
+			'inc_legacy_reassign',
+			'acct_admin',
+			'keep_unowned',
+			'free form private note',
+			'admin_api',
+			'2026-05-21T10:00:00Z',
+			'2026-05-21T10:00:00Z'
+		)`); err == nil {
+		t.Fatal("expected invalid legacy reassignment reason_code to fail")
 	}
 }
 
@@ -176,7 +447,7 @@ func TestMigrateRejectsRecordedChecksumMismatch(t *testing.T) {
 
 func TestOpenCreatesMigrationTableAndEnablesWAL(t *testing.T) {
 	ctx := context.Background()
-	conn, err := Open(ctx, filepath.Join(t.TempDir(), "safety.db"))
+	conn, err := Open(ctx, filepath.Join(t.TempDir(), "proofline.db"))
 	if err != nil {
 		t.Fatalf("Open: %v", err)
 	}

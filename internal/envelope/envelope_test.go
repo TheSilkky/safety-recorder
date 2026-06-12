@@ -180,8 +180,18 @@ func TestParseHeaderRejectsMalformedMagic(t *testing.T) {
 	}
 }
 
+func TestParseHeaderRejectsLegacySafetyRecorderMagic(t *testing.T) {
+	key := mustGenerateKey(t)
+	envelopeBytes := mustEncrypt(t, key, testChunkContext(), []byte("plaintext"))
+	copy(envelopeBytes[:len(magic)], []byte("SRCENC1\n"))
+
+	if _, err := ParseHeader(envelopeBytes); err == nil {
+		t.Fatal("ParseHeader succeeded with legacy safety-recorder magic")
+	}
+}
+
 func TestParseHeaderRejectsTruncatedEnvelope(t *testing.T) {
-	if _, err := ParseHeader([]byte("SRC")); err == nil {
+	if _, err := ParseHeader([]byte("PLC")); err == nil {
 		t.Fatal("ParseHeader succeeded with truncated envelope")
 	}
 }
@@ -217,6 +227,18 @@ func TestParseHeaderRejectsUnknownAlgorithm(t *testing.T) {
 
 	if _, err := ParseHeader(envelopeBytes); err == nil {
 		t.Fatal("ParseHeader succeeded with unknown algorithm")
+	}
+}
+
+func TestParseHeaderRejectsLegacySafetyRecorderScheme(t *testing.T) {
+	key := mustGenerateKey(t)
+	envelopeBytes := mustEncrypt(t, key, testChunkContext(), []byte("plaintext"))
+	envelopeBytes = rewriteHeader(t, envelopeBytes, func(header *Header) {
+		header.Scheme = "safety-recorder-chunk-encryption-v1"
+	})
+
+	if _, err := ParseHeader(envelopeBytes); err == nil {
+		t.Fatal("ParseHeader succeeded with legacy safety-recorder scheme")
 	}
 }
 

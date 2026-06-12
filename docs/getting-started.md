@@ -4,14 +4,34 @@ This guide starts the Proofline backend locally and runs the simulator against i
 
 ## Requirements
 
-- Go 1.26.3
+- Go 1.26.4
 - SQLite through the bundled Go SQLite driver dependency
-- PostgreSQL only when explicitly using `SAFE_METADATA_BACKEND=postgresql`
+- TOTP generation and validation through the bundled Go OTP dependency
+- WebAuthn/FIDO2 ceremony validation through the bundled go-webauthn dependency
+- PostgreSQL only when explicitly setting `[metadata].backend = "postgresql"`
+  in TOML, or using the equivalent `SAFE_METADATA_BACKEND=postgresql`
+  environment override
 - Local disk storage for encrypted uploaded blobs
 
 ## Run The Backend
 
 From the repository root:
+
+For repeatable local configuration, set the bootstrap secret through a private
+secret file referenced by TOML:
+
+```toml
+[auth]
+bootstrap_secret_file = "/path/to/local-bootstrap-secret"
+```
+
+Then run:
+
+```bash
+go run ./cmd/api --config /path/to/proofline.toml
+```
+
+For a one-off local shell, an environment override remains supported:
 
 ```bash
 SAFE_AUTH_BOOTSTRAP_SECRET='replace-with-local-bootstrap-secret' \
@@ -25,8 +45,12 @@ Default listeners:
 | Main API and incident viewer | `127.0.0.1:8080` |
 | Private admin dashboard | `127.0.0.1:8081` |
 
+The repository root `proofline.toml` is a safe local-first example loaded
+automatically when running from the repository root. It matches the built-in
+defaults and does not include a bootstrap secret.
+
 The private admin web surface is available at
-`http://127.0.0.1:8081/admin`. When `SAFE_AUTH_BOOTSTRAP_SECRET` is set and no
+`http://127.0.0.1:8081/admin`. When a bootstrap secret is configured and no
 admin exists, that page shows the first-admin bootstrap screen; after an admin
 exists, it shows the admin login screen and local account password workflows.
 
@@ -34,13 +58,14 @@ The backend writes local data under `./data` by default:
 
 ```text
 data/
-  safety.db
+  proofline.db
   tmp/
   incidents/{incident_id}/streams/{stream_id}/{media_type}_{zero_padded_chunk_index}.enc
   incidents/{incident_id}/{media_type}_{zero_padded_chunk_index}.enc
 ```
 
-The database file name still uses `safety.db` until a separate artifact/data-layout migration is performed.
+The default database file name uses the Proofline data-layout identifier
+`proofline.db`.
 
 Uploads are staged in `tmp/`, hashed while streaming, and then hard-linked into the final incident path without overwriting existing chunk files. Streamed uploads use the stream-scoped path; the incident-level path remains for legacy unstreamed chunks.
 
@@ -55,7 +80,8 @@ curl -sS -X POST http://127.0.0.1:8081/admin/bootstrap \
   --data-urlencode 'password=replace-with-a-long-local-password'
 ```
 
-Then restart the server without `SAFE_AUTH_BOOTSTRAP_SECRET`.
+Then restart the server without the bootstrap secret in TOML, the environment,
+or the secret mount.
 
 ## Run The Simulator
 
@@ -81,7 +107,8 @@ The simulator:
 
 The simulator exercises the current generic incident API. It does not set the
 optional incident-mode metadata fields for emergency incidents, interaction
-records, safety checks, or evidence notes.
+records, safety checks, or evidence notes. It uploads directly to the main API;
+it does not exercise the separate regional stream-ingress relay.
 
 ## Useful Next Reads
 

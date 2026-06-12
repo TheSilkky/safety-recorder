@@ -8,7 +8,7 @@ production-shaped private metadata routes for contact public keys, sharing
 grants, and grant-bound wrapped-key records, but the simulator artifact remains
 a local development companion and is not placed in bundle manifests.
 
-The goal is to let Proofline test the shape of contact-wrapped media-key
+The goal is to let Proofline test the shape of contact-wrapped CEK/media-key
 metadata before production key custody is implemented. The current backend
 continues to receive opaque encrypted chunks, validate SHA-256 over ciphertext,
 store encrypted blobs, and generate encrypted ZIP evidence bundles.
@@ -20,14 +20,14 @@ wrapped-key metadata boundary are designed separately in
 
 - Model trusted-contact public keys and non-secret key identifiers in
   development flows.
-- Wrap simulator stream media keys for one or more model contacts without
+- Wrap simulator stream CEKs for one or more model contacts without
   exposing raw keys to the backend.
 - Define safe metadata that can appear in local development manifests or test
   artifacts.
 - Separate non-secret key IDs from raw media keys, contact private keys, and
   plaintext.
 - Show how wrapped-key metadata relates to stream bundle manifests, stream
-  media keys, and future trusted-contact access.
+  CEKs, and future trusted-contact access.
 - Evaluate stable, documented cryptographic formats or libraries before any
   production implementation.
 
@@ -37,7 +37,7 @@ wrapped-key metadata boundary are designed separately in
 - No server-side decryption, browser decryption, key escrow, or break-glass
   behavior.
 - No raw server-held media keys or contact private keys.
-- No public `/v1` exposure and no authentication model changes.
+- No new broad public `/v1` exposure model and no authentication model changes.
 - No web, iOS, Android, or shared protocol repository implementation.
 - No custom public-key wrapping, KDF, AEAD, padding, MAC, random generator, or
   secret-sharing primitive.
@@ -58,19 +58,31 @@ The first contact-wrapped prototype should preserve that boundary:
 - simulator wrapped-key artifacts remain local unless the caller explicitly uses
   the authenticated server metadata routes added for wrapped-key records
 
+The prototype should also follow the accepted durable-recipient-key model:
+private keys belong to accounts, devices, and trusted contacts; CEKs belong to
+incidents, streams, or bounded chunk groups; and wrapped-key records connect
+recipient key versions to those CEKs. Existing local artifact field names such
+as `media_key_id` can remain compatibility identifiers for the CEK until an
+explicit protocol/API naming migration is accepted.
+
+If old local prototype data or tests assumed one private-key identity per
+incident, regenerate or migrate those fixtures to recipient keys plus CEKs when
+they are touched. Do not add a simulator dual-stack compatibility layer unless
+a later migration issue proves that old data needs support.
+
 ## Prototype Model
 
 The simulator can model three local concepts:
 
 | Concept | Prototype treatment |
 |---|---|
-| Stream media key | Symmetric key used to encrypt chunks for one media stream. The current simulator key can stand in for this at first; a later simulator change can create one key per stream. |
+| Stream CEK | Symmetric content-encryption key used to encrypt chunks for one media stream. The current simulator key can stand in for this at first; a later simulator change can create one CEK per stream. |
 | Contact key pair | Development-only public/private key pair for a model trusted contact. Public metadata can be shared; private key material stays in local simulator files only. |
-| Wrapped media key | Encrypted copy of the stream media key for a contact public key. This is encrypted key material, not a raw key, but it should still be treated as sensitive access metadata. |
+| Wrapped-key record | Encrypted copy of the stream CEK for a contact public key. This is encrypted key material, not a raw key, but it should still be treated as sensitive access metadata. |
 
 The simulator should assign non-secret IDs separately from key material:
 
-- `media_key_id`: identifies the stream media key referenced by encrypted
+- `media_key_id`: identifies the stream CEK referenced by encrypted
   chunk headers and wrapped-key records
 - `contact_id`: identifies a model trusted contact in local simulator state
 - `contact_key_id`: identifies the contact public key used for wrapping
@@ -84,19 +96,19 @@ manifests, logs, command output, or server storage.
 
 1. The simulator creates an incident and media stream using the existing private
    API.
-2. The simulator creates or loads a stream media key. For the first prototype,
+2. The simulator creates or loads a stream CEK. For the first prototype,
    this may reuse the existing local simulator key file format; a follow-up can
    move to one key per stream.
 3. The simulator loads a local development contact registry containing contact
    public keys and local private keys for test unwrapping. Private keys must be
    stored only in local files with restrictive permissions where practical.
 4. Before or after uploading encrypted chunks, the simulator wraps the stream
-   media key for selected contact public keys.
+   CEK for selected contact public keys.
 5. The simulator writes a local development manifest or test artifact that
-   references the incident ID, stream ID, media key ID, contact key IDs, wrapping
+   references the incident ID, stream ID, CEK ID, contact key IDs, wrapping
    algorithm, and wrapped-key ciphertext.
-6. Bundle verification can use the local contact private key to unwrap the media
-   key, then decrypt the downloaded bundle locally. This remains a simulator
+6. Bundle verification can use the local contact private key to unwrap the CEK,
+   then decrypt the downloaded bundle locally. This remains a simulator
    smoke test, not backend behavior.
 
 The first implementation should prefer a local artifact alongside simulator
@@ -106,13 +118,25 @@ server schema or API commitment. Keep these artifacts in ignored local paths or
 temporary directories; do not commit them.
 
 The implemented simulator flow is opt-in with `--wrapped-key-output`. It creates
-or loads a local development contact key file, wraps the simulator media key
+or loads a local development contact key file, wraps the simulator CEK
 with the maintained `filippo.io/age` library using the `age-v1-x25519` profile,
 writes a local companion artifact, and verifies downloaded bundle decryption by
 reading the artifact and unwrapping through the development contact key. If
 `--contact-key-file` is omitted, the simulator uses
 `proofline-sim-contact.key.json` next to the wrapped-key artifact. Both files are
 local development state and should stay in ignored paths.
+
+This `age-v1-x25519` artifact is a simulator prototype only. The accepted first
+production v1 preview wrapping profile is documented in
+[post-quantum-envelope.md](post-quantum-envelope.md) with:
+
+```text
+wrapping_algorithm = proofline-pq-mlkem768-hkdfsha384-aes256gcm
+wrapping_algorithm_version = 1
+```
+
+Do not treat the simulator artifact as a production PQ test vector, runtime
+default, or compatibility fallback for real-user preview evidence.
 
 ## Development Manifest Shape
 
@@ -143,6 +167,7 @@ The manifest may include encrypted wrapped-key ciphertext and public wrapping
 metadata. It must not include:
 
 - raw media keys
+- raw CEKs
 - contact private keys
 - unwrapped shared secrets
 - plaintext chunk data
@@ -176,20 +201,17 @@ message layout, authentication, encoding, and random generation used by the
 wrapped-key ciphertext. The simulator records the profile as `age-v1-x25519` and
 rejects unsupported algorithms when reading artifacts.
 
-Other candidate directions for future production work remain:
+The accepted first production direction is now the pure post-quantum
+`ML-KEM-768 + HKDF-SHA384 + AES-256-GCM` profile. Future simulator PQ work
+should generate separate conformance fixtures for that profile instead of
+mutating the existing `age-v1-x25519` development artifact in place.
 
-- HPKE using a maintained implementation and a documented ciphersuite.
-- An `age`-style recipient stanza for development artifacts if the prototype
-  favors a file-oriented format.
-- A platform-compatible ECDH plus HKDF plus AEAD or key-wrap profile only if it
-  is a reviewed standard profile implemented through stable libraries or
-  platform APIs.
-
-The current Go toolchain provides documented primitives such as `crypto/ecdh`,
+The current Go toolchain provides documented primitives such as `crypto/mlkem`,
 `crypto/hkdf`, `crypto/rand`, and the existing AES-GCM code path. Those
-primitives are not enough by themselves to justify an ad hoc wrapping protocol.
-The design should choose or reference a reviewed profile rather than inventing
-message layout, key derivation context, or authentication rules locally.
+primitives are still not enough by themselves to justify an ad hoc wrapping
+protocol. Simulator or runtime PQ work must follow the accepted message layout,
+key derivation context, authentication rules, limits, and fail-closed behavior
+in [post-quantum-envelope.md](post-quantum-envelope.md).
 
 For future browser or mobile compatibility, the prototype should record:
 
@@ -203,12 +225,12 @@ For future browser or mobile compatibility, the prototype should record:
 
 ## Server Metadata
 
-Server storage of wrapped or encrypted media-key metadata is now limited to
+Server storage of wrapped or encrypted CEK/media-key metadata is now limited to
 grant-bound records created through authenticated private routes. A
 server-side metadata record stores:
 
 - incident ID and stream ID
-- media key ID
+- CEK/media key ID
 - recipient contact or grant identifier
 - contact public key ID and version
 - wrapping algorithm and version
@@ -216,10 +238,10 @@ server-side metadata record stores:
 - required public wrapping metadata, such as an ephemeral public key
 - creation time and rotation or revocation status
 
-It must not store raw media keys, contact private keys, plaintext, unwrapped
-shared secrets, browser fragment secrets, raw tokens, or server escrow
-material. It must not log wrapped-key ciphertext because that metadata is
-access-enabling even when it is not a raw key.
+It must not store raw CEKs, raw media keys, contact private keys, plaintext,
+unwrapped shared secrets, browser fragment secrets, raw tokens, or server
+escrow material. It must not log wrapped-key ciphertext because that metadata
+is access-enabling even when it is not a raw key.
 
 ## Validation
 
@@ -233,9 +255,9 @@ For the design-only milestone:
 
 For simulator implementation:
 
-- add tests that prove raw media keys and contact private keys are not written
-  to server manifests, logs, or bundle ZIP entries. Implemented for current
-  server bundle entries and manifests.
+- add tests that prove raw CEKs, raw media keys, and contact private keys are
+  not written to server manifests, logs, or bundle ZIP entries. Implemented for
+  current server bundle entries and manifests.
 - add tests for malformed wrapped-key metadata and unsupported algorithms.
   Implemented for local simulator artifacts.
 - verify downloaded bundles can be decrypted locally after unwrapping with a
@@ -247,7 +269,7 @@ For simulator implementation:
 
 ## Open Questions
 
-- Should the first simulator code use one media key per stream immediately, or
+- Should the first simulator code use one CEK per stream immediately, or
   keep the current one-key-per-run behavior while modeling `media_key_id`?
 - Which wrapping format best balances Go simulator simplicity, future browser
   support, and future mobile support?

@@ -6,9 +6,17 @@ import (
 	"github.com/open-proofline/server/internal/auth"
 )
 
+type privateAuthSource string
+
+const (
+	privateAuthSourceBearer    privateAuthSource = "bearer"
+	privateAuthSourceWebCookie privateAuthSource = "web_cookie"
+)
+
 type privatePrincipal struct {
-	Account auth.Account
-	Session auth.Session
+	Account    auth.Account
+	Session    auth.Session
+	AuthSource privateAuthSource
 }
 
 type privatePrincipalContextKey struct{}

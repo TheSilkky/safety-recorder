@@ -98,14 +98,30 @@ If Go code changed, run:
 gofmt -w ./cmd ./internal ./migrations
 go test ./...
 go vet ./...
+git diff --check
 ```
 
-If only Markdown changed, inspect docs and links manually. Go tests are not required unless code changed.
-
-If simulator behaviour is relevant:
+If only Markdown changed, run:
 
 ```bash
-SAFE_AUTH_BOOTSTRAP_SECRET='replace-with-local-bootstrap-secret' go run ./cmd/api
+scripts/check-markdown-links.py
+git diff --check
+```
+
+The local Markdown link checker validates local links and simple heading
+anchors in `README.md`, `AGENTS.md`, `SECURITY.md`, `docs/**/*.md`, and
+`codex/**/*.md`; it skips external URLs and fenced code examples. Go tests are
+not required unless code changed.
+
+If simulator behaviour is relevant, prefer TOML for repeatable smoke:
+
+```toml
+[auth]
+bootstrap_secret_file = "/path/to/local-bootstrap-secret"
+```
+
+```bash
+go run ./cmd/api --config /path/to/proofline-smoke.toml
 ```
 
 In another terminal, create the first local admin if the test database does not
@@ -156,8 +172,11 @@ gh pr create \
 - ...
 
 ## Validation
+- [ ] gofmt -w ./cmd ./internal ./migrations
 - [ ] go test ./...
 - [ ] go vet ./...
+- [ ] scripts/check-markdown-links.py, if docs or prompts changed
+- [ ] git diff --check
 "
 ```
 

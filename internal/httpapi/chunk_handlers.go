@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/open-proofline/server/internal/envelope/pq"
 	"github.com/open-proofline/server/internal/incidents"
 	"github.com/open-proofline/server/internal/storage"
 )
@@ -97,6 +98,9 @@ func (a *API) uploadChunk(w http.ResponseWriter, r *http.Request) {
 	if !a.validateChunkStream(w, r, incidentID, upload) {
 		return
 	}
+	if !a.validateChunkEnvelope(w, incidentID, upload) {
+		return
+	}
 	uploadLease, ok := a.acquireUploadCoordinationLease(w, r, incidentID, upload)
 	if !ok {
 		return
@@ -149,6 +153,10 @@ func (a *API) uploadChunk(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if !a.checkAccountBlobQuota(w, r, incident, upload.temp.ByteSize) {
+		return
+	}
+
 	storedPath, err := a.store.CommitTemp(r.Context(), upload.temp, incidentID, upload.streamID, upload.mediaType, upload.chunkIndex)
 	if errors.Is(err, storage.ErrAlreadyExists) {
 		if hasIdempotencyKey {
@@ -166,16 +174,17 @@ func (a *API) uploadChunk(w http.ResponseWriter, r *http.Request) {
 	}
 
 	chunk, err := a.repo.CreateChunk(r.Context(), incidents.CreateChunkParams{
-		IncidentID:       incidentID,
-		StreamID:         upload.streamID,
-		ChunkIndex:       upload.chunkIndex,
-		MediaType:        upload.mediaType,
-		StartedAt:        upload.startedAt,
-		EndedAt:          upload.endedAt,
-		OriginalFilename: upload.originalFilename,
-		StoredPath:       storedPath,
-		ByteSize:         upload.temp.ByteSize,
-		SHA256Hex:        upload.sha256Hex,
+		IncidentID:            incidentID,
+		StreamID:              upload.streamID,
+		ChunkIndex:            upload.chunkIndex,
+		MediaType:             upload.mediaType,
+		StartedAt:             upload.startedAt,
+		EndedAt:               upload.endedAt,
+		OriginalFilename:      upload.originalFilename,
+		StoredPath:            storedPath,
+		ByteSize:              upload.temp.ByteSize,
+		SHA256Hex:             upload.sha256Hex,
+		AccountBlobQuotaBytes: a.accountBlobQuotaBytes,
 	})
 	if errors.Is(err, incidents.ErrDuplicate) {
 		a.removeCommittedBlobAfterMetadataFailure(storedPath)
@@ -203,6 +212,11 @@ func (a *API) uploadChunk(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusConflict, "stream_not_open", "media stream is not open")
 		return
 	}
+	if errors.Is(err, incidents.ErrAccountBlobQuotaExceeded) {
+		a.removeCommittedBlobAfterMetadataFailure(storedPath)
+		writeAccountBlobQuotaExceeded(w)
+		return
+	}
 	if errors.Is(err, incidents.ErrNotFound) {
 		a.removeCommittedBlobAfterMetadataFailure(storedPath)
 		if upload.streamID != "" {
@@ -228,6 +242,30 @@ func (a *API) uploadChunk(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	writeJSON(w, http.StatusCreated, chunk)
+}
+
+func (a *API) checkAccountBlobQuota(w http.ResponseWriter, r *http.Request, incident incidents.Incident, additionalBytes int64) bool {
+	if incident.OwnerAccountID == "" || a.accountBlobQuotaBytes <= 0 || additionalBytes <= 0 {
+		return true
+	}
+	if additionalBytes > a.accountBlobQuotaBytes {
+		writeAccountBlobQuotaExceeded(w)
+		return false
+	}
+	currentBytes, err := a.repo.AccountCommittedBlobBytes(r.Context(), incident.OwnerAccountID)
+	if err != nil {
+		a.internalError(w, "read account blob quota usage", err)
+		return false
+	}
+	if currentBytes > a.accountBlobQuotaBytes-additionalBytes {
+		writeAccountBlobQuotaExceeded(w)
+		return false
+	}
+	return true
+}
+
+func writeAccountBlobQuotaExceeded(w http.ResponseWriter) {
+	writeError(w, http.StatusInsufficientStorage, "account_storage_quota_exceeded", "account storage quota exceeded")
 }
 
 func (a *API) reconcileChunk(w http.ResponseWriter, r *http.Request) {
@@ -500,6 +538,28 @@ func (a *API) validateChunkStream(w http.ResponseWriter, r *http.Request, incide
 	return true
 }
 
+func (a *API) validateChunkEnvelope(w http.ResponseWriter, incidentID string, upload chunkUpload) bool {
+	file, err := os.Open(upload.temp.Path)
+	if err != nil {
+		a.internalError(w, "open upload envelope", err)
+		return false
+	}
+	defer file.Close()
+
+	_, err = pq.ValidatePayloadFrameHeader(file, upload.temp.ByteSize, pq.PayloadIdentity{
+		IncidentID:  incidentID,
+		StreamID:    upload.streamID,
+		MediaType:   upload.mediaType,
+		ChunkIndex:  upload.chunkIndex,
+		PayloadType: pq.PayloadTypeChunk,
+	})
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid_envelope", "uploaded chunk must use the accepted post-quantum envelope profile")
+		return false
+	}
+	return true
+}
+
 func (a *API) replayEquivalentChunkIfPresent(w http.ResponseWriter, r *http.Request, incidentID string, upload chunkUpload, params incidents.UploadOperationParams) (bool, bool, bool) {
 	chunk, err := a.repo.GetChunkByIdentity(r.Context(), incidentID, upload.streamID, upload.mediaType, upload.chunkIndex)
 	if errors.Is(err, incidents.ErrNotFound) {
@@ -535,5 +595,7 @@ func (a *API) replayEquivalentChunkIfPresent(w http.ResponseWriter, r *http.Requ
 func (a *API) removeCommittedBlobAfterMetadataFailure(storedPath string) {
 	ctx, cancel := context.WithTimeout(context.Background(), rollbackBlobRemoveTimeout)
 	defer cancel()
-	_ = a.store.Remove(ctx, storedPath)
+	if err := a.store.Remove(ctx, storedPath); err != nil {
+		a.logInternalError("rollback committed blob cleanup", err, "stage", "metadata_failure")
+	}
 }

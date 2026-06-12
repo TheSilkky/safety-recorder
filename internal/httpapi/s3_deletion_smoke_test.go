@@ -205,7 +205,7 @@ func newS3DeletionSmokeApp(t *testing.T, store storage.BlobStore) (*testApp, *in
 
 	ctx := context.Background()
 	dataDir := t.TempDir()
-	conn, err := db.Open(ctx, filepath.Join(dataDir, "safety.db"))
+	conn, err := db.Open(ctx, filepath.Join(dataDir, "proofline.db"))
 	if err != nil {
 		t.Fatalf("open s3 deletion smoke db: %v", err)
 	}

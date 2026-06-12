@@ -19,6 +19,12 @@ access for authenticated account-owner or trusted-contact flows. A bearer
 public link should not automatically gain live chunk access just because it can
 read the incident summary or completed bundles.
 
+Future live access should also follow the capture stream variant model in
+[capture-stream-variants.md](capture-stream-variants.md): near-live
+reduced-quality chunks are preserved evidence, not disposable previews, and
+trusted clients must distinguish relay-fanned unconfirmed chunks from
+backend-confirmed evidence.
+
 The core boundary is:
 
 - completed bundles are stable encrypted ZIP evidence bundles
@@ -132,6 +138,8 @@ Allowed fields may include:
 
 - manifest version and `manifest_kind: "partial_stream_snapshot"`
 - incident ID and stream ID
+- capture stream group ID, variant role, and source segment identity after the
+  capture stream variant design is implemented
 - stream status
 - media type and optional display label
 - generated timestamp
@@ -156,6 +164,11 @@ Clients must treat partial manifests as snapshots. They may become stale as
 new chunks arrive, as a stream completes, or as a stream fails. A later
 implementation must define reconnect, polling, range, and cache invalidation
 behavior before adding routes.
+
+Partial manifests must not imply evidence supersession unless the backend has
+confirmed the replacement chunk and validated source-time coverage. Missing
+evidence-master coverage should be represented explicitly rather than hiding
+the lower-quality confirmed chunks that remain the best available evidence.
 
 ## Key Custody Dependencies
 
@@ -209,12 +222,14 @@ accepted:
    scoped for the live route class.
 2. Incident-mode and escalation behavior defines which modes may grant live
    access and who receives it.
-3. Key-custody behavior defines stream or session keys, wrapped-key timing,
+3. Capture stream variant behavior defines source-timeline grouping, variant
+   roles, backend-confirmed state, and evidence supersession rules.
+4. Key-custody behavior defines stream or session keys, wrapped-key timing,
    late-contact enrollment, rotation, and recovery behavior.
-4. Browser/client decryption trust model is accepted for live chunks.
-5. Partial manifest format, cache behavior, polling/reconnect semantics, and
+5. Browser/client decryption trust model is accepted for live chunks.
+6. Partial manifest format, cache behavior, polling/reconnect semantics, and
    failed-stream wording are documented.
-6. Tests cover route separation, no-store headers, token redaction, manifest
+7. Tests cover route separation, no-store headers, token redaction, manifest
    path safety, and the absence of raw keys and plaintext.
 
 Until then, keep the current backend behavior: public incident viewer metadata

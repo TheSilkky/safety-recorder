@@ -6,7 +6,7 @@ This is a planning and schema-design document for mode-driven behavior. The
 current backend implements optional nullable `incident_mode`, `capture_profile`,
 `escalation_policy`, and `sharing_state` metadata fields on the existing private
 incident create/read routes. Those fields do not add mobile clients, public
-account workflows, public `/v1` exposure, push notifications, emergency-services
+account workflows, broad public `/v1` exposure, push notifications, emergency-services
 integration, key custody, browser decryption, trusted-contact access, retention
 behavior, or new backend routes. Future account-owner, trusted-contact,
 public-link, admin/operator, and optional escrow role boundaries are documented
@@ -20,6 +20,9 @@ Core principles:
 
 - capture can be emergency or non-emergency
 - upload should preserve already-captured evidence if the device is lost, damaged, powered off, or taken
+- future capture may use multiple encrypted stream variants for one source
+  session, but reduced-quality near-live chunks must remain preserved evidence
+  unless a confirmed higher-quality variant covers the same source timeline
 - emergency-services contact should remain a user or trusted-contact action, not an automatic backend action
 - sharing, export, publication, and legal submission should be deliberate user-controlled steps
 - recording and sharing laws vary by jurisdiction, so future clients should include clear user-facing guidance without giving legal advice
@@ -48,6 +51,13 @@ Future implementation should keep these concepts separate:
 - User tags and notes are context metadata. They must not silently change access, key custody, notification, retention, or legal/export behavior.
 
 The exact public protocol field names may differ, but the distinction between mode, capture, escalation, and sharing should remain.
+
+Capture-profile design should also stay distinct from concrete stream variants.
+The current `MediaStream` is one upload lane. Future capture stream groups,
+variant roles, source timeline identity, and supersession rules are documented
+in [capture-stream-variants.md](capture-stream-variants.md). Incident mode or
+capture profile labels must not silently choose a canonical evidence variant,
+delete fallback chunks, or expose near-live chunks.
 
 ## Interaction Records
 
@@ -203,7 +213,8 @@ Future API changes should keep current behavior clear:
 
 - Current `/v1/incidents` creates generic incidents by default and accepts
   optional mode metadata.
-- Future public product API routes must wait for implemented authentication and authorization.
+- Future public product API route groups must wait for explicit authorization
+  and deployment review.
 - Future private/admin routes must remain on private listener groups and still require authentication after the future admin API exists.
 - Public incident viewer routes must stay read-only and must not become write, grant-management, admin, escrow, or decryption routes.
 - Bundle manifests may eventually include non-secret incident-mode summaries, but they must not include raw tokens, raw keys, plaintext, private deployment details, server paths, object keys, or unreviewed sensitive context.
@@ -225,6 +236,8 @@ Future design should decide:
 - whether safety-check retention changes after the check is completed, canceled, or missed
 - how legal/export state interacts with deletion, tombstones, backups, and revocation
 - how retention applies to wrapped keys, public links, trusted-contact grants, and bundle manifests
+- how retention applies to lower-quality stream variants after a future
+  evidence-master upload supersedes them for canonical review
 - what audit fields can be retained without leaking raw tokens, raw keys, plaintext, request bodies, uploaded bytes, or private deployment details
 
 The current backend implements generic incident deletion and optional
@@ -244,8 +257,10 @@ key-custody behavior depends on other designs:
 - [Key custody and emergency access](key-custody.md) for contact-wrapped keys, wrapped-key delivery, and phone-unavailable assumptions
 - [Browser-side decryption](browser-decryption.md) before any web viewer decrypts evidence
 - [Break-glass key access](break-glass-key-access.md) before any server-assisted emergency key access exists
+- [Notification boundary](notification-boundary.md) before SMS, push,
+  Messenger, email-alert, trusted-contact, missed-check-in, or no-account
+  viewer-link delivery exists
 - client and protocol repository planning before mobile or shared protocol behavior is implemented outside this server repository
-- notification delivery design before push, SMS, Messenger, email, or other trusted-contact delivery is added
 
 Any implementation that changes key custody, wrapped-key delivery, browser decryption, server-side decryption, or break-glass access is separate security-sensitive work and must update the security model, threat model, encryption docs, operational guidance, tests, and deployment warnings before or alongside code.
 
@@ -269,12 +284,14 @@ Not implemented today:
 - mode-driven access, capture, escalation, sharing, retention, viewer, or
   key-custody behavior
 - public account workflows
-- public `/v1` product authentication
+- a complete public `/v1` product deployment model
 - trusted-contact accounts
 - mobile clients
 - non-emergency interaction UX
 - dead-man switch notifications
 - push/SMS/Messenger integrations
+- email-alert or other provider notification delivery beyond account setup and
+  authentication email flows
 - production key custody
 - browser/client-side decryption
 - legal export workflow

@@ -1,8 +1,8 @@
 # Development
 
-Proofline currently contains a Go backend only. Keep changes small, boring, and testable. The Go module path is `github.com/open-proofline/server` at the repository root, release binaries use `proofline-server-*` names, and the published GHCR image is `ghcr.io/open-proofline/server`.
+Proofline currently contains a Go backend only. Keep changes small, boring, and testable. The Go module path is `github.com/open-proofline/server` at the repository root, release binaries use `proofline-server-*` names, the main server GHCR image is `ghcr.io/open-proofline/server`, and the stream-ingress relay GHCR image is `ghcr.io/open-proofline/stream-ingress`.
 
-Compatibility identifiers such as the v1 simulator encryption envelope and default SQLite filename may still use earlier `safety-recorder` names until separate protocol or data-layout migrations are explicitly performed.
+Current runtime protocol and default data-layout identifiers use Proofline names. Historical reports and archived prompts may still mention earlier `safety-recorder` identifiers.
 
 ## AI Assistance
 
@@ -18,8 +18,9 @@ For rollback points, scoped prompts, review steps, and backlog handling, see [co
 go.mod            root Go module for the server repository
 cmd/api           API server entry point
 cmd/simclient     simulator CLI
-internal/config   environment configuration, backend selectors, and HTTP timeout parsing
+internal/config   TOML/environment configuration, secret-file resolution, backend selectors, and HTTP timeout parsing
 internal/db       SQLite setup, schema_migrations, and compatibility migrations
+internal/email    outbound SMTP email sender boundary for registration verification
 internal/envelope client-side chunk encryption envelope helpers
 internal/httpapi  HTTP handlers, muxes, middleware, bundles, web assets
 internal/incidents incident, stream, chunk, checkin, and token models plus SQLite repository code
@@ -30,7 +31,7 @@ migrations/postgres embedded PostgreSQL schema
 compose/          local Docker Compose release-smoke stacks and runner script
 docs/              project documentation
 docs/reports/      public technical review reports and report prompts
-.dockerignore      root Docker build-context ignore file for Dockerfile
+.dockerignore      root Docker build-context ignore file for Dockerfile and Dockerfile.ingress
 ```
 
 See [code-map.md](code-map.md) for a package-level walkthrough.
@@ -79,12 +80,27 @@ a disposable PostgreSQL service using fixed CI-only credentials. That job is an
 additional integration signal; making it a required branch check is a separate
 maintainer ruleset decision.
 
+The CI PostgreSQL service image is pinned by digest for reproducibility. To
+refresh it, inspect the current tag with:
+
+```bash
+docker buildx imagetools inspect postgres:18-alpine
+```
+
+Then update the `postgres:18-alpine@sha256:...` value in
+`.github/workflows/ci.yml` and confirm the PostgreSQL metadata job still runs.
+
 Local Docker Compose smoke stacks for release preparation live in
 [../compose/](../compose/). They exercise the simulator against disposable
 SQLite/local, PostgreSQL/local, SQLite/S3-compatible MinIO, and full
-PostgreSQL/MinIO/Valkey backend combinations. These stacks are local
-development helpers, use fixed test credentials, publish API ports on loopback
-by default, and do not make Proofline production-ready public infrastructure.
+PostgreSQL/MinIO/Valkey backend combinations, and include an opt-in
+stream-ingress relay readiness smoke variant. These stacks are local
+development helpers, use fixed test credentials, publish API and relay ports on
+loopback by default, and do not make Proofline production-ready public
+infrastructure.
+The full PostgreSQL/MinIO/Valkey stack loads server settings from a
+compose-specific TOML file and fake local secret files so config-file and
+secret-file loading stay covered by the smoke path.
 
 ## Go Readability Standards
 
@@ -136,6 +152,10 @@ Readability refactors should preserve:
 - bundle format, ZIP entry naming, and encrypted evidence-bundle semantics
 - main `/v1`/viewer and private-admin route separation
 - logging exclusions for raw tokens, request bodies, uploaded bytes, Authorization headers, plaintext, raw keys, and future token-like values
+
+Logging changes should also follow the standard fields, safe error taxonomy,
+raw-error restrictions, redaction rules, and test expectations in
+[logging-requirements.md](logging-requirements.md).
 
 When a refactor touches security-sensitive paths, keep the old invariant visible in the new shape. For example, incident viewer code should still make it obvious that invalid, expired, and revoked tokens collapse into the same public error, and upload code should still make the temp-file, hash-verification, immutable-commit, and metadata-write order easy to follow.
 
@@ -205,6 +225,20 @@ When editing docs, keep these claims aligned:
 
 Do not claim production readiness unless deployment hardening has actually been implemented. Do not treat protocol or data-layout compatibility names as stale just because the repository, module, Docker image, and GHCR artifact names now use the Proofline namespace.
 
+Run the local Markdown link checker for documentation and reusable prompt
+changes:
+
+```bash
+scripts/check-markdown-links.py
+```
+
+The checker validates local links and simple heading anchors in `README.md`,
+`AGENTS.md`, `SECURITY.md`, `docs/**/*.md`, and `codex/**/*.md`. It skips
+external URLs and fenced code examples, uses only the Python standard library,
+and does not require network access, Node/npm, Docker, cloud services, or
+secrets. If the checker itself changes, also run
+`scripts/check-markdown-links.py --self-test`.
+
 ## Backlog Discipline
 
 New ideas discovered during unrelated work should become issues or backlog items unless they are required to finish the current task. Capture the context, acceptance criteria, tests, docs impact, and out-of-scope items instead of expanding the active diff.
@@ -233,6 +267,11 @@ Required checks:
 - `Go tests`
 - `Build Linux binary`
 - `Build Docker image`
+
+The CI workflow also builds the separate stream-ingress relay image in the
+`Build stream-ingress Docker image` job so PRs validate `Dockerfile.ingress`
+without publishing the image. Add it as a required check only after updating
+the exported rulesets deliberately.
 
 The rulesets allow merge, squash, and rebase merge methods. `Protect develop`
 and `Protect release/v*` require review thread resolution. `Protect main`
@@ -282,12 +321,12 @@ When creating PRs, set the intended base branch explicitly:
 ## CI And Release Automation
 
 The CI workflow runs on pull requests, all branch pushes, and `v*` tags. Pushes
-to `main`, `develop`, and `v*` tags publish Docker image tags to GHCR when
-package publishing is available. The `develop` branch publishes the mutable
-`develop` image tag plus a SHA tag. Workflow-level token permissions stay
-read-only. A tag-only binary attestation job can mint release attestations for
-`v*` tag pushes, and the trusted Docker publish job can mint and publish GHCR
-image attestations.
+to `main`, `develop`, and `v*` tags publish main server and stream-ingress
+Docker image tags to GHCR when package publishing is available. The `develop`
+branch publishes mutable `develop` image tags plus SHA tags. Workflow-level
+token permissions stay read-only. A tag-only binary attestation job can mint
+release attestations for `v*` tag pushes, and the trusted Docker publish job
+can mint and publish GHCR image attestations.
 For `v*` tags, CI also uploads the Linux amd64 binary as a GitHub Release asset.
 `packages: write` is granted only to the trusted Docker publish job.
 
@@ -302,8 +341,8 @@ publishing depend on that scan passing.
 
 Coverage output, `govulncheck`, builds, and artifact attestations are review
 signals. They do not prove that an artifact is vulnerability free, suitable for
-public production exposure, or safe to deploy with `/v1` reachable from the
-public internet.
+public production exposure, or safe to deploy with broad `/v1` access from the
+public internet without route-level deployment review.
 
 ## Pinned GitHub Actions
 
@@ -335,8 +374,8 @@ Release provenance attestations are generated by the CI workflow:
   pushes.
 - `Upload release binary` uploads `proofline-server-linux-amd64` to the matching
   GitHub Release after the binary attestation job passes.
-- `Publish Docker image` attaches an attestation to published GHCR images on
-  trusted `main`, `develop`, and `v*` tag pushes.
+- `Publish Docker image` attaches attestations to the published main server and
+  stream-ingress GHCR images on trusted `main`, `develop`, and `v*` tag pushes.
 
 The workflow keeps top-level permissions read-only. `id-token: write` and
 `attestations: write` are granted only to jobs that create attestations. The
@@ -387,7 +426,8 @@ does not prove that an artifact is vulnerability free or production-ready.
 
 ## Pinned Docker Base Images
 
-Base images in [../Dockerfile](../Dockerfile) are pinned with
+Base images in [../Dockerfile](../Dockerfile) and
+[../Dockerfile.ingress](../Dockerfile.ingress) are pinned with
 `tag@sha256:<digest>` references. Keep the human-readable tag before the digest
 so reviewers can see the intended release family while builds stay tied to an
 immutable manifest.
@@ -402,8 +442,8 @@ docker buildx imagetools inspect docker.io/library/alpine:3.23
 
 Dependabot is enabled for the `docker` ecosystem in
 [../.github/dependabot.yml](../.github/dependabot.yml) and monitors the
-root Dockerfile. Prefer reviewing those Dependabot pull requests for
-routine base-image refreshes.
+root Dockerfiles. Prefer reviewing those Dependabot pull requests for routine
+base-image refreshes.
 
 Update only the digest for the same intended tag unless the issue, Dependabot
 pull request, or release explicitly calls for a version-family change. Review
@@ -416,6 +456,12 @@ Only create `v*` tags after the release checklist is complete and the tagged
 commit has passed CI. If an emergency fix is needed, keep the change narrow,
 preserve review discipline, and document any skipped validation in the release
 or follow-up notes.
+
+Before any release, PR, report, or documentation claims `v1 preview`,
+`v1.0.0`, or real-user evidence-upload readiness, run the
+[v1 preview readiness checklist](v1-preview-readiness-checklist.md). If any
+hard blocker remains incomplete, keep release language to `pre-v1`,
+`experimental`, `planning`, or another limited claim.
 
 Codex-generated changes should be reviewed like any other contribution: inspect
 the diff, confirm the scope matches the issue, run the relevant validation
@@ -439,3 +485,6 @@ Before tagging:
 - verify private/public route separation is documented
 - verify raw tokens, request bodies, uploaded bytes, and Authorization headers are not logged
 - verify no local DBs, uploaded blobs, generated binaries, `.env` files, or temporary files are committed
+- for `v1 preview`, `v1.0.0`, or real-user evidence-upload readiness claims,
+  run [v1 preview readiness checklist](v1-preview-readiness-checklist.md) and
+  record the outcome

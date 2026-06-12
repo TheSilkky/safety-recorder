@@ -1,24 +1,70 @@
 # Encryption
 
-Proofline currently stores opaque encrypted chunk bytes. This document describes the first client-side chunk encryption envelope used by the Go simulator and tests.
+Proofline stores opaque encrypted chunk bytes. The current v1 preview runtime
+default is the accepted post-quantum payload envelope implemented in
+`internal/envelope/pq` and documented in
+[post-quantum-envelope.md](post-quantum-envelope.md). The older AES-256-GCM
+chunk envelope remains documented here as an explicit simulator/test
+compatibility profile only.
 
 This milestone does not add backend decryption. The server still validates SHA-256 over uploaded ciphertext bytes, stores those bytes in the configured blob backend, and emits encrypted ZIP evidence bundles.
 
-## Naming Compatibility
+## Runtime Default
 
-The current envelope scheme and associated-data prefix still use `safety-recorder` / `SafetyRecorderChunk` names for compatibility with existing simulator and test data. A future protocol migration may introduce a Proofline-named envelope version, but that must be explicit protocol work with test vectors and compatibility notes.
+The accepted default profile is:
+
+```text
+Scheme: proofline-pq-envelope-v1
+Suite: proofline-pq-mlkem768-hkdfsha384-aes256gcm-v1
+Payload envelope magic: PLPQENC1
+Wrapped-key ciphertext magic: PLPQWK1
+```
+
+For uploads, the server validates the public PQ payload frame header against
+the authenticated request identity before committing the chunk. It checks the
+scheme, suite, digest, AEAD identifier, stream ID, media type, chunk index,
+payload type, and that ciphertext bytes exist. It does not decrypt media, store
+raw CEKs, store ML-KEM shared secrets, or store recipient decapsulation keys.
+Missing, downgraded, legacy, or malformed envelope headers fail closed.
+
+Wrapped-key record creation validates the accepted PQ wrapping algorithm,
+version, public wrapping metadata, and base64url-wrapped-key frame shape without
+unwrapping the CEK. Bundle manifests identify the PQ scheme, suite, and profile
+and continue to omit raw keys, wrapped-key ciphertext, private deployment
+details, stored paths, and object keys.
+
+## Naming
+
+The explicit compatibility envelope uses Proofline-named identifiers. Earlier
+experimental `safety-recorder` envelope identifiers are not accepted by the
+current parser except in explicit negative tests that prove fail-closed
+behavior.
 
 ## Threat Model
 
-The v1 envelope protects chunk plaintext from the backend, SQLite, configured blob storage, and evidence bundle readers who do not have the client-held key. It does not protect metadata that is already sent to the backend, such as incident ID, stream ID, media type, chunk index, timestamps, byte size, and ciphertext hashes.
+The default PQ envelope protects chunk plaintext from the backend, SQLite,
+configured blob storage, and evidence bundle readers who do not have the
+client-held recipient key material plus wrapping records. It does not protect
+metadata that is already sent to the backend, such as incident ID, stream ID,
+media type, chunk index, timestamps, byte size, and ciphertext hashes.
 
-The simulator key handling in this repository is for development and test use only. Future production client key storage, sharing, recovery, trusted-contact access, account-owner access, and incident-mode sharing are out of scope for the current implementation and are designed separately in [key-custody.md](key-custody.md), [incident-modes.md](incident-modes.md), and [v1-access-control.md](v1-access-control.md).
+The simulator key handling in this repository is for development and test use
+only. Its default PQ key file stores local ML-KEM decapsulation seed material;
+the compatibility v1 key file stores a local development CEK. Future production
+client key storage, sharing, recovery, trusted-contact access, account-owner
+access, and incident-mode sharing are out of scope for the current
+implementation and are designed separately in [key-custody.md](key-custody.md),
+[incident-modes.md](incident-modes.md), and
+[v1-access-control.md](v1-access-control.md).
 
-## Scheme v1
+## Compatibility Scheme v1
+
+Use this only with explicit simulator compatibility flags such as
+`--envelope v1`. It is not the v1 preview runtime default.
 
 | Field | Value |
 |---|---|
-| Scheme | `safety-recorder-chunk-encryption-v1` |
+| Scheme | `proofline-chunk-encryption-v1` |
 | Algorithm | `AES-256-GCM` |
 | Key size | 32 bytes |
 | Nonce size | 12 bytes |
@@ -34,7 +80,7 @@ Generate a fresh random nonce for every encrypted chunk. Never reuse a nonce wit
 The AEAD associated data is an exact UTF-8 string:
 
 ```text
-SafetyRecorderChunk:v1
+ProoflineChunk:v1
 incident_id=<incident_id>
 stream_id=<stream_id>
 media_type=<media_type>
@@ -44,7 +90,7 @@ chunk_index=<chunk_index>
 There is a trailing newline after the `chunk_index` line. Example:
 
 ```text
-SafetyRecorderChunk:v1
+ProoflineChunk:v1
 incident_id=inc_abc
 stream_id=str_def
 media_type=audio
@@ -52,6 +98,13 @@ chunk_index=1
 ```
 
 Encryption and decryption must use identical associated data. IDs and media type must not contain newlines, and `chunk_index` must be positive. This matches streamed upload semantics; legacy unstreamed `chunk_index = 0` chunks cannot use this v1 associated data. Decryption fails when incident ID, stream ID, media type, or chunk index differs from the original metadata.
+
+The v1 associated data does not include capture stream group IDs, variant roles,
+source timeline identity, supersession state, or encrypted GPS/context
+bindings. Those fields are future planning work in
+[capture-stream-variants.md](capture-stream-variants.md) and
+[encrypted-location-context.md](encrypted-location-context.md), and they require
+explicit protocol and envelope review before they are implemented.
 
 ## Chunk Envelope
 
@@ -67,7 +120,7 @@ AES-GCM ciphertext including authentication tag
 Magic bytes are exactly:
 
 ```text
-SRCENC1
+PLCHNK1
 ```
 
 The JSON header is non-secret:
@@ -75,11 +128,11 @@ The JSON header is non-secret:
 ```json
 {
   "version": 1,
-  "scheme": "safety-recorder-chunk-encryption-v1",
+  "scheme": "proofline-chunk-encryption-v1",
   "algorithm": "AES-256-GCM",
   "key_id": "kid_...",
   "nonce_b64": "base64url-no-padding-12-byte-nonce",
-  "aad": "SafetyRecorderChunk:v1\nincident_id=inc_...\nstream_id=str_...\nmedia_type=audio\nchunk_index=1\n"
+  "aad": "ProoflineChunk:v1\nincident_id=inc_...\nstream_id=str_...\nmedia_type=audio\nchunk_index=1\n"
 }
 ```
 
@@ -87,21 +140,43 @@ The implementation rejects malformed magic, truncated envelopes, oversized heade
 
 Nonce and key values use URL-safe base64 without padding.
 
-## Simulator Key File
+## Simulator Key Files
 
-The simulator can load or create a local development key file:
+By default, the simulator can load or create a local PQ development key file:
 
 ```json
 {
   "version": 1,
-  "scheme": "safety-recorder-chunk-encryption-v1",
+  "scheme": "proofline-pq-envelope-v1",
+  "suite_id": "proofline-pq-mlkem768-hkdfsha384-aes256gcm-v1",
+  "recipient_key_id": "pqk1_...",
+  "recipient_key_version": 1,
+  "recipient_role": "trusted_contact",
+  "encapsulation_key_b64u": "base64url-no-padding-1184-byte-public-key",
+  "decapsulation_seed_b64u": "base64url-no-padding-64-byte-secret-seed",
+  "created_at": "2026-06-10T00:00:00Z"
+}
+```
+
+`recipient_key_id` is non-secret. `decapsulation_seed_b64u` is secret. Do not
+upload this file, add it to evidence bundles, commit it to git, paste it into
+logs, or place it in public documentation examples. The simulator writes key
+files with `0600` permissions where practical.
+
+With `--envelope v1`, the simulator can instead load or create the legacy
+compatibility key file:
+
+```json
+{
+  "version": 1,
+  "scheme": "proofline-chunk-encryption-v1",
   "algorithm": "AES-256-GCM",
   "key_id": "kid_...",
   "key_b64": "base64url-no-padding-32-byte-key"
 }
 ```
 
-`key_id` is non-secret. `key_b64` is secret. Do not upload this file, add it to evidence bundles, commit it to git, or paste it into logs. The simulator writes key files with `0600` permissions where practical.
+`key_id` is non-secret. `key_b64` is secret.
 
 ## Simulator Usage
 
@@ -113,9 +188,10 @@ PROOFLINE_SIM_PASSWORD='replace-with-a-long-local-password' \
 go run ./cmd/simclient --chunks 5 --interval 1s --download-bundle
 ```
 
-Expected output includes the non-secret key ID, encrypted chunk uploads, bundle
-download, and local decrypt verification. The simulator does not print raw
-keys, plaintext, key-file paths, or token-bearing viewer URLs.
+Expected output includes the non-secret recipient key ID, encrypted chunk
+uploads, bundle download, and local decrypt verification for the same run. The
+simulator does not print raw keys, plaintext, key-file paths, or token-bearing
+viewer URLs.
 
 To persist a simulator key locally:
 
@@ -133,7 +209,9 @@ PROOFLINE_SIM_PASSWORD='replace-with-a-long-local-password' \
 go run ./cmd/simclient --chunks 2 --interval 1s --download-bundle --key-file /tmp/proofline-sim.key.json
 ```
 
-Older examples may use `/tmp/safety-recorder-sim.key.json`; the file name is not part of the encryption protocol.
+Older local examples may have used `/tmp/safety-recorder-sim.key.json`; that
+name is historical and is not part of the current protocol or default
+simulator artifact layout.
 
 To preserve the old raw fake chunk behavior for development compatibility:
 
@@ -151,14 +229,19 @@ PROOFLINE_SIM_PASSWORD='replace-with-a-long-local-password' \
 go run ./cmd/simclient --download-bundle --verify-bundle-decryption=false
 ```
 
+Offline `--verify-bundle` remains available only for explicit
+`--envelope v1` compatibility bundles because PQ bundle ZIPs intentionally do
+not include the wrapped-key records needed for standalone decryption.
+
 ## What The Backend Sees
 
 The backend sees opaque uploaded bytes and client-provided metadata. It stores
-ciphertext and validates SHA-256 over the ciphertext envelope. Private
-owner-authenticated routes can store grant-bound wrapped-key records as
-encrypted metadata, but the backend does not parse raw media keys, store raw
-keys in SQLite, upload raw keys, decrypt chunks, or expose public decryption
-endpoints.
+ciphertext and validates SHA-256 over the ciphertext envelope. It also validates
+the non-secret PQ payload header and accepted-profile wrapped-key metadata.
+Private owner-authenticated routes can store grant-bound wrapped-key records as
+encrypted metadata, but the backend does not parse raw CEKs or media keys,
+store raw keys in SQLite, upload raw keys, decrypt chunks, or expose public
+decryption endpoints.
 
 Evidence bundles remain ZIP files containing encrypted `.enc` chunk files and JSON manifests. Bundle manifests include a non-secret hint that client-side encryption is expected and that the server does not decrypt.
 
@@ -170,13 +253,36 @@ Future incident modes do not change the backend ciphertext-only posture by thems
 
 The intended Apple-side equivalent is CryptoKit or Swift Crypto AES-GCM. This repository does not include iOS or Swift code yet.
 
-Future work includes production client key storage, Keychain integration, trusted-contact key access, key sharing, browser/client-side decryption, account-based access, incident-mode sharing, and playable export. The intended production key custody direction is a hybrid trusted-contact model documented in [key-custody.md](key-custody.md), with future access boundaries in [v1-access-control.md](v1-access-control.md), browser decryption constraints in [browser-decryption.md](browser-decryption.md), and optional break-glass design in [break-glass-key-access.md](break-glass-key-access.md). Password-derived keys, passphrases, production public-key wrapping, key escrow, backend decryption, and browser decryption are not implemented in this milestone.
+Future work includes production client key storage, Keychain integration,
+trusted-contact key access, key sharing, browser/client-side decryption,
+account-based access, incident-mode sharing, and any explicitly accepted future
+playable-export design. The intended production key custody direction is a
+hybrid trusted-contact model documented in [key-custody.md](key-custody.md), with
+future access boundaries in [v1-access-control.md](v1-access-control.md),
+browser decryption constraints in [browser-decryption.md](browser-decryption.md),
+and optional break-glass design in
+[break-glass-key-access.md](break-glass-key-access.md). The accepted first
+break-glass implementation boundary is wrapped-key release only; server
+escrow, backend decryption, raw server-held keys, plaintext export, and
+emergency-services integration require separate review. Password-derived keys,
+passphrases, production public-key wrapping, key escrow, backend decryption,
+and browser decryption are not implemented in this milestone.
+
+Future capture stream variant and supersession work may need new encrypted
+context bindings or source-timeline metadata. That must not be inferred from
+the current envelope; it is a separate design tracked in
+[capture-stream-variants.md](capture-stream-variants.md).
+
+The pure post-quantum envelope profile is the current server/simulator runtime
+default for v1 preview upload validation and reference flows. Future work still
+includes production client key storage, trusted-contact account delivery,
+browser decryption, and cross-repository protocol conformance tests.
 
 The simulator-only contact-wrapped key metadata prototype is implemented
 separately in
 [contact-wrapped-key-metadata-simulator.md](contact-wrapped-key-metadata-simulator.md).
 That prototype can model contact public keys, non-secret key IDs, and wrapped
-stream media keys in local development artifacts, but it does not change the
-current v1 envelope, make the backend store raw keys, or make the backend
-decrypt media. Server-side wrapped-key records remain encrypted metadata behind
+stream CEKs in local development artifacts, but it does not change the current
+v1 envelope, make the backend store raw keys, or make the backend decrypt
+media. Server-side wrapped-key records remain encrypted metadata behind
 authenticated owner routes.

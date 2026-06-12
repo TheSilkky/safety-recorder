@@ -72,6 +72,7 @@ After creating drafts:
 ```bash
 git diff --stat
 git diff -- .issue-review-drafts
+git diff --check
 ```
 
 Do not run Go tests unless code changed.

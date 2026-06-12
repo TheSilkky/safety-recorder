@@ -113,6 +113,10 @@ func (a *API) adminWebLogin(w http.ResponseWriter, r *http.Request) {
 		a.renderAdminWeb(w, http.StatusUnauthorized, makeAdminWebLoginData("Username or password is invalid."))
 		return
 	}
+	if !auth.CanAuthenticate(account) {
+		a.renderAdminWeb(w, http.StatusUnauthorized, makeAdminWebLoginData("Username or password is invalid."))
+		return
+	}
 	if account.Role != auth.RoleAdmin {
 		a.renderAdminWeb(w, http.StatusForbidden, makeAdminWebLoginData("Admin role is required."))
 		return
@@ -323,9 +327,10 @@ func (a *API) createAdminWebBootstrapAccount(r *http.Request) (auth.Account, int
 		return auth.Account{}, http.StatusBadRequest, err.Error(), nil, false
 	}
 	account, err := a.repo.CreateAccount(r.Context(), auth.CreateAccountParams{
-		Username:     username,
-		PasswordHash: passwordHash,
-		Role:         auth.RoleAdmin,
+		Username:          username,
+		SecondFactorSetup: auth.SecondFactorSetupStateSetupRequired,
+		PasswordHash:      passwordHash,
+		Role:              auth.RoleAdmin,
 	})
 	if errors.Is(err, auth.ErrDuplicate) {
 		return auth.Account{}, http.StatusConflict, "Username is already in use.", nil, false
@@ -387,6 +392,9 @@ func (a *API) adminWebPrincipal(r *http.Request) (privatePrincipal, bool, error)
 	if err != nil {
 		return privatePrincipal{}, false, err
 	}
+	if !auth.CanAuthenticate(account) {
+		return privatePrincipal{}, false, nil
+	}
 	return privatePrincipal{Account: account, Session: session}, true, nil
 }
 
@@ -420,7 +428,7 @@ func (a *API) renderAdminWeb(w http.ResponseWriter, status int, data adminWebDat
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(status)
 	if err := adminWebTemplate.Execute(w, data); err != nil {
-		a.logger.Error("render admin web page", "err", err)
+		a.logInternalError("render admin web page", err)
 	}
 }
 

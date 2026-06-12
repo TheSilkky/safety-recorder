@@ -57,18 +57,33 @@ or in optional S3-compatible object storage, supports optional
 Valkey/Redis-compatible short-lived coordination, and exposes a token-scoped
 read-only incident viewer.
 
-The product documentation now uses the name Proofline. Repository URLs, the Go module path, Docker image names, GHCR package names, and release binary names use the `open-proofline/server` repository namespace. Compatibility identifiers such as the v1 simulator encryption envelope, default SQLite filename, legacy `/e/{token}` aliases, and historical migration names may still use `safety-recorder` or `emergency` until separate protocol or data-layout migrations are explicitly performed.
+The product documentation now uses the name Proofline. Repository URLs, the Go module path, Docker image names, GHCR package names, release binary names, runtime protocol identifiers, and default data-layout identifiers use the `open-proofline/server` repository namespace and Proofline names. Historical reports, archived prompts, legacy `/e/{token}` aliases, and historical migration names may still mention `safety-recorder` or `emergency`.
 
 The long-term product direction is broader than emergency-only recording. Planned modes include emergency incidents, non-emergency interaction records, timed safety checks, and evidence notes. These are planning direction unless the reviewed tree contains first-class implementation.
 
 Core project boundaries:
 
-- The main `/v1` API uses local account sessions but is not a public product API; it must stay behind the reviewed deployment boundary, and public edges must not route `/v1/admin/...`.
+- The main `/v1` API uses local account sessions but is not a public product API; it must stay behind the reviewed deployment boundary, and public edges must not route `/admin/api/...`.
 - The current backend treats uploaded bytes as opaque ciphertext.
 - The current backend must not be described as production-ready public infrastructure.
-- Current backend incidents are generic unless the reviewed tree implements first-class incident modes, capture profiles, escalation policies, or sharing state.
-- Backend decryption, browser decryption, production key custody, break-glass access, user accounts, OAuth/JWT, push notifications, SMS, Messenger, web/iOS/Android clients, and first-class escalation policies are future or out-of-scope items unless explicitly implemented in the reviewed tree.
-- Future key custody, browser decryption, break-glass, incident-mode, and client prototype documents are design/planning guardrails, not shipped implementation.
+- Current backend incidents are generic by default. Optional incident-mode,
+  capture-profile, escalation-policy, and sharing-state metadata are labels
+  only unless the reviewed tree implements first-class behavior for them.
+- Backend decryption, browser decryption, production key custody, break-glass
+  access, trusted-contact accounts, public account portals, OAuth/JWT, push
+  notifications, SMS, Messenger, web/iOS/Android clients, and first-class
+  escalation policies are future or out-of-scope items unless explicitly
+  implemented in the reviewed tree.
+- The post-quantum envelope is documented as a v1 preview requirement, but it
+  is not shipped runtime behavior unless implementation files prove it.
+- V1 preview, v1.0.0, or real-user evidence-upload readiness claims must be
+  checked against `docs/v1-preview-readiness-checklist.md` when that file is
+  present. Passing ordinary tests is not enough to support preview-ready
+  language if checklist hard blockers remain incomplete.
+- Future key custody, browser decryption, break-glass, incident-mode, v1
+  direction, post-quantum envelope, and client prototype documents are
+  design/planning guardrails or future preview requirements, not shipped
+  implementation.
 - Do not treat documented future work as a current defect merely because it is not implemented.
 
 ## Validation Evidence Policy
@@ -225,6 +240,8 @@ Review these repository areas when present in the reviewed tree:
 Pay special attention to future-design and planning documents when present:
 
 - `docs/incident-modes.md`
+- `docs/v1-preview-direction.md`
+- `docs/v1-preview-readiness-checklist.md`
 - `docs/key-custody.md`
 - `docs/browser-decryption.md`
 - `docs/break-glass-key-access.md`
@@ -278,7 +295,13 @@ Do not recommend public GitHub issues for private vulnerabilities, raw tokens, s
 
 - Do not say `/v1` lacks public auth as a vulnerability unless the docs claim it is safe to expose publicly.
 - Do not say missing iOS, Android, web-client, accounts, incident modes, capture profiles, escalation policies, sharing state, browser decryption, production key custody, or break-glass behavior is a defect when docs mark those as future work.
-- Do not treat remaining `safety-recorder` or `emergency` compatibility identifiers as stale when docs explicitly state those names remain for protocol, data-layout, route-alias, or migration compatibility.
+- Do not describe the post-quantum envelope as implemented unless code proves
+  it. If reviewing a v1 preview readiness claim, verify that the post-quantum
+  envelope is implemented, documented, tested, and default.
+- Do not describe Proofline as ready for v1 preview, v1.0.0, or real-user
+  evidence upload unless the reviewed tree satisfies the v1 preview readiness
+  checklist hard blockers.
+- Do not treat historical `safety-recorder` or `emergency` references in reports, archived prompts, legacy route aliases, or historical migration names as stale product naming by themselves.
 - Do not claim emergency-services integration exists.
 - Do not imply Proofline reports crimes, contacts police, guarantees legal admissibility, or provides legal advice.
 - Do not treat planned interaction records as police-specific surveillance features; use neutral incident-capture framing.

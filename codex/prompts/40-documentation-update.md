@@ -14,6 +14,7 @@ Before making changes, read current source-of-truth files as relevant:
 - `CHANGELOG.md`
 - `SECURITY.md`
 - `docs/README.md`
+- `docs/v1-preview-direction.md`
 - relevant files in `docs/`
 - relevant source files
 - relevant tests
@@ -26,15 +27,15 @@ Do not rely on stale assumptions from this prompt if the repository has changed.
 - Do not add unrelated features.
 - Do not weaken security warnings.
 - Do not claim production readiness.
-- Do not expose `/v1` publicly.
-- Do not log raw tokens, request bodies, uploaded bytes, Authorization headers, plaintext, raw keys, or future token-like values.
-- Do not add React, Node, npm, OAuth, JWT, user accounts, SMS, Messenger, push notifications, Docker Compose, Kubernetes, cloud integrations, or public admin dashboard features unless explicitly requested.
+- Do not expose `/v1` as an unreviewed public catch-all; keep `/admin/api/...` and `/admin` off public edges.
+- Do not log raw tokens, request bodies, uploaded bytes, Authorization headers, plaintext, raw keys, wrapped-key ciphertext, private deployment details, stored paths, object keys, user safety data, or future token-like values; check logging documentation against `docs/logging-requirements.md`.
+- Do not add React, Node, npm, OAuth, JWT, new account-system features beyond the implemented local account/session and registration flows, SMS, Messenger, push notifications, Docker Compose, Kubernetes, cloud integrations, or public admin dashboard features unless explicitly requested.
 - Prefer Go standard library where practical.
 - Preserve private/public listener separation.
 - Preserve the current backend ciphertext-only implementation unless the task explicitly concerns key custody, emergency access, or decryption design.
 - Do not introduce backend decryption, raw server-held decryption keys, key escrow, browser decryption, or key-sharing behaviour as an incidental implementation detail.
 - Any key custody/decryption change must be an explicit security-sensitive task that updates the threat model, security model, encryption docs, tests, and operational guidance before or alongside implementation.
-- Future production key custody should assume the iPhone may be unavailable; keys must not exist solely on the client device.
+- Future production key custody should assume the user's phone may be unavailable; keys must not exist solely on the client device.
 - Server storage of wrapped/encrypted keys may be acceptable if explicitly designed.
 - Raw server-side key access or server-side decryption may be acceptable only as a deliberate break-glass/dead-man-switch/emergency-access mode with clear access controls, audit expectations, and deployment warnings.
 
@@ -47,6 +48,7 @@ Update only relevant files:
 - `CHANGELOG.md`
 - `SECURITY.md`, only for small consistency updates
 - `docs/README.md`
+- `docs/v1-preview-direction.md`
 - `docs/api.md`
 - `docs/architecture.md`
 - `docs/configuration.md`
@@ -96,7 +98,7 @@ Update only relevant files:
 ## Constraints
 
 - Do not imply evidence bundles are playable media.
-- Do not imply `/v1` is safe for public exposure.
+- Do not imply broad `/v1` public exposure is safe without route-level deployment review.
 - Do not claim the iOS client exists.
 - Do not claim production-readiness.
 - Do not describe future key custody/decryption as implemented unless it is implemented.
@@ -109,7 +111,14 @@ If only Markdown changed:
 ```bash
 git diff --stat
 git diff -- README.md docs codex AGENTS.md SECURITY.md CHANGELOG.md .github/ISSUE_TEMPLATE
+scripts/check-markdown-links.py
+git diff --check
 ```
+
+The Markdown link checker validates local links and simple heading anchors in
+`README.md`, `AGENTS.md`, `SECURITY.md`, `docs/**/*.md`, and `codex/**/*.md`;
+it intentionally skips external URLs and fenced code examples. If the checker
+itself changed, also run `scripts/check-markdown-links.py --self-test`.
 
 Go tests are not required unless code changed.
 

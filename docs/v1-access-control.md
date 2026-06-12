@@ -3,22 +3,30 @@
 This document defines the current local access-control boundary for Proofline's
 authenticated main `/v1` control plane and the future direction for broader
 product access.
-Local username/password accounts and opaque server-side sessions are implemented
-for the main `/v1` API. Account-owner contact public-key registration,
-sharing-grant metadata routes, and grant-bound wrapped-key record routes are
-implemented behind that same reviewed boundary. OAuth, JWT, public account
-portals, trusted-contact accounts, notifications, browser decryption, key
-escrow, and server-side decryption are not implemented.
+Local username/password accounts, opaque server-side sessions, and
+disabled-by-default email-verified self-registration are implemented for the
+main `/v1` API. Account-owner trusted-contact relationship lifecycle,
+contact public-key registration, sharing-grant metadata routes, and
+grant-bound wrapped-key record routes are implemented
+behind that same reviewed boundary. Owner-only `GET /v1/incidents` and
+`GET /v1/incidents/{incident_id}` return public-safe metadata for future
+web-client reads. Signed-in trusted-contact wrapped-key reads are implemented
+only for accepted relationships with a recipient-bound active contact key,
+active unexpired ciphertext grant, and active wrapped-key record. OAuth, JWT,
+public account portals, trusted-contact incident reads, notification delivery
+beyond registration email verification, browser decryption, key escrow, and
+server-side decryption are not implemented.
 
 ## Summary
 
 The current main `/v1` API requires a local account session for product routes
-other than login. Existing `/v1/admin/...` JSON routes are mounted on the main
-handler and require an admin account; they are not public-ready routes and must
-be blocked from public reverse-proxy routes. First-admin bootstrap is handled by
-the private `/admin` dashboard flow, and the private-admin listener serves only
-the `/admin` route tree. Local sessions reduce accidental unauthenticated
-access; they do not make `/v1` a public product API.
+other than login and applies app-level route-class limits. Existing
+`/admin/api/...` JSON routes are mounted only on the private-admin listener and
+require an admin account; they are not public-ready routes and must be blocked
+from public reverse-proxy routes. First-admin bootstrap is handled by the
+private `/admin` dashboard flow. The owner incident list/detail reads are
+intentionally public-safe for authenticated web-client use, but the current
+controls do not make every `/v1` route group a public product API.
 
 Future trusted-contact access, incident modes, notifications, production key
 custody, browser/client-side decryption, and optional break-glass access all need
@@ -57,12 +65,11 @@ Related source-of-truth docs:
 
 ## Non-Goals
 
-- No broad public exposure of the current main `/v1` API.
-- No OAuth, JWT, public account portal, broad CSRF framework, or
-  identity-provider implementation.
+- No broad unreviewed public exposure of the current main `/v1` API.
+- No OAuth, JWT, public account portal, or identity-provider implementation.
 - No web-client, iOS-client, Android-client, or protocol implementation.
-- No push notification, SMS, Messenger, email, or emergency-services
-  integration.
+- No push notification, SMS, Messenger, email notification beyond registration
+  verification, password recovery email, or emergency-services integration.
 - No backend decryption, browser decryption, key escrow, trusted-contact
   accounts, or break-glass implementation.
 - No public admin dashboard.
@@ -74,20 +81,38 @@ Today the backend has two listener groups:
 
 | Listener group | Current routes | Exposure |
 |---|---|---|
-| Main API and viewer | `/v1/...` with local account/session auth except login, including existing admin-only JSON APIs; `/i/{token}` plus legacy `/e/{token}` aliases and `/static/...` | Reviewed main API deployment boundary; viewer paths may be routed publicly when only viewer paths are forwarded. Public edges must not route `/v1/admin/...`. |
-| Private admin dashboard | `/admin`, `/admin/...`, `/admin/static/...` | Localhost, LAN, WireGuard, firewall, or strict private reverse proxy only. |
+| Main API and viewer | Non-admin `/v1/...` with local account/session auth except login, disabled-by-default registration, email verification, and app-level route-class limits; owner-only public-safe incident list/detail reads; current prototype/local `/i/{token}` viewer routes plus `/e/{token}` aliases only when explicit local/test compatibility needs them and `/static/...` | Reviewed main API deployment boundary; viewer paths may be routed publicly when only reviewed viewer paths are forwarded. Future canonical no-account viewer links belong to the web-client origin. Public edges must not route `/admin/api/...`. |
+| Private admin listener | `/admin/api/...`, `/admin`, `/admin/...`, `/admin/static/...` | Localhost, LAN, WireGuard, firewall, or strict private reverse proxy only. |
 
-Current `/v1` routes are on the main handler. The implemented local auth model has admin and user roles, incident ownership, hashed password storage,
-hashed session-token storage, session expiry, logout, account password change,
-admin account creation, admin session revocation, owner-scoped contact
-public-key metadata, owner-managed sharing grants, and owner-managed
-wrapped-key records. Sharing-grant and wrapped-key management are deliberately
+Current non-admin `/v1` routes are on the main handler. The implemented local auth model has admin and user roles, incident ownership, hashed password storage,
+hashed session-token storage, bearer sessions, optional browser cookie sessions
+with CSRF checks for unsafe cookie-authenticated requests, session expiry,
+logout, account password change, admin account creation, configurable
+registration modes with email verification for open self-registration, email
+challenge, TOTP, and configured WebAuthn second-factor setup that blocks main
+product routes for setup-incomplete accounts, admin session revocation, owner-scoped
+trusted-contact relationship metadata, owner-scoped contact public-key metadata,
+owner-managed sharing grants, owner-managed wrapped-key records, signed-in
+trusted-contact wrapped-key reads, and owner-only public-safe incident metadata
+list/detail reads. Contact
+public-key replacement and lost/revoked states are metadata-only lifecycle
+controls and do not rewrite old wrapped-key records or add backend decryption.
+Sharing-grant and wrapped-key management are deliberately
 stricter than ordinary incident reads: they require the authenticated account
 to own the incident, and an admin account cannot manage another account's
 grants or wrapped-key records through the product route set unless it is also
-the incident owner. Reverse-proxy rate
+the incident owner. Trusted-contact wrapped-key reads are read-only and require
+the authenticated recipient account to match the bound contact public key and an
+active accepted relationship. Reverse-proxy rate
 limiting, separate bind addresses, and private network placement are useful
 boundaries, but they are not a public authorization model.
+
+The private `/admin/api/...` JSON routes include admin account management,
+admin-global deletion, and legacy unowned incident review/reassignment. The
+legacy reassignment workflow lists only count-oriented candidate metadata and
+records controlled `assign_owner` or `keep_unowned` audit decisions; it does
+not expose evidence contents, free-form notes, token values, stored paths,
+plaintext, raw keys, or public viewer reassignment state.
 
 The private `/admin` surface is outside the `/v1` API namespace and remains on
 the private-admin listener. Its login and bootstrap forms reuse the same local account
@@ -155,8 +180,8 @@ describe policy shape; they are not implementation commitments.
 
 | Route class | Future exposure | Notes |
 |---|---|---|
-| Current main `/v1` routes | Main listener with local account/session authentication. | Includes login/logout, account/password routes, incident creation, stream creation, chunk upload, checkins, close/fail/complete actions, incident-token creation/revocation, contact public-key registration, owner-scoped sharing-grant management, authenticated chunk reads, and existing admin-only JSON APIs. Public edges must not route `/v1/admin/...`. |
-| Current private-admin dashboard routes | Private only with admin web session authentication or first-admin bootstrap secret. | Includes `/admin` bootstrap, login, logout, account-list, password-change, password-reset forms, and token-neutral `/admin/static/...` assets. |
+| Current main `/v1` routes | Main listener with local account/session authentication. | Includes login/logout, disabled-by-default registration/email verification, account/password routes, incident creation, stream creation, chunk upload, checkins, close/fail/complete actions, incident-token creation/revocation, contact public-key registration, owner-scoped sharing-grant management, and authenticated chunk reads. Public edges must not route `/admin/api/...`. |
+| Current private-admin routes | Private only with admin authentication or first-admin bootstrap secret. | Includes `/admin/api/...` JSON API routes, `/admin` bootstrap, login, logout, account-list, password-change, password-reset forms, and token-neutral `/admin/static/...` assets. |
 | Public product API routes | Public-authenticated only after account/device/contact authz, upload abuse controls, request-size controls, and audit are implemented. | Should cover non-admin product flows: account-owner incidents, capture uploads, trusted-contact access, account-owner public-link grant issuance/revocation, sharing, and wrapped-key delivery. |
 | Public-link viewer routes | Public read-only viewer routes can remain separate from the public product API. | Current `/i/{token}` and `/e/{token}` paths are bearer-token URLs and must not become write or admin routes. |
 | Private admin API routes | Own private listener and route tree, authenticated and authorized even when bound only to VPN, WireGuard, LAN, loopback, firewall, or a private proxy. | Should be narrow, audited, and safe for support without exposing evidence contents, raw tokens, raw keys, or plaintext by default. |
@@ -164,15 +189,29 @@ describe policy shape; they are not implementation commitments.
 
 Do not mount `/admin`, operator maintenance, escrow, or break-glass routes on
 the main API/viewer listener or on any public viewer edge route. Do not route
-`/v1/admin/...` from a public edge. Do not mount unauthenticated write,
+`/admin/api/...` from a public edge. Do not mount unauthenticated write,
 account, contact, admin, or escrow routes on any listener.
 
 ## Authentication Expectations
 
 The current main `/v1` API uses local username/password accounts, bcrypt
-password hashing, and opaque bearer session tokens. Raw session tokens are
-returned only to the client and stored only as hashes. Sessions expire and can
-be revoked.
+password hashing, configurable registration modes, and opaque server-side
+sessions. Public registration defaults to disabled. Open self-registration must
+be explicitly configured with SMTP email verification and activates accounts
+only after a single-use verification token is consumed. Paid registration fails
+closed until a future billing system exists. Bearer login returns the raw
+session token once for CLI/simulator/API clients. Optional browser login sets a
+dedicated HttpOnly cookie for future web-client calls and does not return the
+raw token in JSON. Stored session material is hashed. Sessions expire and can
+be revoked. New admin-created, `/admin` bootstrap, and open-registration
+accounts start as setup-incomplete for required second-factor setup; primary
+login can create sessions, but main product routes fail closed until email
+challenge, TOTP, or WebAuthn setup verifies the account and marks setup
+complete. Registration email verification does not count as second-factor
+setup. Active TOTP or WebAuthn factors also require each new
+primary-authenticated session to verify an active factor before product-route
+access. Existing migrated accounts default to `not_required` for preview
+compatibility.
 
 The first admin account is created through a one-time bootstrap flow:
 
@@ -183,9 +222,11 @@ The first admin account is created through a one-time bootstrap flow:
 - bootstrap is disabled after an admin account exists
 - operators should remove the bootstrap secret after creating the first admin
 
-A future public product API may choose cookie sessions, delegated identity,
-device-bound credentials, or another reviewed mechanism. That choice must be
-made in a separate task with tests and deployment guidance.
+Browser cookie sessions are implemented for the current main route tree and can
+authenticate admin JSON routes on the private-admin listener, but they do not
+make every `/v1` route group public-ready and do not make `/admin/api/...`
+public-ready. Any broader public product API still needs route-level reviewed
+exposure, abuse controls, audit behavior, TLS, and deployment guidance.
 
 Authentication must provide:
 
@@ -194,10 +235,12 @@ Authentication must provide:
 - credential expiry and rotation
 - revocation for lost devices, removed contacts, leaked links, and operator
   access changes
+- account-state enforcement so pending, disabled, suspended, or future
+  payment-pending accounts cannot authenticate as active users
 - replay and token-theft risk analysis
 - CSRF protection for browser-cookie flows that perform state-changing actions;
-  the current private `/admin` authenticated state-changing forms use a
-  session-bound token
+  the current main web-cookie flow and private `/admin` authenticated
+  state-changing forms use session-bound tokens
 - avoidance of raw credential logging, including Authorization headers and
   token-bearing URLs
 - clear handling for offline or intermittent capture devices
@@ -235,12 +278,15 @@ perform an equivalent check before returning data.
 ## Grant And Token Lifecycle
 
 The current implementation separates durable account identity, public-link
-viewer tokens, contact public-key metadata, owner-scoped sharing grants, and
-grant-bound wrapped-key records. Grant records are authorization metadata: they
-do not contain raw keys or plaintext and do not create trusted-contact
-sessions. Wrapped-key records contain encrypted media-key material plus public
-wrapping metadata and are delivered only while the bound grant and contact key
-remain active.
+viewer tokens, trusted-contact relationship metadata, contact public-key
+metadata, owner-scoped sharing grants, and grant-bound wrapped-key records.
+Relationship records are identity and lifecycle metadata only: they do not
+contain raw keys, wrapped-key ciphertext, plaintext, or notification payloads,
+and a viewer-token holder does not become a trusted contact by opening a link.
+Grant records are authorization metadata: they do not contain raw keys or
+plaintext and do not create trusted-contact sessions. Wrapped-key records
+contain encrypted media-key material plus public wrapping metadata and are
+delivered only while the bound grant and contact key remain active.
 
 Current and expected grant types:
 
@@ -273,11 +319,15 @@ viewer tokens indistinguishable to the public viewer.
 Current sharing grants can be scoped to an incident or one stream, can expire,
 and can be revoked while retaining minimal audit metadata. Contact public keys
 are versioned per contact; only active key versions can receive new grants.
-Revoked contact keys cannot be reactivated.
+Replaced, revoked, and lost contact keys cannot be reactivated.
 Current wrapped-key delivery is owner-authenticated through private `/v1`
-routes. Revoked or expired grants, inactive contact public keys, and revoked or
-rotated wrapped-key records are filtered out of list and read responses. Public
-viewer tokens do not receive wrapped keys.
+routes and trusted-contact-authenticated through read-only
+`/v1/trusted-contact/...` wrapped-key routes. Trusted-contact reads require an
+accepted relationship, a contact public key bound to the authenticated
+recipient account, an active unexpired grant authorizing ciphertext access, and
+an active wrapped-key record. Revoked or expired grants, inactive contact
+public keys, and revoked or rotated wrapped-key records are filtered out of
+list and read responses. Public viewer tokens do not receive wrapped keys.
 
 ## Incident Mode Policy
 
@@ -367,9 +417,8 @@ incremental:
 
 1. Keep current main `/v1` product routes behind the deployment's reviewed
    boundary and authenticated with local sessions unless the route is explicitly
-   login. Keep `/admin` dashboard routes on the private-admin listener and
-   block `/v1/admin/...` from public reverse-proxy routes until a future
-   private admin API route group is explicitly designed.
+   login. Keep `/admin` dashboard routes and `/admin/api/...` JSON routes on the
+   private-admin listener and block them from public reverse-proxy routes.
 2. Keep contact public-key registration, sharing-grant management, and
    wrapped-key record delivery owner scoped while defining device,
    trusted-contact, public-link, operator, and optional escrow data model
@@ -378,7 +427,7 @@ incremental:
    API, and public incident viewer behavior in design and tests before changing
    exposure.
 4. Extend authentication and authorization behind private deployments first,
-   without changing public exposure.
+   without broadening public exposure.
 5. Add audited grant lifecycle behavior for incident-scoped access.
 6. Preserve the separately bound private-admin listener before adding more
    operator or admin routes, and require admin authentication even for VPN-only
@@ -398,8 +447,8 @@ deployment docs before or alongside implementation.
 
 ## Implementation Prerequisites
 
-Before any public product API exposure or expanded private admin API
-implementation, a future implementation task must define and test:
+Before any broad public product API exposure or broader private admin API
+expansion, a future implementation task must define and test:
 
 - concrete authentication mechanism for the new exposure class
 - authorization policy and role/grant model beyond the current local user/admin
