@@ -595,5 +595,7 @@ func (a *API) replayEquivalentChunkIfPresent(w http.ResponseWriter, r *http.Requ
 func (a *API) removeCommittedBlobAfterMetadataFailure(storedPath string) {
 	ctx, cancel := context.WithTimeout(context.Background(), rollbackBlobRemoveTimeout)
 	defer cancel()
-	_ = a.store.Remove(ctx, storedPath)
+	if err := a.store.Remove(ctx, storedPath); err != nil {
+		a.logInternalError("rollback committed blob cleanup", err, "stage", "metadata_failure")
+	}
 }
