@@ -253,7 +253,20 @@ Future incident modes do not change the backend ciphertext-only posture by thems
 
 The intended Apple-side equivalent is CryptoKit or Swift Crypto AES-GCM. This repository does not include iOS or Swift code yet.
 
-Future work includes production client key storage, Keychain integration, trusted-contact key access, key sharing, browser/client-side decryption, account-based access, incident-mode sharing, and playable export. The intended production key custody direction is a hybrid trusted-contact model documented in [key-custody.md](key-custody.md), with future access boundaries in [v1-access-control.md](v1-access-control.md), browser decryption constraints in [browser-decryption.md](browser-decryption.md), and optional break-glass design in [break-glass-key-access.md](break-glass-key-access.md). Password-derived keys, passphrases, production public-key wrapping, key escrow, backend decryption, and browser decryption are not implemented in this milestone.
+Future work includes production client key storage, Keychain integration,
+trusted-contact key access, key sharing, browser/client-side decryption,
+account-based access, incident-mode sharing, and any explicitly accepted future
+playable-export design. The intended production key custody direction is a
+hybrid trusted-contact model documented in [key-custody.md](key-custody.md), with
+future access boundaries in [v1-access-control.md](v1-access-control.md),
+browser decryption constraints in [browser-decryption.md](browser-decryption.md),
+and optional break-glass design in
+[break-glass-key-access.md](break-glass-key-access.md). The accepted first
+break-glass implementation boundary is wrapped-key release only; server
+escrow, backend decryption, raw server-held keys, plaintext export, and
+emergency-services integration require separate review. Password-derived keys,
+passphrases, production public-key wrapping, key escrow, backend decryption,
+and browser decryption are not implemented in this milestone.
 
 Future capture stream variant and supersession work may need new encrypted
 context bindings or source-timeline metadata. That must not be inferred from

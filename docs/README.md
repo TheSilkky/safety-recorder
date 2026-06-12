@@ -37,7 +37,7 @@ This directory contains the detailed documentation for Proofline Server, the Go 
 | [Contact-wrapped key metadata simulator prototype](contact-wrapped-key-metadata-simulator.md) | Simulator-only prototype for modeling trusted-contact public keys, non-secret key IDs, wrapped stream CEKs, and safe development metadata without production key custody. |
 | [Browser-side decryption](browser-decryption.md) | Future incident viewer decryption options, same-origin trust limits, static/signed viewer gate, risks, and phased direction. |
 | [Live partial stream access boundary](live-partial-stream-access-boundary.md) | Future live or partial stream access roles, stream-state exposure, partial manifests, caching, and key-custody dependencies. |
-| [Break-glass key access](break-glass-key-access.md) | Future optional server-assisted emergency key access and dead-man-switch design. |
+| [Break-glass key access](break-glass-key-access.md) | Future optional server-assisted emergency key access and dead-man-switch policy boundary, including wrapped-key-release-first guidance. |
 | [API](api.md) | Current main `/v1` routes, private `/admin` dashboard routes, request examples, response examples, and bundle formats. |
 | [Deployment](deployment.md) | Local, Docker, SQLite WAL operations, reverse proxy, TLS, and public exposure notes. |
 | [Retention, backup, and deletion](retention-backup-deletion.md) | Operational policy for evidence lifecycle, backups, restores, and deletion limits. |

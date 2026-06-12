@@ -126,6 +126,9 @@ encrypted evidence bundles.
   browser decryption constraints are documented in
   [browser-decryption.md](browser-decryption.md), and server-assisted access
   design is documented in [break-glass-key-access.md](break-glass-key-access.md).
+  The accepted future break-glass boundary is wrapped-key release first; server
+  unwrapping, raw server-held keys, backend decryption, plaintext export, and
+  emergency-services contact require separate security-sensitive review.
 
 ## Trust Boundaries
 
@@ -344,6 +347,9 @@ Future incident-mode work should treat these as explicit design risks rather tha
 - incident mode, capture profile, escalation policy, sharing, export, publication, and legal submission are distinct actions and should not be collapsed into capture
 - safety-check or dead-man switch notifications may create false alarms if timers, connectivity, or contact workflows are poorly designed
 - trusted contacts need clear context and should decide whether to contact emergency services unless a future emergency-services integration is explicitly implemented
+- offline-device, missed-check-in, cancellation, and contact-review policy must
+  distinguish metadata review from wrapped-key release and must fail closed
+  when authorization or policy state cannot be proven
 - account-owner, trusted-contact, admin/operator, public-link, and optional
   escrow access must remain separated before public account systems exist; see
   [v1-access-control.md](v1-access-control.md)
@@ -490,5 +496,7 @@ before they are described as a reviewed v1 preview path.
 - Prototype browser decryption only after accepting the browser trust model,
   malicious-server limitations, and the static/signed or native/offline trust
   gate documented in [browser-decryption.md](browser-decryption.md).
-- Treat server-assisted break-glass access as an optional future mode only after explicit policy, audit, and deployment design.
+- Treat server-assisted break-glass access as an optional future mode only after
+  explicit policy, audit, deployment design, and a wrapped-key-release-first
+  decision. Server escrow or backend decryption requires a separate review.
 - Review deployment logging so raw tokens are not captured outside the Go server.
