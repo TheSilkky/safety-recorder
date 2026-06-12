@@ -74,6 +74,11 @@ separable from broader cluster work:
 - relay readiness categories that report only manual ready state, core
   forwarding configuration, upload readiness, and temp-staging pressure without
   exposing labels, URLs, paths, counts, credentials, or per-user state
+- a separate relay container build in `Dockerfile.ingress`, trusted GHCR
+  publishing as `ghcr.io/open-proofline/stream-ingress`, and an opt-in
+  loopback-bound Compose relay smoke variant that checks relay readiness and
+  route-surface boundaries without making the relay production-ready public
+  infrastructure
 
 Those features do not make `/v1` production-ready public infrastructure. The
 relay exposes only `/health/live`, `/health/ready`, and

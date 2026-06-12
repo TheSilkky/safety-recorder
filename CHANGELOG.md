@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Added a separate stream-ingress relay container build and local relay Compose
+  smoke path, with PR CI building `Dockerfile.ingress`, trusted GHCR publishing
+  for `ghcr.io/open-proofline/stream-ingress`, loopback-bound readiness smoke
+  checks, and docs that keep relay packaging separate from production
+  deployment readiness.
+
 - Renamed private-admin JSON API routes into the `/admin/api/...` namespace,
   removed the old JSON route aliases, and updated listener-boundary tests and
   docs so admin JSON, the `/admin` dashboard, and public viewer/main routes

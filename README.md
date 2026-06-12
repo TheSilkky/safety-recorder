@@ -7,12 +7,13 @@
 [![Status: Experimental](https://img.shields.io/badge/status-experimental-orange.svg)](#security-warning)
 [![Security Policy](https://img.shields.io/badge/security-policy-blue.svg)](SECURITY.md)
 [![GHCR](https://img.shields.io/static/v1?label=GHCR&message=ghcr.io%2Fopen-proofline%2Fserver&color=blue&logo=github)](https://github.com/orgs/open-proofline/packages/container/package/server)
+[![Relay GHCR](https://img.shields.io/static/v1?label=Relay%20GHCR&message=ghcr.io%2Fopen-proofline%2Fstream-ingress&color=blue&logo=github)](https://github.com/orgs/open-proofline/packages/container/package/stream-ingress)
 
 Proofline Server is the experimental Go server backend for encrypted incident capture. It receives already-encrypted recording chunks through authenticated main `/v1` routes, stores metadata in SQLite by default or optional PostgreSQL, keeps encrypted blobs on local disk by default or in optional S3-compatible object storage, enforces default local staging and account-scoped committed blob quotas, serves a private admin dashboard under `/admin`, uses optional Valkey/Redis-compatible coordination for startup checks, route-class counters, and short-lived complete-upload leases when explicitly configured, supports optional browser cookie sessions for a future web client, supports disabled-by-default configurable account registration with SMTP-backed email verification for open self-hosted registration, supports email challenge, TOTP, and disabled-by-default WebAuthn/FIDO2 passkey or roaming security-key second-factor setup for account gating, supports private-admin assisted second-factor reset for lost-factor recovery, and exposes a token-scoped read-only viewer for incident review.
 
 > Repository role: this repository is the server/backend component only. In the multi-repo layout it is `open-proofline/server`, not the full Proofline product suite.
 >
-> Artifact note: the Go module path is `github.com/open-proofline/server`, the published GHCR image is `ghcr.io/open-proofline/server`, and release binaries use `proofline-server-*` names. Current runtime protocol and default data-layout identifiers use Proofline names. Historical reports and archived prompts may still mention earlier `safety-recorder` identifiers.
+> Artifact note: the Go module path is `github.com/open-proofline/server`, the main server GHCR image is `ghcr.io/open-proofline/server`, the stream-ingress relay GHCR image is `ghcr.io/open-proofline/stream-ingress`, and release binaries use `proofline-server-*` names. Current runtime protocol and default data-layout identifiers use Proofline names. Historical reports and archived prompts may still mention earlier `safety-recorder` identifiers.
 
 ## Security Warning
 
@@ -183,7 +184,8 @@ escrow.
 - Simulator CLI for direct main-API encrypted upload, check-in, stream
   completion, bundle download/decrypt-verification, and durable
   desktop-recorder staging flows
-- Docker image build and GitHub Actions / GHCR publishing
+- Docker image builds and GitHub Actions / GHCR publishing for the main server
+  image and the stream-ingress relay image
 
 ## What It Is Not Yet
 
@@ -318,6 +320,7 @@ Build from the repository root:
 
 ```bash
 docker build -t proofline-server .
+docker build -f Dockerfile.ingress -t proofline-stream-ingress .
 ```
 
 Run with local-only port publishing and a named data volume:
@@ -341,6 +344,12 @@ For custom container configuration, mount a reviewed TOML file over
 `/etc/proofline/proofline.toml`; the image entrypoint already passes that path
 with `--config`. Keep real secrets in mounted secret files rather than in
 committed TOML.
+
+The relay image builds `cmd/stream-ingress` only and is published separately as
+`ghcr.io/open-proofline/stream-ingress`. It exposes only the relay listener
+inside the container; local Compose relay smoke remains loopback-bound and does
+not make the relay or the main `/v1` API production-ready public
+infrastructure.
 
 ## Documentation
 
