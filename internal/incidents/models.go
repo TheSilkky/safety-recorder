@@ -101,6 +101,9 @@ const (
 	IncidentDeletionSourceAccountRequest = "account_request"
 	// IncidentDeletionSourceAdminRequest records an admin-wide private request.
 	IncidentDeletionSourceAdminRequest = "admin_request"
+	// IncidentDeletionSourceOperatorCLI records a trusted-shell local operator
+	// command request.
+	IncidentDeletionSourceOperatorCLI = "operator_cli"
 	// IncidentDeletionSourceRetentionPolicy records an automatic retention decision.
 	IncidentDeletionSourceRetentionPolicy = "retention_policy"
 

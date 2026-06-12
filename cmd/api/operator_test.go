@@ -266,11 +266,133 @@ func TestRunOperatorDeletionStatusOutputsSafeRetryCategories(t *testing.T) {
 	assertOperatorOutputSafe(t, out.String())
 }
 
+func TestRunOperatorRequestDeletionOutputsSafeJSON(t *testing.T) {
+	ctx := context.Background()
+	repo := &fakeOperatorRepository{
+		requestStatus: incidents.IncidentDeletionStatus{
+			DecisionID:     "del_safe",
+			IncidentID:     "inc_safe",
+			Source:         incidents.IncidentDeletionSourceOperatorCLI,
+			ReasonCode:     "operator_review",
+			ActorAccountID: "acct_operator",
+			AllowOpen:      true,
+			State:          incidents.IncidentDeletionStatePending,
+			ItemCount:      2,
+			RequestedAt:    time.Date(2026, 6, 1, 10, 0, 0, 0, time.UTC),
+			UpdatedAt:      time.Date(2026, 6, 1, 10, 0, 0, 0, time.UTC),
+		},
+	}
+	var out bytes.Buffer
+
+	err := runOperatorRequestDeletion(ctx, []string{
+		"--incident-id", "inc_safe",
+		"--reason-code", " operator_review ",
+		"--actor-account-id", "acct_operator",
+		"--allow-open",
+	}, &out, config.Config{
+		Backends: config.BackendSelection{Metadata: config.MetadataBackendSQLite},
+	}, repo)
+	if err != nil {
+		t.Fatalf("run request deletion: %v", err)
+	}
+
+	var decoded operatorRequestDeletionOutput
+	if err := json.Unmarshal(out.Bytes(), &decoded); err != nil {
+		t.Fatalf("decode output: %v", err)
+	}
+	if decoded.Type != "request_deletion" ||
+		decoded.ReadOnly ||
+		decoded.Status.DecisionID != "del_safe" ||
+		decoded.Status.Source != incidents.IncidentDeletionSourceOperatorCLI ||
+		decoded.Status.ReasonCode != "operator_review" ||
+		!decoded.Status.AllowOpen {
+		t.Fatalf("unexpected request deletion output: %+v", decoded)
+	}
+	if repo.request.IncidentID != "inc_safe" ||
+		repo.request.Source != incidents.IncidentDeletionSourceOperatorCLI ||
+		repo.request.ReasonCode != "operator_review" ||
+		repo.request.ActorAccountID != "acct_operator" ||
+		!repo.request.AllowOpen {
+		t.Fatalf("unexpected request params: %+v", repo.request)
+	}
+	assertOperatorOutputSafe(t, out.String())
+}
+
+func TestRunOperatorRequestDeletionRequiresExplicitInputs(t *testing.T) {
+	ctx := context.Background()
+	tests := []struct {
+		name string
+		args []string
+		want string
+	}{
+		{
+			name: "missing incident",
+			args: []string{"--reason-code", "operator_review"},
+			want: "incident-id",
+		},
+		{
+			name: "missing reason",
+			args: []string{"--incident-id", "inc_safe"},
+			want: "reason-code",
+		},
+		{
+			name: "free-form reason",
+			args: []string{"--incident-id", "inc_safe", "--reason-code", "private note text"},
+			want: "short non-sensitive code",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := runOperatorRequestDeletion(ctx, tt.args, &bytes.Buffer{}, config.Config{}, &fakeOperatorRepository{})
+			if err == nil || !strings.Contains(err.Error(), tt.want) {
+				t.Fatalf("error = %v, want containing %q", err, tt.want)
+			}
+			var operatorErr operatorError
+			if !errors.As(err, &operatorErr) {
+				t.Fatalf("expected operator error wrapper, got %T", err)
+			}
+			if operatorErr.operation != "request_deletion" || operatorErr.category != "invalid_config_value" {
+				t.Fatalf("operator error operation=%q category=%q", operatorErr.operation, operatorErr.category)
+			}
+		})
+	}
+}
+
+func TestRunOperatorRequestDeletionRejectsOpenIncidentByDefault(t *testing.T) {
+	ctx := context.Background()
+	repo := &fakeOperatorRepository{requestErr: incidents.ErrInvalidState}
+	var out bytes.Buffer
+
+	err := runOperatorRequestDeletion(ctx, []string{
+		"--incident-id", "inc_open",
+		"--reason-code", "operator_review",
+	}, &out, config.Config{
+		Backends: config.BackendSelection{Metadata: config.MetadataBackendSQLite},
+	}, repo)
+	if !errors.Is(err, incidents.ErrInvalidState) {
+		t.Fatalf("error = %v, want ErrInvalidState", err)
+	}
+	if repo.request.AllowOpen {
+		t.Fatalf("allow_open = true, want default false")
+	}
+	var operatorErr operatorError
+	if !errors.As(err, &operatorErr) {
+		t.Fatalf("expected operator error wrapper, got %T", err)
+	}
+	if operatorErr.operation != "request_deletion" || operatorErr.category != "invalid_state" {
+		t.Fatalf("operator error operation=%q category=%q", operatorErr.operation, operatorErr.category)
+	}
+	assertOperatorOutputSafe(t, out.String())
+}
+
 type fakeOperatorRepository struct {
 	candidates          []incidents.RetentionDeletionCandidate
 	modeAwareIncidents  []incidents.ModeAwareRetentionPreviewIncident
 	status              incidents.IncidentDeletionJobStatus
+	requestStatus       incidents.IncidentDeletionStatus
+	request             incidents.IncidentDeletionRequest
 	err                 error
+	requestErr          error
 	cutoff              time.Time
 	staleDeletingBefore time.Time
 	limit               int
@@ -304,6 +426,17 @@ func (r *fakeOperatorRepository) GetIncidentDeletionJobStatus(_ context.Context,
 	r.limit = limit
 	r.staleDeletingBefore = staleDeletingBefore
 	return r.status, nil
+}
+
+func (r *fakeOperatorRepository) RequestIncidentDeletion(_ context.Context, params incidents.IncidentDeletionRequest) (incidents.IncidentDeletionStatus, error) {
+	r.request = params
+	if r.requestErr != nil {
+		return incidents.IncidentDeletionStatus{}, r.requestErr
+	}
+	if r.err != nil {
+		return incidents.IncidentDeletionStatus{}, r.err
+	}
+	return r.requestStatus, nil
 }
 
 func assertOperatorOutputSafe(t *testing.T, output string) {

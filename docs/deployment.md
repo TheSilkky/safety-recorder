@@ -258,6 +258,21 @@ The status output includes deletion decision counts, retry categories, and
 runnable job summaries. Keep this command local/private; do not proxy it through
 public viewer routes or a public dashboard.
 
+To request one incident deletion decision from a trusted local operator shell,
+use the configured metadata backend directly through the server binary:
+
+```bash
+proofline-server operator request-deletion \
+  --incident-id inc_... \
+  --reason-code operator_review
+```
+
+The command rejects open incidents unless `--allow-open` is supplied. It prints
+only non-sensitive JSON deletion status and must not be exposed through HTTP,
+public viewer routes, or dashboards. It does not claim secure erasure and does
+not automate object-store lifecycle, backups, snapshots, downloaded bundles, or
+endpoint copies.
+
 Orphan temp upload cleanup is disabled by default. Set
 `[uploads].temp_upload_cleanup_age` to a positive duration only when an
 operator wants startup cleanup of old local `upload-*` staging files under the

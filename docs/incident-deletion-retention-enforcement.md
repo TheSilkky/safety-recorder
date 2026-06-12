@@ -6,17 +6,17 @@ retention enforcement in Proofline Server, plus remaining future work.
 The backend implements private owner-scoped and admin-global deletion request
 routes, durable deletion decisions, deletion item retry state, SQLite and
 PostgreSQL metadata support, blob deletion through the storage boundary, and an
-automatic background scheduler. It also includes local read-only operator
-commands for retention preview and deletion job status. It does not add public
-`/v1` exposure, public account workflows, backend decryption, key custody, key
-escrow, mode-specific retention, object-bucket lifecycle enforcement, or
-playable media export.
+automatic background scheduler. It also includes local operator commands for
+requesting one incident deletion decision, retention preview, and deletion job
+status. It does not add public `/v1` exposure, public account workflows,
+backend decryption, key custody, key escrow, mode-specific retention,
+object-bucket lifecycle enforcement, or playable media export.
 
 ## Current Behavior
 
 The current backend preserves accepted evidence by default:
 
-- incidents remain until explicit operator action outside the application
+- incidents remain until an explicit private deletion decision
 - closing an incident stops later uploads but does not delete evidence
 - open, complete, and failed media streams remain with the incident
 - checkins remain with the incident
@@ -49,6 +49,8 @@ The backend now has private deletion APIs and a background deletion worker:
   retention window without creating deletion decisions
 - `operator deletion-status` reports deletion decision counts, retry
   categories, and runnable jobs without exposing stored paths
+- `operator request-deletion` creates or returns one deletion decision from a
+  trusted local shell without exposing HTTP routes or stored paths
 
 Manual database or blob deletion outside the application should be avoided
 because the metadata and encrypted blob stores need to stay consistent.
@@ -57,7 +59,8 @@ because the metadata and encrypted blob stores need to stay consistent.
 
 - Preserve uploaded evidence unless there is an explicit deletion decision.
 - Keep public incident viewer routes read-only.
-- Keep deletion entry points private/admin-only.
+- Keep deletion entry points private, admin-only, or trusted-shell local
+  operator-only.
 - Delete encrypted blobs only through server-controlled stored paths from
   metadata, never through client-provided filesystem paths, object keys, or
   object-store URLs.
@@ -280,7 +283,7 @@ viewer routes:
 - admin-global private-admin request: `POST /admin/api/incidents/{incident_id}/deletion`
 - admin-global private-admin status: `GET /admin/api/incidents/{incident_id}/deletion`
 
-Deletion entry points must:
+HTTP deletion entry points must:
 
 - run only on authenticated main `/v1` or private-admin surfaces
 - require local account authentication and owner/admin authorization
@@ -291,12 +294,13 @@ Deletion entry points must:
 - avoid logging raw tokens, request bodies, uploaded bytes, plaintext, raw keys,
   private deployment details, or sensitive evidence metadata
 
-Local read-only operator commands are available through the server binary:
+Local operator commands are available through the server binary:
 
 ```bash
 proofline-server operator retention-preview --closed-incident-retention 720h
 proofline-server operator mode-retention-preview --interaction-record-retention 720h
 proofline-server operator deletion-status
+proofline-server operator request-deletion --incident-id inc_... --reason-code operator_review
 ```
 
 The preview command uses the configured metadata backend and reports closed
@@ -308,7 +312,13 @@ mode policy class and reports missing, invalid, disabled, or not-yet-eligible
 policy inputs as ineligible instead of guessing from labels. It does not use or
 change `SAFE_CLOSED_INCIDENT_RETENTION` and does not add live mode-specific
 deletion. The status command reports deletion decision counts, retry
-categories, and runnable jobs. All commands produce JSON and must be run from a
+categories, and runnable jobs. The request command creates or returns a single
+deletion decision through the configured SQLite or PostgreSQL metadata backend,
+requires a short non-sensitive `--reason-code`, and rejects open incidents
+unless `--allow-open` is supplied. It prints only non-sensitive JSON deletion
+status and never accepts stored paths, object keys, request bodies, uploaded
+bytes, plaintext, raw keys, original filenames, location values, notes, or
+private deployment details. All commands produce JSON and must be run from a
 trusted local operator environment with the same metadata configuration as the
 server. They must not be exposed through public viewer routes or public
 dashboards.
@@ -406,7 +416,6 @@ Storage tasks:
 
 Private-admin or CLI tasks:
 
-- add a local operator CLI to request incident deletion
 - extend local previews if future deletion policies need additional candidate
   classes
 - keep all deletion controls off token-scoped public viewer routes
