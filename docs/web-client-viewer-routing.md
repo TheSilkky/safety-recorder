@@ -136,6 +136,6 @@ to cover:
 - log redaction for retained `/i`, `/e`, token exchange, and download routes;
 - indistinguishable public errors for missing, invalid, expired, and revoked
   viewer tokens;
-- no public routing for `/v1`, `/v1/admin/...`, `/admin`, private diagnostics,
+- no public routing for `/v1`, `/admin/api/...`, `/admin`, private diagnostics,
   admin/operator workflows, backend decryption, browser decryption, raw-key,
   escrow, or break-glass routes.

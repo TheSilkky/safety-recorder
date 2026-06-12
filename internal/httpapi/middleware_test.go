@@ -96,8 +96,8 @@ func TestSafeLogPathRedactsMainAPIPathsWithoutMuxPattern(t *testing.T) {
 		{
 			name:   "admin account password",
 			method: http.MethodPost,
-			target: "/v1/admin/accounts/acct_secret/password",
-			want:   "POST /v1/admin/accounts/{account_id}/password",
+			target: "/admin/api/accounts/acct_secret/password",
+			want:   "POST /admin/api/accounts/{account_id}/password",
 			disallowed: []string{
 				"acct_secret",
 			},
@@ -105,8 +105,8 @@ func TestSafeLogPathRedactsMainAPIPathsWithoutMuxPattern(t *testing.T) {
 		{
 			name:   "admin account recovery reset",
 			method: http.MethodPost,
-			target: "/v1/admin/accounts/acct_secret/second-factor/recovery/reset",
-			want:   "POST /v1/admin/accounts/{account_id}/second-factor/recovery/reset",
+			target: "/admin/api/accounts/acct_secret/second-factor/recovery/reset",
+			want:   "POST /admin/api/accounts/{account_id}/second-factor/recovery/reset",
 			disallowed: []string{
 				"acct_secret",
 			},
@@ -114,8 +114,8 @@ func TestSafeLogPathRedactsMainAPIPathsWithoutMuxPattern(t *testing.T) {
 		{
 			name:   "admin incident deletion",
 			method: http.MethodGet,
-			target: "/v1/admin/incidents/inc_secret/deletion",
-			want:   "GET /v1/admin/incidents/{incident_id}/deletion",
+			target: "/admin/api/incidents/inc_secret/deletion",
+			want:   "GET /admin/api/incidents/{incident_id}/deletion",
 			disallowed: []string{
 				"inc_secret",
 			},

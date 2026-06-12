@@ -371,9 +371,19 @@ func TestMainServerDoesNotMountAdminDashboardOrOperatorRoutes(t *testing.T) {
 		{http.MethodPost, "/admin/password"},
 		{http.MethodPost, "/admin/accounts/acct_missing/password"},
 		{http.MethodGet, "/admin/static/styles.css"},
+		{http.MethodGet, "/admin/api/accounts"},
+		{http.MethodPost, "/admin/api/accounts"},
+		{http.MethodPost, "/admin/api/accounts/acct_missing/password"},
+		{http.MethodPost, "/admin/api/accounts/acct_missing/second-factor/recovery/reset"},
+		{http.MethodPost, "/admin/api/accounts/acct_missing/sessions/revoke"},
+		{http.MethodGet, "/admin/api/incidents/unowned"},
+		{http.MethodGet, "/admin/api/incidents/inc_missing/deletion"},
+		{http.MethodPost, "/admin/api/incidents/inc_missing/deletion"},
+		{http.MethodPost, "/admin/api/incidents/inc_missing/reassignment"},
 		{http.MethodGet, "/v1/admin/accounts"},
 		{http.MethodPost, "/v1/admin/accounts"},
 		{http.MethodPost, "/v1/admin/accounts/acct_missing/password"},
+		{http.MethodPost, "/v1/admin/accounts/acct_missing/second-factor/recovery/reset"},
 		{http.MethodPost, "/v1/admin/accounts/acct_missing/sessions/revoke"},
 		{http.MethodGet, "/v1/admin/incidents/unowned"},
 		{http.MethodGet, "/v1/admin/incidents/inc_missing/deletion"},
@@ -387,6 +397,50 @@ func TestMainServerDoesNotMountAdminDashboardOrOperatorRoutes(t *testing.T) {
 		if response.StatusCode != http.StatusNotFound {
 			t.Fatalf("%s %s: expected main server status 404, got %d: %s", tt.method, tt.target, response.StatusCode, body)
 		}
+	}
+}
+
+func TestPublicViewerServerDoesNotMountAdminSurfaces(t *testing.T) {
+	app := newTestApp(t)
+
+	tests := []struct {
+		method string
+		target string
+	}{
+		{http.MethodGet, "/admin"},
+		{http.MethodPost, "/admin/login"},
+		{http.MethodPost, "/admin/bootstrap"},
+		{http.MethodPost, "/admin/logout"},
+		{http.MethodPost, "/admin/password"},
+		{http.MethodPost, "/admin/accounts/acct_missing/password"},
+		{http.MethodGet, "/admin/static/styles.css"},
+		{http.MethodGet, "/admin/api/accounts"},
+		{http.MethodPost, "/admin/api/accounts"},
+		{http.MethodPost, "/admin/api/accounts/acct_missing/password"},
+		{http.MethodPost, "/admin/api/accounts/acct_missing/second-factor/recovery/reset"},
+		{http.MethodPost, "/admin/api/accounts/acct_missing/sessions/revoke"},
+		{http.MethodGet, "/admin/api/incidents/unowned"},
+		{http.MethodGet, "/admin/api/incidents/inc_missing/deletion"},
+		{http.MethodPost, "/admin/api/incidents/inc_missing/deletion"},
+		{http.MethodPost, "/admin/api/incidents/inc_missing/reassignment"},
+		{http.MethodGet, "/v1/admin/accounts"},
+		{http.MethodPost, "/v1/admin/accounts"},
+		{http.MethodPost, "/v1/admin/accounts/acct_missing/password"},
+		{http.MethodPost, "/v1/admin/accounts/acct_missing/second-factor/recovery/reset"},
+		{http.MethodPost, "/v1/admin/accounts/acct_missing/sessions/revoke"},
+		{http.MethodGet, "/v1/admin/incidents/unowned"},
+		{http.MethodGet, "/v1/admin/incidents/inc_missing/deletion"},
+		{http.MethodPost, "/v1/admin/incidents/inc_missing/deletion"},
+		{http.MethodPost, "/v1/admin/incidents/inc_missing/reassignment"},
+	}
+
+	for _, tt := range tests {
+		response, body := request(t, app.publicHandler, tt.method, tt.target, "application/json", bytes.NewBufferString(`{}`))
+		response.Body.Close()
+		if response.StatusCode != http.StatusNotFound {
+			t.Fatalf("%s %s: expected public viewer server status 404, got %d: %s", tt.method, tt.target, response.StatusCode, body)
+		}
+		assertErrorCode(t, body, "not_found")
 	}
 }
 

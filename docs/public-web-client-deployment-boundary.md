@@ -32,7 +32,7 @@ operator/admin browser
 The public web-client origin may call only route groups that have been reviewed
 for that deployment. Public reverse proxies must not forward wildcard traffic
 to the main API and must never route `/admin`, `/admin/...`, or
-`/v1/admin/...` from public entry points.
+`/admin/api/...` from public entry points.
 
 ## Current Status
 
@@ -50,7 +50,7 @@ Implemented server primitives relevant to this boundary:
 - owner-scoped sharing-grant and wrapped-key metadata routes
 - signed-in trusted-contact wrapped-key metadata reads
 - app-level route-class limits for main API and public viewer routes
-- private `/v1/admin/...` JSON routes on the private-admin listener only
+- private `/admin/api/...` JSON routes on the private-admin listener only
 - private `/admin` dashboard routes on the private-admin listener only
 
 Not implemented:
@@ -233,7 +233,7 @@ These route groups must not be exposed from a public web-client origin:
 - `/admin`
 - `/admin/...`
 - `/admin/static/...` from public entry points
-- `/v1/admin/...`
+- `/admin/api/...`
 - private admin bootstrap, account creation, session revocation, second-factor
   recovery reset, unowned incident reassignment, and admin-global deletion
   routes
@@ -358,7 +358,7 @@ Future implementation should include tests for:
 - CSRF enforcement for unsafe cookie-authenticated requests
 - bearer-authenticated requests not requiring CSRF
 - ambiguous bearer plus cookie credentials rejected
-- private `/admin`, `/admin/...`, and `/v1/admin/...` routes unreachable from
+- private `/admin`, `/admin/...`, and `/admin/api/...` routes unreachable from
   public web entry points
 - no-store and no-referrer headers on token, auth, upload, download, and error
   responses

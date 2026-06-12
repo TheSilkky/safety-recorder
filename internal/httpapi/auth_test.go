@@ -114,7 +114,7 @@ func TestRegularUserCannotUseAdminRoutes(t *testing.T) {
 	app := newTestApp(t)
 	userToken := createAccountAndLogin(t, app, "regular-user", "regular-password", auth.RoleUser)
 
-	response, body := requestWithAuth(t, app.adminHandler, http.MethodGet, "/v1/admin/accounts", "", nil, userToken)
+	response, body := requestWithAuth(t, app.adminHandler, http.MethodGet, "/admin/api/accounts", "", nil, userToken)
 	defer response.Body.Close()
 	if response.StatusCode != http.StatusForbidden {
 		t.Fatalf("expected regular user admin route status 403, got %d: %s", response.StatusCode, body)
@@ -127,7 +127,7 @@ func TestAdminCanUseAccountRoutesOnPrivateAdminListener(t *testing.T) {
 	userToken := createAccountAndLogin(t, app, "private-admin-user", "original-password", auth.RoleUser)
 	account := mustGetAccountByUsername(t, app, "private-admin-user")
 
-	response, body := requestWithAuth(t, app.adminHandler, http.MethodGet, "/v1/admin/accounts", "", nil, app.authToken)
+	response, body := requestWithAuth(t, app.adminHandler, http.MethodGet, "/admin/api/accounts", "", nil, app.authToken)
 	response.Body.Close()
 	if response.StatusCode != http.StatusOK {
 		t.Fatalf("expected admin account list status 200, got %d: %s", response.StatusCode, body)
@@ -155,7 +155,7 @@ func TestAdminCanUseAccountRoutesOnPrivateAdminListener(t *testing.T) {
 		t,
 		app.adminHandler,
 		http.MethodPost,
-		"/v1/admin/accounts/"+account.ID+"/password",
+		"/admin/api/accounts/"+account.ID+"/password",
 		"application/json",
 		bytes.NewBufferString(`{"new_password":"replacement-password"}`),
 		app.authToken,
@@ -173,6 +173,34 @@ func TestAdminCanUseAccountRoutesOnPrivateAdminListener(t *testing.T) {
 	loginForTest(t, app, "private-admin-user", "replacement-password")
 }
 
+func TestPrivateAdminListenerDoesNotKeepV1AdminAliases(t *testing.T) {
+	app := newTestApp(t)
+
+	tests := []struct {
+		method string
+		target string
+	}{
+		{http.MethodGet, "/v1/admin/accounts"},
+		{http.MethodPost, "/v1/admin/accounts"},
+		{http.MethodPost, "/v1/admin/accounts/acct_missing/password"},
+		{http.MethodPost, "/v1/admin/accounts/acct_missing/second-factor/recovery/reset"},
+		{http.MethodPost, "/v1/admin/accounts/acct_missing/sessions/revoke"},
+		{http.MethodGet, "/v1/admin/incidents/unowned"},
+		{http.MethodGet, "/v1/admin/incidents/inc_missing/deletion"},
+		{http.MethodPost, "/v1/admin/incidents/inc_missing/deletion"},
+		{http.MethodPost, "/v1/admin/incidents/inc_missing/reassignment"},
+	}
+
+	for _, tt := range tests {
+		response, body := requestWithAuth(t, app.adminHandler, tt.method, tt.target, "application/json", bytes.NewBufferString(`{}`), app.authToken)
+		response.Body.Close()
+		if response.StatusCode != http.StatusNotFound {
+			t.Fatalf("%s %s: expected old admin route status 404, got %d: %s", tt.method, tt.target, response.StatusCode, body)
+		}
+		assertErrorCode(t, body, "not_found")
+	}
+}
+
 func TestAdminCanResetAccountSecondFactorRecoveryOnPrivateAdminListener(t *testing.T) {
 	app := newTestApp(t)
 	userToken := createAccountAndLogin(t, app, "recovery-admin-route-user", "original-password", auth.RoleUser)
@@ -181,7 +209,7 @@ func TestAdminCanResetAccountSecondFactorRecoveryOnPrivateAdminListener(t *testi
 		t.Fatalf("test account setup state = %q, want complete", account.SecondFactorSetup)
 	}
 
-	target := "/v1/admin/accounts/" + account.ID + "/second-factor/recovery/reset"
+	target := "/admin/api/accounts/" + account.ID + "/second-factor/recovery/reset"
 	response, body := requestWithAuth(t, app.mainHandler, http.MethodPost, target, "application/json", bytes.NewBufferString(`{"reason":"lost_all_factors"}`), app.authToken)
 	response.Body.Close()
 	if response.StatusCode != http.StatusNotFound {
@@ -305,7 +333,7 @@ func TestAdminCanRevokeAccountSessions(t *testing.T) {
 	userToken := createAccountAndLogin(t, app, "session-user", "session-password", auth.RoleUser)
 	account := mustGetAccountByUsername(t, app, "session-user")
 
-	response, body := requestWithAuth(t, app.adminHandler, http.MethodPost, "/v1/admin/accounts/"+account.ID+"/sessions/revoke", "application/json", bytes.NewBufferString(`{}`), app.authToken)
+	response, body := requestWithAuth(t, app.adminHandler, http.MethodPost, "/admin/api/accounts/"+account.ID+"/sessions/revoke", "application/json", bytes.NewBufferString(`{}`), app.authToken)
 	response.Body.Close()
 	if response.StatusCode != http.StatusOK {
 		t.Fatalf("expected revoke sessions status 200, got %d: %s", response.StatusCode, body)
@@ -532,7 +560,7 @@ func TestSecondFactorSetupRequiredAdminKeepsPrivateAdminBoundary(t *testing.T) {
 	}
 	token, _ := loginWithAccountForTest(t, app, "setup-admin", "state-password")
 
-	response, body := requestWithAuth(t, app.adminHandler, http.MethodGet, "/v1/admin/accounts", "", nil, token)
+	response, body := requestWithAuth(t, app.adminHandler, http.MethodGet, "/admin/api/accounts", "", nil, token)
 	response.Body.Close()
 	if response.StatusCode != http.StatusOK {
 		t.Fatalf("setup admin private-admin route status = %d, want 200: %s", response.StatusCode, body)
@@ -1770,7 +1798,7 @@ func headerListContains(raw, want string) bool {
 func createAccountAndLogin(t *testing.T, app *testApp, username, password, role string) string {
 	t.Helper()
 	requestBody := bytes.NewBufferString(`{"username":"` + username + `","password":"` + password + `","role":"` + role + `"}`)
-	response, body := requestWithAuth(t, app.adminHandler, http.MethodPost, "/v1/admin/accounts", "application/json", requestBody, app.authToken)
+	response, body := requestWithAuth(t, app.adminHandler, http.MethodPost, "/admin/api/accounts", "application/json", requestBody, app.authToken)
 	response.Body.Close()
 	if response.StatusCode != http.StatusCreated {
 		t.Fatalf("expected create account status 201, got %d: %s", response.StatusCode, body)
@@ -1795,7 +1823,7 @@ func markSecondFactorSetupComplete(t *testing.T, app *testApp, username string) 
 func createAccountForStateTest(t *testing.T, app *testApp, username, password string) {
 	t.Helper()
 	requestBody := bytes.NewBufferString(`{"username":"` + username + `","password":"` + password + `","role":"user"}`)
-	response, body := requestWithAuth(t, app.adminHandler, http.MethodPost, "/v1/admin/accounts", "application/json", requestBody, app.authToken)
+	response, body := requestWithAuth(t, app.adminHandler, http.MethodPost, "/admin/api/accounts", "application/json", requestBody, app.authToken)
 	response.Body.Close()
 	if response.StatusCode != http.StatusCreated {
 		t.Fatalf("expected create account status 201, got %d: %s", response.StatusCode, body)

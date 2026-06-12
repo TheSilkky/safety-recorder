@@ -87,15 +87,15 @@ func (a *API) registerMainAuthRoutes(mux *http.ServeMux) {
 }
 
 func (a *API) registerAdminAPIRoutes(mux *http.ServeMux) {
-	mux.HandleFunc("GET /v1/admin/accounts", a.withPrivateAuth(a.listAccounts))
-	mux.HandleFunc("POST /v1/admin/accounts", a.withPrivateAuth(a.createAccount))
-	mux.HandleFunc("POST /v1/admin/accounts/{account_id}/password", a.withPrivateAuth(a.resetAccountPassword))
-	mux.HandleFunc("POST /v1/admin/accounts/{account_id}/second-factor/recovery/reset", a.withPrivateAuth(a.resetAccountSecondFactorRecovery))
-	mux.HandleFunc("POST /v1/admin/accounts/{account_id}/sessions/revoke", a.withPrivateAuth(a.revokeAccountSessions))
-	mux.HandleFunc("GET /v1/admin/incidents/unowned", a.withPrivateAuth(a.listLegacyUnownedIncidentCandidates))
-	mux.HandleFunc("GET /v1/admin/incidents/{incident_id}/deletion", a.withPrivateAuth(a.getAdminIncidentDeletion))
-	mux.HandleFunc("POST /v1/admin/incidents/{incident_id}/deletion", a.withPrivateAuth(a.requestAdminIncidentDeletion))
-	mux.HandleFunc("POST /v1/admin/incidents/{incident_id}/reassignment", a.withPrivateAuth(a.reassignLegacyUnownedIncident))
+	mux.HandleFunc("GET /admin/api/accounts", a.withPrivateAuth(a.listAccounts))
+	mux.HandleFunc("POST /admin/api/accounts", a.withPrivateAuth(a.createAccount))
+	mux.HandleFunc("POST /admin/api/accounts/{account_id}/password", a.withPrivateAuth(a.resetAccountPassword))
+	mux.HandleFunc("POST /admin/api/accounts/{account_id}/second-factor/recovery/reset", a.withPrivateAuth(a.resetAccountSecondFactorRecovery))
+	mux.HandleFunc("POST /admin/api/accounts/{account_id}/sessions/revoke", a.withPrivateAuth(a.revokeAccountSessions))
+	mux.HandleFunc("GET /admin/api/incidents/unowned", a.withPrivateAuth(a.listLegacyUnownedIncidentCandidates))
+	mux.HandleFunc("GET /admin/api/incidents/{incident_id}/deletion", a.withPrivateAuth(a.getAdminIncidentDeletion))
+	mux.HandleFunc("POST /admin/api/incidents/{incident_id}/deletion", a.withPrivateAuth(a.requestAdminIncidentDeletion))
+	mux.HandleFunc("POST /admin/api/incidents/{incident_id}/reassignment", a.withPrivateAuth(a.reassignLegacyUnownedIncident))
 }
 
 func (a *API) registerPrivateAdminWebRoutes(mux *http.ServeMux) {

@@ -63,7 +63,7 @@ source of truth for account entitlement changes.
   backend decryption, key escrow, playable export, notifications, or emergency
   dispatch.
 - Preserve public/private listener separation and do not expose `/admin`,
-  `/v1/admin/...`, private diagnostics, or operator-only routes through billing
+  `/admin/api/...`, private diagnostics, or operator-only routes through billing
   work.
 
 ## Account Lifecycle Model

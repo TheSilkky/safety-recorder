@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Renamed private-admin JSON API routes into the `/admin/api/...` namespace,
+  removed the old JSON route aliases, and updated listener-boundary tests and
+  docs so admin JSON, the `/admin` dashboard, and public viewer/main routes
+  remain separated.
+
 - Aligned the final regional relay documentation pass with the implemented
   Stop J relay slices, including relay smoke guidance, simulator scope,
   current-versus-future guardrails, and private/public exposure boundaries.
@@ -219,7 +224,7 @@
   `GET /v1/incidents/{incident_id}` to public-safe account incident metadata
   for future web-client reads, hiding cross-account and legacy unowned
   incidents and omitting chunk paths, checkins, notes, and owner IDs.
-- Moved existing admin-only `/v1/admin/...` JSON API routes from the main
+- Moved existing admin-only JSON API routes from the main
   API/viewer handler onto the private-admin listener while preserving admin
   authentication and authorization behavior.
 

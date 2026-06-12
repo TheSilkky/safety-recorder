@@ -152,7 +152,7 @@ func TestMainAPIRateLimitGroupsRoutesWithSafeKeys(t *testing.T) {
 		}
 	}
 
-	response, body := requestWithAuthAndHeaders(t, app.mainHandler, http.MethodGet, "/v1/admin/accounts", "application/json", bytes.NewBufferString(`{}`), "raw-session-token-secret", headers)
+	response, body := requestWithAuthAndHeaders(t, app.mainHandler, http.MethodGet, "/admin/api/accounts", "application/json", bytes.NewBufferString(`{}`), "raw-session-token-secret", headers)
 	response.Body.Close()
 	if response.StatusCode != http.StatusNotFound {
 		t.Fatalf("expected unmounted main admin route status 404, got %d: %s", response.StatusCode, body)

@@ -34,7 +34,7 @@ The backend now has private deletion APIs and a background deletion worker:
 
 - `POST /v1/incidents/{incident_id}/deletion` lets the owning account request
   deletion for its own incident
-- private-admin `POST /v1/admin/incidents/{incident_id}/deletion` lets an admin
+- private-admin `POST /admin/api/incidents/{incident_id}/deletion` lets an admin
   request deletion for any incident
 - matching private `GET` routes return non-sensitive deletion status
 - `SAFE_DELETION_WORKER_INTERVAL` controls the automatic scheduler and defaults
@@ -277,8 +277,8 @@ viewer routes:
 
 - account owner request: `POST /v1/incidents/{incident_id}/deletion`
 - account owner status: `GET /v1/incidents/{incident_id}/deletion`
-- admin-global private-admin request: `POST /v1/admin/incidents/{incident_id}/deletion`
-- admin-global private-admin status: `GET /v1/admin/incidents/{incident_id}/deletion`
+- admin-global private-admin request: `POST /admin/api/incidents/{incident_id}/deletion`
+- admin-global private-admin status: `GET /admin/api/incidents/{incident_id}/deletion`
 
 Deletion entry points must:
 

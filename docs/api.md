@@ -1,6 +1,6 @@
 # API
 
-This is the current backend-only HTTP surface for Proofline. The API binary starts a main API/viewer listener and a private-admin listener on one or more configured bind addresses. Main `/v1` routes require local account authentication except for login and the disabled-by-default registration/email-verification routes, and they use app-level route-class rate limits. Existing `/v1/admin/...` JSON routes require an admin account and are mounted only on the private-admin listener. The private-admin listener also serves the `/admin` dashboard route tree. Incident viewer routes are token-gated, read-only, and mounted on the main listener. The future canonical no-account viewer link belongs to the web-client origin as documented in [web-client-viewer-routing.md](web-client-viewer-routing.md); planned web, iOS, and Android clients are not part of this repository yet.
+This is the current backend-only HTTP surface for Proofline. The API binary starts a main API/viewer listener and a private-admin listener on one or more configured bind addresses. Main `/v1` routes require local account authentication except for login and the disabled-by-default registration/email-verification routes, and they use app-level route-class rate limits. Existing `/admin/api/...` JSON routes require an admin account and are mounted only on the private-admin listener. The private-admin listener also serves the `/admin` dashboard route tree. Incident viewer routes are token-gated, read-only, and mounted on the main listener. The future canonical no-account viewer link belongs to the web-client origin as documented in [web-client-viewer-routing.md](web-client-viewer-routing.md); planned web, iOS, and Android clients are not part of this repository yet.
 
 Media bundle downloads are encrypted chunk bundles. The backend does not
 decrypt, merge, or produce playable media. Current encrypted uploads use the
@@ -92,7 +92,7 @@ failure returns `503 rate_limit_unavailable` with a generic response. See
 
 The current listener split does not mount `/v1/health/live` or
 `/v1/health/ready` on either listener. The private-admin listener is an
-admin-only `/v1/admin/...` and `/admin` surface, and the main listener must not publish
+admin-only `/admin/api/...` and `/admin` surface, and the main listener must not publish
 operator readiness details on the same origin as future public product API
 routes. Local and CI smoke checks use token-neutral static assets plus the
 admin bootstrap/login flow to prove both listener trees are serving.
@@ -782,21 +782,21 @@ dashboard and must stay on the private-admin listener.
 The following routes are mounted only on the private-admin listener and require
 an admin account session:
 
-- `GET /v1/admin/accounts`
-- `POST /v1/admin/accounts`
-- `POST /v1/admin/accounts/{account_id}/password`
-- `POST /v1/admin/accounts/{account_id}/second-factor/recovery/reset`
-- `POST /v1/admin/accounts/{account_id}/sessions/revoke`
-- `GET /v1/admin/incidents/unowned`
-- `GET /v1/admin/incidents/{incident_id}/deletion`
-- `POST /v1/admin/incidents/{incident_id}/deletion`
-- `POST /v1/admin/incidents/{incident_id}/reassignment`
+- `GET /admin/api/accounts`
+- `POST /admin/api/accounts`
+- `POST /admin/api/accounts/{account_id}/password`
+- `POST /admin/api/accounts/{account_id}/second-factor/recovery/reset`
+- `POST /admin/api/accounts/{account_id}/sessions/revoke`
+- `GET /admin/api/incidents/unowned`
+- `GET /admin/api/incidents/{incident_id}/deletion`
+- `POST /admin/api/incidents/{incident_id}/deletion`
+- `POST /admin/api/incidents/{incident_id}/reassignment`
 
-`POST /v1/admin/accounts` accepts `username`, `password`, and `role`, where
+`POST /admin/api/accounts` accepts `username`, `password`, and `role`, where
 `role` is `user` or `admin`. Admin password reset and explicit session
 revocation revoke all sessions for the selected account.
 
-`POST /v1/admin/accounts/{account_id}/second-factor/recovery/reset` accepts a
+`POST /admin/api/accounts/{account_id}/second-factor/recovery/reset` accepts a
 controlled `reason` value:
 
 - `lost_email_access`
@@ -1644,7 +1644,7 @@ Response `202`:
 Returns the non-sensitive deletion status for an incident visible to the
 authenticated account.
 
-### `GET /v1/admin/incidents/unowned`
+### `GET /admin/api/incidents/unowned`
 
 Lists legacy incidents whose `owner_account_id` is empty. This route is mounted
 only on the private-admin listener and requires an admin account. It is for
@@ -1679,7 +1679,7 @@ bodies, uploaded bytes, plaintext, raw keys, and user safety narrative:
 }
 ```
 
-### `POST /v1/admin/incidents/{incident_id}/reassignment`
+### `POST /admin/api/incidents/{incident_id}/reassignment`
 
 Records one private admin decision for an active legacy unowned incident. The
 route either assigns the incident to an existing account or records a reviewed
@@ -1728,12 +1728,12 @@ Successful responses return safe audit metadata only:
 }
 ```
 
-### `POST /v1/admin/incidents/{incident_id}/deletion`
+### `POST /admin/api/incidents/{incident_id}/deletion`
 
 Requests deletion for any incident visible to an admin account. The request and
 response shape match the account route, but the `source` is `admin_request`.
 
-### `GET /v1/admin/incidents/{incident_id}/deletion`
+### `GET /admin/api/incidents/{incident_id}/deletion`
 
 Returns the non-sensitive deletion status for any incident by ID. This route
 requires an admin account.

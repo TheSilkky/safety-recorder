@@ -181,7 +181,7 @@ values for the same field. Within TOML, set either the direct secret key or the
 |---|---|---|
 | `SAFE_CONFIG_FILE` | unset | Optional TOML config path. Overridden by `--config`; otherwise checked before automatic `./proofline.toml` and `/etc/proofline/proofline.toml` discovery. |
 | `SAFE_MAIN_BIND_ADDRS` | `127.0.0.1:8080` | Comma-separated main listener addresses for authenticated non-admin `/v1` routes and the read-only incident viewer. |
-| `SAFE_ADMIN_BIND_ADDRS` | `127.0.0.1:8081` | Comma-separated private-admin listener addresses for admin-only `/v1/admin/...` JSON routes and the `/admin` dashboard route tree. |
+| `SAFE_ADMIN_BIND_ADDRS` | `127.0.0.1:8081` | Comma-separated private-admin listener addresses for admin-only `/admin/api/...` JSON routes and the `/admin` dashboard route tree. |
 | `SAFE_DATA_DIR` | `./data` | Local directory for SQLite, temp uploads, and encrypted blobs unless `SAFE_DB_PATH` points elsewhere. |
 | `SAFE_DB_PATH` | `./data/proofline.db` | SQLite database path. |
 | `SAFE_METADATA_BACKEND` | `sqlite` | Metadata backend selector. Supported values are `sqlite` and `postgresql`. |
@@ -265,7 +265,7 @@ values for the same field. Within TOML, set either the direct secret key or the
 | `SAFE_MAIN_API_RATE_LIMIT_STREAM` | `120` | Stream create/read/complete/fail requests allowed per window per hashed socket peer. Set to `0` to disable this route-class limit. |
 | `SAFE_MAIN_API_RATE_LIMIT_TOKEN` | `60` | Incident-token create/revoke requests allowed per window per hashed socket peer. Set to `0` to disable this route-class limit. |
 | `SAFE_MAIN_API_RATE_LIMIT_DOWNLOAD` | `30` | Private chunk and encrypted bundle download requests allowed per window per hashed socket peer. Set to `0` to disable this route-class limit. |
-| `SAFE_MAIN_API_RATE_LIMIT_ADMIN` | `60` | Compatibility setting for older main-handler admin API rate-limit configuration. Current `/v1/admin/...` JSON routes are mounted on the private-admin listener and are not classified by the main API limiter. |
+| `SAFE_MAIN_API_RATE_LIMIT_ADMIN` | `60` | Compatibility setting for older main-handler admin API rate-limit configuration. Current `/admin/api/...` JSON routes are mounted on the private-admin listener and are not classified by the main API limiter. |
 | `SAFE_PUBLIC_VIEWER_RATE_LIMIT_ENABLED` | `true` | Enables app-level rate limiting for public incident viewer route classes. Set to `false` to disable the app-level limiter. |
 | `SAFE_PUBLIC_VIEWER_RATE_LIMIT_WINDOW` | `1m` | Fixed-window duration for app-level public viewer limits. |
 | `SAFE_PUBLIC_VIEWER_RATE_LIMIT_PAGE` | `60` | Public viewer page lookup requests allowed per window per hashed socket peer. Set to `0` to disable this route-class limit. |

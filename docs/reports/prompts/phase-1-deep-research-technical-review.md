@@ -63,7 +63,7 @@ The long-term product direction is broader than emergency-only recording. Planne
 
 Core project boundaries:
 
-- The main `/v1` API uses local account sessions but is not a public product API; it must stay behind the reviewed deployment boundary, and public edges must not route `/v1/admin/...`.
+- The main `/v1` API uses local account sessions but is not a public product API; it must stay behind the reviewed deployment boundary, and public edges must not route `/admin/api/...`.
 - The current backend treats uploaded bytes as opaque ciphertext.
 - The current backend must not be described as production-ready public infrastructure.
 - Current backend incidents are generic by default. Optional incident-mode,

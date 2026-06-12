@@ -10,7 +10,7 @@ The `/v1` access-control direction is documented in
 [v1-access-control.md](v1-access-control.md). Current local account sessions,
 optional browser cookie sessions, and app-level route-class limits do not by
 themselves make every `/v1` route suitable for broad public deployment.
-Existing `/v1/admin/...` JSON routes are authenticated admin-only routes on the
+Existing `/admin/api/...` JSON routes are authenticated admin-only routes on the
 private-admin listener, alongside the `/admin` dashboard surface. The
 private-admin listener can be bound to loopback, LAN, WireGuard, VPN, firewall,
 or a private reverse proxy. Private placement must not replace admin
@@ -123,7 +123,7 @@ go run ./cmd/api
 Production browser-cookie deployments must use HTTPS, `Secure` cookies,
 explicit allowed origins, `credentials: "include"` from the web client, and the
 CSRF header from `GET /v1/auth/web/csrf` on unsafe requests. This does not make
-private-admin `/v1/admin/...` routes public-ready; public reverse proxies must
+private-admin `/admin/api/...` routes public-ready; public reverse proxies must
 still block those admin JSON routes unless a future audited public-admin API is
 explicitly designed.
 
@@ -294,7 +294,7 @@ static source, but the admin pages and form handlers remain private-admin
 listener routes.
 
 This is not a public admin dashboard. Do not expose `/admin`, `/admin/...`, or
-`/v1/admin/...` outside the private-admin boundary.
+`/admin/api/...` outside the private-admin boundary.
 
 ## Docker
 
@@ -632,7 +632,7 @@ commits, and metadata. Current fanout chunks are optimistic and must remain
 viewer-labeled as unconfirmed until a matching `confirmed` relay state or
 other backend-confirmed state exists.
 
-Do not route `/admin`, `/v1/admin/...`, public incident viewer routes, bundle
+Do not route `/admin`, `/admin/api/...`, public incident viewer routes, bundle
 downloads, deletion, retention, backup, restore, escrow, break-glass,
 decryption, raw-key, or operator routes through a future relay. Relay logs,
 metrics, rate-limit keys, readiness output, and temp paths must not expose raw
@@ -727,7 +727,7 @@ test use, route only the viewer paths from the public edge to the main
 listener. Do not forward a public wildcard or host fallback to the main
 listener unless the deployment has explicitly reviewed public main-API
 exposure. Public edges must not route `/admin`, `/admin/...`, or
-`/v1/admin/...`.
+`/admin/api/...`.
 
 The checklist below is a deployment review aid. Completing it does not make
 Proofline production-ready public infrastructure, and it does not approve broad
@@ -741,7 +741,7 @@ Before exposing the public incident viewer:
       `/e/...` only for explicit local/test compatibility. Token-neutral
       `/static/...` assets may be forwarded when the built-in viewer is used.
 - [ ] No public reverse-proxy route, service, wildcard rule, or fallback reaches
-      `/v1`, `/admin`, `/v1/admin/...`, or the private-admin listener
+      `/v1`, `/admin`, `/admin/api/...`, or the private-admin listener
       configured by `SAFE_ADMIN_BIND_ADDRS`.
 - [ ] TLS is terminated at the deployment edge for the public hostname.
 - [ ] HSTS is enabled at the HTTPS edge only after TLS is working reliably for
@@ -808,7 +808,7 @@ https://developer.mozilla.org/en-US/observatory
 
 The reverse proxy should route only reviewed current-viewer paths to the main
 listener. Private dashboard routes should stay on localhost, WireGuard, LAN, or
-another private boundary, and public edges must block `/v1/admin/...`. For a
+another private boundary, and public edges must block `/admin/api/...`. For a
 future web-client viewer, point shared viewer links at the web-client origin
 instead of making this built-in viewer route the canonical public entry point.
 
@@ -889,7 +889,7 @@ http:
 ```
 
 There should be no public Traefik router, service, or rule for unreviewed
-`/v1` route groups, `/admin`, `/v1/admin/...`, or `127.0.0.1:8081`. If Traefik
+`/v1` route groups, `/admin`, `/admin/api/...`, or `127.0.0.1:8081`. If Traefik
 runs in a different container or on another host, point it at a private address
 that only Traefik can reach, and keep private-admin addresses off the public
 internet.
@@ -914,7 +914,7 @@ Suggested route groups:
 | Registration and email verification | `POST /v1/auth/register`, `POST /v1/auth/email/verify` | Keep separate from login limits and never include raw emails, usernames, verification tokens, or request bodies in logs or metrics. |
 | Required setup status and factor setup | `GET /v1/account`, email/TOTP/WebAuthn second-factor setup and verification routes | Setup-incomplete accounts may inspect their account state and complete email, TOTP, or WebAuthn setup routes, and active TOTP/WebAuthn accounts may verify a primary-authenticated session before product access. Main product routes should fail closed until setup and required session verification are complete. Never log raw challenge codes, TOTP codes, TOTP seeds, `otpauth_url` values, WebAuthn challenge/client data, credential bytes, or request bodies. |
 | Private admin dashboard actions | `/admin/...` | Keep on the private-admin listener and do not route from public entry points. |
-| Admin JSON API actions | `/v1/admin/...` | Authenticated admin-only routes on the private-admin listener; do not route from public entry points. |
+| Admin JSON API actions | `/admin/api/...` | Authenticated admin-only routes on the private-admin listener; do not route from public entry points. |
 
 Rate limiting does not make `/v1` production-ready public infrastructure by
 itself. Keep main API route groups behind the reviewed deployment boundary for the
@@ -975,7 +975,7 @@ to `0` to disable that route-class limit, or set `enabled = false` in TOML
 or `SAFE_MAIN_API_RATE_LIMIT_ENABLED=false` to disable the app-level main API
 limiter.
 
-Current `/v1/admin/...` JSON routes are on the private-admin listener and are
+Current `/admin/api/...` JSON routes are on the private-admin listener and are
 not classified by the main API limiter. The admin setting remains as a
 compatibility setting for older main-handler configuration.
 

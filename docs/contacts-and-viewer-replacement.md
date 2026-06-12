@@ -73,10 +73,10 @@ The server has separate listener groups and muxes:
   `/e/{token}` aliases only when explicit local/test compatibility needs them,
   and token-neutral `/static/...` viewer assets; and
 - the private admin listener for `/admin`, `/admin/static/...`, and
-  authenticated admin-only `/v1/admin/...` JSON routes.
+  authenticated admin-only `/admin/api/...` JSON routes.
 
 Replacing the built-in incident viewer must not make all of `/v1` public-ready.
-It must not move `/admin`, `/v1/admin/...`, private diagnostics, write/admin
+It must not move `/admin`, `/admin/api/...`, private diagnostics, write/admin
 routes, operator routes, escrow routes, or break-glass routes onto public
 incident-viewer edges.
 
@@ -549,7 +549,7 @@ failures.
 This design preserves these constraints:
 
 - Do not expose admin/operator surfaces publicly.
-- Do not route `/admin`, `/v1/admin/...`, private diagnostics, raw backend
+- Do not route `/admin`, `/admin/api/...`, private diagnostics, raw backend
   errors, or operator-only routes from a public edge.
 - Do not add backend decryption.
 - Do not add browser decryption as an incidental change.

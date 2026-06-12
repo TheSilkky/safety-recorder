@@ -184,8 +184,8 @@ Tests cover:
 
 The private admin API exposes:
 
-- `GET /v1/admin/incidents/unowned`
-- `POST /v1/admin/incidents/{incident_id}/reassignment`
+- `GET /admin/api/incidents/unowned`
+- `POST /admin/api/incidents/{incident_id}/reassignment`
 
 The reassignment route accepts `assign_owner` with `new_owner_account_id`, or
 `keep_unowned` without a new owner. It accepts only controlled reason codes:
