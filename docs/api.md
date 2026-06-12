@@ -2429,6 +2429,13 @@ metadata, and any stored `original_filename` basename for each chunk. Server
 filesystem paths are not included.
 It also includes a non-secret `encryption` hint indicating expected client-side encryption and `server_decrypts: false`.
 
+Before sending ZIP headers or body bytes, the server reads each committed chunk
+from storage and verifies its byte count and SHA-256 hash against database
+metadata. Missing or mismatched committed chunks fail closed with `409
+stream_bundle_inconsistent`; the error response does not include server
+filesystem paths, stored chunk paths, object keys, ZIP entry names, or chunk
+bytes.
+
 Future live or partial stream access is planning-only and should not be inferred
 from this completed bundle route. See
 [live-partial-stream-access-boundary.md](live-partial-stream-access-boundary.md).
@@ -2445,7 +2452,12 @@ streams/{stream_id}/chunks/audio_000001.enc
 
 Open, failed, and legacy unstreamed chunks are omitted from this initial bundle format.
 
-If any completed stream cannot be reconstructed, the incident bundle request fails with `409 incident_bundle_inconsistent` rather than returning a partial bundle. The error response does not include server filesystem paths, stored chunk paths, or ZIP entry names.
+If any completed stream cannot be reconstructed or if any committed chunk's
+stored byte count or SHA-256 hash does not match metadata, the incident bundle
+request fails with `409 incident_bundle_inconsistent` rather than returning a
+partial bundle. Verification happens before ZIP headers or body bytes are sent.
+The error response does not include server filesystem paths, stored chunk paths,
+object keys, ZIP entry names, or chunk bytes.
 
 Future canonical bundle or export manifests may use source-timeline evidence
 resolution to choose the best backend-confirmed variant per segment. That must
@@ -2703,7 +2715,7 @@ route is read-only and uses the public viewer data rate-limit class.
 
 ### `GET /i/{token}/streams/{stream_id}/download`
 
-Downloads a completed stream bundle for the token's incident. The route is read-only and never accepts a client-provided file path. Invalid, expired, and revoked tokens return `404 incident_token_invalid`.
+Downloads a completed stream bundle for the token's incident. The route is read-only and never accepts a client-provided file path. Invalid, expired, and revoked tokens return `404 incident_token_invalid`. Missing or mismatched committed chunks fail closed with `409 stream_bundle_inconsistent` before ZIP headers or body bytes are sent.
 
 Open and failed streams are visible only as metadata in the current viewer
 summary. The current token-scoped viewer does not expose live chunk bytes or
@@ -2714,4 +2726,8 @@ partial stream manifests. See
 
 Downloads all completed streams for the token's incident as one encrypted evidence ZIP. Failed/open streams and legacy unstreamed chunks are omitted.
 
-If any completed stream cannot be reconstructed, the incident bundle request fails with `409 incident_bundle_inconsistent` rather than returning a partial bundle. Invalid, expired, and revoked tokens still return `404 incident_token_invalid`.
+If any completed stream cannot be reconstructed or any committed chunk fails
+byte-count or SHA-256 verification against metadata, the incident bundle request
+fails with `409 incident_bundle_inconsistent` rather than returning a partial
+bundle. Invalid, expired, and revoked tokens still return `404
+incident_token_invalid`.

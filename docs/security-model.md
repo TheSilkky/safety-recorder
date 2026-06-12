@@ -355,14 +355,14 @@ retention, deletion, escalation, sharing, or viewer behavior.
 
 ## Bundle Controls
 
-Completed stream and incident bundles are generated on demand as ZIP responses. ZIP entry names are controlled by the server. Manifests are generated from database metadata and do not expose server filesystem paths.
+Completed stream and incident bundles are generated on demand as ZIP responses. ZIP entry names are controlled by the server. Manifests are generated from database metadata and do not expose server filesystem paths. Before ZIP headers or body bytes are sent, the server verifies committed chunk byte counts and SHA-256 hashes against metadata.
 
 Bundle manifests may include `original_filename` basenames because those values
 are current chunk display metadata. They are user/client metadata, not server
 stored paths, staging paths, object-storage keys, ZIP entry names, or download
 paths.
 
-Incident bundle generation fails closed if any completed stream cannot be reconstructed. It does not silently omit inconsistent completed streams from the ZIP or manifest.
+Bundle generation fails closed if any completed stream cannot be reconstructed or any committed chunk fails byte-count or SHA-256 verification. It does not silently omit inconsistent completed streams from the ZIP or manifest.
 
 Bundles contain encrypted chunk bytes and JSON manifests only. They are not decrypted, playable, or merged media exports.
 
