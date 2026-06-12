@@ -198,10 +198,13 @@ In edit mode:
 For docs-only edits, run:
 
 ```bash
+scripts/check-markdown-links.py
 git diff --check
 ```
 
-and any documented Markdown/report validation that exists and applies.
+and any documented Markdown/report validation that exists and applies. If the
+Markdown link checker itself changed, also run
+`scripts/check-markdown-links.py --self-test`.
 
 If code or migration files are changed because the maintainer explicitly scoped
 that work, run:

@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- Added a standard-library local Markdown link checker for README, AGENTS,
+  SECURITY, docs, and Codex prompt files, with fenced-example and external-link
+  exclusions, self-test coverage, and documentation/release/PR prompt
+  validation guidance.
+
+- Updated the Deep Research report validation prompt to read the v1 direction
+  and post-quantum envelope source documents without silent fixed line caps.
+
 - Added a trusted-shell local `operator request-deletion` command for creating
   one incident deletion decision through the configured SQLite or PostgreSQL
   metadata backend, with required reason codes, default open-incident rejection,

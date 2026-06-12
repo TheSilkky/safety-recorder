@@ -91,7 +91,7 @@ sed -n '1,240p' README.md
 sed -n '1,220p' SECURITY.md
 sed -n '1,260p' AGENTS.md
 sed -n '1,280p' docs/README.md
-sed -n '1,700p' docs/v1-preview-direction.md
+cat docs/v1-preview-direction.md
 test -f docs/v1-preview-readiness-checklist.md && sed -n '1,260p' docs/v1-preview-readiness-checklist.md
 sed -n '1,260p' docs/incident-modes.md
 sed -n '1,320p' docs/security-model.md
@@ -105,11 +105,17 @@ Read future-design docs when present:
 
 ```bash
 test -f docs/key-custody.md && sed -n '1,360p' docs/key-custody.md
-test -f docs/post-quantum-envelope.md && sed -n '1,720p' docs/post-quantum-envelope.md
+test -f docs/post-quantum-envelope.md && cat docs/post-quantum-envelope.md
 test -f docs/browser-decryption.md && sed -n '1,360p' docs/browser-decryption.md
 test -f docs/break-glass-key-access.md && sed -n '1,360p' docs/break-glass-key-access.md
 test -f docs/ios-local-recorder-prototype.md && sed -n '1,360p' docs/ios-local-recorder-prototype.md
 ```
+
+Do not replace the `docs/v1-preview-direction.md` or
+`docs/post-quantum-envelope.md` full-file reads with fixed line caps unless the
+replacement reports overflow visibly. These source-of-truth documents can grow
+between report-validation runs, and silent truncation can miss new v1 direction
+or post-quantum envelope requirements.
 
 Read the report:
 
@@ -198,8 +204,14 @@ For report/docs-only cleanup:
 
 ```bash
 git diff --stat
+scripts/check-markdown-links.py
 git diff --check
 ```
+
+If this prompt or the link checker changed, manually confirm the
+`docs/v1-preview-direction.md` and `docs/post-quantum-envelope.md` reads remain
+uncapped or fail visibly on overflow. If the Markdown link checker itself
+changed, also run `scripts/check-markdown-links.py --self-test`.
 
 If Go code changed unexpectedly, stop and report scope creep.
 
