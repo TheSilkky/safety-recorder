@@ -809,7 +809,11 @@ the expected viewing, polling, and download patterns.
 Future server-assisted break-glass, dead-man-switch key access, public account
 workflows, or trusted-contact workflows would add stronger operator and
 deployment trust requirements. They should remain disabled unless explicitly
-designed and configured; see [v1-access-control.md](v1-access-control.md),
+designed and configured. The first accepted break-glass implementation should
+release only eligible wrapped-key material; server escrow, server-side
+decryption, raw key access, plaintext export, and emergency-services
+integration require separate deployment warnings, audit, runbooks, and security
+review. See [v1-access-control.md](v1-access-control.md),
 [break-glass-key-access.md](break-glass-key-access.md),
 [key-custody.md](key-custody.md), and [incident-modes.md](incident-modes.md).
 

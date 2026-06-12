@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- Expanded the break-glass and dead-man-switch policy boundary with a
+  wrapped-key-release-first direction, explicit trigger/cancellation state,
+  contact-review, safe audit-field, offline-device, false-positive/negative,
+  deployment-warning, and server-escrow review gates without adding runtime key
+  escrow, raw-key access, decryption, notification, or emergency-services
+  behavior.
+
 - Added a separate stream-ingress relay container build and local relay Compose
   smoke path, with PR CI building `Dockerfile.ingress`, trusted GHCR publishing
   for `ghcr.io/open-proofline/stream-ingress`, loopback-bound readiness smoke

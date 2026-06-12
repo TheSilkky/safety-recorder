@@ -539,6 +539,10 @@ Normal file or object removal is not treated as guaranteed secure erasure. Deplo
   decryption, backend decryption, payment-gated registration, password
   recovery, or public account portal behavior
 - No implemented production client key storage, browser decryption, server-assisted break-glass key access, or emergency-contact key access model; the future designs are documented in [key-custody.md](key-custody.md), [contact-key-sharing-grants.md](contact-key-sharing-grants.md), [browser-decryption.md](browser-decryption.md), and [break-glass-key-access.md](break-glass-key-access.md)
+- The accepted break-glass boundary for future planning is wrapped-key release
+  first: any initial implementation should authorize delivery of eligible
+  wrapped-key material only, not server unwrapping, raw server-held keys,
+  backend decryption, plaintext export, or emergency-services contact.
 - No implemented production browser decryption or client key-custody UX.
   Current wrapped-key metadata routes validate and store encrypted PQ key
   metadata only and do not introduce recipient private-key custody, raw CEK

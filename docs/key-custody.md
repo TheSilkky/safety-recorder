@@ -461,6 +461,13 @@ Server-side key access may be acceptable only for explicit emergency,
 dead-man-switch, or break-glass modes. It must not be introduced as an
 incidental convenience for normal viewing.
 
+The first implementation should be wrapped-key release only. It may authorize
+delivery of already stored contact-wrapped, device-wrapped, or
+recovery-wrapped CEKs to an eligible reviewer after the accepted policy state
+allows it. It must not unwrap CEKs on the server, store raw server-held media
+keys, decrypt evidence, create plaintext exports, or contact emergency
+services.
+
 Any future server-assisted mode needs:
 
 - explicit deployment configuration, disabled by default or isolated from
@@ -478,8 +485,8 @@ Any future server-assisted mode needs:
   another deployment-specific secret-management system
 
 See [break-glass-key-access.md](break-glass-key-access.md). Do not implement
-server escrow until the policy, audit, deployment, and threat-model changes are
-approved together.
+server escrow, raw server-side key access, or server-side decryption until the
+policy, audit, deployment, and threat-model changes are approved together.
 
 ## API And Storage Changes
 
