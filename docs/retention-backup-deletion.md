@@ -192,6 +192,8 @@ Deletion behavior:
 - account-scoped deletion is available at `POST /v1/incidents/{incident_id}/deletion` for the incident owner
 - admin-global deletion is available at `POST /admin/api/incidents/{incident_id}/deletion`
 - deletion status is available through the matching private `GET` routes
+- local private operator deletion request is available through
+  `proofline-server operator request-deletion --incident-id <id> --reason-code <code>`
 - local read-only operator status is available through
   `proofline-server operator deletion-status`
 - local read-only closed-incident retention preview is available through
@@ -204,6 +206,8 @@ Deletion behavior:
 - repeated deletion requests return the existing deletion status instead of creating competing work
 - public incident viewer routes remain read-only and fail closed for deleting or deleted incidents
 - open incidents are rejected unless the request explicitly sets `allow_open: true`
+- open incidents requested through the local operator command are rejected
+  unless the operator explicitly passes `--allow-open`
 - deletion decisions retain only non-sensitive status fields, such as decision ID, incident ID, source, reason code, actor account ID, item count, timestamps, state, and error class
 - incident deletion prunes incident-scoped sharing-grant and wrapped-key rows
   with the deleted incident, while account/device recipient-key,
@@ -279,6 +283,5 @@ Likely future work includes:
 
 - retention policy fields or settings for mode-driven incident, capture-profile,
   escalation-policy, and sharing-state behavior
-- a local operator CLI to request deletion decisions
 - backup and restore runbooks with deployment-specific commands
 - documentation updates for any future derived plaintext or persisted bundle outputs

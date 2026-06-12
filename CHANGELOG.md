@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Added a trusted-shell local `operator request-deletion` command for creating
+  one incident deletion decision through the configured SQLite or PostgreSQL
+  metadata backend, with required reason codes, default open-incident rejection,
+  safe JSON status output, and no HTTP route, public status, dashboard, secure
+  erasure claim, or object lifecycle automation.
+
 - Added a planning-only notification boundary for trusted-contact alerts,
   missed safety checks, and no-account viewer-token link delivery, covering
   token-link redaction, provider-log risks, retry, suppression, opt-out,

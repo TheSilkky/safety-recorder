@@ -25,6 +25,7 @@ type operatorRepository interface {
 	ListRetentionDeletionCandidates(ctx context.Context, cutoff time.Time, limit int) ([]incidents.RetentionDeletionCandidate, error)
 	ListModeAwareRetentionPreviewIncidents(ctx context.Context, limit int) ([]incidents.ModeAwareRetentionPreviewIncident, error)
 	GetIncidentDeletionJobStatus(ctx context.Context, limit int, staleDeletingBefore time.Time) (incidents.IncidentDeletionJobStatus, error)
+	RequestIncidentDeletion(ctx context.Context, params incidents.IncidentDeletionRequest) (incidents.IncidentDeletionStatus, error)
 }
 
 type operatorRetentionPreviewOutput struct {
@@ -60,6 +61,13 @@ type operatorDeletionStatusOutput struct {
 	Limit               int                                 `json:"limit"`
 	RunnableJobCount    int                                 `json:"runnable_job_count"`
 	Status              incidents.IncidentDeletionJobStatus `json:"status"`
+}
+
+type operatorRequestDeletionOutput struct {
+	Type            string                           `json:"type"`
+	MetadataBackend string                           `json:"metadata_backend"`
+	ReadOnly        bool                             `json:"read_only"`
+	Status          incidents.IncidentDeletionStatus `json:"deletion"`
 }
 
 type operatorError struct {
@@ -120,7 +128,7 @@ func runOperatorCommand(ctx context.Context, args []string, stdout io.Writer, co
 		return withStartupStage(startupStageArgsParse, err)
 	}
 	if len(args) == 0 {
-		return withStartupStage(startupStageArgsParse, fmt.Errorf("operator command required: retention-preview, mode-retention-preview, or deletion-status"))
+		return withStartupStage(startupStageArgsParse, fmt.Errorf("operator command required: retention-preview, mode-retention-preview, deletion-status, or request-deletion"))
 	}
 
 	cfg, err := config.LoadWithOptions(config.LoadOptions{ConfigFilePath: configFilePath})
@@ -140,6 +148,8 @@ func runOperatorCommand(ctx context.Context, args []string, stdout io.Writer, co
 		return runOperatorModeAwareRetentionPreview(ctx, args[1:], stdout, cfg, repo)
 	case "deletion-status":
 		return runOperatorDeletionStatus(ctx, args[1:], stdout, cfg, repo)
+	case "request-deletion":
+		return runOperatorRequestDeletion(ctx, args[1:], stdout, cfg, repo)
 	default:
 		return withStartupStage(startupStageArgsParse, fmt.Errorf("unknown operator command %q", args[0]))
 	}
@@ -332,6 +342,85 @@ func runOperatorDeletionStatus(ctx context.Context, args []string, stdout io.Wri
 		RunnableJobCount:    len(status.RunnableJobs),
 		Status:              status,
 	}))
+}
+
+func runOperatorRequestDeletion(ctx context.Context, args []string, stdout io.Writer, cfg config.Config, repo operatorRepository) error {
+	incidentID := ""
+	reasonCode := ""
+	actorAccountID := ""
+	allowOpen := false
+	flags := flag.NewFlagSet("operator request-deletion", flag.ContinueOnError)
+	flags.SetOutput(io.Discard)
+	flags.StringVar(&incidentID, "incident-id", incidentID, "incident ID to request deletion for")
+	flags.StringVar(&reasonCode, "reason-code", reasonCode, "short non-sensitive deletion reason code")
+	flags.StringVar(&actorAccountID, "actor-account-id", actorAccountID, "optional non-secret local account ID for operator audit context")
+	flags.BoolVar(&allowOpen, "allow-open", allowOpen, "allow requesting deletion for an open incident")
+	if err := flags.Parse(args); err != nil {
+		return withOperatorError("request_deletion", "invalid_config_value", err)
+	}
+	if flags.NArg() != 0 {
+		return withOperatorError("request_deletion", "invalid_config_value", fmt.Errorf("operator request-deletion does not accept positional arguments"))
+	}
+	incidentID = strings.TrimSpace(incidentID)
+	if incidentID == "" {
+		return withOperatorError("request_deletion", "invalid_config_value", fmt.Errorf("operator request-deletion requires --incident-id"))
+	}
+	normalizedReasonCode, err := normalizeOperatorDeletionReasonCode(reasonCode)
+	if err != nil {
+		return withOperatorError("request_deletion", "invalid_config_value", err)
+	}
+	if normalizedReasonCode == "" {
+		return withOperatorError("request_deletion", "invalid_config_value", fmt.Errorf("operator request-deletion requires --reason-code"))
+	}
+
+	status, err := repo.RequestIncidentDeletion(ctx, incidents.IncidentDeletionRequest{
+		IncidentID:     incidentID,
+		Source:         incidents.IncidentDeletionSourceOperatorCLI,
+		ReasonCode:     normalizedReasonCode,
+		ActorAccountID: strings.TrimSpace(actorAccountID),
+		AllowOpen:      allowOpen,
+	})
+	if err != nil {
+		return withOperatorError("request_deletion", operatorDeletionRequestErrorCategory(err), err)
+	}
+
+	return withOperatorError("request_deletion", "unknown", writeOperatorJSON(stdout, operatorRequestDeletionOutput{
+		Type:            "request_deletion",
+		MetadataBackend: cfg.Backends.Metadata,
+		ReadOnly:        false,
+		Status:          status,
+	}))
+}
+
+func normalizeOperatorDeletionReasonCode(value string) (string, error) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return "", nil
+	}
+	if len(value) > 64 {
+		return "", fmt.Errorf("reason-code must be a short non-sensitive code")
+	}
+	for _, r := range value {
+		if (r >= 'a' && r <= 'z') ||
+			(r >= 'A' && r <= 'Z') ||
+			(r >= '0' && r <= '9') ||
+			r == '_' || r == '-' || r == '.' || r == ':' {
+			continue
+		}
+		return "", fmt.Errorf("reason-code must be a short non-sensitive code")
+	}
+	return value, nil
+}
+
+func operatorDeletionRequestErrorCategory(err error) string {
+	switch {
+	case errors.Is(err, incidents.ErrNotFound):
+		return "not_found"
+	case errors.Is(err, incidents.ErrInvalidState):
+		return "invalid_state"
+	default:
+		return "metadata"
+	}
 }
 
 func operatorNow(value string) (time.Time, error) {

@@ -960,7 +960,7 @@ func scanDeletionItem(s scanner) (IncidentDeletionItem, error) {
 
 func validDeletionSource(source string) bool {
 	switch source {
-	case IncidentDeletionSourceAccountRequest, IncidentDeletionSourceAdminRequest, IncidentDeletionSourceRetentionPolicy:
+	case IncidentDeletionSourceAccountRequest, IncidentDeletionSourceAdminRequest, IncidentDeletionSourceOperatorCLI, IncidentDeletionSourceRetentionPolicy:
 		return true
 	default:
 		return false
