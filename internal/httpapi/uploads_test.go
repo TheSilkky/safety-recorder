@@ -230,6 +230,126 @@ func TestDuplicateChunkWithoutIdempotencyKeyKeepsExistingBehavior(t *testing.T) 
 	}
 }
 
+func TestUploadMetadataFailureLogsSanitizedRollbackCleanupFailure(t *testing.T) {
+	ctx := context.Background()
+	dataDir := t.TempDir()
+	conn, err := db.Open(ctx, filepath.Join(dataDir, "proofline.db"))
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = conn.Close()
+	})
+	blobStore, err := storage.New(dataDir)
+	if err != nil {
+		t.Fatalf("create storage: %v", err)
+	}
+	repo := incidents.NewRepository(conn)
+	account, err := repo.CreateAccount(ctx, auth.CreateAccountParams{
+		Username:     "rollback-owner",
+		PasswordHash: "hash",
+		Role:         auth.RoleAdmin,
+		AccountState: auth.AccountStateActive,
+	})
+	if err != nil {
+		t.Fatalf("create account: %v", err)
+	}
+	_, authToken, err := repo.CreateSession(ctx, account.ID, time.Now().UTC().Add(time.Hour))
+	if err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+	incident, err := repo.CreateIncidentForAccount(ctx, account.ID, incidents.CreateIncidentParams{})
+	if err != nil {
+		t.Fatalf("create incident: %v", err)
+	}
+	stream, err := repo.CreateMediaStream(ctx, incident.ID, incidents.MediaTypeAudio, "audio recording")
+	if err != nil {
+		t.Fatalf("create media stream: %v", err)
+	}
+
+	var logs bytes.Buffer
+	removeErr := errors.New("remove failed for incidents/inc_secret/streams/str_secret/audio_000001.enc")
+	failingStore := &removeFailingBlobStore{BlobStore: blobStore, err: removeErr}
+	mainHandler := httpapi.NewMain(&createChunkFailingRepo{
+		MetadataRepository: repo,
+		err:                incidents.ErrInvalidState,
+	}, failingStore, httpapi.Options{
+		MaxUploadBytes: 1024 * 1024,
+		Logger:         slog.New(slog.NewTextHandler(&logs, nil)),
+	})
+	app := &testApp{
+		mainHandler:    mainHandler,
+		privateHandler: mainHandler,
+		dataDir:        dataDir,
+		db:             conn,
+		authToken:      authToken,
+	}
+
+	payload := []byte("encrypted audio data")
+	response, body := uploadChunkWithStream(t, app, incident.ID, stream.ID, 1, incidents.MediaTypeAudio, payload, sha256Hex(payload))
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusConflict {
+		t.Fatalf("expected upload metadata failure status 409, got %d: %s", response.StatusCode, body)
+	}
+	assertErrorCode(t, body, "stream_not_open")
+	if !failingStore.removeCalled {
+		t.Fatal("expected rollback cleanup to call blob store Remove")
+	}
+
+	output := logs.String()
+	for _, want := range []string{
+		"component=httpapi",
+		"operation=\"rollback committed blob cleanup\"",
+		"stage=metadata_failure",
+		"error_category=unknown",
+	} {
+		if !strings.Contains(output, want) {
+			t.Fatalf("rollback cleanup log omitted %q: %s", want, output)
+		}
+	}
+	for _, disallowed := range []string{
+		dataDir,
+		failingStore.removedPath,
+		"inc_secret",
+		"str_secret",
+		"audio_000001.enc",
+		string(payload),
+		"remove failed for",
+	} {
+		if strings.TrimSpace(disallowed) == "" {
+			continue
+		}
+		if bytes.Contains(body, []byte(disallowed)) {
+			t.Fatalf("rollback cleanup response exposed %q: %s", disallowed, body)
+		}
+		if strings.Contains(output, disallowed) {
+			t.Fatalf("rollback cleanup log exposed %q: %s", disallowed, output)
+		}
+	}
+}
+
+type createChunkFailingRepo struct {
+	httpapi.MetadataRepository
+	err error
+}
+
+func (r *createChunkFailingRepo) CreateChunk(context.Context, incidents.CreateChunkParams) (incidents.Chunk, error) {
+	return incidents.Chunk{}, r.err
+}
+
+type removeFailingBlobStore struct {
+	storage.BlobStore
+	err          error
+	removeCalled bool
+	removedPath  string
+}
+
+func (s *removeFailingBlobStore) Remove(ctx context.Context, storedPath string) error {
+	s.removeCalled = true
+	s.removedPath = storedPath
+	return s.err
+}
+
 func TestRejectAccountBlobQuotaExceeded(t *testing.T) {
 	ctx := context.Background()
 	dataDir := t.TempDir()
