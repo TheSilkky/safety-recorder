@@ -33,7 +33,7 @@ by itself approve broad public `/v1` routing as a product API. The implemented
 account incident list/detail routes are owner-only and public-safe, but uploads,
 chunk reads, bundle downloads, diagnostics, operator routes, write routes, and
 key-custody behavior still need separate review before public exposure.
-Existing `/v1/admin/...` JSON routes are
+Existing `/admin/api/...` JSON routes are
 authenticated admin-only routes on the private-admin listener and must not be
 routed from public entry points. The current topology separates the main
 API/viewer listener from a separately bound private admin listener; see
@@ -48,8 +48,8 @@ The API binary starts separate listener groups:
 
 | Listener group | Routes | Intended exposure |
 |---|---|---|
-| Main API and viewer | Authenticated non-admin `/v1/...` routes, current prototype/local `/i/{token}` read-only viewer routes, and pre-rename `/e/{token}` aliases only when explicit local/test compatibility needs them | Reviewed main API deployment boundary; viewer paths may be routed publicly when only reviewed viewer paths are forwarded. Future canonical no-account viewer links belong to the web-client origin. Public edges must not route `/v1/admin/...`. |
-| Private admin listener | Authenticated admin-only `/v1/admin/...` JSON routes, `/admin`, `/admin/...`, and `/admin/static/...` | Localhost, LAN, WireGuard, firewall, or strict reverse proxy only. |
+| Main API and viewer | Authenticated non-admin `/v1/...` routes, current prototype/local `/i/{token}` read-only viewer routes, and pre-rename `/e/{token}` aliases only when explicit local/test compatibility needs them | Reviewed main API deployment boundary; viewer paths may be routed publicly when only reviewed viewer paths are forwarded. Future canonical no-account viewer links belong to the web-client origin. Public edges must not route `/admin/api/...`. |
+| Private admin listener | Authenticated admin-only `/admin/api/...` JSON routes, `/admin`, `/admin/...`, and `/admin/static/...` | Localhost, LAN, WireGuard, firewall, or strict reverse proxy only. |
 
 The `/admin` dashboard must not be mounted on the main listener. Incident
 viewer routes are read-only.
@@ -102,7 +102,7 @@ product routes fail closed with `403 second_factor_verification_required` until
 the session verifies an active factor.
 
 Lost-factor recovery is limited to an authenticated private-admin
-`POST /v1/admin/accounts/{account_id}/second-factor/recovery/reset` route. The
+`POST /admin/api/accounts/{account_id}/second-factor/recovery/reset` route. The
 route accepts controlled reason codes only, removes enrolled email, TOTP, and
 WebAuthn factors and pending second-factor challenges for the target account,
 marks the account `setup_required`, revokes that account's active sessions, and
@@ -223,7 +223,7 @@ paths are also token-bearing and must be redacted.
   wrapped-key metadata, upload,
   reconciliation, stream, token, and download classes. The legacy admin API
   limit setting is retained only as a documented compatibility setting because
-  current `/v1/admin/...` JSON routes are on the private-admin listener. Limiter
+  current `/admin/api/...` JSON routes are on the private-admin listener. Limiter
   keys use server-controlled class labels and a hash of the socket peer
   identity. They do not include raw email addresses, raw usernames,
   verification tokens, second-factor challenge codes, TOTP codes, TOTP seeds,

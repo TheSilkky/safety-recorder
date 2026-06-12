@@ -7,7 +7,7 @@ operator surfaces.
 The initial implementation is now in place: the default `127.0.0.1:8080` main
 listener serves authenticated non-admin `/v1` routes and the read-only incident
 viewer, while the default `127.0.0.1:8081` private-admin listener serves
-authenticated admin-only `/v1/admin/...` JSON routes and the `/admin` dashboard
+authenticated admin-only `/admin/api/...` JSON routes and the `/admin` dashboard
 route tree. This does not make the main `/v1` API production-ready public
 infrastructure or approve broad public catch-all routing.
 
@@ -17,7 +17,7 @@ infrastructure or approve broad public catch-all routing.
 - Define the target private `8081` admin listener route set.
 - Keep the public incident viewer route group on the main listener.
 - Keep `/admin` and `/admin/...` off the public-facing main listener.
-- Keep `/v1/admin/...` on the private-admin listener and blocked from public
+- Keep `/admin/api/...` on the private-admin listener and blocked from public
   reverse-proxy routes.
 - Document app-level rate-limit route classes and required edge controls before
   any main API route group is publicly exposed.
@@ -45,8 +45,8 @@ The current server starts two handler trees:
 
 | Listener group | Default address | Current routes | Current exposure |
 |---|---:|---|---|
-| Main API and viewer | `127.0.0.1:8080` | Authenticated non-admin `/v1/...` routes, current prototype/local `/i/{token}` viewer routes, viewer bundle downloads, `/e/{token}` aliases only when explicit local/test compatibility needs them, `/static/...` | Public HTTPS/reverse proxy only after deployment-specific TLS, path routing, abuse controls, browser credential review, logging review, and operations are complete. Public edges must not route `/v1/admin/...`. Future canonical no-account viewer links belong to the web-client origin. |
-| Private admin listener | `127.0.0.1:8081` | Authenticated admin-only `/v1/admin/...` JSON routes, `/admin`, `/admin/...`, `/admin/static/...` | Localhost, LAN, WireGuard, firewall, or strict private reverse proxy only. |
+| Main API and viewer | `127.0.0.1:8080` | Authenticated non-admin `/v1/...` routes, current prototype/local `/i/{token}` viewer routes, viewer bundle downloads, `/e/{token}` aliases only when explicit local/test compatibility needs them, `/static/...` | Public HTTPS/reverse proxy only after deployment-specific TLS, path routing, abuse controls, browser credential review, logging review, and operations are complete. Public edges must not route `/admin/api/...`. Future canonical no-account viewer links belong to the web-client origin. |
+| Private admin listener | `127.0.0.1:8081` | Authenticated admin-only `/admin/api/...` JSON routes, `/admin`, `/admin/...`, `/admin/static/...` | Localhost, LAN, WireGuard, firewall, or strict private reverse proxy only. |
 
 Current `/v1` routes use local username/password accounts, opaque server-side
 sessions, email challenge, TOTP, and disabled-by-default WebAuthn second-factor
@@ -59,13 +59,13 @@ The implementation keeps two route trees:
 
 | Target listener | Target default address | Route groups | Exposure |
 |---|---:|---|---|
-| Main API and viewer | `127.0.0.1:8080` | Authenticated non-admin product API routes and read-only incident viewer routes. | Public HTTPS/reverse proxy only after authentication, authorization, path routing, rate limits, logging redaction, browser credential rules, and deployment guidance are implemented and tested. Public edges must not route `/v1/admin/...`. |
-| Private admin listener | `127.0.0.1:8081` | Authenticated admin-only `/v1/admin/...` JSON routes, private `/admin` dashboard routes, and token-neutral `/admin/static/...` assets. | Localhost, LAN, WireGuard, VPN, firewall, or strict private reverse proxy only. Still authenticated and authorized. |
+| Main API and viewer | `127.0.0.1:8080` | Authenticated non-admin product API routes and read-only incident viewer routes. | Public HTTPS/reverse proxy only after authentication, authorization, path routing, rate limits, logging redaction, browser credential rules, and deployment guidance are implemented and tested. Public edges must not route `/admin/api/...`. |
+| Private admin listener | `127.0.0.1:8081` | Authenticated admin-only `/admin/api/...` JSON routes, private `/admin` dashboard routes, and token-neutral `/admin/static/...` assets. | Localhost, LAN, WireGuard, VPN, firewall, or strict private reverse proxy only. Still authenticated and authorized. |
 
 The `8080` main listener is public-facing only after the deployment has added
 the required controls for the routed groups. It must not become a public
 catch-all for admin/operator routes or unreviewed product route groups, and
-public reverse proxies must block `/v1/admin/...`.
+public reverse proxies must block `/admin/api/...`.
 
 The target `8081` private admin listener must not serve public incident viewer
 routes, product upload routes, public link routes, public viewer static assets,
@@ -90,7 +90,7 @@ deployment review:
 | `/v1/incidents/{incident_id}/incident-tokens`, `/v1/incident-tokens/{token_id}/revoke` | Main listener as account-owner sharing routes. | Grant-creation limits, token hash storage, raw token returned once, token-label redaction guidance, revoke audit, and no admin/operator grant management on the main listener. |
 
 These routes should remain explicit product API routes. Existing
-`/v1/admin/...` JSON routes are mounted only on the private-admin listener and
+`/admin/api/...` JSON routes are mounted only on the private-admin listener and
 remain admin-only and not public-ready. The private `/admin` dashboard bootstrap
 flow replaces the legacy JSON first-admin bootstrap route.
 
@@ -102,13 +102,13 @@ The private admin listener should serve only private admin routes:
 |---|---|---|
 | `/admin`, `/admin/login`, `/admin/bootstrap`, `/admin/logout`, `/admin/password`, `/admin/accounts/{account_id}/password` | Private `8081` only. | Keep HttpOnly SameSite admin cookie scoped to `/admin`, session-bound CSRF tokens for state-changing forms, no-store, and conservative browser headers. |
 | `/admin/static/...` | Private `8081` only. | Token-neutral admin CSS only; no incident evidence, tokens, keys, or deployment details. |
-| `/v1/admin/accounts`, `/v1/admin/accounts/{account_id}/password`, `/v1/admin/accounts/{account_id}/sessions/revoke` | Private `8081` only. | Keep bearer or browser-cookie session authentication and admin-role checks; do not route from public entry points. |
-| `GET /v1/admin/incidents/unowned` and `POST /v1/admin/incidents/{incident_id}/reassignment` | Private `8081` only. | Legacy unowned incident review and one-incident reassignment or keep-unowned audit decisions remain admin-only and must not be routed from public entry points. |
-| `GET` and `POST /v1/admin/incidents/{incident_id}/deletion` | Private `8081` only. | Admin-global incident deletion remains an admin-only action and must not be routed from public entry points. |
+| `/admin/api/accounts`, `/admin/api/accounts/{account_id}/password`, `/admin/api/accounts/{account_id}/second-factor/recovery/reset`, `/admin/api/accounts/{account_id}/sessions/revoke` | Private `8081` only. | Keep bearer or browser-cookie session authentication and admin-role checks; do not route from public entry points. |
+| `GET /admin/api/incidents/unowned` and `POST /admin/api/incidents/{incident_id}/reassignment` | Private `8081` only. | Legacy unowned incident review and one-incident reassignment or keep-unowned audit decisions remain admin-only and must not be routed from public entry points. |
+| `GET` and `POST /admin/api/incidents/{incident_id}/deletion` | Private `8081` only. | Admin-global incident deletion remains an admin-only action and must not be routed from public entry points. |
 | `/v1/bootstrap/admin` | Not mounted. | Use private `/admin/bootstrap`; remove the bootstrap secret after first-admin creation. |
 | `/v1/health/live`, `/v1/health/ready` | Not mounted. | Do not publish operator readiness details on the main public origin or the private-admin listener. |
 
-If future implementation renames admin API routes from `/v1/admin/...` to a new
+If future implementation renames admin API routes from `/admin/api/...` to a new
 private prefix, it should keep compatibility or migration guidance explicit and
 keep that route tree on a private admin listener.
 
@@ -117,7 +117,7 @@ keep that route tree on a private admin listener.
 Public reverse proxies that forward to the main listener must not route:
 
 - `/admin` or `/admin/...`
-- `/v1/admin/...`
+- `/admin/api/...`
 - `/v1/bootstrap/admin`
 - `/v1/health/live` or `/v1/health/ready`
 - operator maintenance commands or status pages
@@ -154,7 +154,7 @@ minimum:
 | Upload reconciliation/idempotency | Duplicate reconciliation and idempotent retry paths | Prevent metadata comparison and replay endpoints from becoming enumeration tools. |
 | Private/API download | Private chunk bytes and authenticated bundle downloads | Protect storage reads and ZIP generation for authenticated callers. |
 | Admin dashboard actions | Private `/admin` | Keep private admin abuse controls separate from public product controls. |
-| Admin JSON API actions | `/v1/admin/...` | Admin-only routes on the private-admin listener; block at public reverse proxies. |
+| Admin JSON API actions | `/admin/api/...` | Admin-only routes on the private-admin listener; block at public reverse proxies. |
 
 Limiter keys must be server-controlled and must not include raw viewer tokens,
 raw session tokens, Authorization headers, request bodies, uploaded bytes,
@@ -234,9 +234,9 @@ Implementation and follow-up issues should include tests that prove:
 - main listener serves the intended reviewed product API routes
 - main listener serves `/i/...`, legacy `/e/...`, and `/static/...`
 - main listener returns not-found for `/admin`, `/admin/...`,
-  `/v1/admin/...`, `/v1/bootstrap/admin`, `/v1/health/live`, and
+  `/admin/api/...`, `/v1/bootstrap/admin`, `/v1/health/live`, and
   `/v1/health/ready`
-- private admin listener keeps `/v1/admin/...` authenticated, admin-only, and
+- private admin listener keeps `/admin/api/...` authenticated, admin-only, and
   documented as blocked from public reverse-proxy routes
 - private admin listener serves `/admin`, `/admin/...`, and
   `/admin/static/...`
@@ -256,7 +256,7 @@ Implementation and follow-up issues should include tests that prove:
 - simulator smoke tests use the updated main/viewer base URL after listener
   defaults change
 
-The current deployment rule remains: `/admin` and `/v1/admin/...` stay on the
+The current deployment rule remains: `/admin` and `/admin/api/...` stay on the
 private admin listener and must be blocked from public reverse-proxy routes.
 The main `/v1` API must not be exposed as a public catch-all. Public deployment
 controls must be explicitly reviewed for each route group in the deployment.

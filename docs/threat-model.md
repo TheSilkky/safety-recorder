@@ -144,7 +144,7 @@ encrypted evidence bundles.
   invites, manage account-owned contact public keys, manage owner-scoped
   sharing grants, manage grant-bound wrapped-key records, and read encrypted
   bytes.
-- Existing `/v1/admin/...` JSON routes require an admin account, are mounted on
+- Existing `/admin/api/...` JSON routes require an admin account, are mounted on
   the private-admin server, and must not be routed from public entry points.
   This includes legacy unowned incident candidate review, reassignment, and
   keep-unowned audit decisions, account password/session management, and
@@ -214,7 +214,7 @@ encrypted evidence bundles.
   reconciliation, stream, token, and download requests by safe class labels and
   a hash of the socket peer identity. The legacy main-handler admin limit
   setting is retained only as a compatibility setting because current
-  `/v1/admin/...` JSON routes are on the private-admin listener. Limiter keys
+  `/admin/api/...` JSON routes are on the private-admin listener. Limiter keys
   do not include raw email addresses, raw usernames, verification tokens,
   second-factor challenge codes, TOTP codes, TOTP seeds, WebAuthn challenge or
   client-data values, raw session tokens, Authorization headers, raw
@@ -250,7 +250,7 @@ encrypted evidence bundles.
   origins and is not treated as authentication.
 - Private incident access is authorized by account owner and role. Regular
   users can access their own incidents. Admins can access incidents across
-  accounts and use `/v1/admin/...` account routes. Legacy unowned incidents are
+  accounts and use `/admin/api/...` account routes. Legacy unowned incidents are
   admin-only unless an admin assigns one incident through the private
   reassignment workflow; see
   [legacy unowned incident reassignment](legacy-unowned-incident-reassignment.md).
@@ -359,7 +359,7 @@ The current backend does not implement incident-mode-specific controls yet, so f
   web client, an HttpOnly browser session cookie with CSRF protection for
   unsafe requests. The private `/admin` web authenticated state-changing forms
   continue to use a separate HttpOnly SameSite cookie with a session-bound CSRF
-  token. Browser cookie auth does not make `/v1/admin/...` public-ready.
+  token. Browser cookie auth does not make `/admin/api/...` public-ready.
 - Separate main and private-admin ports reduce accidental route exposure, but
   they are not a complete security model.
 - `/v1` must not be routed as an unreviewed public catch-all; public deployment
@@ -453,7 +453,7 @@ private network and restrict access with WireGuard, firewall rules, or a
 reverse proxy. If exposing only the incident viewer publicly, route only
 viewer paths (`/i/...`, `/e/...`, and `/static/...`) to the main listener and
 do not forward public wildcard traffic to unreviewed `/v1` route groups.
-Public edges must block `/v1/admin/...`. The `/v1/admin/...` JSON routes and `/admin` dashboard use the
+Public edges must block `/admin/api/...`. The `/admin/api/...` JSON routes and `/admin` dashboard use the
 separately bound private-admin listener and still require admin authentication.
 Inside Docker containers, bind to container addresses such as `0.0.0.0:8080`
 and restrict host exposure with port publishing, firewall rules, WireGuard, or

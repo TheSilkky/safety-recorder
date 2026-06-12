@@ -64,7 +64,7 @@ Preserve these server-specific boundaries:
 
 - Keep the backend small, boring, and testable.
 - Preserve the main `/v1` and private `/admin` listener separation.
-- Do not route `/admin`, `/v1/admin/...`, private diagnostics, raw backend
+- Do not route `/admin`, `/admin/api/...`, private diagnostics, raw backend
   errors, or operator-only routes from public edges.
 - Do not add backend decryption, browser decryption, raw server-held keys, key
   escrow, break-glass access, playable export, recording/capture,
@@ -93,7 +93,7 @@ Check technical accuracy:
   encryption, key-custody, and validation claims accurate?
 - Are planned/future features clearly separated from implemented behavior?
 - Are deprecated or legacy names explained rather than silently mixed?
-- Are `/v1`, `/v1/admin/...`, `/admin`, public viewer, bundle, deletion,
+- Are `/v1`, `/admin/api/...`, `/admin`, public viewer, bundle, deletion,
   retention, and account/session boundaries current?
 
 Check documentation completeness:

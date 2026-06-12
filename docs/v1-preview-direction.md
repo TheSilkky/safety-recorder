@@ -80,11 +80,11 @@ The current server has two listener groups:
 | Listener group | Current routes | Direction |
 |---|---|---|
 | Main API and viewer | Authenticated non-admin `/v1/...` routes, current prototype/local `/i/{token}` viewer routes, `/e/{token}` aliases only when explicit local/test compatibility needs them, and `/static/...` viewer assets. | Reviewed main API deployment boundary. Viewer paths may be routed publicly only when route paths, logs, headers, TLS, and abuse controls are reviewed. Future canonical no-account viewer links belong to the web-client origin. |
-| Private admin | Authenticated admin-only `/v1/admin/...` JSON routes, `/admin`, `/admin/...`, and `/admin/static/...`. | Localhost, LAN, WireGuard, firewall, VPN, or strict private reverse proxy. Still authenticated and authorized. |
+| Private admin | Authenticated admin-only `/admin/api/...` JSON routes, `/admin`, `/admin/...`, and `/admin/static/...`. | Localhost, LAN, WireGuard, firewall, VPN, or strict private reverse proxy. Still authenticated and authorized. |
 
 Separate bind addresses reduce accidental exposure. They are not a complete
 security model. Public edges must not route `/admin`, `/admin/...`,
-`/v1/admin/...`, operator diagnostics, escrow, break-glass, decryption, raw-key,
+`/admin/api/...`, operator diagnostics, escrow, break-glass, decryption, raw-key,
 or private support routes.
 
 The Go API is responsible for application security boundaries such as

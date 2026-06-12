@@ -173,7 +173,7 @@ Any future relay route additions should continue to expose only:
 The ingress service must not expose:
 
 - `/admin` or `/admin/...`
-- `/v1/admin/...`
+- `/admin/api/...`
 - the whole `/v1` product API
 - public incident viewer routes
 - bundle download routes

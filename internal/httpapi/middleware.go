@@ -98,6 +98,9 @@ func safeLogPath(r *http.Request) string {
 	if strings.HasPrefix(r.URL.Path, "/e/") {
 		return redactedViewerPath(r.URL.Path, "/e")
 	}
+	if strings.HasPrefix(r.URL.Path, "/admin/api/") {
+		return redactedAdminAPIPath(r.Method, strings.Split(strings.Trim(r.URL.Path, "/"), "/"))
+	}
 	if strings.HasPrefix(r.URL.Path, "/v1/") {
 		return redactedMainAPIPath(r.Method, r.URL.Path)
 	}
@@ -130,8 +133,6 @@ func redactedMainAPIPath(method, rawPath string) string {
 	}
 
 	switch segments[1] {
-	case "admin":
-		return redactedAdminAPIPath(method, segments)
 	case "auth":
 		return redactedAuthPath(method, segments)
 	case "bootstrap":
@@ -165,34 +166,34 @@ func redactedMainAPIPath(method, rawPath string) string {
 
 func redactedAdminAPIPath(method string, segments []string) string {
 	if len(segments) < 3 {
-		return method + " /v1/admin/{route}"
+		return method + " /admin/api/{route}"
 	}
 	switch segments[2] {
 	case "accounts":
 		if len(segments) == 3 {
-			return method + " /v1/admin/accounts"
+			return method + " /admin/api/accounts"
 		}
 		if len(segments) == 5 && segments[4] == "password" {
-			return method + " /v1/admin/accounts/{account_id}/password"
+			return method + " /admin/api/accounts/{account_id}/password"
 		}
 		if len(segments) == 7 && segments[4] == "second-factor" && segments[5] == "recovery" && segments[6] == "reset" {
-			return method + " /v1/admin/accounts/{account_id}/second-factor/recovery/reset"
+			return method + " /admin/api/accounts/{account_id}/second-factor/recovery/reset"
 		}
 		if len(segments) == 6 && segments[4] == "sessions" && segments[5] == "revoke" {
-			return method + " /v1/admin/accounts/{account_id}/sessions/revoke"
+			return method + " /admin/api/accounts/{account_id}/sessions/revoke"
 		}
 	case "incidents":
 		if len(segments) == 4 && segments[3] == "unowned" {
-			return method + " /v1/admin/incidents/unowned"
+			return method + " /admin/api/incidents/unowned"
 		}
 		if len(segments) == 5 {
 			switch segments[4] {
 			case "deletion", "reassignment":
-				return method + " /v1/admin/incidents/{incident_id}/" + segments[4]
+				return method + " /admin/api/incidents/{incident_id}/" + segments[4]
 			}
 		}
 	}
-	return method + " /v1/admin/{route}"
+	return method + " /admin/api/{route}"
 }
 
 func redactedAuthPath(method string, segments []string) string {

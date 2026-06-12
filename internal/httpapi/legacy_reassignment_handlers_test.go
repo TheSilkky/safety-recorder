@@ -30,7 +30,7 @@ func TestAdminListsLegacyUnownedIncidentCandidatesWithSafeFields(t *testing.T) {
 	createCheckin(t, app, legacyIncident.ID)
 	createIncidentToken(t, app, legacyIncident.ID, "viewer", nil)
 
-	response, body = requestWithAuth(t, app.adminHandler, http.MethodGet, "/v1/admin/incidents/unowned", "", nil, app.authToken)
+	response, body = requestWithAuth(t, app.adminHandler, http.MethodGet, "/admin/api/incidents/unowned", "", nil, app.authToken)
 	defer response.Body.Close()
 	if response.StatusCode != http.StatusOK {
 		t.Fatalf("expected candidate list status 200, got %d: %s", response.StatusCode, body)
@@ -87,7 +87,7 @@ func TestAdminLegacyUnownedIncidentReassignmentAssignsOwner(t *testing.T) {
 	}
 
 	requestBody := bytes.NewBufferString(`{"action":"assign_owner","new_owner_account_id":"` + owner.ID + `","reason_code":"owner_verified"}`)
-	response, body = requestWithAuth(t, app.adminHandler, http.MethodPost, "/v1/admin/incidents/"+legacyIncident.ID+"/reassignment", "application/json", requestBody, app.authToken)
+	response, body = requestWithAuth(t, app.adminHandler, http.MethodPost, "/admin/api/incidents/"+legacyIncident.ID+"/reassignment", "application/json", requestBody, app.authToken)
 	defer response.Body.Close()
 	if response.StatusCode != http.StatusOK {
 		t.Fatalf("expected reassignment status 200, got %d: %s", response.StatusCode, body)
@@ -132,7 +132,7 @@ func TestAdminLegacyUnownedIncidentReassignmentKeepsUnowned(t *testing.T) {
 	legacyIncident := createLegacyIncidentForTest(t, app, "legacy", "legacy note")
 
 	requestBody := bytes.NewBufferString(`{"action":"keep_unowned","reason_code":"keep_admin_only"}`)
-	response, body := requestWithAuth(t, app.adminHandler, http.MethodPost, "/v1/admin/incidents/"+legacyIncident.ID+"/reassignment", "application/json", requestBody, app.authToken)
+	response, body := requestWithAuth(t, app.adminHandler, http.MethodPost, "/admin/api/incidents/"+legacyIncident.ID+"/reassignment", "application/json", requestBody, app.authToken)
 	defer response.Body.Close()
 	if response.StatusCode != http.StatusOK {
 		t.Fatalf("expected keep-unowned status 200, got %d: %s", response.StatusCode, body)
@@ -207,7 +207,7 @@ func TestAdminLegacyUnownedIncidentReassignmentRejectsInvalidRequests(t *testing
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			response, body := requestWithAuth(t, app.adminHandler, http.MethodPost, "/v1/admin/incidents/"+test.incidentID+"/reassignment", "application/json", bytes.NewBufferString(test.body), test.token)
+			response, body := requestWithAuth(t, app.adminHandler, http.MethodPost, "/admin/api/incidents/"+test.incidentID+"/reassignment", "application/json", bytes.NewBufferString(test.body), test.token)
 			defer response.Body.Close()
 			if response.StatusCode != test.wantStatus {
 				t.Fatalf("expected status %d, got %d: %s", test.wantStatus, response.StatusCode, body)

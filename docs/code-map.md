@@ -129,7 +129,7 @@ returns safe session metadata without a raw token, and sets an HttpOnly session 
 `GET /v1/auth/web/csrf` returns a session-bound CSRF token for unsafe
 cookie-authenticated requests, and `POST /v1/auth/web/logout` revokes the
 session and clears the cookie. Requests that send both bearer and browser
-cookie credentials are rejected. Existing `/v1/admin/...` JSON routes are
+cookie credentials are rejected. Existing `/admin/api/...` JSON routes are
 mounted on the private-admin handler and require an admin account. First-admin
 bootstrap uses the private
 `/admin/bootstrap` form when no admin exists and a bootstrap secret is
@@ -273,7 +273,7 @@ narratives.
 
 Main owner-scoped deletion requests are handled by
 `POST /v1/incidents/{incident_id}/deletion`. Admin-global deletion requests are
-handled by `POST /v1/admin/incidents/{incident_id}/deletion` on the private-admin
+handled by `POST /admin/api/incidents/{incident_id}/deletion` on the private-admin
 handler with an admin account. Public incident viewer routes do not expose
 deletion controls or deletion status.
 

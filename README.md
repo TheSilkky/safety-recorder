@@ -16,7 +16,7 @@ Proofline Server is the experimental Go server backend for encrypted incident ca
 
 ## Security Warning
 
-> This project is not production-ready public infrastructure. The main `/v1` API now requires local account sessions for product routes and uses app-level route-class rate limits, so it is no longer an unauthenticated control plane. Broad public exposure still needs route-by-route deployment review, TLS, edge abuse controls, browser credential review, logging review, proxy hardening, and operational testing. Configurable public self-registration is disabled by default; enabling open registration adds only email-verified account creation and does not by itself approve broad public `/v1` exposure. Optional browser cookie sessions add CSRF checks and configured credentialed CORS for future web-client use, but they also need reviewed deployment rules. Existing `/v1/admin/...` JSON routes are mounted only on the private-admin listener and remain authenticated admin-only routes. The private-admin listener also serves the `/admin` dashboard surface and must stay behind localhost, LAN, WireGuard, a firewall, or a strict reverse proxy. Separate bind addresses are a deployment boundary, not a complete security model.
+> This project is not production-ready public infrastructure. The main `/v1` API now requires local account sessions for product routes and uses app-level route-class rate limits, so it is no longer an unauthenticated control plane. Broad public exposure still needs route-by-route deployment review, TLS, edge abuse controls, browser credential review, logging review, proxy hardening, and operational testing. Configurable public self-registration is disabled by default; enabling open registration adds only email-verified account creation and does not by itself approve broad public `/v1` exposure. Optional browser cookie sessions add CSRF checks and configured credentialed CORS for future web-client use, but they also need reviewed deployment rules. Existing `/admin/api/...` JSON routes are mounted only on the private-admin listener and remain authenticated admin-only routes. The private-admin listener also serves the `/admin` dashboard surface and must stay behind localhost, LAN, WireGuard, a firewall, or a strict reverse proxy. Separate bind addresses are a deployment boundary, not a complete security model.
 >
 > Public web-client deployments must follow the reviewed route, CORS, CSRF,
 > cookie, cache, edge, and logging boundary in
@@ -215,7 +215,7 @@ escrow.
 
 ## Architecture
 
-Proofline Server runs separate main and private-admin HTTP listener groups from the same Go binary. The main listener serves authenticated non-admin `/v1` routes and the token-gated, read-only incident viewer. Existing `/v1/admin/...` JSON routes stay authenticated and admin-only, but are mounted only on the private-admin listener alongside the `/admin` dashboard route tree.
+Proofline Server runs separate main and private-admin HTTP listener groups from the same Go binary. The main listener serves authenticated non-admin `/v1` routes and the token-gated, read-only incident viewer. Existing `/admin/api/...` JSON routes stay authenticated and admin-only, but are mounted only on the private-admin listener alongside the `/admin` dashboard route tree.
 
 ```mermaid
 flowchart LR
@@ -225,7 +225,7 @@ flowchart LR
     Main --> Tokens["Viewer token creation"]
     Contact["Trusted contact"] --> Main
     Main --> Bundles["Encrypted ZIP bundles<br/>completed streams only"]
-    Admin["Private admin listener<br/>/v1/admin API<br/>/admin dashboard"] --> DB
+    Admin["Private admin listener<br/>/admin/api API<br/>/admin dashboard"] --> DB
 ```
 
 For more diagrams and package-level details, see [docs/architecture.md](docs/architecture.md) and [docs/code-map.md](docs/code-map.md). The planned cluster expansion is documented separately in [docs/production-cluster-scope.md](docs/production-cluster-scope.md).
@@ -411,7 +411,7 @@ Do not let Codex create GitHub issues directly during the initial scan.
 
 ## Security
 
-Viewer links, `/v1` bearer session tokens, and browser session cookies are credentials and should be treated as secrets. Browser cookie mode should use HttpOnly Secure cookies, explicit allowed origins, `credentials: "include"`, and CSRF headers for unsafe requests; browser token persistence should not use localStorage in production. Public deployment still needs TLS, rate limiting, log review, proxy hardening, operational testing, and deployment-specific retention, backup, and deletion enforcement. Do not route `/v1` as an unreviewed public catch-all; expose only explicitly reviewed route groups, and keep `/v1/admin/...` and `/admin` off public edges.
+Viewer links, `/v1` bearer session tokens, and browser session cookies are credentials and should be treated as secrets. Browser cookie mode should use HttpOnly Secure cookies, explicit allowed origins, `credentials: "include"`, and CSRF headers for unsafe requests; browser token persistence should not use localStorage in production. Public deployment still needs TLS, rate limiting, log review, proxy hardening, operational testing, and deployment-specific retention, backup, and deletion enforcement. Do not route `/v1` as an unreviewed public catch-all; expose only explicitly reviewed route groups, and keep `/admin/api/...` and `/admin` off public edges.
 
 Please see [SECURITY.md](SECURITY.md) for supported versions and vulnerability reporting guidance. Do not report security vulnerabilities through public GitHub issues.
 

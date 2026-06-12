@@ -31,7 +31,7 @@ escalation-policy, and sharing-state metadata on main incident create/read
 routes, exposes owner-only public-safe incident list/detail metadata for future
 web-client reads, and has local username/password accounts with opaque
 server-side sessions for the main `/v1` API, private-admin JSON routes under
-`/v1/admin/...`, plus a private admin web surface under `/admin`.
+`/admin/api/...`, plus a private admin web surface under `/admin`.
 Sharing metadata, owner wrapped-key records, and signed-in trusted-contact
 wrapped-key reads are implemented behind authenticated `/v1` routes.
 Mode-driven access, escalation, retention, key custody, trusted-contact
@@ -141,7 +141,7 @@ flowchart TB
 
     subgraph AdminBoundary["Private-admin boundary"]
         AdminClient["Operator"] --> AdminListener["Private-admin listener<br/>SAFE_ADMIN_BIND_ADDRS"]
-        AdminListener --> AdminAPI["/v1/admin JSON API"]
+        AdminListener --> AdminAPI["/admin/api JSON API"]
         AdminListener --> AdminWeb["/admin web"]
         AdminAPI --> Auth
         AdminWeb --> Auth
@@ -195,14 +195,14 @@ flowchart LR
     end
 
     subgraph AdminMux["Private-admin mux"]
-        AdminAPI["/v1/admin routes<br/>account and deletion administration"]
+        AdminAPI["/admin/api routes<br/>account and deletion administration"]
         AdminWeb["/admin routes<br/>bootstrap, login, account list,<br/>password workflows"]
     end
 
     MainMux --> MainBind["SAFE_MAIN_BIND_ADDRS"]
     AdminMux --> AdminBind["SAFE_ADMIN_BIND_ADDRS"]
 
-    Warning["Do not mount /admin or /v1/admin on main; do not mount product /v1, /i, /e, or /static on private admin"]
+    Warning["Do not mount /admin or /admin/api on main; do not mount product /v1, /i, /e, or /static on private admin"]
 ```
 
 ## Evidence Bundles
@@ -233,7 +233,7 @@ remains responsible for account/session or future upload authorization, relay
 capability validation, incident and stream state, idempotency decisions,
 duplicate reconciliation, final blob commits, and metadata.
 
-The relay must not expose `/admin`, `/v1/admin/...`, public incident viewer
+The relay must not expose `/admin`, `/admin/api/...`, public incident viewer
 routes, bundle downloads, deletion, retention, backup, restore, escrow,
 break-glass, decryption, raw-key, or operator routes. Loss of relay temporary
 staging must be recoverable by client retry.

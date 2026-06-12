@@ -190,7 +190,7 @@ sensitive child metadata and leaves a minimal tombstone.
 Deletion behavior:
 
 - account-scoped deletion is available at `POST /v1/incidents/{incident_id}/deletion` for the incident owner
-- admin-global deletion is available at `POST /v1/admin/incidents/{incident_id}/deletion`
+- admin-global deletion is available at `POST /admin/api/incidents/{incident_id}/deletion`
 - deletion status is available through the matching private `GET` routes
 - local read-only operator status is available through
   `proofline-server operator deletion-status`

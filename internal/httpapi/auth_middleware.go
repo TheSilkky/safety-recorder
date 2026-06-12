@@ -113,7 +113,7 @@ func unsafeMethod(method string) bool {
 
 func secondFactorSetupAllowedRoute(r *http.Request) bool {
 	path := strings.Trim(r.URL.EscapedPath(), "/")
-	if strings.HasPrefix(path, "v1/admin/") {
+	if strings.HasPrefix(path, "admin/api/") {
 		return true
 	}
 	if strings.HasPrefix(path, "v1/account/second-factor") {
