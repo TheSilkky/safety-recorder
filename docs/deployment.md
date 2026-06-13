@@ -315,10 +315,12 @@ When no admin exists and a bootstrap secret is configured, `/admin` shows a
 first-admin bootstrap screen. After an admin exists, it shows an admin login
 screen and stores the resulting admin web session in an HttpOnly SameSite cookie
 scoped to `/admin`. Authenticated admin pages list local accounts and provide
-logout, password-change, and account password-reset forms with CSRF checks. The
-CSS under `/admin/static/...` is unauthenticated because it is token-neutral
-static source, but the admin pages and form handlers remain private-admin
-listener routes.
+logout, current-admin password-change, local account creation, account
+password reset, session revocation, and second-factor recovery reset forms with
+CSRF checks. Current-admin self-reset actions are blocked from the per-account
+forms. The CSS under `/admin/static/...` is unauthenticated because it is
+token-neutral static source, but the admin pages and form handlers remain
+private-admin listener routes.
 
 This is not a public admin dashboard. Do not expose `/admin`, `/admin/...`, or
 `/admin/api/...` outside the private-admin boundary.
