@@ -376,10 +376,6 @@
     @apply grid gap-3 py-4 first:pt-0 last:pb-0;
   }
 
-  .create-row {
-    @apply mb-4 rounded-lg border border-proofline-border bg-proofline-bg-deep/40 px-4;
-  }
-
   .account-summary {
     @apply grid gap-3 sm:grid-cols-[auto_minmax(0,1fr)] sm:items-start;
   }

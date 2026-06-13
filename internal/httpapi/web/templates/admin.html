@@ -137,6 +137,33 @@
       </section>
       {{else if eq .Mode "accounts"}}
       <section class="workspace-grid single-column" aria-label="Account management">
+        <article class="content-section accounts-section" aria-labelledby="create-account-title">
+          <div class="section-header">
+            <div>
+              <p class="eyebrow">Local directory</p>
+              <h2 id="create-account-title">Create Account</h2>
+              <p class="muted">New local accounts require second-factor setup before private operator actions.</p>
+            </div>
+            <div class="account-avatar" aria-hidden="true">New</div>
+          </div>
+          <form method="post" action="/admin/accounts" class="stack-form compact-form">
+            <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+            <label>
+              <span>Username</span>
+              <input name="username" type="text" autocomplete="username" required>
+            </label>
+            <label>
+              <span>Role</span>
+              <input name="role" type="text" value="user" pattern="user|admin" required>
+            </label>
+            <label>
+              <span>Password</span>
+              <input name="password" type="password" autocomplete="new-password" required>
+            </label>
+            <button type="submit">Create account</button>
+          </form>
+        </article>
+
         <article class="content-section accounts-section">
           <div class="section-header">
             <div>
@@ -154,32 +181,6 @@
             <button type="submit">Search</button>
             {{if .AccountPagination.Search}}<a href="/admin/accounts" class="ghost-link">Clear</a>{{end}}
           </form>
-
-          <section class="account-row create-row" aria-labelledby="create-account-title">
-            <div class="account-summary">
-              <div class="account-avatar" aria-hidden="true">New</div>
-              <div class="account-copy">
-                <h3 id="create-account-title">Create Account</h3>
-                <p class="muted">New local accounts require second-factor setup before private operator actions.</p>
-              </div>
-            </div>
-            <form method="post" action="/admin/accounts" class="stack-form compact-form">
-              <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
-              <label>
-                <span>Username</span>
-                <input name="username" type="text" autocomplete="username" required>
-              </label>
-              <label>
-                <span>Role</span>
-                <input name="role" type="text" value="user" pattern="user|admin" required>
-              </label>
-              <label>
-                <span>Password</span>
-                <input name="password" type="password" autocomplete="new-password" required>
-              </label>
-              <button type="submit">Create account</button>
-            </form>
-          </section>
 
           <div class="account-list fixed-list">
             {{range .Accounts}}
