@@ -606,7 +606,7 @@
   }
 
   .totp-enrollment {
-    @apply mt-4 grid gap-4 rounded-md border border-proofline-border bg-proofline-bg-deep/50 p-4 sm:grid-cols-[auto_minmax(0,1fr)] sm:items-start;
+    @apply mt-4 grid max-w-full gap-4 rounded-md border border-proofline-border bg-proofline-bg-deep/50 p-4;
   }
 
   .qr-code {
@@ -631,7 +631,8 @@
 
   .secret-value,
   .uri-value {
-    @apply font-mono text-xs leading-5 text-proofline-text;
+    @apply min-w-0 break-all font-mono text-xs leading-5 text-proofline-text;
+    overflow-wrap: anywhere;
   }
 
   .uri-value {
