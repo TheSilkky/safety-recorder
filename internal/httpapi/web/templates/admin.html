@@ -195,19 +195,160 @@
                 <p class="eyebrow">Private admin API</p>
                 <h2>Incident Operations</h2>
               </div>
-              <svg class="section-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M4 7h16"></path>
-                <path d="M7 7v13"></path>
-                <path d="M17 7v13"></path>
-                <path d="M9 3h6l1 4H8Z"></path>
-              </svg>
+              <span class="status-badge">{{len .IncidentCandidates}} visible</span>
             </div>
-            <p class="muted">Operational incident controls remain private-admin only while web forms are added in separate scoped work.</p>
-            <ul class="boundary-list">
-              <li>Legacy unowned incident review uses the private admin API.</li>
-              <li>Incident deletion status and requests keep existing reason-code behavior.</li>
-              <li>Reassignment actions stay behind admin authentication and 2FA gates.</li>
-            </ul>
+
+            <form method="get" action="/admin" class="stack-form compact-form">
+              <label>
+                <span>Deletion incident ID</span>
+                <input name="deletion_incident_id" type="text">
+              </label>
+              <button type="submit" class="ghost-button">View deletion status</button>
+            </form>
+
+            {{if .DeletionStatus.IncidentID}}
+            <section class="account-row">
+              <div class="account-summary">
+                <div class="account-avatar" aria-hidden="true">Del</div>
+                <div class="account-copy">
+                  <h3>Deletion Status</h3>
+                  <dl class="metadata-row">
+                    <div>
+                      <dt>Incident</dt>
+                      <dd>{{.DeletionStatus.IncidentID}}</dd>
+                    </div>
+                    <div>
+                      <dt>State</dt>
+                      <dd>{{.DeletionStatus.State}}</dd>
+                    </div>
+                    <div>
+                      <dt>Source</dt>
+                      <dd>{{.DeletionStatus.Source}}</dd>
+                    </div>
+                    <div>
+                      <dt>Reason</dt>
+                      <dd>{{if .DeletionStatus.ReasonCode}}{{.DeletionStatus.ReasonCode}}{{else}}none{{end}}</dd>
+                    </div>
+                    <div>
+                      <dt>Items</dt>
+                      <dd>{{.DeletionStatus.ItemCount}}</dd>
+                    </div>
+                    <div>
+                      <dt>Allow open</dt>
+                      <dd>{{if .DeletionStatus.AllowOpen}}yes{{else}}no{{end}}</dd>
+                    </div>
+                    <div>
+                      <dt>Updated</dt>
+                      <dd>{{humanTime .DeletionStatus.UpdatedAt}}</dd>
+                    </div>
+                    {{if .DeletionStatus.ErrorCode}}
+                    <div>
+                      <dt>Error code</dt>
+                      <dd>{{.DeletionStatus.ErrorCode}}</dd>
+                    </div>
+                    {{end}}
+                  </dl>
+                </div>
+              </div>
+            </section>
+            {{end}}
+
+            <div class="account-list">
+              {{range .IncidentCandidates}}
+              <section class="account-row">
+                <div class="account-summary">
+                  <div class="account-avatar" aria-hidden="true">Inc</div>
+                  <div class="account-copy">
+                    <h3>{{.IncidentID}}</h3>
+                    <dl class="metadata-row">
+                      <div>
+                        <dt>Status</dt>
+                        <dd>{{.Status}}</dd>
+                      </div>
+                      <div>
+                        <dt>Deletion</dt>
+                        <dd>{{.DeletionState}}</dd>
+                      </div>
+                      <div>
+                        <dt>Updated</dt>
+                        <dd>{{humanTime .UpdatedAt}}</dd>
+                      </div>
+                      <div>
+                        <dt>Streams</dt>
+                        <dd>{{.StreamCount}}</dd>
+                      </div>
+                      <div>
+                        <dt>Chunks</dt>
+                        <dd>{{.ChunkCount}}</dd>
+                      </div>
+                      <div>
+                        <dt>Check-ins</dt>
+                        <dd>{{.CheckinCount}}</dd>
+                      </div>
+                      <div>
+                        <dt>Viewer tokens</dt>
+                        <dd>{{.IncidentTokenCount}}{{if .HasActiveViewerTokens}} active{{end}}</dd>
+                      </div>
+                      {{if .IncidentMode}}
+                      <div>
+                        <dt>Mode</dt>
+                        <dd>{{.IncidentMode}}</dd>
+                      </div>
+                      {{end}}
+                      {{if .CaptureProfile}}
+                      <div>
+                        <dt>Profile</dt>
+                        <dd>{{.CaptureProfile}}</dd>
+                      </div>
+                      {{end}}
+                      {{if .EscalationPolicy}}
+                      <div>
+                        <dt>Escalation</dt>
+                        <dd>{{.EscalationPolicy}}</dd>
+                      </div>
+                      {{end}}
+                      {{if .SharingState}}
+                      <div>
+                        <dt>Sharing</dt>
+                        <dd>{{.SharingState}}</dd>
+                      </div>
+                      {{end}}
+                    </dl>
+                  </div>
+                </div>
+                <div class="stack-form compact-form">
+                  <form method="post" action="/admin/incidents/{{.IncidentID}}/reassignment" class="inline-form">
+                    <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+                    <input type="hidden" name="action" value="assign_owner">
+                    <input type="hidden" name="reason_code" value="owner_verified">
+                    <label>
+                      <span>New owner account ID</span>
+                      <input name="new_owner_account_id" type="text" required>
+                    </label>
+                    <button type="submit">Assign owner</button>
+                  </form>
+                  <form method="post" action="/admin/incidents/{{.IncidentID}}/reassignment" class="inline-form">
+                    <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+                    <input type="hidden" name="action" value="keep_unowned">
+                    <input type="hidden" name="reason_code" value="keep_admin_only">
+                    <p class="muted">Record an admin-only keep-unowned decision.</p>
+                    <button type="submit" class="ghost-button">Keep unowned</button>
+                  </form>
+                  <form method="post" action="/admin/incidents/{{.IncidentID}}/deletion" class="inline-form">
+                    <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+                    <input type="hidden" name="allow_open" value="true">
+                    <label>
+                      <span>Deletion reason code</span>
+                      <input name="reason_code" type="text" value="admin_delete" required>
+                    </label>
+                    <button type="submit" class="ghost-button">Request deletion</button>
+                  </form>
+                </div>
+              </section>
+              {{else}}
+              <p class="muted">No legacy unowned incident candidates are visible.</p>
+              {{end}}
+            </div>
           </article>
 
           <article class="content-section">

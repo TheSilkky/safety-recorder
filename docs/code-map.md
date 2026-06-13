@@ -338,7 +338,13 @@ account password and revokes that account's sessions,
 sessions, and
 `POST /admin/accounts/{account_id}/second-factor/recovery/reset` resets another
 account's second-factor recovery state with controlled reason codes. `POST
-/admin/logout` revokes the current admin web session. These authenticated
+/admin/incidents/{incident_id}/reassignment` records an existing private admin
+legacy unowned incident assignment or keep-unowned decision with controlled
+reason codes, and `POST /admin/incidents/{incident_id}/deletion` creates the
+same admin-global deletion decision as the private JSON API. The dashboard also
+loads safe count-oriented legacy unowned incident candidates and can show
+non-sensitive deletion status fields for an operator-provided incident ID.
+`POST /admin/logout` revokes the current admin web session. These authenticated
 state-changing forms use a session-bound CSRF token and block unsafe
 current-admin self-reset actions.
 
@@ -355,11 +361,13 @@ Token-neutral CSS is generated from
 `internal/httpapi/web/admin/static`, and served without authentication under
 `/admin/static/...`.
 
-The admin web surface shows only safe route-boundary status, navigation stubs,
-and local account-management data. It does not read incident data, expose
-tokens or password hashes, expose stored paths or object keys, show uploaded
-bytes, decrypt evidence, or add public dashboard behavior. Admin web responses
-use no-store behavior and conservative browser security headers.
+The admin web surface shows only safe route-boundary status, local
+account-management data, count-oriented legacy unowned incident metadata, and
+non-sensitive deletion status fields. It does not show incident notes, evidence
+content, raw viewer or session tokens, password hashes, stored paths, object
+keys, uploaded bytes, plaintext, or decrypted evidence, and it does not add
+public dashboard behavior. Admin web responses use no-store behavior and
+conservative browser security headers.
 
 ## Incident Viewer Flow
 

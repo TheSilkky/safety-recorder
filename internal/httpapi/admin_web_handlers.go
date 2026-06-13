@@ -3,10 +3,12 @@ package httpapi
 import (
 	"errors"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
 	"github.com/open-proofline/server/internal/auth"
+	"github.com/open-proofline/server/internal/incidents"
 )
 
 func (a *API) adminWebPage(w http.ResponseWriter, r *http.Request) {
@@ -482,4 +484,153 @@ func (a *API) adminWebRevokeAccountSessions(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	http.Redirect(w, r, "/admin?notice=account_sessions_revoked", http.StatusSeeOther)
+}
+
+func (a *API) adminWebRequestIncidentDeletion(w http.ResponseWriter, r *http.Request) {
+	setAdminWebPageHeaders(w)
+	principal, ok := a.requireAdminWeb(w, r)
+	if !ok {
+		return
+	}
+	if ok := a.parseAdminWebDashboardForm(w, r, principal, "The incident deletion form could not be read."); !ok {
+		return
+	}
+	if !a.validateAdminWebCSRF(w, r, principal) {
+		return
+	}
+
+	reasonCode, statusCode, message, ok := adminWebNormalizeDeletionReasonCode(r.FormValue("reason_code"))
+	if !ok {
+		a.renderAdminWebDashboard(w, r, principal, statusCode, "", message)
+		return
+	}
+	status, err := a.repo.RequestIncidentDeletion(r.Context(), incidents.IncidentDeletionRequest{
+		IncidentID:     r.PathValue("incident_id"),
+		Source:         incidents.IncidentDeletionSourceAdminRequest,
+		ReasonCode:     reasonCode,
+		ActorAccountID: principal.Account.ID,
+		AllowOpen:      adminWebFormBool(r.FormValue("allow_open")),
+	})
+	if errors.Is(err, incidents.ErrNotFound) {
+		a.renderAdminWebDashboard(w, r, principal, http.StatusNotFound, "", "Incident was not found.")
+		return
+	}
+	if errors.Is(err, incidents.ErrInvalidState) {
+		a.renderAdminWebDashboard(w, r, principal, http.StatusConflict, "", "Incident cannot be deleted in its current state.")
+		return
+	}
+	if err != nil {
+		a.adminWebInternalError(w, "request admin web incident deletion", err)
+		return
+	}
+	redirect := "/admin?notice=incident_deletion_requested&deletion_incident_id=" + url.QueryEscape(status.IncidentID)
+	http.Redirect(w, r, redirect, http.StatusSeeOther)
+}
+
+func (a *API) adminWebReassignLegacyUnownedIncident(w http.ResponseWriter, r *http.Request) {
+	setAdminWebPageHeaders(w)
+	principal, ok := a.requireAdminWeb(w, r)
+	if !ok {
+		return
+	}
+	if ok := a.parseAdminWebDashboardForm(w, r, principal, "The incident reassignment form could not be read."); !ok {
+		return
+	}
+	if !a.validateAdminWebCSRF(w, r, principal) {
+		return
+	}
+
+	action := strings.TrimSpace(r.FormValue("action"))
+	newOwnerAccountID := strings.TrimSpace(r.FormValue("new_owner_account_id"))
+	reasonCode := strings.TrimSpace(r.FormValue("reason_code"))
+	if !validLegacyReassignmentAction(action) {
+		a.renderAdminWebDashboard(w, r, principal, http.StatusBadRequest, "", "Reassignment action is not supported.")
+		return
+	}
+	if !validLegacyReassignmentReasonCode(reasonCode) {
+		a.renderAdminWebDashboard(w, r, principal, http.StatusBadRequest, "", "Reassignment reason code is not supported.")
+		return
+	}
+	if action == incidents.LegacyIncidentReassignmentActionAssignOwner {
+		if newOwnerAccountID == "" {
+			a.renderAdminWebDashboard(w, r, principal, http.StatusBadRequest, "", "New owner account ID is required.")
+			return
+		}
+		if _, err := a.repo.GetAccountByID(r.Context(), newOwnerAccountID); errors.Is(err, auth.ErrNotFound) {
+			a.renderAdminWebDashboard(w, r, principal, http.StatusNotFound, "", "Destination account was not found.")
+			return
+		} else if err != nil {
+			a.adminWebInternalError(w, "get admin web reassignment account", err)
+			return
+		}
+	} else if newOwnerAccountID != "" {
+		a.renderAdminWebDashboard(w, r, principal, http.StatusBadRequest, "", "New owner account ID is only allowed when assigning an owner.")
+		return
+	}
+
+	_, err := a.repo.ReassignLegacyUnownedIncident(r.Context(), incidents.LegacyIncidentReassignmentParams{
+		IncidentID:        r.PathValue("incident_id"),
+		NewOwnerAccountID: newOwnerAccountID,
+		ActorAccountID:    principal.Account.ID,
+		Action:            action,
+		ReasonCode:        reasonCode,
+		Source:            incidents.LegacyIncidentReassignmentSourceAdminAPI,
+	})
+	if errors.Is(err, incidents.ErrNotFound) {
+		a.renderAdminWebDashboard(w, r, principal, http.StatusNotFound, "", "Legacy unowned incident was not found.")
+		return
+	}
+	if errors.Is(err, incidents.ErrInvalidState) {
+		a.renderAdminWebDashboard(w, r, principal, http.StatusConflict, "", "Incident is not an active unowned legacy incident.")
+		return
+	}
+	if err != nil {
+		a.adminWebInternalError(w, "reassign admin web legacy unowned incident", err)
+		return
+	}
+	http.Redirect(w, r, "/admin?notice=incident_reassignment_recorded", http.StatusSeeOther)
+}
+
+func (a *API) adminWebDeletionStatusFromQuery(r *http.Request) (adminWebDeletionStatus, string, error) {
+	incidentID := strings.TrimSpace(r.URL.Query().Get("deletion_incident_id"))
+	if incidentID == "" {
+		return adminWebDeletionStatus{}, "", nil
+	}
+	status, err := a.repo.GetIncidentDeletionStatus(r.Context(), incidentID)
+	if errors.Is(err, incidents.ErrNotFound) {
+		return adminWebDeletionStatus{}, "Incident deletion was not found.", nil
+	}
+	if err != nil {
+		return adminWebDeletionStatus{}, "", err
+	}
+	return makeAdminWebDeletionStatus(status), "", nil
+}
+
+func adminWebNormalizeDeletionReasonCode(value string) (string, int, string, bool) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return "", http.StatusOK, "", true
+	}
+	if len(value) > 64 {
+		return "", http.StatusBadRequest, "Reason code must be a short non-sensitive code.", false
+	}
+	for _, r := range value {
+		if (r >= 'a' && r <= 'z') ||
+			(r >= 'A' && r <= 'Z') ||
+			(r >= '0' && r <= '9') ||
+			r == '_' || r == '-' || r == '.' || r == ':' {
+			continue
+		}
+		return "", http.StatusBadRequest, "Reason code must be a short non-sensitive code.", false
+	}
+	return value, http.StatusOK, "", true
+}
+
+func adminWebFormBool(value string) bool {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "1", "true", "on", "yes":
+		return true
+	default:
+		return false
+	}
 }

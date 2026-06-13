@@ -111,6 +111,8 @@ func (a *API) registerPrivateAdminWebRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /admin/accounts/{account_id}/password", a.adminWebResetAccountPassword)
 	mux.HandleFunc("POST /admin/accounts/{account_id}/second-factor/recovery/reset", a.adminWebResetAccountSecondFactorRecovery)
 	mux.HandleFunc("POST /admin/accounts/{account_id}/sessions/revoke", a.adminWebRevokeAccountSessions)
+	mux.HandleFunc("POST /admin/incidents/{incident_id}/deletion", a.adminWebRequestIncidentDeletion)
+	mux.HandleFunc("POST /admin/incidents/{incident_id}/reassignment", a.adminWebReassignLegacyUnownedIncident)
 	mux.Handle("GET /admin/static/", a.adminWebStaticHandler())
 }
 

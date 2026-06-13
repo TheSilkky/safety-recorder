@@ -12,6 +12,7 @@ import (
 
 	"github.com/open-proofline/server/internal/auth"
 	"github.com/open-proofline/server/internal/httpapi"
+	"github.com/open-proofline/server/internal/incidents"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -300,6 +301,271 @@ func TestAdminWebAdminCanResetUserSecondFactorRecovery(t *testing.T) {
 		if bytes.Contains(body, []byte(disallowed)) {
 			t.Fatalf("recovery reset dashboard exposed %q: %s", disallowed, body)
 		}
+	}
+}
+
+func TestAdminWebDashboardShowsIncidentOperationsSafely(t *testing.T) {
+	app := newTestApp(t)
+	ownerToken := createAccountAndLogin(t, app, "candidate-web-owner", "owner-password", auth.RoleUser)
+	ownedIncidentID := createIncidentWithAuth(t, app, ownerToken, `{"client_label":"owned phone"}`)
+	legacyIncident := createLegacyIncidentForTest(t, app, "legacy phone", "legacy private note")
+
+	stream := createMediaStream(t, app, legacyIncident.ID, incidents.MediaTypeAudio, "legacy stream")
+	payload := []byte("encrypted audio bytes")
+	response, body := uploadChunkWithStream(t, app, legacyIncident.ID, stream.ID, 1, incidents.MediaTypeAudio, payload, sha256Hex(payload))
+	response.Body.Close()
+	if response.StatusCode != http.StatusCreated {
+		t.Fatalf("expected chunk upload status 201, got %d: %s", response.StatusCode, body)
+	}
+	createCheckin(t, app, legacyIncident.ID)
+	viewerToken := createIncidentToken(t, app, legacyIncident.ID, "viewer", nil)
+	cookie := loginAdminWeb(t, app)
+
+	response, body = requestWithCookie(t, app.adminHandler, http.MethodGet, "/admin", "", nil, cookie)
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("expected admin dashboard status 200, got %d: %s", response.StatusCode, body)
+	}
+	for _, expected := range []string{
+		"Incident Operations",
+		legacyIncident.ID,
+		"Viewer tokens",
+		`action="/admin/incidents/` + legacyIncident.ID + `/reassignment"`,
+		`action="/admin/incidents/` + legacyIncident.ID + `/deletion"`,
+		`name="action" value="assign_owner"`,
+		`name="action" value="keep_unowned"`,
+		`name="allow_open" value="true"`,
+	} {
+		if !bytes.Contains(body, []byte(expected)) {
+			t.Fatalf("admin dashboard incident operations missing %q: %s", expected, body)
+		}
+	}
+	for _, disallowed := range []string{
+		ownedIncidentID,
+		"legacy phone",
+		"legacy private note",
+		string(payload),
+		viewerToken.Token,
+		app.authToken,
+		"stored_path",
+		"object_key",
+		"latitude",
+		"longitude",
+		"Authorization",
+	} {
+		if bytes.Contains(body, []byte(disallowed)) {
+			t.Fatalf("admin dashboard incident operations exposed %q: %s", disallowed, body)
+		}
+	}
+}
+
+func TestAdminWebAdminCanReassignLegacyIncident(t *testing.T) {
+	app := newTestApp(t)
+	ownerToken := createAccountAndLogin(t, app, "legacy-web-owner", "owner-password", auth.RoleUser)
+	owner := getAccountByUsernameForTest(t, app, "legacy-web-owner")
+	legacyIncident := createLegacyIncidentForTest(t, app, "legacy", "legacy note")
+	cookie := loginAdminWeb(t, app)
+	csrfToken := adminWebDashboardCSRFToken(t, app, cookie)
+
+	assignForm := url.Values{
+		"csrf_token":           {csrfToken},
+		"action":               {incidents.LegacyIncidentReassignmentActionAssignOwner},
+		"new_owner_account_id": {owner.ID},
+		"reason_code":          {"owner_verified"},
+	}
+	response, body := postAdminWebFormWithCookie(t, app, "/admin/incidents/"+legacyIncident.ID+"/reassignment", assignForm, cookie)
+	response.Body.Close()
+	if response.StatusCode != http.StatusSeeOther {
+		t.Fatalf("expected reassignment redirect 303, got %d: %s", response.StatusCode, body)
+	}
+	if location := response.Header.Get("Location"); location != "/admin?notice=incident_reassignment_recorded" {
+		t.Fatalf("expected reassignment notice redirect, got %q", location)
+	}
+	response, body = requestWithAuth(t, app.privateHandler, http.MethodGet, "/v1/incidents/"+legacyIncident.ID, "", nil, ownerToken)
+	response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("expected owner incident detail after web reassignment status 200, got %d: %s", response.StatusCode, body)
+	}
+	assertLegacyReassignmentAuditRow(t, app, legacyIncident.ID, incidents.LegacyIncidentReassignmentActionAssignOwner, owner.ID)
+
+	quarantinedIncident := createLegacyIncidentForTest(t, app, "legacy quarantine", "legacy quarantine note")
+	keepForm := url.Values{
+		"csrf_token":  {csrfToken},
+		"action":      {incidents.LegacyIncidentReassignmentActionKeepUnowned},
+		"reason_code": {"keep_admin_only"},
+	}
+	response, body = postAdminWebFormWithCookie(t, app, "/admin/incidents/"+quarantinedIncident.ID+"/reassignment", keepForm, cookie)
+	response.Body.Close()
+	if response.StatusCode != http.StatusSeeOther {
+		t.Fatalf("expected keep-unowned redirect 303, got %d: %s", response.StatusCode, body)
+	}
+	if location := response.Header.Get("Location"); location != "/admin?notice=incident_reassignment_recorded" {
+		t.Fatalf("expected keep-unowned notice redirect, got %q", location)
+	}
+	response, body = requestWithAuth(t, app.privateHandler, http.MethodGet, "/v1/incidents/"+quarantinedIncident.ID, "", nil, ownerToken)
+	response.Body.Close()
+	if response.StatusCode != http.StatusNotFound {
+		t.Fatalf("expected keep-unowned incident to stay hidden from owner, got %d: %s", response.StatusCode, body)
+	}
+	assertLegacyReassignmentAuditRow(t, app, quarantinedIncident.ID, incidents.LegacyIncidentReassignmentActionKeepUnowned, "")
+}
+
+func TestAdminWebAdminCanRequestIncidentDeletionAndViewStatus(t *testing.T) {
+	app := newTestApp(t)
+	ownerToken := createAccountAndLogin(t, app, "delete-web-owner", "owner-password", auth.RoleUser)
+	incidentID := createIncidentWithAuth(t, app, ownerToken, `{"client_label":"delete phone","notes":"delete private note"}`)
+	viewerToken := createIncidentTokenWithAuth(t, app, ownerToken, incidentID, "viewer")
+	cookie := loginAdminWeb(t, app)
+	csrfToken := adminWebDashboardCSRFToken(t, app, cookie)
+
+	form := url.Values{
+		"csrf_token":  {csrfToken},
+		"reason_code": {"admin_delete"},
+		"allow_open":  {"true"},
+	}
+	response, body := postAdminWebFormWithCookie(t, app, "/admin/incidents/"+incidentID+"/deletion", form, cookie)
+	response.Body.Close()
+	if response.StatusCode != http.StatusSeeOther {
+		t.Fatalf("expected deletion request redirect 303, got %d: %s", response.StatusCode, body)
+	}
+	location := response.Header.Get("Location")
+	if location != "/admin?notice=incident_deletion_requested&deletion_incident_id="+incidentID {
+		t.Fatalf("expected deletion status notice redirect, got %q", location)
+	}
+
+	response, body = requestWithCookie(t, app.adminHandler, http.MethodGet, location, "", nil, cookie)
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("expected dashboard with deletion status 200, got %d: %s", response.StatusCode, body)
+	}
+	for _, expected := range []string{"Incident deletion requested.", "Deletion Status", incidentID, incidents.IncidentDeletionStatePending, "admin_delete"} {
+		if !bytes.Contains(body, []byte(expected)) {
+			t.Fatalf("deletion status dashboard missing %q: %s", expected, body)
+		}
+	}
+	for _, disallowed := range []string{
+		"delete phone",
+		"delete private note",
+		viewerToken.Token,
+		app.authToken,
+		"stored_path",
+		"object_key",
+		"Authorization",
+	} {
+		if bytes.Contains(body, []byte(disallowed)) {
+			t.Fatalf("deletion status dashboard exposed %q: %s", disallowed, body)
+		}
+	}
+}
+
+func TestAdminWebIncidentFormsRequireCSRFToken(t *testing.T) {
+	app := newTestApp(t)
+	ownerToken := createAccountAndLogin(t, app, "csrf-incident-owner", "owner-password", auth.RoleUser)
+	owner := getAccountByUsernameForTest(t, app, "csrf-incident-owner")
+	legacyIncident := createLegacyIncidentForTest(t, app, "legacy", "legacy note")
+	incidentID := createIncidentWithAuth(t, app, ownerToken, `{}`)
+	cookie := loginAdminWeb(t, app)
+
+	tests := []struct {
+		name   string
+		target string
+		form   url.Values
+	}{
+		{
+			name:   "reassign legacy incident",
+			target: "/admin/incidents/" + legacyIncident.ID + "/reassignment",
+			form: url.Values{
+				"action":               {incidents.LegacyIncidentReassignmentActionAssignOwner},
+				"new_owner_account_id": {owner.ID},
+				"reason_code":          {"owner_verified"},
+			},
+		},
+		{
+			name:   "request deletion",
+			target: "/admin/incidents/" + incidentID + "/deletion",
+			form: url.Values{
+				"reason_code": {"admin_delete"},
+				"allow_open":  {"true"},
+			},
+		},
+	}
+	for _, tt := range tests {
+		response, body := postAdminWebFormWithCookie(t, app, tt.target, tt.form, cookie)
+		response.Body.Close()
+		if response.StatusCode != http.StatusForbidden {
+			t.Fatalf("%s: expected bad CSRF status 403, got %d: %s", tt.name, response.StatusCode, body)
+		}
+		if !bytes.Contains(body, []byte("The form expired.")) {
+			t.Fatalf("%s: expected CSRF error message: %s", tt.name, body)
+		}
+	}
+}
+
+func TestAdminWebIncidentFormsRequireAdminSession(t *testing.T) {
+	app := newTestApp(t)
+	userToken := createAccountAndLogin(t, app, "incident-form-user", "user-password", auth.RoleUser)
+	incidentID := createIncidentWithAuth(t, app, userToken, `{}`)
+	form := url.Values{
+		"reason_code": {"admin_delete"},
+		"allow_open":  {"true"},
+	}
+
+	response, body := postAdminWebForm(t, app, "/admin/incidents/"+incidentID+"/deletion", form)
+	response.Body.Close()
+	if response.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("expected incident form without session status 401, got %d: %s", response.StatusCode, body)
+	}
+	if !bytes.Contains(body, []byte("Admin login is required.")) {
+		t.Fatalf("expected admin login required message: %s", body)
+	}
+
+	userCookie := &http.Cookie{Name: adminWebSessionCookieName, Value: userToken}
+	response, body = postAdminWebFormWithCookie(t, app, "/admin/incidents/"+incidentID+"/deletion", form, userCookie)
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusForbidden {
+		t.Fatalf("expected incident form non-admin status 403, got %d: %s", response.StatusCode, body)
+	}
+	if !bytes.Contains(body, []byte("Access Denied")) {
+		t.Fatalf("expected access denied page: %s", body)
+	}
+	if !strings.Contains(response.Header.Get("Set-Cookie"), "Max-Age=0") {
+		t.Fatalf("expected non-admin cookie to be cleared, got %q", response.Header.Get("Set-Cookie"))
+	}
+}
+
+func TestAdminWebIncidentFormsShowSafeErrors(t *testing.T) {
+	app := newTestApp(t)
+	legacyIncident := createLegacyIncidentForTest(t, app, "legacy", "legacy note")
+	cookie := loginAdminWeb(t, app)
+	csrfToken := adminWebDashboardCSRFToken(t, app, cookie)
+
+	badReason := "raw operator note"
+	form := url.Values{
+		"csrf_token":  {csrfToken},
+		"reason_code": {badReason},
+		"allow_open":  {"true"},
+	}
+	response, body := postAdminWebFormWithCookie(t, app, "/admin/incidents/"+legacyIncident.ID+"/deletion", form, cookie)
+	response.Body.Close()
+	if response.StatusCode != http.StatusBadRequest {
+		t.Fatalf("expected invalid deletion reason status 400, got %d: %s", response.StatusCode, body)
+	}
+	if !bytes.Contains(body, []byte("Reason code must be a short non-sensitive code.")) || bytes.Contains(body, []byte(badReason)) {
+		t.Fatalf("expected safe deletion reason error: %s", body)
+	}
+
+	form = url.Values{
+		"csrf_token":  {csrfToken},
+		"action":      {incidents.LegacyIncidentReassignmentActionKeepUnowned},
+		"reason_code": {badReason},
+	}
+	response, body = postAdminWebFormWithCookie(t, app, "/admin/incidents/"+legacyIncident.ID+"/reassignment", form, cookie)
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusBadRequest {
+		t.Fatalf("expected invalid reassignment reason status 400, got %d: %s", response.StatusCode, body)
+	}
+	if !bytes.Contains(body, []byte("Reassignment reason code is not supported.")) || bytes.Contains(body, []byte(badReason)) {
+		t.Fatalf("expected safe reassignment reason error: %s", body)
 	}
 }
 

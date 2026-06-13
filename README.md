@@ -132,7 +132,8 @@ escrow.
   [docs/public-web-client-deployment-boundary.md](docs/public-web-client-deployment-boundary.md)
 - Private admin-only HTML surface under `/admin` for bootstrap, login, local
   second-factor setup/verification gates, account listing, account creation,
-  password, session revocation, and second-factor recovery workflows
+  password, session revocation, second-factor recovery, and safe incident
+  operation workflows
 - SQLite metadata and local disk encrypted blob storage by default
 - Optional PostgreSQL metadata backend for new deployments
 - Optional S3-compatible encrypted blob storage for committed chunks

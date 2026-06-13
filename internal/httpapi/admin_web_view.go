@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/open-proofline/server/internal/auth"
+	"github.com/open-proofline/server/internal/incidents"
 )
 
 type adminWebData struct {
@@ -16,6 +17,8 @@ type adminWebData struct {
 	CSRFToken                     string
 	Account                       adminWebAccount
 	Accounts                      []adminWebAccount
+	IncidentCandidates            []adminWebIncidentCandidate
+	DeletionStatus                adminWebDeletionStatus
 	NavItems                      []adminWebNavItem
 	StatusItems                   []adminWebStatusItem
 	SecondFactorEmailAvailable    bool
@@ -30,6 +33,37 @@ type adminWebAccount struct {
 	CreatedAt         time.Time
 	PasswordChangedAt time.Time
 	IsCurrent         bool
+}
+
+type adminWebIncidentCandidate struct {
+	IncidentID            string
+	Status                string
+	DeletionState         string
+	CreatedAt             time.Time
+	UpdatedAt             time.Time
+	StreamCount           int
+	ChunkCount            int
+	CheckinCount          int
+	IncidentTokenCount    int
+	HasActiveViewerTokens bool
+	IncidentMode          string
+	CaptureProfile        string
+	EscalationPolicy      string
+	SharingState          string
+}
+
+type adminWebDeletionStatus struct {
+	IncidentID  string
+	Source      string
+	ReasonCode  string
+	AllowOpen   bool
+	State       string
+	ItemCount   int
+	ErrorCode   string
+	RequestedAt time.Time
+	UpdatedAt   time.Time
+	StartedAt   *time.Time
+	CompletedAt *time.Time
 }
 
 type adminWebNavItem struct {
@@ -62,7 +96,21 @@ func (a *API) renderAdminWebDashboard(w http.ResponseWriter, r *http.Request, pr
 		a.adminWebInternalError(w, "list admin web accounts", err)
 		return
 	}
-	a.renderAdminWeb(w, status, makeAdminWebDashboardData(principal, accounts, adminWebCSRFTokenFromRequest(r), notice, message))
+	candidates, err := a.repo.ListLegacyUnownedIncidentCandidates(r.Context(), defaultLegacyUnownedCandidateLimit)
+	if err != nil {
+		a.adminWebInternalError(w, "list admin web legacy unowned incidents", err)
+		return
+	}
+	deletionStatus, deletionMessage, err := a.adminWebDeletionStatusFromQuery(r)
+	if err != nil {
+		a.adminWebInternalError(w, "get admin web incident deletion status", err)
+		return
+	}
+	if deletionMessage != "" && message == "" {
+		status = http.StatusNotFound
+		message = deletionMessage
+	}
+	a.renderAdminWeb(w, status, makeAdminWebDashboardData(principal, accounts, candidates, deletionStatus, adminWebCSRFTokenFromRequest(r), notice, message))
 }
 
 func (a *API) renderAdminWebSecondFactorSetup(w http.ResponseWriter, r *http.Request, principal privatePrincipal, status int, notice, message string) {
@@ -121,6 +169,10 @@ func adminWebNotice(r *http.Request) string {
 		return "Account sessions revoked."
 	case "account_second_factor_reset":
 		return "Account second-factor recovery reset."
+	case "incident_deletion_requested":
+		return "Incident deletion requested."
+	case "incident_reassignment_recorded":
+		return "Incident reassignment recorded."
 	case "second_factor_challenge_sent":
 		return "Second-factor challenge sent."
 	case "second_factor_setup_complete":
@@ -148,18 +200,20 @@ func makeAdminWebForbiddenData() adminWebData {
 	}
 }
 
-func makeAdminWebDashboardData(principal privatePrincipal, accounts []auth.Account, csrfToken, notice, message string) adminWebData {
+func makeAdminWebDashboardData(principal privatePrincipal, accounts []auth.Account, candidates []incidents.LegacyUnownedIncidentCandidate, deletionStatus adminWebDeletionStatus, csrfToken, notice, message string) adminWebData {
 	return adminWebData{
-		Title:     "Proofline Admin",
-		Mode:      "dashboard",
-		Error:     message,
-		Notice:    notice,
-		CSRFToken: csrfToken,
-		Account:   makeAdminWebAccount(principal.Account, principal.Account.ID),
-		Accounts:  makeAdminWebAccounts(accounts, principal.Account.ID),
+		Title:              "Proofline Admin",
+		Mode:               "dashboard",
+		Error:              message,
+		Notice:             notice,
+		CSRFToken:          csrfToken,
+		Account:            makeAdminWebAccount(principal.Account, principal.Account.ID),
+		Accounts:           makeAdminWebAccounts(accounts, principal.Account.ID),
+		IncidentCandidates: makeAdminWebIncidentCandidates(candidates),
+		DeletionStatus:     deletionStatus,
 		NavItems: []adminWebNavItem{
 			{Label: "Accounts", Href: "#accounts", Description: "Local users", Current: true},
-			{Label: "Operations", Href: "#operations", Description: "Private admin API"},
+			{Label: "Operations", Href: "#operations", Description: "Incident controls"},
 			{Label: "Boundary", Href: "#boundary", Description: "Private only"},
 		},
 		StatusItems: []adminWebStatusItem{
@@ -167,6 +221,45 @@ func makeAdminWebDashboardData(principal privatePrincipal, accounts []auth.Accou
 			{Label: "Route group", Value: "Private /admin", Tone: "neutral"},
 			{Label: "Public viewer", Value: "Not mounted", Tone: "warn"},
 		},
+	}
+}
+
+func makeAdminWebIncidentCandidates(candidates []incidents.LegacyUnownedIncidentCandidate) []adminWebIncidentCandidate {
+	response := make([]adminWebIncidentCandidate, 0, len(candidates))
+	for _, candidate := range candidates {
+		response = append(response, adminWebIncidentCandidate{
+			IncidentID:            candidate.IncidentID,
+			Status:                candidate.Status,
+			DeletionState:         candidate.DeletionState,
+			CreatedAt:             candidate.CreatedAt,
+			UpdatedAt:             candidate.UpdatedAt,
+			StreamCount:           candidate.StreamCount,
+			ChunkCount:            candidate.ChunkCount,
+			CheckinCount:          candidate.CheckinCount,
+			IncidentTokenCount:    candidate.IncidentTokenCount,
+			HasActiveViewerTokens: candidate.HasActiveViewerTokens,
+			IncidentMode:          candidate.IncidentMode,
+			CaptureProfile:        candidate.CaptureProfile,
+			EscalationPolicy:      candidate.EscalationPolicy,
+			SharingState:          candidate.SharingState,
+		})
+	}
+	return response
+}
+
+func makeAdminWebDeletionStatus(status incidents.IncidentDeletionStatus) adminWebDeletionStatus {
+	return adminWebDeletionStatus{
+		IncidentID:  status.IncidentID,
+		Source:      status.Source,
+		ReasonCode:  status.ReasonCode,
+		AllowOpen:   status.AllowOpen,
+		State:       status.State,
+		ItemCount:   status.ItemCount,
+		ErrorCode:   status.ErrorCode,
+		RequestedAt: status.RequestedAt,
+		UpdatedAt:   status.UpdatedAt,
+		StartedAt:   status.StartedAt,
+		CompletedAt: status.CompletedAt,
 	}
 }
 
