@@ -33,8 +33,10 @@ type adminWebAccount struct {
 }
 
 type adminWebNavItem struct {
-	Label string
-	State string
+	Label       string
+	Href        string
+	Description string
+	Current     bool
 }
 
 type adminWebStatusItem struct {
@@ -150,9 +152,9 @@ func makeAdminWebDashboardData(principal privatePrincipal, accounts []auth.Accou
 		Account:   makeAdminWebAccount(principal.Account, principal.Account.ID),
 		Accounts:  makeAdminWebAccounts(accounts, principal.Account.ID),
 		NavItems: []adminWebNavItem{
-			{Label: "Accounts", State: "Active"},
-			{Label: "Incidents", State: "API only"},
-			{Label: "Operations", State: "API only"},
+			{Label: "Accounts", Href: "#accounts", Description: "Local users", Current: true},
+			{Label: "Operations", Href: "#operations", Description: "Private admin API"},
+			{Label: "Boundary", Href: "#boundary", Description: "Private only"},
 		},
 		StatusItems: []adminWebStatusItem{
 			{Label: "Admin session", Value: "Verified", Tone: "ok"},

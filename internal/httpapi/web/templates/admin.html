@@ -44,15 +44,15 @@
 
       <nav class="sidebar-nav" aria-label="Admin sections">
         {{range .NavItems}}
-        <span class="nav-link {{if eq .State "Active"}}is-active{{else}}is-disabled{{end}}">
+        <a href="{{.Href}}" class="nav-link {{if .Current}}is-active{{end}}">
           <span class="nav-link-main">
             <svg class="icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <path d="M3 5a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z"></path>
             </svg>
             <span>{{.Label}}</span>
           </span>
-          <small>{{.State}}</small>
-        </span>
+          <small>{{.Description}}</small>
+        </a>
         {{end}}
       </nav>
 
@@ -100,7 +100,7 @@
       </section>
 
       <section class="workspace-grid" aria-label="Admin tools">
-        <article class="content-section accounts-section">
+        <article id="accounts" class="content-section accounts-section">
           <div class="section-header">
             <div>
               <p class="eyebrow">Local directory</p>
@@ -150,6 +150,27 @@
         </article>
 
         <div class="side-stack">
+          <article id="operations" class="content-section">
+            <div class="section-header">
+              <div>
+                <p class="eyebrow">Private admin API</p>
+                <h2>Incident Operations</h2>
+              </div>
+              <svg class="section-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M4 7h16"></path>
+                <path d="M7 7v13"></path>
+                <path d="M17 7v13"></path>
+                <path d="M9 3h6l1 4H8Z"></path>
+              </svg>
+            </div>
+            <p class="muted">Operational incident controls remain private-admin only while web forms are added in separate scoped work.</p>
+            <ul class="boundary-list">
+              <li>Legacy unowned incident review uses the private admin API.</li>
+              <li>Incident deletion status and requests keep existing reason-code behavior.</li>
+              <li>Reassignment actions stay behind admin authentication and 2FA gates.</li>
+            </ul>
+          </article>
+
           <article class="content-section">
             <div class="section-header">
               <div>
@@ -176,7 +197,7 @@
             </form>
           </article>
 
-          <article class="content-section boundary-section">
+          <article id="boundary" class="content-section boundary-section">
             <div class="section-header">
               <div>
                 <p class="eyebrow">Evidence Boundary</p>
