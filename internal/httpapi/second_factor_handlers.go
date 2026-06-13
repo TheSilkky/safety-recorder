@@ -119,19 +119,11 @@ func (a *API) sendSecondFactorChallengeEmail(r *http.Request, emailAddress, rawT
 		a.logInternalError("send email second factor challenge", email.ErrDisabled)
 		return false
 	}
-	message := email.Message{
-		To:      emailAddress,
-		Subject: "Your Proofline security code",
-		Body: strings.Join([]string{
-			"Use this code to finish Proofline email second-factor setup:",
-			"",
-			rawToken,
-			"",
-			"This code expires at " + expiresAt.UTC().Format(time.RFC3339) + ".",
-			"If you did not request this challenge, ignore this email.",
-			"",
-		}, "\n"),
-	}
+	message := email.NewEmailChallengeMessage(email.EmailChallengeTemplateData{
+		To:        emailAddress,
+		Code:      rawToken,
+		ExpiresAt: expiresAt,
+	})
 	if err := a.emailSender.Send(r.Context(), message); err != nil {
 		a.logInternalError("send email second factor challenge", err)
 		return false

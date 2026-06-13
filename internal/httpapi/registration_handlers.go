@@ -144,19 +144,11 @@ func (a *API) sendVerificationEmail(r *http.Request, emailAddress, rawToken stri
 		a.logInternalError("build verification email link", email.ErrDisabled)
 		return false
 	}
-	message := email.Message{
-		To:      emailAddress,
-		Subject: "Verify your Proofline account",
-		Body: strings.Join([]string{
-			"Verify your Proofline account by opening this link:",
-			"",
-			link,
-			"",
-			"This link expires at " + expiresAt.UTC().Format(time.RFC3339) + ".",
-			"If you did not create this account, ignore this email.",
-			"",
-		}, "\n"),
-	}
+	message := email.NewAccountVerificationMessage(email.AccountVerificationTemplateData{
+		To:               emailAddress,
+		VerificationLink: link,
+		ExpiresAt:        expiresAt,
+	})
 	if err := a.emailSender.Send(r.Context(), message); err != nil {
 		a.logInternalError("send verification email", err)
 		return false

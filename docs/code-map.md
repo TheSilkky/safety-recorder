@@ -74,7 +74,7 @@ contact key-sharing boundaries in
   tombstone retention window.
 - `internal/coordination`: defines the small optional coordination boundary, the default no-coordination backend, and the Valkey/Redis-compatible startup check, main API/public viewer rate-limit counter backend, and short-lived complete-upload lease backend.
 - `internal/db`: opens SQLite, enables foreign keys and WAL mode, applies embedded SQLite migrations, records `schema_migrations`, and runs named compatibility migrations.
-- `internal/email`: defines the outbound email sender boundary and the SMTP-backed verification email implementation. The backend has no stdout/file development mailer and does not send notification, recovery, billing, or trusted-contact emails.
+- `internal/email`: defines the outbound email sender boundary, reusable plain-text account verification and email challenge templates, and the SMTP-backed verification email implementation. The backend has no stdout/file development mailer and does not send notification, recovery, billing, or trusted-contact emails.
 - `internal/envelope/pq`: implements the accepted PQ evidence envelope used by
   default upload validation and simulator flows, including ML-KEM-768 wrapping
   records, payload frame parsing, public metadata validation, and local test
