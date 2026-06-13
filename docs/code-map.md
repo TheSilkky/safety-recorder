@@ -331,8 +331,11 @@ contains form parsing, session cookie, password-update, and CSRF helpers,
 `admin_web_view.go` contains render/view-model helpers, and
 `admin_web_static.go` serves embedded static assets. The page renders
 `internal/httpapi/web/templates/admin.html` with Go `html/template`.
-Token-neutral CSS is embedded from `internal/httpapi/web/admin/static` and
-served without authentication under `/admin/static/...`.
+Token-neutral CSS is generated from
+`internal/httpapi/web/admin/tailwind.css` using the maintainer-only command in
+[admin-web-tailwind.md](admin-web-tailwind.md), embedded from
+`internal/httpapi/web/admin/static`, and served without authentication under
+`/admin/static/...`.
 
 The admin web surface shows only safe route-boundary status, navigation stubs,
 and local account-management data. It does not read incident data, expose

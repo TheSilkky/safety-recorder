@@ -48,6 +48,7 @@ This directory contains the detailed documentation for Proofline Server, the Go 
 | [Logging requirements](logging-requirements.md) | Standard structured logging fields, safe error categories, redaction rules, and review/test requirements for logging changes. |
 | [Simulator](simulator.md) | Simulator commands, durable desktop-recorder staging, poor-network controls, and test flows. |
 | [Development](development.md) | Repository layout, commands, AI assistance note, branch rulesets, checks, and release checklist notes. |
+| [Private admin Tailwind CSS](admin-web-tailwind.md) | Maintainer-only Tailwind build command and source/generated CSS boundaries for embedded private admin web styles. |
 | [Compose smoke tests](../compose/README.md) | Local release-smoke stacks for SQLite/local, PostgreSQL/local, SQLite/S3-compatible MinIO, and full PostgreSQL/MinIO/Valkey combinations. |
 | [Codex change control](codex-change-control.md) | Rollback points, scoped Codex tasks, review steps, and issue-first backlog rules. |
 | [Code map](code-map.md) | Package layout and main backend request flows. |
