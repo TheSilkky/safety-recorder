@@ -2,6 +2,41 @@
 
 ## Unreleased
 
+These changes are intended for the next ordinary pre-v1 patch release. They do
+not make Proofline production-ready public infrastructure and do not make a v1
+preview readiness claim.
+
+- Extracted encrypted bundle manifest construction, completed-stream ordering
+  validation, and committed chunk byte/hash verification into
+  `internal/evidencebundle`, preserving fail-closed bundle integrity checks,
+  server-controlled ZIP entry names, and ciphertext-only bundle behavior.
+
+- Extracted shared JSON response and error helpers into a narrower
+  `internal/httpapi` boundary, with focused tests preserving existing response
+  shapes.
+
+- Added focused `internal/httpapi` test fixture helpers so handler tests can
+  keep setup code smaller without hiding behavior changes or dropping coverage.
+
+- Added private admin web navigation and status dashboard sections, keeping the
+  `/admin` surface private-admin only and preserving public viewer separation.
+
+- Added private admin web account administration parity for local account
+  creation, password reset, session revocation, and second-factor recovery
+  reset workflows, with CSRF-protected forms, current-admin unsafe self-reset
+  blocks, and docs preserving the private listener boundary.
+
+- Added private admin web incident operation parity for count-oriented legacy
+  unowned incident review, reassignment or keep-unowned decisions, admin
+  deletion requests, and deletion status lookup, without showing evidence
+  content, uploaded bytes, plaintext, stored paths, object keys, raw tokens, or
+  user safety narratives.
+
+- Documented the private admin web interface scope, visual direction, Go
+  template plus embedded generated CSS approach, sensitive-data display rules,
+  non-goals, and validation expectations in
+  `docs/private-admin-web-scope.md`.
+
 ## v0.11.1 - 2026-06-13
 
 This is an ordinary pre-v1, experimental patch release. It is not
