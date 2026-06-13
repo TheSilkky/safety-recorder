@@ -68,16 +68,15 @@ func TestAdminWebLoginSetsHttpOnlyCookieAndOpensDashboard(t *testing.T) {
 	for _, expected := range []string{
 		"Proofline Admin",
 		"Operator Console",
-		`href="#accounts"`,
-		`href="#operations"`,
-		`href="#boundary"`,
-		"Admin session",
-		"Private /admin",
-		"Public viewer",
-		"Not mounted",
-		"Incident Operations",
-		"Private admin API",
-		"Evidence Boundary",
+		`href="/admin/accounts"`,
+		`href="/admin/incidents"`,
+		`href="/admin/settings"`,
+		"Dashboard Overview",
+		"Metadata",
+		"Blob store",
+		"Registered local accounts",
+		"Committed blobs",
+		"Private Only",
 	} {
 		if !bytes.Contains(body, []byte(expected)) {
 			t.Fatalf("admin dashboard missing %q: %s", expected, body)
@@ -94,23 +93,27 @@ func TestAdminWebDashboardListsAccounts(t *testing.T) {
 	app := newTestApp(t)
 	createAccountAndLogin(t, app, "managed-user", "managed-password", auth.RoleUser)
 	userAccount := mustGetAccountByUsername(t, app, "managed-user")
+	if _, err := app.db.ExecContext(t.Context(), `UPDATE accounts SET email_normalized = ? WHERE id = ?`, "managed@example.invalid", userAccount.ID); err != nil {
+		t.Fatalf("set managed account email: %v", err)
+	}
 	cookie := loginAdminWeb(t, app)
 
-	response, body := requestWithCookie(t, app.adminHandler, http.MethodGet, "/admin", "", nil, cookie)
+	response, body := requestWithCookie(t, app.adminHandler, http.MethodGet, "/admin/accounts", "", nil, cookie)
 	defer response.Body.Close()
 
 	if response.StatusCode != http.StatusOK {
-		t.Fatalf("expected admin dashboard status 200, got %d: %s", response.StatusCode, body)
+		t.Fatalf("expected admin accounts status 200, got %d: %s", response.StatusCode, body)
 	}
 	for _, expected := range []string{
-		"Admin Password",
 		"User Accounts",
-		`id="accounts"`,
-		`id="operations"`,
+		"Search accounts",
+		`action="/admin/accounts"`,
+		`method="get"`,
+		`name="q"`,
+		"Back",
+		"Next",
 		"test-admin",
 		"managed-user",
-		`action="/admin/accounts"`,
-		`action="/admin/password"`,
 		`action="/admin/accounts/` + userAccount.ID + `/password"`,
 		`action="/admin/accounts/` + userAccount.ID + `/sessions/revoke"`,
 		`action="/admin/accounts/` + userAccount.ID + `/second-factor/recovery/reset"`,
@@ -124,6 +127,97 @@ func TestAdminWebDashboardListsAccounts(t *testing.T) {
 	for _, disallowed := range []string{app.authToken, "test-password", "managed-password", "password_hash", "Authorization"} {
 		if bytes.Contains(body, []byte(disallowed)) {
 			t.Fatalf("admin dashboard exposed %q: %s", disallowed, body)
+		}
+	}
+
+	response, body = requestWithCookie(t, app.adminHandler, http.MethodGet, "/admin/accounts?q=managed@example.invalid", "", nil, cookie)
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("expected admin account search status 200, got %d: %s", response.StatusCode, body)
+	}
+	for _, expected := range []string{"managed-user", "managed@example.invalid", `value="managed@example.invalid"`} {
+		if !bytes.Contains(body, []byte(expected)) {
+			t.Fatalf("admin account search missing %q: %s", expected, body)
+		}
+	}
+	if bytes.Contains(body, []byte(">test-admin<")) {
+		t.Fatalf("admin account email search included unrelated account: %s", body)
+	}
+}
+
+func TestAdminWebSettingsShowsAdminControlsAndRedactedConfig(t *testing.T) {
+	app := newTestAppWithOptions(t, httpapi.Options{
+		MaxUploadBytes:        4096,
+		AccountBlobQuotaBytes: 8192,
+		WebAuth: httpapi.WebAuthConfig{
+			Enabled: true,
+		},
+		WebAuthn: httpapi.WebAuthnConfig{
+			Enabled:        true,
+			RPID:           "admin.example.invalid",
+			RPDisplayName:  "Proofline Admin Test",
+			AllowedOrigins: []string{"https://admin.example.invalid"},
+		},
+		EmailSender: &recordingEmailSender{},
+		MainRateLimit: httpapi.MainRateLimitConfig{
+			Enabled: true,
+			Window:  time.Minute,
+		},
+		PublicRateLimit: httpapi.PublicRateLimitConfig{
+			Enabled: true,
+			Window:  2 * time.Minute,
+		},
+		RelayCapability: httpapi.RelayCapabilityConfig{
+			Secret: "relay-capability-secret",
+		},
+		RelayService: httpapi.RelayServiceConfig{
+			AuthToken: "relay-service-token",
+		},
+	})
+	cookie := loginAdminWeb(t, app)
+
+	response, body := requestWithCookie(t, app.adminHandler, http.MethodGet, "/admin/settings", "", nil, cookie)
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("expected admin settings status 200, got %d: %s", response.StatusCode, body)
+	}
+	for _, expected := range []string{
+		"Settings",
+		"Admin Password",
+		`action="/admin/password"`,
+		"Second Factor",
+		"Email challenge",
+		"TOTP",
+		"Security keys",
+		"Configuration",
+		"Max upload",
+		"Account blob quota",
+		"Registration",
+		"Browser sessions",
+		"WebAuthn",
+		"Email sender",
+		"Relay capability",
+		"Relay service auth",
+		"Provider details redacted",
+		"RP details redacted",
+		"Secret redacted",
+		"Token redacted",
+	} {
+		if !bytes.Contains(body, []byte(expected)) {
+			t.Fatalf("admin settings missing %q: %s", expected, body)
+		}
+	}
+	for _, disallowed := range []string{
+		app.authToken,
+		"test-password",
+		"relay-capability-secret",
+		"relay-service-token",
+		"admin.example.invalid",
+		"https://admin.example.invalid",
+		"Authorization",
+	} {
+		if bytes.Contains(body, []byte(disallowed)) {
+			t.Fatalf("admin settings exposed %q: %s", disallowed, body)
 		}
 	}
 }
@@ -144,7 +238,7 @@ func TestAdminWebAdminCanCreateAccount(t *testing.T) {
 	if response.StatusCode != http.StatusSeeOther {
 		t.Fatalf("expected account create redirect 303, got %d: %s", response.StatusCode, body)
 	}
-	if location := response.Header.Get("Location"); location != "/admin?notice=account_created" {
+	if location := response.Header.Get("Location"); location != "/admin/accounts?notice=account_created" {
 		t.Fatalf("expected account create redirect notice, got %q", location)
 	}
 
@@ -157,7 +251,7 @@ func TestAdminWebAdminCanCreateAccount(t *testing.T) {
 		t.Fatalf("created account should require setup: %+v", loginAccount)
 	}
 
-	response, body = requestWithCookie(t, app.adminHandler, http.MethodGet, "/admin?notice=account_created", "", nil, cookie)
+	response, body = requestWithCookie(t, app.adminHandler, http.MethodGet, "/admin/accounts?notice=account_created", "", nil, cookie)
 	defer response.Body.Close()
 	if response.StatusCode != http.StatusOK {
 		t.Fatalf("expected dashboard after account create status 200, got %d: %s", response.StatusCode, body)
@@ -189,7 +283,7 @@ func TestAdminWebAdminCanChangeOwnPassword(t *testing.T) {
 	if response.StatusCode != http.StatusSeeOther {
 		t.Fatalf("expected own password change redirect 303, got %d: %s", response.StatusCode, body)
 	}
-	if location := response.Header.Get("Location"); location != "/admin?notice=password_changed" {
+	if location := response.Header.Get("Location"); location != "/admin/settings?notice=password_changed" {
 		t.Fatalf("expected own password change redirect notice, got %q", location)
 	}
 
@@ -223,7 +317,7 @@ func TestAdminWebAdminCanResetUserPassword(t *testing.T) {
 	if response.StatusCode != http.StatusSeeOther {
 		t.Fatalf("expected account password reset redirect 303, got %d: %s", response.StatusCode, body)
 	}
-	if location := response.Header.Get("Location"); location != "/admin?notice=account_password_reset" {
+	if location := response.Header.Get("Location"); location != "/admin/accounts?notice=account_password_reset" {
 		t.Fatalf("expected account password reset redirect notice, got %q", location)
 	}
 
@@ -248,7 +342,7 @@ func TestAdminWebAdminCanRevokeUserSessions(t *testing.T) {
 	if response.StatusCode != http.StatusSeeOther {
 		t.Fatalf("expected session revoke redirect 303, got %d: %s", response.StatusCode, body)
 	}
-	if location := response.Header.Get("Location"); location != "/admin?notice=account_sessions_revoked" {
+	if location := response.Header.Get("Location"); location != "/admin/accounts?notice=account_sessions_revoked" {
 		t.Fatalf("expected session revoke redirect notice, got %q", location)
 	}
 
@@ -278,7 +372,7 @@ func TestAdminWebAdminCanResetUserSecondFactorRecovery(t *testing.T) {
 	if response.StatusCode != http.StatusSeeOther {
 		t.Fatalf("expected second-factor recovery redirect 303, got %d: %s", response.StatusCode, body)
 	}
-	if location := response.Header.Get("Location"); location != "/admin?notice=account_second_factor_reset" {
+	if location := response.Header.Get("Location"); location != "/admin/accounts?notice=account_second_factor_reset" {
 		t.Fatalf("expected second-factor recovery redirect notice, got %q", location)
 	}
 
@@ -292,7 +386,7 @@ func TestAdminWebAdminCanResetUserSecondFactorRecovery(t *testing.T) {
 		t.Fatalf("expected recovered user session status 401, got %d: %s", response.StatusCode, body)
 	}
 
-	response, body = requestWithCookie(t, app.adminHandler, http.MethodGet, "/admin?notice=account_second_factor_reset", "", nil, cookie)
+	response, body = requestWithCookie(t, app.adminHandler, http.MethodGet, "/admin/accounts?notice=account_second_factor_reset", "", nil, cookie)
 	defer response.Body.Close()
 	if response.StatusCode != http.StatusOK {
 		t.Fatalf("expected dashboard after recovery reset status 200, got %d: %s", response.StatusCode, body)
@@ -321,10 +415,10 @@ func TestAdminWebDashboardShowsIncidentOperationsSafely(t *testing.T) {
 	viewerToken := createIncidentToken(t, app, legacyIncident.ID, "viewer", nil)
 	cookie := loginAdminWeb(t, app)
 
-	response, body = requestWithCookie(t, app.adminHandler, http.MethodGet, "/admin", "", nil, cookie)
+	response, body = requestWithCookie(t, app.adminHandler, http.MethodGet, "/admin/incidents", "", nil, cookie)
 	defer response.Body.Close()
 	if response.StatusCode != http.StatusOK {
-		t.Fatalf("expected admin dashboard status 200, got %d: %s", response.StatusCode, body)
+		t.Fatalf("expected admin incidents status 200, got %d: %s", response.StatusCode, body)
 	}
 	for _, expected := range []string{
 		"Incident Operations",
@@ -378,7 +472,7 @@ func TestAdminWebAdminCanReassignLegacyIncident(t *testing.T) {
 	if response.StatusCode != http.StatusSeeOther {
 		t.Fatalf("expected reassignment redirect 303, got %d: %s", response.StatusCode, body)
 	}
-	if location := response.Header.Get("Location"); location != "/admin?notice=incident_reassignment_recorded" {
+	if location := response.Header.Get("Location"); location != "/admin/incidents?notice=incident_reassignment_recorded" {
 		t.Fatalf("expected reassignment notice redirect, got %q", location)
 	}
 	response, body = requestWithAuth(t, app.privateHandler, http.MethodGet, "/v1/incidents/"+legacyIncident.ID, "", nil, ownerToken)
@@ -399,7 +493,7 @@ func TestAdminWebAdminCanReassignLegacyIncident(t *testing.T) {
 	if response.StatusCode != http.StatusSeeOther {
 		t.Fatalf("expected keep-unowned redirect 303, got %d: %s", response.StatusCode, body)
 	}
-	if location := response.Header.Get("Location"); location != "/admin?notice=incident_reassignment_recorded" {
+	if location := response.Header.Get("Location"); location != "/admin/incidents?notice=incident_reassignment_recorded" {
 		t.Fatalf("expected keep-unowned notice redirect, got %q", location)
 	}
 	response, body = requestWithAuth(t, app.privateHandler, http.MethodGet, "/v1/incidents/"+quarantinedIncident.ID, "", nil, ownerToken)
@@ -429,7 +523,7 @@ func TestAdminWebAdminCanRequestIncidentDeletionAndViewStatus(t *testing.T) {
 		t.Fatalf("expected deletion request redirect 303, got %d: %s", response.StatusCode, body)
 	}
 	location := response.Header.Get("Location")
-	if location != "/admin?notice=incident_deletion_requested&deletion_incident_id="+incidentID {
+	if location != "/admin/incidents?notice=incident_deletion_requested&deletion_incident_id="+incidentID {
 		t.Fatalf("expected deletion status notice redirect, got %q", location)
 	}
 
@@ -714,7 +808,7 @@ func TestAdminWebBlocksUnsafeOwnAccountActions(t *testing.T) {
 		}
 	}
 
-	response, body := requestWithCookie(t, app.adminHandler, http.MethodGet, "/admin", "", nil, cookie)
+	response, body := requestWithCookie(t, app.adminHandler, http.MethodGet, "/admin/accounts", "", nil, cookie)
 	defer response.Body.Close()
 	if response.StatusCode != http.StatusOK || !bytes.Contains(body, []byte("User Accounts")) {
 		t.Fatalf("expected own-account block to preserve admin session, got %d: %s", response.StatusCode, body)
@@ -736,7 +830,7 @@ func TestAdminWebLogoutRequiresCSRFToken(t *testing.T) {
 
 	response, body = requestWithCookie(t, app.adminHandler, http.MethodGet, "/admin", "", nil, cookie)
 	response.Body.Close()
-	if response.StatusCode != http.StatusOK || !bytes.Contains(body, []byte("User Accounts")) {
+	if response.StatusCode != http.StatusOK || !bytes.Contains(body, []byte("Dashboard Overview")) {
 		t.Fatalf("expected admin session to remain valid after bad logout, got %d: %s", response.StatusCode, body)
 	}
 
@@ -908,7 +1002,7 @@ func TestAdminWebEmailSecondFactorSetupUnlocksDashboard(t *testing.T) {
 	if response.StatusCode != http.StatusOK {
 		t.Fatalf("expected admin dashboard after email setup status 200, got %d: %s", response.StatusCode, body)
 	}
-	for _, expected := range []string{"User Accounts", "Admin session", "Private /admin"} {
+	for _, expected := range []string{"Dashboard Overview", "Metadata", "Private Only"} {
 		if !bytes.Contains(body, []byte(expected)) {
 			t.Fatalf("admin dashboard after email setup missing %q: %s", expected, body)
 		}
@@ -968,7 +1062,7 @@ func TestAdminWebEmailSecondFactorSetupUnlocksDashboard(t *testing.T) {
 	if response.StatusCode != http.StatusOK {
 		t.Fatalf("expected admin dashboard after email session verification status 200, got %d: %s", response.StatusCode, body)
 	}
-	if !bytes.Contains(body, []byte("User Accounts")) || bytes.Contains(body, []byte(verifyCode)) {
+	if !bytes.Contains(body, []byte("Dashboard Overview")) || bytes.Contains(body, []byte(verifyCode)) {
 		t.Fatalf("expected dashboard without email code exposure: %s", body)
 	}
 }
@@ -1018,7 +1112,7 @@ func TestAdminWebRequiresTOTPVerifiedSessionBeforeDashboard(t *testing.T) {
 	if response.StatusCode != http.StatusOK {
 		t.Fatalf("expected admin dashboard after TOTP status 200, got %d: %s", response.StatusCode, body)
 	}
-	if !bytes.Contains(body, []byte("User Accounts")) || bytes.Contains(body, []byte(code)) {
+	if !bytes.Contains(body, []byte("Dashboard Overview")) || bytes.Contains(body, []byte(code)) {
 		t.Fatalf("expected dashboard without TOTP code exposure: %s", body)
 	}
 }

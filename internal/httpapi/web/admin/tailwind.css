@@ -87,12 +87,18 @@
     @apply min-h-screen bg-proofline-bg text-proofline-text;
   }
 
-  .admin-shell[data-admin-mode="dashboard"] {
+  .admin-shell[data-admin-mode="dashboard"],
+  .admin-shell[data-admin-mode="accounts"],
+  .admin-shell[data-admin-mode="incidents"],
+  .admin-shell[data-admin-mode="settings"] {
     @apply lg:grid;
   }
 
   @media (min-width: 1024px) {
-    .admin-shell[data-admin-mode="dashboard"] {
+    .admin-shell[data-admin-mode="dashboard"],
+    .admin-shell[data-admin-mode="accounts"],
+    .admin-shell[data-admin-mode="incidents"],
+    .admin-shell[data-admin-mode="settings"] {
       grid-template-columns: 248px minmax(0, 1fr);
     }
   }
@@ -265,6 +271,10 @@
     @apply mt-1 break-words text-xl font-semibold leading-tight text-proofline-text;
   }
 
+  .metric-description {
+    @apply mt-1 text-xs leading-5 text-proofline-text-disabled;
+  }
+
   .metric-icon {
     @apply mt-1 h-3 w-3 rounded-full bg-proofline-info;
   }
@@ -281,8 +291,25 @@
     @apply bg-proofline-warning;
   }
 
+  .metric-card.danger .metric-icon {
+    @apply bg-proofline-danger;
+  }
+
   .workspace-grid {
     @apply mt-5 grid gap-5 xl:grid-cols-3;
+  }
+
+  .workspace-grid.single-column {
+    @apply xl:grid-cols-1;
+  }
+
+  .overview-grid,
+  .settings-grid {
+    @apply mt-5 grid gap-5 lg:grid-cols-2;
+  }
+
+  .settings-wide {
+    @apply lg:col-span-2;
   }
 
   .content-section {
@@ -313,12 +340,24 @@
     @apply ml-2 border-proofline-success/40 bg-proofline-success-bg text-proofline-success;
   }
 
+  .toolbar-form {
+    @apply mb-5 grid items-end gap-3 sm:grid-cols-[minmax(0,1fr)_auto_auto];
+  }
+
   .account-list {
     @apply divide-y divide-proofline-border;
   }
 
+  .fixed-list {
+    min-height: 42rem;
+  }
+
   .account-row {
     @apply grid gap-3 py-4 first:pt-0 last:pb-0;
+  }
+
+  .create-row {
+    @apply mb-4 rounded-lg border border-proofline-border bg-proofline-bg-deep/40 px-4;
   }
 
   .account-summary {
@@ -364,6 +403,65 @@
 
   .compact-form {
     @apply max-w-2xl;
+  }
+
+  .pager {
+    @apply mt-5 flex items-center justify-between gap-3 border-t border-proofline-border pt-4;
+  }
+
+  .pager-current {
+    @apply text-sm font-medium text-proofline-text-muted;
+  }
+
+  .ghost-link {
+    @apply inline-flex min-h-10 items-center justify-center rounded-md border border-proofline-border bg-proofline-surface-elevated px-3 py-2 text-sm font-semibold text-proofline-text-secondary;
+  }
+
+  .ghost-link:hover {
+    @apply border-proofline-border-strong bg-proofline-surface-strong text-proofline-text;
+  }
+
+  .ghost-link.is-disabled {
+    @apply cursor-default opacity-50;
+  }
+
+  .detail-list {
+    @apply grid gap-4;
+  }
+
+  .detail-list dt,
+  .config-item dt {
+    @apply text-xs font-medium uppercase text-proofline-text-muted;
+    letter-spacing: 0;
+  }
+
+  .detail-list dd,
+  .config-item dd {
+    @apply mt-1 break-words text-sm font-semibold leading-5 text-proofline-text-secondary;
+  }
+
+  .config-grid {
+    @apply grid gap-3 sm:grid-cols-2 lg:grid-cols-3;
+  }
+
+  .config-item {
+    @apply min-h-24 rounded-lg border border-proofline-border bg-proofline-bg-deep/40 p-4;
+  }
+
+  .config-item.ok {
+    @apply border-proofline-success/40;
+  }
+
+  .config-item.warn {
+    @apply border-proofline-warning/40;
+  }
+
+  .config-item.danger {
+    @apply border-proofline-danger/40;
+  }
+
+  .config-item p {
+    @apply mt-2 text-xs leading-5 text-proofline-text-disabled;
   }
 
   .muted {

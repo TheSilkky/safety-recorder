@@ -100,6 +100,9 @@ func (a *API) registerAdminAPIRoutes(mux *http.ServeMux) {
 
 func (a *API) registerPrivateAdminWebRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /admin", a.adminWebPage)
+	mux.HandleFunc("GET /admin/accounts", a.adminWebAccountsPage)
+	mux.HandleFunc("GET /admin/incidents", a.adminWebIncidentsPage)
+	mux.HandleFunc("GET /admin/settings", a.adminWebSettingsPage)
 	mux.HandleFunc("POST /admin/bootstrap", a.adminWebBootstrap)
 	mux.HandleFunc("POST /admin/login", a.adminWebLogin)
 	mux.HandleFunc("POST /admin/logout", a.adminWebLogout)

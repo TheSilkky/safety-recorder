@@ -17,7 +17,7 @@
 <body>
   <a href="#content" class="skip-link">Skip to content</a>
 
-  {{if eq .Mode "dashboard"}}
+  {{if .AdminShell}}
   <div class="admin-shell" data-admin-mode="{{.Mode}}">
     <header class="mobile-header" aria-label="Proofline admin header">
       <a href="/admin" class="brand-lockup" aria-label="Proofline Admin home">
@@ -68,9 +68,9 @@
     <main id="content" class="dashboard-main" tabindex="-1">
       <section class="page-header" aria-labelledby="admin-dashboard-title">
         <div>
-          <p class="eyebrow">Local operations</p>
-          <h1 id="admin-dashboard-title">Proofline Admin</h1>
-          <p class="page-lead">Operator Console for local account administration and private route checks.</p>
+          <p class="eyebrow">Private admin</p>
+          <h1 id="admin-dashboard-title">{{.PageTitle}}</h1>
+          <p class="page-lead">{{.PageLead}}</p>
         </div>
         <form method="post" action="/admin/logout" class="desktop-logout">
           <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
@@ -85,7 +85,8 @@
       <p class="inline-status success" role="status">{{.Notice}}</p>
       {{end}}
 
-      <section class="metric-grid" aria-label="Admin boundary status">
+      {{if eq .Mode "dashboard"}}
+      <section class="metric-grid" aria-label="Admin overview">
         {{range .StatusItems}}
         <article class="metric-card {{.Tone}}">
           <span class="metric-icon" aria-hidden="true"></span>
@@ -93,49 +94,94 @@
             <div>
               <dt>{{.Label}}</dt>
               <dd>{{.Value}}</dd>
+              {{if .Description}}<p class="metric-description">{{.Description}}</p>{{end}}
             </div>
           </dl>
         </article>
         {{end}}
       </section>
 
-      <section class="workspace-grid" aria-label="Admin tools">
-        <article id="accounts" class="content-section accounts-section">
+      <section class="overview-grid" aria-label="Admin overview details">
+        <article class="content-section">
+          <div class="section-header">
+            <div>
+              <p class="eyebrow">Blob storage</p>
+              <h2>Usage Boundary</h2>
+            </div>
+          </div>
+          <dl class="detail-list">
+            <div>
+              <dt>Committed encrypted chunks</dt>
+              <dd>{{with index .StatusItems 3}}{{.Value}}{{end}}</dd>
+            </div>
+            <div>
+              <dt>Capacity totals</dt>
+              <dd>Not exposed by the current admin API</dd>
+            </div>
+          </dl>
+        </article>
+
+        <article class="content-section boundary-section">
+          <div class="section-header">
+            <div>
+              <p class="eyebrow">Boundary</p>
+              <h2>Private Only</h2>
+            </div>
+          </div>
+          <ul class="boundary-list">
+            <li>No incident evidence, bearer tokens, raw keys, plaintext, stored paths, object keys, or private deployment details are shown.</li>
+            <li>Public incident viewer routes stay read-only and separate from this private admin route group.</li>
+            <li>Detailed filesystem, object-store, and host capacity metrics are placeholders until explicit safe admin API fields exist.</li>
+          </ul>
+        </article>
+      </section>
+      {{else if eq .Mode "accounts"}}
+      <section class="workspace-grid single-column" aria-label="Account management">
+        <article class="content-section accounts-section">
           <div class="section-header">
             <div>
               <p class="eyebrow">Local directory</p>
               <h2>User Accounts</h2>
             </div>
-            <span class="status-badge">{{len .Accounts}} visible</span>
+            <span class="status-badge">{{.AccountPagination.RangeLabel}}</span>
           </div>
 
-          <div class="account-list">
-            <section class="account-row">
-              <div class="account-summary">
-                <div class="account-avatar" aria-hidden="true">New</div>
-                <div class="account-copy">
-                  <h3>Create Account</h3>
-                  <p class="muted">New local accounts require second-factor setup before private operator actions.</p>
-                </div>
-              </div>
-              <form method="post" action="/admin/accounts" class="stack-form compact-form">
-                <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
-                <label>
-                  <span>Username</span>
-                  <input name="username" type="text" autocomplete="username" required>
-                </label>
-                <label>
-                  <span>Role</span>
-                  <input name="role" type="text" value="user" pattern="user|admin" required>
-                </label>
-                <label>
-                  <span>Password</span>
-                  <input name="password" type="password" autocomplete="new-password" required>
-                </label>
-                <button type="submit">Create account</button>
-              </form>
-            </section>
+          <form method="get" action="/admin/accounts" class="toolbar-form" role="search">
+            <label>
+              <span>Search accounts</span>
+              <input name="q" type="search" value="{{.AccountPagination.Search}}" autocomplete="off" placeholder="Username or email">
+            </label>
+            <button type="submit">Search</button>
+            {{if .AccountPagination.Search}}<a href="/admin/accounts" class="ghost-link">Clear</a>{{end}}
+          </form>
 
+          <section class="account-row create-row" aria-labelledby="create-account-title">
+            <div class="account-summary">
+              <div class="account-avatar" aria-hidden="true">New</div>
+              <div class="account-copy">
+                <h3 id="create-account-title">Create Account</h3>
+                <p class="muted">New local accounts require second-factor setup before private operator actions.</p>
+              </div>
+            </div>
+            <form method="post" action="/admin/accounts" class="stack-form compact-form">
+              <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+              <label>
+                <span>Username</span>
+                <input name="username" type="text" autocomplete="username" required>
+              </label>
+              <label>
+                <span>Role</span>
+                <input name="role" type="text" value="user" pattern="user|admin" required>
+              </label>
+              <label>
+                <span>Password</span>
+                <input name="password" type="password" autocomplete="new-password" required>
+              </label>
+              <button type="submit">Create account</button>
+            </form>
+          </section>
+
+          <div class="account-list fixed-list">
             {{range .Accounts}}
             <section class="account-row">
               <div class="account-summary">
@@ -144,8 +190,20 @@
                   <h3>{{.Username}}{{if .IsCurrent}} <span class="status-badge current">You</span>{{end}}</h3>
                   <dl class="metadata-row">
                     <div>
+                      <dt>Email</dt>
+                      <dd>{{if .Email}}{{.Email}}{{else}}not set{{end}}</dd>
+                    </div>
+                    <div>
                       <dt>Role</dt>
                       <dd>{{.Role}}</dd>
+                    </div>
+                    <div>
+                      <dt>State</dt>
+                      <dd>{{if .AccountState}}{{.AccountState}}{{else}}active{{end}}</dd>
+                    </div>
+                    <div>
+                      <dt>2FA setup</dt>
+                      <dd>{{if .SecondFactorSetup}}{{.SecondFactorSetup}}{{else}}not_required{{end}}</dd>
                     </div>
                     <div>
                       <dt>Created</dt>
@@ -184,12 +242,29 @@
               </div>
               {{end}}
             </section>
+            {{else}}
+            <p class="muted">No accounts match the current search.</p>
             {{end}}
           </div>
-        </article>
 
-        <div class="side-stack">
-          <article id="operations" class="content-section">
+          <nav class="pager" aria-label="Account pages">
+            {{if .AccountPagination.HasPrev}}
+            <a href="{{.AccountPagination.PrevHref}}" class="ghost-link">Back</a>
+            {{else}}
+            <span class="ghost-link is-disabled">Back</span>
+            {{end}}
+            <span class="pager-current">Page {{.AccountPagination.Page}}</span>
+            {{if .AccountPagination.HasNext}}
+            <a href="{{.AccountPagination.NextHref}}" class="ghost-link">Next</a>
+            {{else}}
+            <span class="ghost-link is-disabled">Next</span>
+            {{end}}
+          </nav>
+        </article>
+      </section>
+      {{else if eq .Mode "incidents"}}
+      <section class="workspace-grid single-column" aria-label="Incident controls">
+          <article class="content-section">
             <div class="section-header">
               <div>
                 <p class="eyebrow">Private admin API</p>
@@ -198,7 +273,7 @@
               <span class="status-badge">{{len .IncidentCandidates}} visible</span>
             </div>
 
-            <form method="get" action="/admin" class="stack-form compact-form">
+            <form method="get" action="/admin/incidents" class="stack-form compact-form">
               <label>
                 <span>Deletion incident ID</span>
                 <input name="deletion_incident_id" type="text">
@@ -350,7 +425,9 @@
               {{end}}
             </div>
           </article>
-
+      </section>
+      {{else if eq .Mode "settings"}}
+      <section class="settings-grid" aria-label="Admin settings">
           <article class="content-section">
             <div class="section-header">
               <div>
@@ -377,26 +454,51 @@
             </form>
           </article>
 
-          <article id="boundary" class="content-section boundary-section">
+          <article class="content-section">
             <div class="section-header">
               <div>
-                <p class="eyebrow">Evidence Boundary</p>
-                <h2>Boundaries</h2>
+                <p class="eyebrow">Current admin</p>
+                <h2>Second Factor</h2>
               </div>
-              <svg class="section-icon warning" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"></path>
-                <path d="M12 8v4"></path>
-                <path d="M12 16h.01"></path>
-              </svg>
             </div>
-            <ul class="boundary-list">
-              <li>No incident evidence, bearer tokens, raw keys, plaintext, stored paths, object keys, or private deployment details are shown.</li>
-              <li>Public incident viewer routes stay read-only and separate from this private admin route group.</li>
-              <li>Incident and operator workflows remain on the JSON API until separate scoped implementation work adds them here.</li>
-            </ul>
+            <div class="config-grid">
+              {{range .SecondFactorItems}}
+              <div class="config-item {{.Tone}}">
+                <dl>
+                  <div>
+                    <dt>{{.Label}}</dt>
+                    <dd>{{.Value}}</dd>
+                  </div>
+                </dl>
+                {{if .Description}}<p>{{.Description}}</p>{{end}}
+              </div>
+              {{end}}
+            </div>
           </article>
-        </div>
+
+          <article class="content-section settings-wide">
+            <div class="section-header">
+              <div>
+                <p class="eyebrow">Server</p>
+                <h2>Configuration</h2>
+              </div>
+            </div>
+            <div class="config-grid">
+              {{range .ConfigItems}}
+              <div class="config-item {{.Tone}}">
+                <dl>
+                  <div>
+                    <dt>{{.Label}}</dt>
+                    <dd>{{.Value}}</dd>
+                  </div>
+                </dl>
+                {{if .Description}}<p>{{.Description}}</p>{{end}}
+              </div>
+              {{end}}
+            </div>
+          </article>
       </section>
+      {{end}}
     </main>
   </div>
   {{else}}
