@@ -123,6 +123,79 @@ func (r *Repository) CreateEmailSecondFactorChallenge(ctx context.Context, param
 	return challenge, rawToken, nil
 }
 
+func (r *Repository) GetActiveEmailSecondFactor(ctx context.Context, accountID string) (auth.SecondFactor, error) {
+	row := r.db.QueryRowContext(ctx, `
+		SELECT id, account_id, factor_type, email_normalized, factor_state, created_at, updated_at, verified_at
+		FROM account_second_factors
+		WHERE account_id = ? AND factor_type = ? AND factor_state = ?`,
+		accountID,
+		auth.SecondFactorTypeEmailChallenge,
+		auth.SecondFactorStateActive,
+	)
+	return scanSecondFactor(row)
+}
+
+func (r *Repository) CreateActiveEmailSecondFactorChallenge(ctx context.Context, accountID string, expiresAt time.Time) (auth.SecondFactorChallenge, string, error) {
+	rawToken, err := newRawAuthToken()
+	if err != nil {
+		return auth.SecondFactorChallenge{}, "", err
+	}
+	tokenHash := auth.SessionTokenHash(rawToken)
+	challengeID, err := newID("sfc")
+	if err != nil {
+		return auth.SecondFactorChallenge{}, "", err
+	}
+	now := time.Now().UTC()
+
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return auth.SecondFactorChallenge{}, "", fmt.Errorf("begin active email second factor challenge: %w", err)
+	}
+	defer tx.Rollback()
+
+	factor, err := getActiveEmailSecondFactorForAccountTx(ctx, tx, accountID)
+	if err != nil {
+		return auth.SecondFactorChallenge{}, "", err
+	}
+
+	challenge := auth.SecondFactorChallenge{
+		ID:              challengeID,
+		AccountID:       accountID,
+		FactorID:        factor.ID,
+		ChallengeType:   auth.SecondFactorChallengeTypeEmailSetup,
+		TokenHash:       tokenHash,
+		EmailNormalized: factor.EmailNormalized,
+		CreatedAt:       now,
+		ExpiresAt:       expiresAt.UTC(),
+	}
+	_, err = tx.ExecContext(ctx, `
+		INSERT INTO account_second_factor_challenges (
+			id, account_id, factor_id, challenge_type, token_hash,
+			email_normalized, created_at, expires_at
+		)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+		challenge.ID,
+		challenge.AccountID,
+		challenge.FactorID,
+		challenge.ChallengeType,
+		challenge.TokenHash,
+		challenge.EmailNormalized,
+		formatDBTime(challenge.CreatedAt),
+		formatDBTime(challenge.ExpiresAt),
+	)
+	if err != nil {
+		if isConstraint(err) {
+			return auth.SecondFactorChallenge{}, "", auth.ErrNotFound
+		}
+		return auth.SecondFactorChallenge{}, "", fmt.Errorf("insert active email second factor challenge: %w", err)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return auth.SecondFactorChallenge{}, "", fmt.Errorf("commit active email second factor challenge: %w", err)
+	}
+	return challenge, rawToken, nil
+}
+
 func (r *Repository) ConsumeEmailSecondFactorChallenge(ctx context.Context, accountID, rawToken string, now time.Time) (auth.SecondFactor, auth.Account, error) {
 	tokenHash := auth.SessionTokenHash(rawToken)
 	tx, err := r.db.BeginTx(ctx, nil)
@@ -221,6 +294,18 @@ func getEmailSecondFactorForAccountTx(ctx context.Context, tx *sql.Tx, accountID
 		WHERE account_id = ? AND factor_type = ?`,
 		accountID,
 		auth.SecondFactorTypeEmailChallenge,
+	)
+	return scanSecondFactor(row)
+}
+
+func getActiveEmailSecondFactorForAccountTx(ctx context.Context, tx *sql.Tx, accountID string) (auth.SecondFactor, error) {
+	row := tx.QueryRowContext(ctx, `
+		SELECT id, account_id, factor_type, email_normalized, factor_state, created_at, updated_at, verified_at
+		FROM account_second_factors
+		WHERE account_id = ? AND factor_type = ? AND factor_state = ?`,
+		accountID,
+		auth.SecondFactorTypeEmailChallenge,
+		auth.SecondFactorStateActive,
 	)
 	return scanSecondFactor(row)
 }

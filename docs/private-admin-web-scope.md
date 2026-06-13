@@ -60,7 +60,8 @@ The current `/admin` surface supports:
   configured
 - admin login and logout using the same account/session store as the JSON API
 - completed admin second-factor setup before operator actions
-- active-factor session verification when TOTP or WebAuthn is active
+- active-factor session verification when email challenge, TOTP, or WebAuthn
+  is active
 - configured WebAuthn/FIDO2 passkey or security-key setup as the preferred
   admin second-factor path, with email challenge fallback only when mail
   delivery is configured and TOTP setup through the existing authenticated

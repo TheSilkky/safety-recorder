@@ -918,6 +918,59 @@ func TestAdminWebEmailSecondFactorSetupUnlocksDashboard(t *testing.T) {
 			t.Fatalf("admin dashboard after email setup exposed %q: %s", disallowed, body)
 		}
 	}
+
+	newCookie := loginAdminWeb(t, app)
+	response, body = requestWithCookie(t, app.adminHandler, http.MethodGet, "/admin", "", nil, newCookie)
+	response.Body.Close()
+	if response.StatusCode != http.StatusForbidden {
+		t.Fatalf("expected admin email 2FA gate after relogin status 403, got %d: %s", response.StatusCode, body)
+	}
+	for _, expected := range []string{"Verify Admin 2FA", "Send email code", "Verify email code", `action="/admin/second-factor/email/challenge"`} {
+		if !bytes.Contains(body, []byte(expected)) {
+			t.Fatalf("admin web email gate missing %q: %s", expected, body)
+		}
+	}
+	for _, disallowed := range []string{"User Accounts", `action="/admin/password"`, code, "admin-2fa@example.invalid", app.authToken} {
+		if bytes.Contains(body, []byte(disallowed)) {
+			t.Fatalf("admin web email gate exposed %q: %s", disallowed, body)
+		}
+	}
+
+	csrfToken = adminWebCSRFTokenFromBody(t, body)
+	response, body = postAdminWebFormWithCookie(t, app, "/admin/second-factor/email/challenge", url.Values{
+		"csrf_token": {csrfToken},
+	}, newCookie)
+	response.Body.Close()
+	if response.StatusCode != http.StatusSeeOther {
+		t.Fatalf("expected email verification challenge redirect 303, got %d: %s", response.StatusCode, body)
+	}
+	if location := response.Header.Get("Location"); location != "/admin?notice=second_factor_challenge_sent" {
+		t.Fatalf("expected email verification challenge notice redirect, got %q", location)
+	}
+	if len(sender.messages) != 2 {
+		t.Fatalf("expected two second-factor emails, got %d", len(sender.messages))
+	}
+	verifyCode := secondFactorCodeFromEmail(t, sender.messages[1])
+	response, body = postAdminWebFormWithCookie(t, app, "/admin/second-factor/email/verify", url.Values{
+		"csrf_token": {csrfToken},
+		"code":       {verifyCode},
+	}, newCookie)
+	response.Body.Close()
+	if response.StatusCode != http.StatusSeeOther {
+		t.Fatalf("expected email session verification redirect 303, got %d: %s", response.StatusCode, body)
+	}
+	if location := response.Header.Get("Location"); location != "/admin?notice=second_factor_verified" {
+		t.Fatalf("expected email verified notice redirect, got %q", location)
+	}
+
+	response, body = requestWithCookie(t, app.adminHandler, http.MethodGet, "/admin", "", nil, newCookie)
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("expected admin dashboard after email session verification status 200, got %d: %s", response.StatusCode, body)
+	}
+	if !bytes.Contains(body, []byte("User Accounts")) || bytes.Contains(body, []byte(verifyCode)) {
+		t.Fatalf("expected dashboard without email code exposure: %s", body)
+	}
 }
 
 func TestAdminWebRequiresTOTPVerifiedSessionBeforeDashboard(t *testing.T) {

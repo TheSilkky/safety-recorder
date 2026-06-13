@@ -72,6 +72,8 @@ type MetadataRepository interface {
 	CreateAccountVerificationToken(ctx context.Context, params auth.CreateAccountVerificationTokenParams) (auth.AccountVerificationToken, string, error)
 	ConsumeAccountVerificationToken(ctx context.Context, rawToken, purpose string, now time.Time) (auth.Account, error)
 	CreateEmailSecondFactorChallenge(ctx context.Context, params auth.CreateEmailSecondFactorChallengeParams) (auth.SecondFactorChallenge, string, error)
+	GetActiveEmailSecondFactor(ctx context.Context, accountID string) (auth.SecondFactor, error)
+	CreateActiveEmailSecondFactorChallenge(ctx context.Context, accountID string, expiresAt time.Time) (auth.SecondFactorChallenge, string, error)
 	ConsumeEmailSecondFactorChallenge(ctx context.Context, accountID, rawToken string, now time.Time) (auth.SecondFactor, auth.Account, error)
 	CreateTOTPSecondFactorEnrollment(ctx context.Context, params auth.CreateTOTPSecondFactorEnrollmentParams) (auth.SecondFactor, error)
 	GetPendingTOTPSecondFactor(ctx context.Context, accountID string) (auth.SecondFactor, error)

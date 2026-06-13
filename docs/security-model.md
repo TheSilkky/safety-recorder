@@ -104,10 +104,11 @@ default and fails closed until an RP ID and exact allowed origins are
 configured; it stores public credential material, sign counters, transports,
 attachment and backup flags, and single-use expiring challenge session data.
 WebAuthn does not store raw private keys or add backend decryption. Accounts
-with active TOTP or WebAuthn factors can create primary-authenticated sessions
-after password login, but product routes and admin operator routes fail closed
-with `403 second_factor_verification_required` until the session verifies an
-active factor.
+with active email challenge, TOTP, or WebAuthn factors can create
+primary-authenticated sessions after password login, but product routes and
+admin operator routes fail closed with
+`403 second_factor_verification_required` until the session verifies an active
+factor.
 
 Lost-factor recovery is limited to an authenticated private-admin
 `POST /admin/api/accounts/{account_id}/second-factor/recovery/reset` route. The

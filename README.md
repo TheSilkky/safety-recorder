@@ -17,7 +17,7 @@ Proofline Server is the experimental Go server backend for encrypted incident ca
 
 ## Security Warning
 
-> This project is not production-ready public infrastructure. The main `/v1` API now requires local account sessions for product routes and uses app-level route-class rate limits, so it is no longer an unauthenticated control plane. Broad public exposure still needs route-by-route deployment review, TLS, edge abuse controls, browser credential review, logging review, proxy hardening, and operational testing. Configurable public self-registration is disabled by default; enabling open registration adds only email-verified account creation and does not by itself approve broad public `/v1` exposure. Optional browser cookie sessions add CSRF checks and configured credentialed CORS for future web-client use, but they also need reviewed deployment rules. Existing `/admin/api/...` JSON routes are mounted only on the private-admin listener and require authenticated admin sessions with completed admin second-factor setup and active-factor verification when TOTP or WebAuthn is active. The private-admin listener also serves the `/admin` dashboard surface and must stay behind localhost, LAN, WireGuard, a firewall, or a strict reverse proxy. Separate bind addresses are a deployment boundary, not a complete security model.
+> This project is not production-ready public infrastructure. The main `/v1` API now requires local account sessions for product routes and uses app-level route-class rate limits, so it is no longer an unauthenticated control plane. Broad public exposure still needs route-by-route deployment review, TLS, edge abuse controls, browser credential review, logging review, proxy hardening, and operational testing. Configurable public self-registration is disabled by default; enabling open registration adds only email-verified account creation and does not by itself approve broad public `/v1` exposure. Optional browser cookie sessions add CSRF checks and configured credentialed CORS for future web-client use, but they also need reviewed deployment rules. Existing `/admin/api/...` JSON routes are mounted only on the private-admin listener and require authenticated admin sessions with completed admin second-factor setup and active-factor verification when email challenge, TOTP, or WebAuthn is active. The private-admin listener also serves the `/admin` dashboard surface and must stay behind localhost, LAN, WireGuard, a firewall, or a strict reverse proxy. Separate bind addresses are a deployment boundary, not a complete security model.
 >
 > Public web-client deployments must follow the reviewed route, CORS, CSRF,
 > cookie, cache, edge, and logging boundary in
@@ -114,9 +114,10 @@ escrow.
   actions; legacy admin `not_required` accounts are gated on the private admin
   surface until setup is complete. Email challenge codes are single-use,
   expiring, emailed through the configured sender, and stored only as hashes.
-  TOTP setup stores authenticator-app seeds as credential material and active
-  TOTP factors require per-session verification before product-route or admin
-  operator access. WebAuthn setup is disabled until an RP ID and exact allowed
+  Email challenge, TOTP, and configured WebAuthn factors require per-session
+  verification before product-route or admin operator access after primary
+  login. TOTP setup stores authenticator-app seeds as credential material.
+  WebAuthn setup is disabled until an RP ID and exact allowed
   origins are configured, stores public credential material and single-use
   expiring challenge sessions, and can verify active passkey or roaming
   security-key factors for bearer and browser sessions. Private-admin assisted

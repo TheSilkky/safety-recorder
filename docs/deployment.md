@@ -175,8 +175,9 @@ the account `complete`; existing migrated accounts default to `not_required`
 for preview product-route compatibility. Admin operator access is stricter:
 newly bootstrapped admins and legacy admin `not_required` accounts cannot use
 private `/admin` dashboard actions or `/admin/api/...` JSON admin actions until
-admin second-factor setup is complete. Active TOTP or WebAuthn factors require
-the current admin session to verify the factor before operator actions.
+admin second-factor setup is complete. Active email challenge, TOTP, or
+WebAuthn factors require the current admin session to verify the factor before
+operator actions.
 WebAuthn/FIDO2 security keys are preferred for admin accounts when configured;
 TOTP and email challenge remain lower-preference paths where available.
 WebAuthn remains disabled until `[webauthn]` is explicitly configured with an
@@ -980,7 +981,7 @@ Suggested route groups:
 | Main chunk uploads | `POST /v1/incidents/{incident_id}/chunks` | Tune for expected chunk cadence, upload retries, body size limits, and client network conditions. |
 | Main incident, stream, check-in, and token actions | Other product `/v1/...` routes | Use limits as an abuse backstop, not as the only security control. |
 | Registration and email verification | `POST /v1/auth/register`, `POST /v1/auth/email/verify` | Keep separate from login limits and never include raw emails, usernames, verification tokens, or request bodies in logs or metrics. |
-| Required setup status and factor setup | `GET /v1/account`, email/TOTP/WebAuthn second-factor setup and verification routes | Setup-incomplete accounts may inspect their account state and complete email, TOTP, or WebAuthn setup routes, and active TOTP/WebAuthn accounts may verify a primary-authenticated session before product access. Main product routes should fail closed until setup and required session verification are complete. Never log raw challenge codes, TOTP codes, TOTP seeds, `otpauth_url` values, WebAuthn challenge/client data, credential bytes, or request bodies. |
+| Required setup status and factor setup | `GET /v1/account`, email/TOTP/WebAuthn second-factor setup and verification routes | Setup-incomplete accounts may inspect their account state and complete email, TOTP, or WebAuthn setup routes, and active email/TOTP/WebAuthn accounts may verify a primary-authenticated session before product access. Main product routes should fail closed until setup and required session verification are complete. Never log raw challenge codes, TOTP codes, TOTP seeds, `otpauth_url` values, WebAuthn challenge/client data, credential bytes, or request bodies. |
 | Private admin dashboard actions | `/admin/...` | Keep on the private-admin listener, require completed admin second-factor setup and active-factor session verification before operator actions, and do not route from public entry points. |
 | Admin JSON API actions | `/admin/api/...` | Authenticated admin-only routes on the private-admin listener; require completed admin second-factor setup and active-factor session verification before operator actions, and do not route from public entry points. |
 

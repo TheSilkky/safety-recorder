@@ -684,9 +684,70 @@ func TestEmailSecondFactorSetupBearerSessionEnrollsAndUnlocksProductRoutes(t *te
 	}
 
 	response, body = requestWithAuth(t, app.privateHandler, http.MethodPost, "/v1/incidents", "application/json", bytes.NewBufferString(`{}`), token)
-	defer response.Body.Close()
 	if response.StatusCode != http.StatusCreated {
 		t.Fatalf("post-challenge product route status = %d, want 201: %s", response.StatusCode, body)
+	}
+	response.Body.Close()
+
+	loginResponse, body := postUnauthenticated(t, app, "/v1/auth/login", "application/json", bytes.NewBufferString(`{"username":"email-setup-user","password":"state-password"}`))
+	loginResponse.Body.Close()
+	if loginResponse.StatusCode != http.StatusCreated {
+		t.Fatalf("email active login status = %d, want 201: %s", loginResponse.StatusCode, body)
+	}
+	var loginResult struct {
+		Token                            string `json:"token"`
+		SecondFactorVerificationRequired bool   `json:"second_factor_verification_required"`
+	}
+	if err := json.Unmarshal(body, &loginResult); err != nil {
+		t.Fatalf("decode email active login response: %v", err)
+	}
+	if loginResult.Token == "" || !loginResult.SecondFactorVerificationRequired {
+		t.Fatalf("login did not report required email verification: token_present=%t required=%t", loginResult.Token != "", loginResult.SecondFactorVerificationRequired)
+	}
+
+	response, body = requestWithAuth(t, app.privateHandler, http.MethodPost, "/v1/incidents", "application/json", bytes.NewBufferString(`{}`), loginResult.Token)
+	response.Body.Close()
+	if response.StatusCode != http.StatusForbidden {
+		t.Fatalf("primary-only email product route status = %d, want 403: %s", response.StatusCode, body)
+	}
+	assertErrorCode(t, body, "second_factor_verification_required")
+
+	response, body = requestWithAuth(t, app.privateHandler, http.MethodPost, "/v1/account/second-factor/email/challenge", "application/json", bytes.NewBufferString(`{}`), loginResult.Token)
+	response.Body.Close()
+	if response.StatusCode != http.StatusAccepted {
+		t.Fatalf("email verification challenge status = %d, want 202: %s", response.StatusCode, body)
+	}
+	if len(sender.messages) != 2 {
+		t.Fatalf("sent email challenge messages = %d, want 2", len(sender.messages))
+	}
+	verifyCode := secondFactorCodeFromEmail(t, sender.messages[1])
+	for _, disallowed := range []string{"setup.user@example.invalid", verifyCode, loginResult.Token} {
+		if bytes.Contains(body, []byte(disallowed)) {
+			t.Fatalf("verification challenge response exposed %q: %s", disallowed, body)
+		}
+	}
+
+	response, body = requestWithAuth(t, app.privateHandler, http.MethodPost, "/v1/account/second-factor/email/verify", "application/json", bytes.NewBufferString(`{"code":"`+verifyCode+`"}`), loginResult.Token)
+	response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("email session verify status = %d, want 200: %s", response.StatusCode, body)
+	}
+	var verifyResult struct {
+		Session struct {
+			SecondFactorMethod string `json:"second_factor_method"`
+		} `json:"session"`
+	}
+	if err := json.Unmarshal(body, &verifyResult); err != nil {
+		t.Fatalf("decode email session verify response: %v", err)
+	}
+	if verifyResult.Session.SecondFactorMethod != auth.SecondFactorTypeEmailChallenge {
+		t.Fatalf("unexpected email verification session method: %+v", verifyResult)
+	}
+
+	response, body = requestWithAuth(t, app.privateHandler, http.MethodPost, "/v1/incidents", "application/json", bytes.NewBufferString(`{}`), loginResult.Token)
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusCreated {
+		t.Fatalf("post-email-verification product route status = %d, want 201: %s", response.StatusCode, body)
 	}
 }
 

@@ -32,6 +32,18 @@ func (a *API) requestEmailSecondFactorChallenge(w http.ResponseWriter, r *http.R
 		return
 	}
 
+	if auth.CanAccessProductRoutes(principal.Account) {
+		required, err := a.sessionRequiresSecondFactorVerification(r.Context(), principal.Account, principal.Session)
+		if err != nil {
+			a.internalError(w, "check email second factor session requirement", err)
+			return
+		}
+		if required {
+			a.requestActiveEmailSecondFactorChallenge(w, r, principal)
+			return
+		}
+	}
+
 	emailAddress := auth.NormalizeEmail(request.Email)
 	if emailAddress == "" && principal.Account.EmailNormalized != "" && principal.Account.EmailVerifiedAt != nil {
 		emailAddress = principal.Account.EmailNormalized
@@ -61,6 +73,29 @@ func (a *API) requestEmailSecondFactorChallenge(w http.ResponseWriter, r *http.R
 	}
 	if err != nil {
 		a.internalError(w, "create email second factor challenge", err)
+		return
+	}
+	if !a.sendSecondFactorChallengeEmail(r, challenge.EmailNormalized, rawToken, challenge.ExpiresAt) {
+		writeError(w, http.StatusServiceUnavailable, "email_unavailable", "email delivery is temporarily unavailable")
+		return
+	}
+
+	writeJSON(w, http.StatusAccepted, map[string]any{
+		"status":     "challenge_sent",
+		"message":    secondFactorChallengeAcceptedMessage,
+		"expires_at": challenge.ExpiresAt,
+	})
+}
+
+func (a *API) requestActiveEmailSecondFactorChallenge(w http.ResponseWriter, r *http.Request, principal privatePrincipal) {
+	expiresAt := time.Now().UTC().Add(a.secondFactorEmailTTL)
+	challenge, rawToken, err := a.repo.CreateActiveEmailSecondFactorChallenge(r.Context(), principal.Account.ID, expiresAt)
+	if errors.Is(err, auth.ErrNotFound) {
+		writeError(w, http.StatusForbidden, "second_factor_verification_required", "second factor verification is required before account access")
+		return
+	}
+	if err != nil {
+		a.internalError(w, "create active email second factor challenge", err)
 		return
 	}
 	if !a.sendSecondFactorChallengeEmail(r, challenge.EmailNormalized, rawToken, challenge.ExpiresAt) {
@@ -106,11 +141,17 @@ func (a *API) verifyEmailSecondFactorChallenge(w http.ResponseWriter, r *http.Re
 		a.internalError(w, "consume email second factor challenge", err)
 		return
 	}
+	session, err := a.repo.MarkSessionSecondFactorVerified(r.Context(), principal.Session.ID, factor.ID, auth.SecondFactorTypeEmailChallenge, time.Now().UTC())
+	if err != nil {
+		a.internalError(w, "mark email second factor session verified", err)
+		return
+	}
 
 	writeJSON(w, http.StatusOK, map[string]any{
 		"status":        "verified",
 		"second_factor": makeSecondFactorResponse(factor),
 		"account":       makeAccountResponse(account),
+		"session":       makeSecondFactorSessionResponse(session),
 	})
 }
 

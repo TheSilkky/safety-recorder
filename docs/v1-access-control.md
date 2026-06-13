@@ -120,7 +120,7 @@ account and server-side session store, with the raw session token held in an
 HttpOnly SameSite cookie scoped to `/admin`. Newly bootstrapped admins and
 legacy admin `not_required` accounts see a second-factor setup gate instead of
 operator controls until admin second-factor setup is complete. Admin web
-sessions with active TOTP or WebAuthn factors must verify the session before
+sessions with active email challenge, TOTP, or WebAuthn factors must verify the session before
 the dashboard opens. The authenticated dashboard then lists local accounts and
 supports current-admin password changes plus local account creation, password
 reset, session revocation, and second-factor recovery reset forms for other
@@ -216,7 +216,7 @@ accounts start as setup-incomplete for required second-factor setup; primary
 login can create sessions, but main product routes fail closed until email
 challenge, TOTP, or WebAuthn setup verifies the account and marks setup
 complete. Registration email verification does not count as second-factor
-setup. Active TOTP or WebAuthn factors also require each new
+setup. Active email challenge, TOTP, or WebAuthn factors also require each new
 primary-authenticated session to verify an active factor before product-route
 access. Existing migrated accounts default to `not_required` for preview
 compatibility on product routes. Private admin operator actions are stricter:
