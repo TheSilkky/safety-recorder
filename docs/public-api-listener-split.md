@@ -100,9 +100,9 @@ The private admin listener should serve only private admin routes:
 
 | Route group | Target placement | Notes |
 |---|---|---|
-| `/admin`, `/admin/login`, `/admin/bootstrap`, `/admin/logout`, `/admin/password`, `/admin/accounts/{account_id}/password` | Private `8081` only. | Keep HttpOnly SameSite admin cookie scoped to `/admin`, session-bound CSRF tokens for state-changing forms, no-store, and conservative browser headers. |
+| `/admin`, `/admin/login`, `/admin/bootstrap`, `/admin/logout`, `/admin/second-factor/email/challenge`, `/admin/second-factor/email/verify`, `/admin/second-factor/totp/verify`, `/admin/password`, `/admin/accounts/{account_id}/password` | Private `8081` only. | Keep HttpOnly SameSite admin cookie scoped to `/admin`, require completed admin second-factor setup and active-factor session verification before operator actions, keep session-bound CSRF tokens for state-changing forms, no-store, and conservative browser headers. |
 | `/admin/static/...` | Private `8081` only. | Token-neutral admin CSS only; no incident evidence, tokens, keys, or deployment details. |
-| `/admin/api/accounts`, `/admin/api/accounts/{account_id}/password`, `/admin/api/accounts/{account_id}/second-factor/recovery/reset`, `/admin/api/accounts/{account_id}/sessions/revoke` | Private `8081` only. | Keep bearer or browser-cookie session authentication and admin-role checks; do not route from public entry points. |
+| `/admin/api/accounts`, `/admin/api/accounts/{account_id}/password`, `/admin/api/accounts/{account_id}/second-factor/recovery/reset`, `/admin/api/accounts/{account_id}/sessions/revoke` | Private `8081` only. | Keep bearer or browser-cookie session authentication, admin-role checks, completed admin second-factor setup, and active-factor session verification; do not route from public entry points. |
 | `GET /admin/api/incidents/unowned` and `POST /admin/api/incidents/{incident_id}/reassignment` | Private `8081` only. | Legacy unowned incident review and one-incident reassignment or keep-unowned audit decisions remain admin-only and must not be routed from public entry points. |
 | `GET` and `POST /admin/api/incidents/{incident_id}/deletion` | Private `8081` only. | Admin-global incident deletion remains an admin-only action and must not be routed from public entry points. |
 | `/v1/bootstrap/admin` | Not mounted. | Use private `/admin/bootstrap`; remove the bootstrap secret after first-admin creation. |
@@ -153,8 +153,8 @@ minimum:
 | Upload body | Chunk uploads and future resumable upload routes | Protect request body handling, temp storage, hashing, and metadata writes. |
 | Upload reconciliation/idempotency | Duplicate reconciliation and idempotent retry paths | Prevent metadata comparison and replay endpoints from becoming enumeration tools. |
 | Private/API download | Private chunk bytes and authenticated bundle downloads | Protect storage reads and ZIP generation for authenticated callers. |
-| Admin dashboard actions | Private `/admin` | Keep private admin abuse controls separate from public product controls. |
-| Admin JSON API actions | `/admin/api/...` | Admin-only routes on the private-admin listener; block at public reverse proxies. |
+| Admin dashboard actions | Private `/admin` | Keep private admin abuse controls separate from public product controls; require completed admin second-factor setup and active-factor session verification before operator actions. |
+| Admin JSON API actions | `/admin/api/...` | Admin-only routes on the private-admin listener; require completed admin second-factor setup and active-factor session verification before operator actions; block at public reverse proxies. |
 
 Limiter keys must be server-controlled and must not include raw viewer tokens,
 raw session tokens, Authorization headers, request bodies, uploaded bytes,

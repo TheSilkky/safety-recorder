@@ -52,7 +52,9 @@ defaults and does not include a bootstrap secret.
 The private admin web surface is available at
 `http://127.0.0.1:8081/admin`. When a bootstrap secret is configured and no
 admin exists, that page shows the first-admin bootstrap screen; after an admin
-exists, it shows the admin login screen and local account password workflows.
+exists, it shows the admin login screen. Admin accounts must complete
+second-factor setup before the local account password workflows or JSON admin
+actions are available.
 
 The backend writes local data under `./data` by default:
 
@@ -81,7 +83,9 @@ curl -sS -X POST http://127.0.0.1:8081/admin/bootstrap \
 ```
 
 Then restart the server without the bootstrap secret in TOML, the environment,
-or the secret mount.
+or the secret mount. Complete second-factor setup for the bootstrapped admin
+before running private admin actions or simulator flows that depend on admin
+account access.
 
 ## Run The Simulator
 

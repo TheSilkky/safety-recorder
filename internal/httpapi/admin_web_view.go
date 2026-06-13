@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"errors"
 	"net/http"
 	"time"
 
@@ -8,15 +9,18 @@ import (
 )
 
 type adminWebData struct {
-	Title       string
-	Mode        string
-	Error       string
-	Notice      string
-	CSRFToken   string
-	Account     adminWebAccount
-	Accounts    []adminWebAccount
-	NavItems    []adminWebNavItem
-	StatusItems []adminWebStatusItem
+	Title                         string
+	Mode                          string
+	Error                         string
+	Notice                        string
+	CSRFToken                     string
+	Account                       adminWebAccount
+	Accounts                      []adminWebAccount
+	NavItems                      []adminWebNavItem
+	StatusItems                   []adminWebStatusItem
+	SecondFactorEmailAvailable    bool
+	SecondFactorTOTPAvailable     bool
+	SecondFactorWebAuthnAvailable bool
 }
 
 type adminWebAccount struct {
@@ -59,6 +63,33 @@ func (a *API) renderAdminWebDashboard(w http.ResponseWriter, r *http.Request, pr
 	a.renderAdminWeb(w, status, makeAdminWebDashboardData(principal, accounts, adminWebCSRFTokenFromRequest(r), notice, message))
 }
 
+func (a *API) renderAdminWebSecondFactorSetup(w http.ResponseWriter, r *http.Request, principal privatePrincipal, status int, notice, message string) {
+	a.renderAdminWeb(w, status, makeAdminWebSecondFactorSetupData(
+		principal,
+		adminWebCSRFTokenFromRequest(r),
+		notice,
+		message,
+		a.emailSender != nil,
+		a.adminWebAuthnAvailable(),
+	))
+}
+
+func (a *API) renderAdminWebSecondFactorVerification(w http.ResponseWriter, r *http.Request, principal privatePrincipal, status int, notice, message string) {
+	totpAvailable, err := a.adminWebTOTPAvailable(r, principal)
+	if err != nil {
+		a.adminWebInternalError(w, "check admin web TOTP factor", err)
+		return
+	}
+	a.renderAdminWeb(w, status, makeAdminWebSecondFactorVerificationData(
+		principal,
+		adminWebCSRFTokenFromRequest(r),
+		notice,
+		message,
+		totpAvailable,
+		a.adminWebAuthnAvailable(),
+	))
+}
+
 func (a *API) adminWebInternalError(w http.ResponseWriter, operation string, err error) {
 	a.logInternalError(operation, err)
 	a.renderAdminWeb(w, http.StatusInternalServerError, adminWebData{
@@ -82,6 +113,12 @@ func adminWebNotice(r *http.Request) string {
 		return "Password changed."
 	case "account_password_reset":
 		return "Account password reset."
+	case "second_factor_challenge_sent":
+		return "Second-factor challenge sent."
+	case "second_factor_setup_complete":
+		return "Admin second-factor setup completed."
+	case "second_factor_verified":
+		return "Admin second factor verified."
 	default:
 		return ""
 	}
@@ -125,6 +162,32 @@ func makeAdminWebDashboardData(principal privatePrincipal, accounts []auth.Accou
 	}
 }
 
+func makeAdminWebSecondFactorSetupData(principal privatePrincipal, csrfToken, notice, message string, emailAvailable, webAuthnAvailable bool) adminWebData {
+	return adminWebData{
+		Title:                         "Proofline Admin 2FA Setup",
+		Mode:                          "second_factor_setup",
+		Error:                         message,
+		Notice:                        notice,
+		CSRFToken:                     csrfToken,
+		Account:                       makeAdminWebAccount(principal.Account, principal.Account.ID),
+		SecondFactorEmailAvailable:    emailAvailable,
+		SecondFactorWebAuthnAvailable: webAuthnAvailable,
+	}
+}
+
+func makeAdminWebSecondFactorVerificationData(principal privatePrincipal, csrfToken, notice, message string, totpAvailable, webAuthnAvailable bool) adminWebData {
+	return adminWebData{
+		Title:                         "Proofline Admin 2FA Verification",
+		Mode:                          "second_factor_verify",
+		Error:                         message,
+		Notice:                        notice,
+		CSRFToken:                     csrfToken,
+		Account:                       makeAdminWebAccount(principal.Account, principal.Account.ID),
+		SecondFactorTOTPAvailable:     totpAvailable,
+		SecondFactorWebAuthnAvailable: webAuthnAvailable,
+	}
+}
+
 func makeAdminWebAccounts(accounts []auth.Account, currentAccountID string) []adminWebAccount {
 	response := make([]adminWebAccount, 0, len(accounts))
 	for _, account := range accounts {
@@ -142,6 +205,21 @@ func makeAdminWebAccount(account auth.Account, currentAccountID string) adminWeb
 		PasswordChangedAt: account.PasswordChangedAt,
 		IsCurrent:         account.ID == currentAccountID,
 	}
+}
+
+func (a *API) adminWebAuthnAvailable() bool {
+	return a.webAuthn.Enabled && a.webAuthn.RPID != "" && len(a.webAuthn.AllowedOrigins) > 0
+}
+
+func (a *API) adminWebTOTPAvailable(r *http.Request, principal privatePrincipal) (bool, error) {
+	_, err := a.repo.GetActiveTOTPSecondFactor(r.Context(), principal.Account.ID)
+	if err == nil {
+		return true, nil
+	}
+	if errors.Is(err, auth.ErrNotFound) {
+		return false, nil
+	}
+	return false, err
 }
 
 func setAdminWebPageHeaders(w http.ResponseWriter) {

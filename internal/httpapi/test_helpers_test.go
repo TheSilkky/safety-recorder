@@ -115,9 +115,10 @@ func newTestAppWithOptionsAndTestAccount(t *testing.T, options httpapi.Options, 
 			t.Fatalf("hash test account password: %v", err)
 		}
 		account, err := repo.CreateAccount(context.Background(), auth.CreateAccountParams{
-			Username:     "test-admin",
-			PasswordHash: passwordHash,
-			Role:         auth.RoleAdmin,
+			Username:          "test-admin",
+			SecondFactorSetup: auth.SecondFactorSetupStateComplete,
+			PasswordHash:      passwordHash,
+			Role:              auth.RoleAdmin,
 		})
 		if err != nil {
 			t.Fatalf("create test account: %v", err)

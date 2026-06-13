@@ -121,6 +121,10 @@
     @apply mt-4 text-sm leading-6 text-proofline-text-secondary;
   }
 
+  .auth-card .boundary-list {
+    @apply mt-4;
+  }
+
   .mobile-header {
     @apply sticky top-0 z-20 flex items-center justify-between gap-3 border-b border-proofline-border bg-proofline-bg-deep/95 px-4 py-3 backdrop-blur lg:hidden;
   }

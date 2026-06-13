@@ -36,8 +36,9 @@ by itself approve broad public `/v1` routing as a product API. The implemented
 account incident list/detail routes are owner-only and public-safe, but uploads,
 chunk reads, bundle downloads, diagnostics, operator routes, write routes, and
 key-custody behavior still need separate review before public exposure.
-Existing `/admin/api/...` JSON routes are
-authenticated admin-only routes on the private-admin listener and must not be
+Existing `/admin/api/...` JSON routes are authenticated admin-only routes on
+the private-admin listener, require completed admin second-factor setup and
+active-factor session verification before operator actions, and must not be
 routed from public entry points. The current topology separates the main
 API/viewer listener from a separately bound private admin listener; see
 [public-api-listener-split.md](public-api-listener-split.md).
@@ -83,26 +84,30 @@ and browser-cookie login can still create primary-authenticated sessions for
 active setup-incomplete accounts, but main product routes fail closed with
 `403 second_factor_setup_required` until email challenge, TOTP, or WebAuthn
 setup verifies the account and marks the state `complete`. `GET /v1/account`,
-browser CSRF metadata, second-factor setup routes, logout, and private-admin
-listener routes remain available to setup-incomplete accounts. Existing
-migrated accounts default to `not_required` for preview compatibility, which
-must be revisited before real required-2FA preview deployments. Registration
-email verification is distinct from second-factor setup and does not complete
-it. Email challenge codes are sent only through the configured email sender,
-stored only as hashes, expire, and are consumed once. TOTP setup stores
-authenticator-app seeds in the metadata database because TOTP verification
-requires the reusable shared seed; operators must protect database files,
-PostgreSQL storage, backups, and support artifacts accordingly. TOTP uses
-six-digit SHA-1 codes with 30-second steps, accepts one adjacent step of clock
-skew on either side, records the last accepted time step, and rejects
-equal-or-older steps as replay. WebAuthn is disabled by default and fails
-closed until an RP ID and exact allowed origins are configured; it stores public
-credential material, sign counters, transports, attachment and backup flags,
-and single-use expiring challenge session data. WebAuthn does not store raw
-private keys or add backend decryption. Accounts with active TOTP or WebAuthn
-factors can create primary-authenticated sessions after password login, but
-product routes fail closed with `403 second_factor_verification_required` until
-the session verifies an active factor.
+browser CSRF metadata, second-factor setup routes, and logout remain available
+to setup-incomplete accounts. Existing migrated accounts default to
+`not_required` for preview compatibility on product routes. Private admin
+operator access is stricter: admin accounts, including legacy admin
+`not_required` accounts, cannot use `/admin` dashboard actions or
+`/admin/api/...` JSON admin actions until the admin account has completed
+second-factor setup. Registration email verification is distinct from
+second-factor setup and does not complete it. Email challenge codes are sent
+only through the configured email sender, stored only as hashes, expire, and
+are consumed once. TOTP setup stores authenticator-app seeds in the metadata
+database because TOTP verification requires the reusable shared seed; operators
+must protect database files, PostgreSQL storage, backups, and support artifacts
+accordingly. TOTP uses six-digit SHA-1 codes with 30-second steps, accepts one
+adjacent step of clock skew on either side, records the last accepted time
+step, and rejects equal-or-older steps as replay. WebAuthn/FIDO2 security keys
+are preferred for admin accounts when configured. WebAuthn is disabled by
+default and fails closed until an RP ID and exact allowed origins are
+configured; it stores public credential material, sign counters, transports,
+attachment and backup flags, and single-use expiring challenge session data.
+WebAuthn does not store raw private keys or add backend decryption. Accounts
+with active TOTP or WebAuthn factors can create primary-authenticated sessions
+after password login, but product routes and admin operator routes fail closed
+with `403 second_factor_verification_required` until the session verifies an
+active factor.
 
 Lost-factor recovery is limited to an authenticated private-admin
 `POST /admin/api/accounts/{account_id}/second-factor/recovery/reset` route. The
@@ -113,7 +118,10 @@ records an `account_recovery_events` audit row with safe counts. It is not a
 self-service bypass and does not change password hashes, account/device
 recipient keys, contact keys, sharing grants, wrapped-key records, incidents,
 encrypted blobs, key custody, backend decryption, browser decryption, raw-key
-access, or key escrow.
+access, or key escrow. If all admin factors are unavailable, recovery must stay
+inside an explicit deployment-local operator/database procedure or be performed
+by another already verified admin; there is no public recovery route or
+factor-bypass mode.
 
 When enabled, main `/v1` browser cookie auth uses a dedicated session cookie
 for future web-client calls. Bearer auth remains supported for CLI, simulator,

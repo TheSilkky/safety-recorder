@@ -14,7 +14,8 @@ Existing `/admin/api/...` JSON routes are authenticated admin-only routes on the
 private-admin listener, alongside the `/admin` dashboard surface. The
 private-admin listener can be bound to loopback, LAN, WireGuard, VPN, firewall,
 or a private reverse proxy. Private placement must not replace admin
-authentication. The main API/public viewer listener split is documented in
+authentication, completed admin second-factor setup, or active-factor session
+verification. The main API/public viewer listener split is documented in
 [public-api-listener-split.md](public-api-listener-split.md).
 
 The current module and artifact names use the `open-proofline/server` repository namespace. The main server GHCR image is `ghcr.io/open-proofline/server`, the stream-ingress relay GHCR image is `ghcr.io/open-proofline/stream-ingress`, local examples use the `proofline-server` and `proofline-stream-ingress` image names, and release binaries use `proofline-server-*` names. Current runtime protocol and default data-layout identifiers use Proofline names. Historical reports and archived prompts may still mention earlier `safety-recorder` identifiers.
@@ -171,14 +172,21 @@ primary login/session creation but blocks main product routes until email
 second-factor setup verifies a single-use challenge code, TOTP setup verifies a
 TOTP code, or WebAuthn setup verifies a configured RP/origin ceremony and marks
 the account `complete`; existing migrated accounts default to `not_required`
-for preview compatibility. WebAuthn remains disabled until `[webauthn]` is
-explicitly configured with an RP ID and exact allowed origins. Private-admin
-assisted second-factor reset is available for lost-factor recovery and must
-stay on the private-admin listener; it removes enrolled factors, marks setup
-required, revokes target sessions, and records controlled audit metadata
-without changing key custody or decrypting evidence. Do not claim a deployment
-has complete required 2FA until the selected factor set, recovery operations,
-and deployment-specific admin procedures have been reviewed.
+for preview product-route compatibility. Admin operator access is stricter:
+newly bootstrapped admins and legacy admin `not_required` accounts cannot use
+private `/admin` dashboard actions or `/admin/api/...` JSON admin actions until
+admin second-factor setup is complete. Active TOTP or WebAuthn factors require
+the current admin session to verify the factor before operator actions.
+WebAuthn/FIDO2 security keys are preferred for admin accounts when configured;
+TOTP and email challenge remain lower-preference paths where available.
+WebAuthn remains disabled until `[webauthn]` is explicitly configured with an
+RP ID and exact allowed origins. Private-admin assisted second-factor reset is
+available for lost-factor recovery and must stay on the private-admin listener;
+it removes enrolled factors, marks setup required, revokes target sessions, and
+records controlled audit metadata without changing key custody or decrypting
+evidence. Do not claim a deployment has complete required 2FA until the
+selected factor set, recovery operations, and deployment-specific admin
+procedures have been reviewed.
 
 TOML open-registration shape:
 
@@ -968,8 +976,8 @@ Suggested route groups:
 | Main incident, stream, check-in, and token actions | Other product `/v1/...` routes | Use limits as an abuse backstop, not as the only security control. |
 | Registration and email verification | `POST /v1/auth/register`, `POST /v1/auth/email/verify` | Keep separate from login limits and never include raw emails, usernames, verification tokens, or request bodies in logs or metrics. |
 | Required setup status and factor setup | `GET /v1/account`, email/TOTP/WebAuthn second-factor setup and verification routes | Setup-incomplete accounts may inspect their account state and complete email, TOTP, or WebAuthn setup routes, and active TOTP/WebAuthn accounts may verify a primary-authenticated session before product access. Main product routes should fail closed until setup and required session verification are complete. Never log raw challenge codes, TOTP codes, TOTP seeds, `otpauth_url` values, WebAuthn challenge/client data, credential bytes, or request bodies. |
-| Private admin dashboard actions | `/admin/...` | Keep on the private-admin listener and do not route from public entry points. |
-| Admin JSON API actions | `/admin/api/...` | Authenticated admin-only routes on the private-admin listener; do not route from public entry points. |
+| Private admin dashboard actions | `/admin/...` | Keep on the private-admin listener, require completed admin second-factor setup and active-factor session verification before operator actions, and do not route from public entry points. |
+| Admin JSON API actions | `/admin/api/...` | Authenticated admin-only routes on the private-admin listener; require completed admin second-factor setup and active-factor session verification before operator actions, and do not route from public entry points. |
 
 Rate limiting does not make `/v1` production-ready public infrastructure by
 itself. Keep main API route groups behind the reviewed deployment boundary for the

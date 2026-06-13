@@ -15,6 +15,13 @@ func (a *API) withPrivateAuth(next http.HandlerFunc) http.HandlerFunc {
 	}
 }
 
+func (a *API) withAdminAuth(next http.HandlerFunc) http.HandlerFunc {
+	authenticated := a.requireAdminAuth(http.HandlerFunc(next))
+	return func(w http.ResponseWriter, r *http.Request) {
+		authenticated.ServeHTTP(w, r)
+	}
+}
+
 func (a *API) requirePrivateAuth(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		principal, ok := a.authenticatePrivateRequest(w, r)
@@ -38,6 +45,36 @@ func (a *API) requirePrivateAuth(next http.Handler) http.Handler {
 				writeError(w, http.StatusForbidden, "second_factor_verification_required", "second factor verification is required before account access")
 				return
 			}
+		}
+		next.ServeHTTP(w, r.WithContext(contextWithPrincipal(r.Context(), principal)))
+	})
+}
+
+func (a *API) requireAdminAuth(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		principal, ok := a.authenticatePrivateRequest(w, r)
+		if !ok {
+			return
+		}
+		if principal.AuthSource == privateAuthSourceWebCookie && unsafeMethod(r.Method) && !a.validateWebCSRF(w, r, principal) {
+			return
+		}
+		if principal.Account.Role != auth.RoleAdmin {
+			writeError(w, http.StatusForbidden, "forbidden", "admin role is required")
+			return
+		}
+		if adminRequiresSecondFactorSetup(principal.Account) {
+			writeError(w, http.StatusForbidden, "second_factor_setup_required", "admin second factor setup is required before operator actions")
+			return
+		}
+		required, err := a.sessionRequiresSecondFactorVerification(r.Context(), principal.Account, principal.Session)
+		if err != nil {
+			a.internalError(w, "check admin session second factor requirement", err)
+			return
+		}
+		if required {
+			writeError(w, http.StatusForbidden, "second_factor_verification_required", "admin second factor verification is required before operator actions")
+			return
 		}
 		next.ServeHTTP(w, r.WithContext(contextWithPrincipal(r.Context(), principal)))
 	})
@@ -113,9 +150,6 @@ func unsafeMethod(method string) bool {
 
 func secondFactorSetupAllowedRoute(r *http.Request) bool {
 	path := strings.Trim(r.URL.EscapedPath(), "/")
-	if strings.HasPrefix(path, "admin/api/") {
-		return true
-	}
 	if strings.HasPrefix(path, "v1/account/second-factor") {
 		return true
 	}
@@ -129,6 +163,10 @@ func secondFactorSetupAllowedRoute(r *http.Request) bool {
 	default:
 		return false
 	}
+}
+
+func adminRequiresSecondFactorSetup(account auth.Account) bool {
+	return account.Role == auth.RoleAdmin && account.SecondFactorSetup != auth.SecondFactorSetupStateComplete
 }
 
 func secondFactorVerificationAllowedRoute(r *http.Request) bool {

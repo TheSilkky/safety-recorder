@@ -551,7 +551,7 @@ func TestSecondFactorSetupRequiredBrowserCookieSessionCannotUseProductRoutes(t *
 	}
 }
 
-func TestSecondFactorSetupRequiredAdminKeepsPrivateAdminBoundary(t *testing.T) {
+func TestSecondFactorSetupRequiredAdminCannotUsePrivateAdminOperatorRoutes(t *testing.T) {
 	app := newTestApp(t)
 	createAccountForStateTest(t, app, "setup-admin", "state-password")
 	account := mustGetRegistrationAccount(t, app, "setup-admin")
@@ -562,9 +562,10 @@ func TestSecondFactorSetupRequiredAdminKeepsPrivateAdminBoundary(t *testing.T) {
 
 	response, body := requestWithAuth(t, app.adminHandler, http.MethodGet, "/admin/api/accounts", "", nil, token)
 	response.Body.Close()
-	if response.StatusCode != http.StatusOK {
-		t.Fatalf("setup admin private-admin route status = %d, want 200: %s", response.StatusCode, body)
+	if response.StatusCode != http.StatusForbidden {
+		t.Fatalf("setup admin private-admin route status = %d, want 403: %s", response.StatusCode, body)
 	}
+	assertErrorCode(t, body, "second_factor_setup_required")
 
 	response, body = requestWithAuth(t, app.privateHandler, http.MethodGet, "/v1/incidents", "", nil, token)
 	defer response.Body.Close()
@@ -572,6 +573,26 @@ func TestSecondFactorSetupRequiredAdminKeepsPrivateAdminBoundary(t *testing.T) {
 		t.Fatalf("setup admin main product route status = %d, want 403: %s", response.StatusCode, body)
 	}
 	assertErrorCode(t, body, "second_factor_setup_required")
+}
+
+func TestLegacyNotRequiredAdminCannotUsePrivateAdminOperatorRoutes(t *testing.T) {
+	app := newTestApp(t)
+	if _, err := app.db.ExecContext(context.Background(), `UPDATE accounts SET second_factor_setup_state = ? WHERE username = ?`, auth.SecondFactorSetupStateNotRequired, "test-admin"); err != nil {
+		t.Fatalf("mark test admin legacy not_required: %v", err)
+	}
+
+	response, body := requestWithAuth(t, app.adminHandler, http.MethodGet, "/admin/api/accounts", "", nil, app.authToken)
+	response.Body.Close()
+	if response.StatusCode != http.StatusForbidden {
+		t.Fatalf("legacy admin private-admin route status = %d, want 403: %s", response.StatusCode, body)
+	}
+	assertErrorCode(t, body, "second_factor_setup_required")
+
+	response, body = requestWithAuth(t, app.privateHandler, http.MethodGet, "/v1/account", "", nil, app.authToken)
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("legacy admin product route status = %d, want 200: %s", response.StatusCode, body)
+	}
 }
 
 func TestEmailSecondFactorSetupBearerSessionEnrollsAndUnlocksProductRoutes(t *testing.T) {
@@ -928,6 +949,42 @@ func TestTOTPActiveFactorRequiresSessionChallengeAfterLogin(t *testing.T) {
 	defer response.Body.Close()
 	if response.StatusCode != http.StatusCreated {
 		t.Fatalf("verified TOTP session product route status = %d, want 201: %s", response.StatusCode, body)
+	}
+}
+
+func TestAdminAPIRequiresTOTPVerifiedAdminSession(t *testing.T) {
+	app := newTestApp(t)
+	enrollment := startTOTPEnrollmentForTest(t, app, app.authToken)
+	confirmTOTPEnrollmentForTest(t, app, app.authToken, enrollment.Secret, time.Now().UTC())
+
+	token := loginForTest(t, app, "test-admin", "test-password")
+	response, body := requestWithAuth(t, app.adminHandler, http.MethodGet, "/admin/api/accounts", "", nil, token)
+	response.Body.Close()
+	if response.StatusCode != http.StatusForbidden {
+		t.Fatalf("primary-only admin API status = %d, want 403: %s", response.StatusCode, body)
+	}
+	assertErrorCode(t, body, "second_factor_verification_required")
+
+	codeTime := time.Now().UTC().Add(time.Duration(auth.TOTPDefaultPeriodSeconds) * time.Second)
+	code, err := auth.GenerateTOTPCodeForTest(enrollment.Secret, codeTime)
+	if err != nil {
+		t.Fatalf("generate TOTP admin API verify code: %v", err)
+	}
+	response, body = requestWithAuth(t, app.privateHandler, http.MethodPost, "/v1/account/second-factor/totp/verify", "application/json", bytes.NewBufferString(`{"code":"`+code+`"}`), token)
+	response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("admin API TOTP verification status = %d, want 200: %s", response.StatusCode, body)
+	}
+	for _, disallowed := range []string{enrollment.Secret, code, token} {
+		if bytes.Contains(body, []byte(disallowed)) {
+			t.Fatalf("admin API TOTP verification response exposed %q: %s", disallowed, body)
+		}
+	}
+
+	response, body = requestWithAuth(t, app.adminHandler, http.MethodGet, "/admin/api/accounts", "", nil, token)
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("verified admin API status = %d, want 200: %s", response.StatusCode, body)
 	}
 }
 
