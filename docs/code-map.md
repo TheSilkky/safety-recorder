@@ -325,10 +325,14 @@ local account password and revokes that account's sessions. `POST
 /admin/logout` revokes the current admin web session. These authenticated
 state-changing forms use a session-bound CSRF token.
 
-The page renders `internal/httpapi/web/templates/admin.html` with Go
-`html/template`. Token-neutral CSS is embedded from
-`internal/httpapi/web/admin/static` and served without authentication under
-`/admin/static/...`.
+The admin web implementation is split by concern: `admin_web_handlers.go`
+contains the private admin page and form handlers, `admin_web_session.go`
+contains form parsing, session cookie, password-update, and CSRF helpers,
+`admin_web_view.go` contains render/view-model helpers, and
+`admin_web_static.go` serves embedded static assets. The page renders
+`internal/httpapi/web/templates/admin.html` with Go `html/template`.
+Token-neutral CSS is embedded from `internal/httpapi/web/admin/static` and
+served without authentication under `/admin/static/...`.
 
 The admin web surface shows only safe route-boundary status, navigation stubs,
 and local account-management data. It does not read incident data, expose
