@@ -106,6 +106,7 @@ func (a *API) registerPrivateAdminWebRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /admin/bootstrap", a.adminWebBootstrap)
 	mux.HandleFunc("POST /admin/login", a.adminWebLogin)
 	mux.HandleFunc("POST /admin/logout", a.adminWebLogout)
+	mux.HandleFunc("GET /admin/second-factor/email/verify", a.adminWebEmailSecondFactorVerifyPage)
 	mux.HandleFunc("POST /admin/second-factor/email/challenge", a.adminWebRequestEmailSecondFactorChallenge)
 	mux.HandleFunc("POST /admin/second-factor/email/verify", a.adminWebVerifyEmailSecondFactorChallenge)
 	mux.HandleFunc("POST /admin/second-factor/totp/verify", a.adminWebVerifyTOTPSecondFactorChallenge)

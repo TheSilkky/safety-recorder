@@ -962,9 +962,14 @@ func TestAdminWebEmailSecondFactorSetupUnlocksDashboard(t *testing.T) {
 	if response.StatusCode != http.StatusForbidden {
 		t.Fatalf("expected admin web setup status 403, got %d: %s", response.StatusCode, body)
 	}
-	for _, expected := range []string{"Set Up Admin 2FA", "Send email code", "Complete setup"} {
+	for _, expected := range []string{"Set Up Admin 2FA", "Email code", "Send email code"} {
 		if !bytes.Contains(body, []byte(expected)) {
 			t.Fatalf("admin web setup page missing %q: %s", expected, body)
+		}
+	}
+	for _, disallowed := range []string{"Complete setup", `action="/admin/second-factor/email/verify"`} {
+		if bytes.Contains(body, []byte(disallowed)) {
+			t.Fatalf("admin web setup page exposed code verification form %q: %s", disallowed, body)
 		}
 	}
 	csrfToken := adminWebCSRFTokenFromBody(t, body)
@@ -977,7 +982,7 @@ func TestAdminWebEmailSecondFactorSetupUnlocksDashboard(t *testing.T) {
 	if response.StatusCode != http.StatusSeeOther {
 		t.Fatalf("expected email challenge redirect 303, got %d: %s", response.StatusCode, body)
 	}
-	if location := response.Header.Get("Location"); location != "/admin?notice=second_factor_challenge_sent" {
+	if location := response.Header.Get("Location"); location != "/admin/second-factor/email/verify?notice=second_factor_challenge_sent" {
 		t.Fatalf("expected email challenge notice redirect, got %q", location)
 	}
 	if len(sender.messages) != 1 {
@@ -985,6 +990,22 @@ func TestAdminWebEmailSecondFactorSetupUnlocksDashboard(t *testing.T) {
 	}
 	code := secondFactorCodeFromEmail(t, sender.messages[0])
 
+	response, body = requestWithCookie(t, app.adminHandler, http.MethodGet, "/admin/second-factor/email/verify?notice=second_factor_challenge_sent", "", nil, cookie)
+	response.Body.Close()
+	if response.StatusCode != http.StatusForbidden {
+		t.Fatalf("expected admin web setup code status 403, got %d: %s", response.StatusCode, body)
+	}
+	for _, expected := range []string{"Verify Email Code", "Second-factor challenge sent.", "Complete setup", `action="/admin/second-factor/email/verify"`} {
+		if !bytes.Contains(body, []byte(expected)) {
+			t.Fatalf("admin web setup code page missing %q: %s", expected, body)
+		}
+	}
+	for _, disallowed := range []string{"Send email code", "admin-2fa@example.invalid", app.authToken} {
+		if bytes.Contains(body, []byte(disallowed)) {
+			t.Fatalf("admin web setup code page exposed %q: %s", disallowed, body)
+		}
+	}
+	csrfToken = adminWebCSRFTokenFromBody(t, body)
 	response, body = postAdminWebFormWithCookie(t, app, "/admin/second-factor/email/verify", url.Values{
 		"csrf_token": {csrfToken},
 		"code":       {code},
@@ -1019,12 +1040,12 @@ func TestAdminWebEmailSecondFactorSetupUnlocksDashboard(t *testing.T) {
 	if response.StatusCode != http.StatusForbidden {
 		t.Fatalf("expected admin email 2FA gate after relogin status 403, got %d: %s", response.StatusCode, body)
 	}
-	for _, expected := range []string{"Verify Admin 2FA", "Send email code", "Verify email code", `action="/admin/second-factor/email/challenge"`} {
+	for _, expected := range []string{"Verify Admin 2FA", "Email code", "Send email code", `action="/admin/second-factor/email/challenge"`} {
 		if !bytes.Contains(body, []byte(expected)) {
 			t.Fatalf("admin web email gate missing %q: %s", expected, body)
 		}
 	}
-	for _, disallowed := range []string{"User Accounts", `action="/admin/password"`, code, "admin-2fa@example.invalid", app.authToken} {
+	for _, disallowed := range []string{"User Accounts", `action="/admin/password"`, `action="/admin/second-factor/email/verify"`, code, "admin-2fa@example.invalid", app.authToken} {
 		if bytes.Contains(body, []byte(disallowed)) {
 			t.Fatalf("admin web email gate exposed %q: %s", disallowed, body)
 		}
@@ -1038,13 +1059,30 @@ func TestAdminWebEmailSecondFactorSetupUnlocksDashboard(t *testing.T) {
 	if response.StatusCode != http.StatusSeeOther {
 		t.Fatalf("expected email verification challenge redirect 303, got %d: %s", response.StatusCode, body)
 	}
-	if location := response.Header.Get("Location"); location != "/admin?notice=second_factor_challenge_sent" {
+	if location := response.Header.Get("Location"); location != "/admin/second-factor/email/verify?notice=second_factor_challenge_sent" {
 		t.Fatalf("expected email verification challenge notice redirect, got %q", location)
 	}
 	if len(sender.messages) != 2 {
 		t.Fatalf("expected two second-factor emails, got %d", len(sender.messages))
 	}
 	verifyCode := secondFactorCodeFromEmail(t, sender.messages[1])
+
+	response, body = requestWithCookie(t, app.adminHandler, http.MethodGet, "/admin/second-factor/email/verify?notice=second_factor_challenge_sent", "", nil, newCookie)
+	response.Body.Close()
+	if response.StatusCode != http.StatusForbidden {
+		t.Fatalf("expected admin web email code status 403, got %d: %s", response.StatusCode, body)
+	}
+	for _, expected := range []string{"Verify Email Code", "Second-factor challenge sent.", "Verify email code", `action="/admin/second-factor/email/verify"`} {
+		if !bytes.Contains(body, []byte(expected)) {
+			t.Fatalf("admin web email code page missing %q: %s", expected, body)
+		}
+	}
+	for _, disallowed := range []string{"Send email code", "admin-2fa@example.invalid", app.authToken} {
+		if bytes.Contains(body, []byte(disallowed)) {
+			t.Fatalf("admin web email code page exposed %q: %s", disallowed, body)
+		}
+	}
+	csrfToken = adminWebCSRFTokenFromBody(t, body)
 	response, body = postAdminWebFormWithCookie(t, app, "/admin/second-factor/email/verify", url.Values{
 		"csrf_token": {csrfToken},
 		"code":       {verifyCode},

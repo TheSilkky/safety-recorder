@@ -416,6 +416,19 @@ func makeAdminWebSecondFactorSetupData(principal privatePrincipal, csrfToken, no
 	}
 }
 
+func makeAdminWebSecondFactorSetupEmailVerifyData(principal privatePrincipal, csrfToken, notice, message string, webAuthnAvailable bool) adminWebData {
+	return adminWebData{
+		Title:                         "Proofline Admin 2FA Setup",
+		Mode:                          "second_factor_setup_email_verify",
+		Error:                         message,
+		Notice:                        notice,
+		CSRFToken:                     csrfToken,
+		Account:                       makeAdminWebAccount(principal.Account, principal.Account.ID),
+		SecondFactorEmailAvailable:    true,
+		SecondFactorWebAuthnAvailable: webAuthnAvailable,
+	}
+}
+
 func makeAdminWebSecondFactorVerificationData(principal privatePrincipal, csrfToken, notice, message string, emailAvailable, totpAvailable, webAuthnAvailable bool) adminWebData {
 	return adminWebData{
 		Title:                         "Proofline Admin 2FA Verification",

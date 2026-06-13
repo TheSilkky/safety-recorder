@@ -174,6 +174,48 @@ func (a *API) adminWebLogout(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/admin", http.StatusSeeOther)
 }
 
+func (a *API) adminWebEmailSecondFactorVerifyPage(w http.ResponseWriter, r *http.Request) {
+	setAdminWebPageHeaders(w)
+	principal, ok := a.requireAdminWebSession(w, r)
+	if !ok {
+		return
+	}
+	if adminRequiresSecondFactorSetup(principal.Account) {
+		if a.emailSender == nil {
+			a.renderAdminWebSecondFactorSetup(w, r, principal, http.StatusForbidden, adminWebNotice(r), "")
+			return
+		}
+		a.renderAdminWeb(w, http.StatusForbidden, makeAdminWebSecondFactorSetupEmailVerifyData(
+			principal,
+			adminWebCSRFTokenFromRequest(r),
+			adminWebNotice(r),
+			"",
+			a.adminWebAuthnAvailable(),
+		))
+		return
+	}
+	required, err := a.sessionRequiresSecondFactorVerification(r.Context(), principal.Account, principal.Session)
+	if err != nil {
+		a.adminWebInternalError(w, "check admin web email second factor requirement", err)
+		return
+	}
+	if !required {
+		http.Redirect(w, r, "/admin", http.StatusSeeOther)
+		return
+	}
+	data, err := a.makeAdminWebSecondFactorVerificationDataForRequest(r, principal, adminWebNotice(r), "")
+	if err != nil {
+		a.adminWebInternalError(w, "build admin web email second factor verification data", err)
+		return
+	}
+	if !data.SecondFactorEmailAvailable {
+		a.renderAdminWeb(w, http.StatusForbidden, data)
+		return
+	}
+	data.Mode = "second_factor_verify_email"
+	a.renderAdminWeb(w, http.StatusForbidden, data)
+}
+
 func (a *API) adminWebRequestEmailSecondFactorChallenge(w http.ResponseWriter, r *http.Request) {
 	setAdminWebPageHeaders(w)
 	principal, ok := a.requireAdminWebSession(w, r)
@@ -229,7 +271,7 @@ func (a *API) adminWebRequestEmailSecondFactorChallenge(w http.ResponseWriter, r
 			a.renderAdminWeb(w, http.StatusServiceUnavailable, data)
 			return
 		}
-		http.Redirect(w, r, "/admin?notice=second_factor_challenge_sent", http.StatusSeeOther)
+		http.Redirect(w, r, "/admin/second-factor/email/verify?notice=second_factor_challenge_sent", http.StatusSeeOther)
 		return
 	}
 	data := makeAdminWebSecondFactorSetupData(principal, adminWebCSRFTokenFromRequest(r), "", "The second-factor setup form could not be read.", a.emailSender != nil, a.adminWebAuthnAvailable())
@@ -286,7 +328,7 @@ func (a *API) adminWebRequestEmailSecondFactorChallenge(w http.ResponseWriter, r
 		a.renderAdminWeb(w, http.StatusServiceUnavailable, data)
 		return
 	}
-	http.Redirect(w, r, "/admin?notice=second_factor_challenge_sent", http.StatusSeeOther)
+	http.Redirect(w, r, "/admin/second-factor/email/verify?notice=second_factor_challenge_sent", http.StatusSeeOther)
 }
 
 func (a *API) adminWebVerifyEmailSecondFactorChallenge(w http.ResponseWriter, r *http.Request) {
@@ -310,6 +352,7 @@ func (a *API) adminWebVerifyEmailSecondFactorChallenge(w http.ResponseWriter, r 
 			a.adminWebInternalError(w, "build admin web email second factor verification data", err)
 			return
 		}
+		data.Mode = "second_factor_verify_email"
 		if ok := a.parseAdminWebForm(w, r, data); !ok {
 			return
 		}
@@ -340,7 +383,7 @@ func (a *API) adminWebVerifyEmailSecondFactorChallenge(w http.ResponseWriter, r 
 		http.Redirect(w, r, "/admin?notice=second_factor_verified", http.StatusSeeOther)
 		return
 	}
-	data := makeAdminWebSecondFactorSetupData(principal, adminWebCSRFTokenFromRequest(r), "", "The second-factor verification form could not be read.", a.emailSender != nil, a.adminWebAuthnAvailable())
+	data := makeAdminWebSecondFactorSetupEmailVerifyData(principal, adminWebCSRFTokenFromRequest(r), "", "The second-factor verification form could not be read.", a.adminWebAuthnAvailable())
 	if ok := a.parseAdminWebForm(w, r, data); !ok {
 		return
 	}

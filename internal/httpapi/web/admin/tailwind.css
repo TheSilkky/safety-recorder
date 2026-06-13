@@ -131,6 +131,26 @@
     @apply mt-4;
   }
 
+  .auth-methods {
+    @apply mt-5 grid gap-5;
+  }
+
+  .auth-method {
+    @apply border-t border-proofline-border pt-5;
+  }
+
+  .auth-method:first-child {
+    @apply border-t-0 pt-0;
+  }
+
+  .auth-method h2 {
+    @apply text-base font-semibold leading-6 text-proofline-text;
+  }
+
+  .auth-actions {
+    @apply mt-5 flex flex-wrap items-center gap-3;
+  }
+
   .mobile-header {
     @apply sticky top-0 z-20 flex items-center justify-between gap-3 border-b border-proofline-border bg-proofline-bg-deep/95 px-4 py-3 backdrop-blur lg:hidden;
   }
