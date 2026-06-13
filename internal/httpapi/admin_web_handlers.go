@@ -415,6 +415,121 @@ func (a *API) adminWebVerifyEmailSecondFactorChallenge(w http.ResponseWriter, r 
 	http.Redirect(w, r, "/admin?notice=second_factor_setup_complete", http.StatusSeeOther)
 }
 
+func (a *API) adminWebStartTOTPSecondFactorEnrollment(w http.ResponseWriter, r *http.Request) {
+	setAdminWebPageHeaders(w)
+	principal, ok := a.requireAdminWebSession(w, r)
+	if !ok {
+		return
+	}
+	if !adminRequiresSecondFactorSetup(principal.Account) {
+		http.Redirect(w, r, "/admin", http.StatusSeeOther)
+		return
+	}
+	data := makeAdminWebSecondFactorSetupData(principal, adminWebCSRFTokenFromRequest(r), "", "The TOTP setup form could not be read.", a.emailSender != nil, a.adminWebAuthnAvailable())
+	if ok := a.parseAdminWebForm(w, r, data); !ok {
+		return
+	}
+	data.Error = ""
+	if !a.validateAdminWebCSRFForData(w, r, data) {
+		return
+	}
+
+	enrollment, err := auth.GenerateTOTPEnrollment(principal.Account.Username)
+	if err != nil {
+		a.adminWebInternalError(w, "generate admin web TOTP enrollment", err)
+		return
+	}
+	factor, err := a.repo.CreateTOTPSecondFactorEnrollment(r.Context(), auth.CreateTOTPSecondFactorEnrollmentParams{
+		AccountID:     principal.Account.ID,
+		Secret:        enrollment.Secret,
+		PeriodSeconds: enrollment.PeriodSeconds,
+		Digits:        enrollment.Digits,
+		Algorithm:     enrollment.Algorithm,
+	})
+	if errors.Is(err, auth.ErrDuplicate) {
+		data.Error = "TOTP second factor is already configured."
+		a.renderAdminWeb(w, http.StatusConflict, data)
+		return
+	}
+	if errors.Is(err, auth.ErrNotFound) {
+		data.Error = "Account was not found."
+		a.renderAdminWeb(w, http.StatusNotFound, data)
+		return
+	}
+	if err != nil {
+		a.adminWebInternalError(w, "create admin web TOTP enrollment", err)
+		return
+	}
+	data.Notice = "TOTP setup started. Enter the current authenticator app code to finish setup."
+	data.SecondFactorTOTPEnrollment = makeAdminWebTOTPEnrollment(principal.Account, factor)
+	a.renderAdminWeb(w, http.StatusForbidden, data)
+}
+
+func (a *API) adminWebConfirmTOTPSecondFactorEnrollment(w http.ResponseWriter, r *http.Request) {
+	setAdminWebPageHeaders(w)
+	principal, ok := a.requireAdminWebSession(w, r)
+	if !ok {
+		return
+	}
+	if !adminRequiresSecondFactorSetup(principal.Account) {
+		http.Redirect(w, r, "/admin", http.StatusSeeOther)
+		return
+	}
+	data := makeAdminWebSecondFactorSetupData(principal, adminWebCSRFTokenFromRequest(r), "", "The TOTP confirmation form could not be read.", a.emailSender != nil, a.adminWebAuthnAvailable())
+	if ok := a.parseAdminWebForm(w, r, data); !ok {
+		return
+	}
+	data.Error = ""
+	if !a.validateAdminWebCSRFForData(w, r, data) {
+		return
+	}
+
+	factor, err := a.repo.GetPendingTOTPSecondFactor(r.Context(), principal.Account.ID)
+	if errors.Is(err, auth.ErrNotFound) {
+		data.Error = "TOTP setup is not active. Start authenticator-app setup again."
+		a.renderAdminWeb(w, http.StatusBadRequest, data)
+		return
+	}
+	if err != nil {
+		a.adminWebInternalError(w, "get admin web pending TOTP factor", err)
+		return
+	}
+	data.SecondFactorTOTPEnrollment = makeAdminWebTOTPEnrollment(principal.Account, factor)
+
+	code := strings.TrimSpace(r.FormValue("code"))
+	if code == "" {
+		data.Error = "TOTP challenge is invalid or expired."
+		a.renderAdminWeb(w, http.StatusBadRequest, data)
+		return
+	}
+	now := time.Now().UTC()
+	timeStep, valid, err := auth.MatchTOTPCode(factor.TOTPSecret, code, now, factor.TOTPPeriodSeconds, factor.TOTPDigits, factor.TOTPAlgorithm)
+	if err != nil {
+		a.adminWebInternalError(w, "validate admin web pending TOTP code", err)
+		return
+	}
+	if !valid {
+		data.Error = "TOTP challenge is invalid or expired."
+		a.renderAdminWeb(w, http.StatusBadRequest, data)
+		return
+	}
+	factor, _, err = a.repo.ActivateTOTPSecondFactor(r.Context(), principal.Account.ID, factor.ID, now, timeStep)
+	if errors.Is(err, auth.ErrNotFound) {
+		data.Error = "TOTP challenge is invalid or expired."
+		a.renderAdminWeb(w, http.StatusBadRequest, data)
+		return
+	}
+	if err != nil {
+		a.adminWebInternalError(w, "activate admin web TOTP factor", err)
+		return
+	}
+	if _, err := a.repo.MarkSessionSecondFactorVerified(r.Context(), principal.Session.ID, factor.ID, auth.SecondFactorTypeTOTP, now); err != nil {
+		a.adminWebInternalError(w, "mark admin web TOTP setup session verified", err)
+		return
+	}
+	http.Redirect(w, r, "/admin?notice=second_factor_setup_complete", http.StatusSeeOther)
+}
+
 func (a *API) adminWebVerifyTOTPSecondFactorChallenge(w http.ResponseWriter, r *http.Request) {
 	setAdminWebPageHeaders(w)
 	principal, ok := a.requireAdminWebSession(w, r)

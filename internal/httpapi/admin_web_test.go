@@ -68,6 +68,7 @@ func TestAdminWebLoginSetsHttpOnlyCookieAndOpensDashboard(t *testing.T) {
 	for _, expected := range []string{
 		"Proofline Admin",
 		"Operator Console",
+		`/admin/static/admin.js`,
 		`data-mobile-nav-details`,
 		`id="admin-mobile-navigation"`,
 		`href="/admin/accounts"`,
@@ -195,6 +196,7 @@ func TestAdminWebSettingsShowsAdminControlsAndRedactedConfig(t *testing.T) {
 		"Email challenge",
 		"TOTP",
 		"Security keys",
+		"Recommended fallback without WebAuthn",
 		"Configuration",
 		"Max upload",
 		"Account blob quota",
@@ -968,7 +970,7 @@ func TestAdminWebEmailSecondFactorSetupUnlocksDashboard(t *testing.T) {
 	if response.StatusCode != http.StatusForbidden {
 		t.Fatalf("expected admin web setup status 403, got %d: %s", response.StatusCode, body)
 	}
-	for _, expected := range []string{"Set Up Admin 2FA", "Email code", "Send email code"} {
+	for _, expected := range []string{"Set Up Admin 2FA", "Authenticator app", "Set up authenticator app", "Email challenge", "Send email code"} {
 		if !bytes.Contains(body, []byte(expected)) {
 			t.Fatalf("admin web setup page missing %q: %s", expected, body)
 		}
@@ -1046,7 +1048,7 @@ func TestAdminWebEmailSecondFactorSetupUnlocksDashboard(t *testing.T) {
 	if response.StatusCode != http.StatusForbidden {
 		t.Fatalf("expected admin email 2FA gate after relogin status 403, got %d: %s", response.StatusCode, body)
 	}
-	for _, expected := range []string{"Verify Admin 2FA", "Email code", "Send email code", `action="/admin/second-factor/email/challenge"`} {
+	for _, expected := range []string{"Verify Admin 2FA", "Email challenge", "Send email code", `action="/admin/second-factor/email/challenge"`} {
 		if !bytes.Contains(body, []byte(expected)) {
 			t.Fatalf("admin web email gate missing %q: %s", expected, body)
 		}
@@ -1111,6 +1113,89 @@ func TestAdminWebEmailSecondFactorSetupUnlocksDashboard(t *testing.T) {
 	}
 }
 
+func TestAdminWebTOTPSecondFactorSetupUnlocksDashboard(t *testing.T) {
+	app := newTestApp(t)
+	if _, err := app.db.ExecContext(t.Context(), `UPDATE accounts SET second_factor_setup_state = ? WHERE username = ?`, auth.SecondFactorSetupStateSetupRequired, "test-admin"); err != nil {
+		t.Fatalf("mark admin setup required: %v", err)
+	}
+	cookie := loginAdminWeb(t, app)
+
+	response, body := requestWithCookie(t, app.adminHandler, http.MethodGet, "/admin", "", nil, cookie)
+	response.Body.Close()
+	if response.StatusCode != http.StatusForbidden {
+		t.Fatalf("expected admin web setup status 403, got %d: %s", response.StatusCode, body)
+	}
+	for _, expected := range []string{"Set Up Admin 2FA", "Authenticator app", "Recommended", `action="/admin/second-factor/totp/enroll"`} {
+		if !bytes.Contains(body, []byte(expected)) {
+			t.Fatalf("admin web TOTP setup page missing %q: %s", expected, body)
+		}
+	}
+	for _, disallowed := range []string{"Manual setup key", `action="/admin/second-factor/totp/confirm"`, app.authToken} {
+		if bytes.Contains(body, []byte(disallowed)) {
+			t.Fatalf("admin web TOTP setup page exposed %q: %s", disallowed, body)
+		}
+	}
+	csrfToken := adminWebCSRFTokenFromBody(t, body)
+
+	response, body = postAdminWebFormWithCookie(t, app, "/admin/second-factor/totp/enroll", url.Values{
+		"csrf_token": {csrfToken},
+	}, cookie)
+	response.Body.Close()
+	if response.StatusCode != http.StatusForbidden {
+		t.Fatalf("expected TOTP enrollment setup page status 403, got %d: %s", response.StatusCode, body)
+	}
+	adminAccount := mustGetAccountByUsername(t, app, "test-admin")
+	factor, err := incidents.NewRepository(app.db).GetPendingTOTPSecondFactor(t.Context(), adminAccount.ID)
+	if err != nil {
+		t.Fatalf("get pending TOTP factor: %v", err)
+	}
+	for _, expected := range []string{
+		"TOTP setup started.",
+		"Manual setup key",
+		factor.TOTPSecret,
+		"otpauth://totp/Proofline:test-admin",
+		`action="/admin/second-factor/totp/confirm"`,
+		"Confirm authenticator app",
+	} {
+		if !bytes.Contains(body, []byte(expected)) {
+			t.Fatalf("admin web TOTP enrollment page missing %q: %s", expected, body)
+		}
+	}
+	for _, disallowed := range []string{app.authToken} {
+		if bytes.Contains(body, []byte(disallowed)) {
+			t.Fatalf("admin web TOTP enrollment page exposed %q: %s", disallowed, body)
+		}
+	}
+	csrfToken = adminWebCSRFTokenFromBody(t, body)
+
+	code, err := auth.GenerateTOTPCodeForTest(factor.TOTPSecret, time.Now().UTC())
+	if err != nil {
+		t.Fatalf("generate TOTP setup code: %v", err)
+	}
+	response, body = postAdminWebFormWithCookie(t, app, "/admin/second-factor/totp/confirm", url.Values{
+		"csrf_token": {csrfToken},
+		"code":       {code},
+	}, cookie)
+	response.Body.Close()
+	if response.StatusCode != http.StatusSeeOther {
+		t.Fatalf("expected TOTP confirmation redirect 303, got %d: %s", response.StatusCode, body)
+	}
+	if location := response.Header.Get("Location"); location != "/admin?notice=second_factor_setup_complete" {
+		t.Fatalf("expected TOTP setup complete notice redirect, got %q", location)
+	}
+
+	response, body = requestWithCookie(t, app.adminHandler, http.MethodGet, "/admin", "", nil, cookie)
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("expected admin dashboard after TOTP setup status 200, got %d: %s", response.StatusCode, body)
+	}
+	for _, disallowed := range []string{factor.TOTPSecret, code, app.authToken} {
+		if bytes.Contains(body, []byte(disallowed)) {
+			t.Fatalf("admin dashboard after TOTP setup exposed %q: %s", disallowed, body)
+		}
+	}
+}
+
 func TestAdminWebRequiresTOTPVerifiedSessionBeforeDashboard(t *testing.T) {
 	app := newTestApp(t)
 	enrollment := startTOTPEnrollmentForTest(t, app, app.authToken)
@@ -1170,6 +1255,7 @@ func TestAdminWebStaticAssetsAreUnauthenticated(t *testing.T) {
 		contains    string
 	}{
 		{path: "/admin/static/styles.css", contentType: "text/css", contains: ".admin-shell"},
+		{path: "/admin/static/admin.js", contentType: "text/javascript", contains: "data-mobile-nav-details"},
 		{path: "/admin/static/proofline-shield-logo.svg", contentType: "image/svg+xml", contains: "<svg"},
 		{path: "/admin/static/proofline-p-mark.svg", contentType: "image/svg+xml", contains: "<svg"},
 		{path: "/admin/static/favicon.svg", contentType: "image/svg+xml", contains: "<svg"},

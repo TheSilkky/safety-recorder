@@ -13,6 +13,7 @@
   <link rel="apple-touch-icon" href="/admin/static/apple-touch-icon.png">
   <link rel="manifest" href="/admin/static/site.webmanifest">
   <link rel="stylesheet" href="/admin/static/styles.css">
+  <script src="/admin/static/admin.js" defer></script>
 </head>
 <body>
   <a href="#content" class="skip-link">Skip to content</a>
@@ -268,18 +269,23 @@
                     </label>
                     <button type="submit">Reset password</button>
                   </form>
-                  <div class="account-secondary-actions">
-                    <form method="post" action="/admin/accounts/{{.ID}}/sessions/revoke">
-                      <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
-                      <button type="submit" class="ghost-button">Revoke sessions</button>
-                    </form>
-                    <form method="post" action="/admin/accounts/{{.ID}}/second-factor/recovery/reset">
-                      <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
-                      <input type="hidden" name="reason" value="operator_review">
-                      <button type="submit" class="ghost-button">Reset 2FA recovery</button>
-                    </form>
+                  <div class="account-danger-zone">
+                    <div>
+                      <p class="account-danger-title">Operator danger zone</p>
+                      <p class="account-danger-copy">Session revocation ends active logins. 2FA recovery requires setup again after operator review.</p>
+                    </div>
+                    <div class="account-secondary-actions">
+                      <form method="post" action="/admin/accounts/{{.ID}}/sessions/revoke">
+                        <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+                        <button type="submit" class="ghost-button danger-button">Revoke sessions</button>
+                      </form>
+                      <form method="post" action="/admin/accounts/{{.ID}}/second-factor/recovery/reset">
+                        <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+                        <input type="hidden" name="reason" value="operator_review">
+                        <button type="submit" class="ghost-button danger-button">Reset 2FA recovery</button>
+                      </form>
+                    </div>
                   </div>
-                  <p class="muted">Session revocation ends active logins. 2FA recovery requires setup again after operator review.</p>
                 </div>
                 {{end}}
               </div>
@@ -625,24 +631,71 @@
       </form>
       {{else if eq .Mode "second_factor_setup"}}
       <div class="auth-methods">
+        {{if .SecondFactorWebAuthnAvailable}}
         <section class="auth-method">
-          <h2>Email code</h2>
+          <div class="method-heading">
+            <h2>Security keys</h2>
+            <span class="method-badge recommended">Recommended</span>
+          </div>
+          <p class="muted">WebAuthn/FIDO2 security-key setup is available when this private admin listener is configured for browser registration.</p>
+        </section>
+        {{end}}
+        <section class="auth-method">
+          <div class="method-heading">
+            <h2>Authenticator app</h2>
+            <span class="method-badge recommended">{{if .SecondFactorWebAuthnAvailable}}Recommended fallback{{else}}Recommended{{end}}</span>
+          </div>
+          <p class="muted">Use a TOTP authenticator app for admin access. This works without WebAuthn/FIDO2 configuration.</p>
+          {{if .SecondFactorTOTPEnrollment.Secret}}
+          <div class="totp-enrollment" role="group" aria-label="Authenticator app setup details">
+            <dl class="detail-list">
+              <div>
+                <dt>Manual setup key</dt>
+                <dd class="secret-value">{{.SecondFactorTOTPEnrollment.Secret}}</dd>
+              </div>
+              <div>
+                <dt>OTPAuth URI</dt>
+                <dd class="uri-value">{{.SecondFactorTOTPEnrollment.OTPAuthURL}}</dd>
+              </div>
+              <div>
+                <dt>Policy</dt>
+                <dd>{{.SecondFactorTOTPEnrollment.Digits}} digits, {{.SecondFactorTOTPEnrollment.PeriodSeconds}} seconds, {{.SecondFactorTOTPEnrollment.Algorithm}}</dd>
+              </div>
+            </dl>
+          </div>
+          <form method="post" action="/admin/second-factor/totp/confirm" class="stack-form">
+            <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+            <label>
+              <span>TOTP code</span>
+              <input name="code" type="text" autocomplete="one-time-code" inputmode="numeric" required>
+            </label>
+            <button type="submit">Confirm authenticator app</button>
+          </form>
+          {{else}}
+          <form method="post" action="/admin/second-factor/totp/enroll" class="stack-form">
+            <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+            <button type="submit">Set up authenticator app</button>
+          </form>
+          {{end}}
+        </section>
+        <section class="auth-method">
+          <div class="method-heading">
+            <h2>Email challenge</h2>
+            <span class="method-badge backup">Backup</span>
+          </div>
           {{if .SecondFactorEmailAvailable}}
+          <p class="muted">Use email as a lower-assurance fallback when authenticator-app setup is not available.</p>
           <form method="post" action="/admin/second-factor/email/challenge" class="stack-form">
             <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
             <label>
               <span>Email address</span>
               <input name="email" type="email" autocomplete="email" required>
             </label>
-            <button type="submit">Send email code</button>
+            <button type="submit" class="ghost-button">Send email code</button>
           </form>
           {{else}}
           <p class="inline-status danger" role="status">Email fallback is not configured on this server.</p>
           {{end}}
-        </section>
-        <section class="auth-method">
-          <h2>Security keys and authenticator apps</h2>
-          <p class="muted">Security-key and TOTP setup remain available through the authenticated second-factor API.</p>
         </section>
       </div>
       <form method="post" action="/admin/logout" class="stack-form">
@@ -672,18 +725,21 @@
       </div>
       {{else if eq .Mode "second_factor_verify"}}
       <div class="auth-methods">
-        {{if .SecondFactorEmailAvailable}}
+        {{if .SecondFactorWebAuthnAvailable}}
         <section class="auth-method">
-          <h2>Email code</h2>
-          <form method="post" action="/admin/second-factor/email/challenge" class="stack-form">
-            <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
-            <button type="submit">Send email code</button>
-          </form>
+          <div class="method-heading">
+            <h2>Security keys</h2>
+            <span class="method-badge recommended">Recommended</span>
+          </div>
+          <p class="muted">WebAuthn/FIDO2 verification is available for configured security-key factors.</p>
         </section>
         {{end}}
         {{if .SecondFactorTOTPAvailable}}
         <section class="auth-method">
-          <h2>Authenticator app</h2>
+          <div class="method-heading">
+            <h2>Authenticator app</h2>
+            <span class="method-badge recommended">{{if .SecondFactorWebAuthnAvailable}}Recommended fallback{{else}}Recommended{{end}}</span>
+          </div>
           <form method="post" action="/admin/second-factor/totp/verify" class="stack-form">
             <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
             <label>
@@ -691,6 +747,18 @@
               <input name="code" type="text" autocomplete="one-time-code" inputmode="numeric" required>
             </label>
             <button type="submit">Verify</button>
+          </form>
+        </section>
+        {{end}}
+        {{if .SecondFactorEmailAvailable}}
+        <section class="auth-method">
+          <div class="method-heading">
+            <h2>Email challenge</h2>
+            <span class="method-badge backup">Backup</span>
+          </div>
+          <form method="post" action="/admin/second-factor/email/challenge" class="stack-form">
+            <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+            <button type="submit" class="ghost-button">Send email code</button>
           </form>
         </section>
         {{end}}

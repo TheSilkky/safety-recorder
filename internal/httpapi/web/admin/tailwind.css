@@ -151,6 +151,22 @@
     @apply text-base font-semibold leading-6 text-proofline-text;
   }
 
+  .method-heading {
+    @apply flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between;
+  }
+
+  .method-badge {
+    @apply inline-flex w-fit rounded-md border px-2 py-1 text-xs font-semibold;
+  }
+
+  .method-badge.recommended {
+    @apply border-proofline-success/40 bg-proofline-success-bg text-proofline-success;
+  }
+
+  .method-badge.backup {
+    @apply border-proofline-warning/40 bg-proofline-warning-bg text-proofline-warning;
+  }
+
   .auth-actions {
     @apply mt-5 flex flex-wrap items-center gap-3;
   }
@@ -512,6 +528,26 @@
     @apply w-full sm:w-fit;
   }
 
+  .account-danger-zone {
+    @apply grid gap-3 rounded-md border border-proofline-danger/40 bg-proofline-danger-bg/40 p-3;
+  }
+
+  .account-danger-title {
+    @apply text-sm font-semibold text-proofline-danger;
+  }
+
+  .account-danger-copy {
+    @apply mt-1 text-xs leading-5 text-proofline-text-muted;
+  }
+
+  .danger-button {
+    @apply border-proofline-danger/50 bg-proofline-danger-bg text-proofline-danger;
+  }
+
+  .danger-button:hover {
+    @apply border-proofline-danger bg-proofline-danger text-proofline-primary-text;
+  }
+
   .side-stack {
     @apply grid content-start gap-5;
   }
@@ -554,6 +590,19 @@
 
   .detail-list {
     @apply grid gap-4;
+  }
+
+  .totp-enrollment {
+    @apply mt-4 rounded-md border border-proofline-border bg-proofline-bg-deep/50 p-4;
+  }
+
+  .secret-value,
+  .uri-value {
+    @apply font-mono text-xs leading-5 text-proofline-text;
+  }
+
+  .uri-value {
+    @apply break-all;
   }
 
   .detail-list dt,

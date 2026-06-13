@@ -43,6 +43,7 @@ type adminWebData struct {
 	SecondFactorEmailAvailable    bool
 	SecondFactorTOTPAvailable     bool
 	SecondFactorWebAuthnAvailable bool
+	SecondFactorTOTPEnrollment    adminWebTOTPEnrollment
 }
 
 type adminWebAccount struct {
@@ -112,6 +113,16 @@ type adminWebStatusItem struct {
 	Value       string
 	Description string
 	Tone        string
+}
+
+type adminWebTOTPEnrollment struct {
+	Secret        string
+	OTPAuthURL    string
+	Issuer        string
+	AccountName   string
+	PeriodSeconds int
+	Digits        int
+	Algorithm     string
 }
 
 type adminWebOption struct {
@@ -427,6 +438,7 @@ func makeAdminWebSecondFactorSetupData(principal privatePrincipal, csrfToken, no
 		CSRFToken:                     csrfToken,
 		Account:                       makeAdminWebAccount(principal.Account, principal.Account.ID),
 		SecondFactorEmailAvailable:    emailAvailable,
+		SecondFactorTOTPAvailable:     true,
 		SecondFactorWebAuthnAvailable: webAuthnAvailable,
 	}
 }
@@ -456,6 +468,33 @@ func makeAdminWebSecondFactorVerificationData(principal privatePrincipal, csrfTo
 		SecondFactorTOTPAvailable:     totpAvailable,
 		SecondFactorWebAuthnAvailable: webAuthnAvailable,
 	}
+}
+
+func makeAdminWebTOTPEnrollment(account auth.Account, factor auth.SecondFactor) adminWebTOTPEnrollment {
+	return adminWebTOTPEnrollment{
+		Secret:        factor.TOTPSecret,
+		OTPAuthURL:    adminWebTOTPAuthURL(account.Username, factor.TOTPSecret, factor.TOTPPeriodSeconds, factor.TOTPDigits, factor.TOTPAlgorithm),
+		Issuer:        auth.TOTPIssuer,
+		AccountName:   account.Username,
+		PeriodSeconds: factor.TOTPPeriodSeconds,
+		Digits:        factor.TOTPDigits,
+		Algorithm:     factor.TOTPAlgorithm,
+	}
+}
+
+func adminWebTOTPAuthURL(accountName, secret string, periodSeconds, digits int, algorithm string) string {
+	query := url.Values{}
+	query.Set("secret", secret)
+	query.Set("issuer", auth.TOTPIssuer)
+	query.Set("period", strconv.Itoa(periodSeconds))
+	query.Set("digits", strconv.Itoa(digits))
+	query.Set("algorithm", algorithm)
+	return (&url.URL{
+		Scheme:   "otpauth",
+		Host:     "totp",
+		Path:     "/" + auth.TOTPIssuer + ":" + strings.TrimSpace(accountName),
+		RawQuery: query.Encode(),
+	}).String()
 }
 
 func makeAdminWebAccounts(accounts []auth.Account, currentAccountID string) []adminWebAccount {
@@ -633,9 +672,9 @@ func (a *API) adminWebSecondFactorItems() []adminWebStatusItem {
 		webAuthnTone = "neutral"
 	}
 	return []adminWebStatusItem{
-		{Label: "Email challenge", Value: emailValue, Description: "Mail delivery status", Tone: emailTone},
-		{Label: "TOTP", Value: "API available", Description: "Authenticator-app setup", Tone: "neutral"},
-		{Label: "Security keys", Value: webAuthnValue, Description: "WebAuthn/FIDO2 setup", Tone: webAuthnTone},
+		{Label: "Security keys", Value: webAuthnValue, Description: "Recommended when WebAuthn/FIDO2 is configured", Tone: webAuthnTone},
+		{Label: "TOTP", Value: "Available", Description: "Recommended fallback without WebAuthn", Tone: "neutral"},
+		{Label: "Email challenge", Value: emailValue, Description: "Backup mail delivery fallback", Tone: emailTone},
 	}
 }
 
