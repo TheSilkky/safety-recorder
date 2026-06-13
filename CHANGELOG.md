@@ -37,6 +37,10 @@ preview readiness claim.
   non-goals, and validation expectations in
   `docs/private-admin-web-scope.md`.
 
+- Fixed active email challenge 2FA session enforcement so fresh primary-login
+  sessions must complete an email challenge before product-route or private
+  admin operator access alongside the existing TOTP and WebAuthn session gates.
+
 ## v0.11.1 - 2026-06-13
 
 This is an ordinary pre-v1, experimental patch release. It is not

@@ -125,19 +125,32 @@ func (a *API) renderAdminWebSecondFactorSetup(w http.ResponseWriter, r *http.Req
 }
 
 func (a *API) renderAdminWebSecondFactorVerification(w http.ResponseWriter, r *http.Request, principal privatePrincipal, status int, notice, message string) {
-	totpAvailable, err := a.adminWebTOTPAvailable(r, principal)
+	data, err := a.makeAdminWebSecondFactorVerificationDataForRequest(r, principal, notice, message)
 	if err != nil {
-		a.adminWebInternalError(w, "check admin web TOTP factor", err)
+		a.adminWebInternalError(w, "check admin web second factor options", err)
 		return
 	}
-	a.renderAdminWeb(w, status, makeAdminWebSecondFactorVerificationData(
+	a.renderAdminWeb(w, status, data)
+}
+
+func (a *API) makeAdminWebSecondFactorVerificationDataForRequest(r *http.Request, principal privatePrincipal, notice, message string) (adminWebData, error) {
+	totpAvailable, err := a.adminWebTOTPAvailable(r, principal)
+	if err != nil {
+		return adminWebData{}, err
+	}
+	emailAvailable, err := a.adminWebEmailAvailable(r, principal)
+	if err != nil {
+		return adminWebData{}, err
+	}
+	return makeAdminWebSecondFactorVerificationData(
 		principal,
 		adminWebCSRFTokenFromRequest(r),
 		notice,
 		message,
+		emailAvailable,
 		totpAvailable,
 		a.adminWebAuthnAvailable(),
-	))
+	), nil
 }
 
 func (a *API) adminWebInternalError(w http.ResponseWriter, operation string, err error) {
@@ -276,7 +289,7 @@ func makeAdminWebSecondFactorSetupData(principal privatePrincipal, csrfToken, no
 	}
 }
 
-func makeAdminWebSecondFactorVerificationData(principal privatePrincipal, csrfToken, notice, message string, totpAvailable, webAuthnAvailable bool) adminWebData {
+func makeAdminWebSecondFactorVerificationData(principal privatePrincipal, csrfToken, notice, message string, emailAvailable, totpAvailable, webAuthnAvailable bool) adminWebData {
 	return adminWebData{
 		Title:                         "Proofline Admin 2FA Verification",
 		Mode:                          "second_factor_verify",
@@ -284,6 +297,7 @@ func makeAdminWebSecondFactorVerificationData(principal privatePrincipal, csrfTo
 		Notice:                        notice,
 		CSRFToken:                     csrfToken,
 		Account:                       makeAdminWebAccount(principal.Account, principal.Account.ID),
+		SecondFactorEmailAvailable:    emailAvailable,
 		SecondFactorTOTPAvailable:     totpAvailable,
 		SecondFactorWebAuthnAvailable: webAuthnAvailable,
 	}
@@ -314,6 +328,20 @@ func (a *API) adminWebAuthnAvailable() bool {
 
 func (a *API) adminWebTOTPAvailable(r *http.Request, principal privatePrincipal) (bool, error) {
 	_, err := a.repo.GetActiveTOTPSecondFactor(r.Context(), principal.Account.ID)
+	if err == nil {
+		return true, nil
+	}
+	if errors.Is(err, auth.ErrNotFound) {
+		return false, nil
+	}
+	return false, err
+}
+
+func (a *API) adminWebEmailAvailable(r *http.Request, principal privatePrincipal) (bool, error) {
+	if a.emailSender == nil {
+		return false, nil
+	}
+	_, err := a.repo.GetActiveEmailSecondFactor(r.Context(), principal.Account.ID)
 	if err == nil {
 		return true, nil
 	}

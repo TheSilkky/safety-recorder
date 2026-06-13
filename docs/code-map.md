@@ -139,7 +139,7 @@ session and clears the cookie. Requests that send both bearer and browser
 cookie credentials are rejected. Existing `/admin/api/...` JSON routes are
 mounted on the private-admin handler and require an admin account with
 completed admin second-factor setup plus active-factor session verification
-when TOTP or WebAuthn is active. First-admin bootstrap uses the private
+when email challenge, TOTP, or WebAuthn is active. First-admin bootstrap uses the private
 `/admin/bootstrap` form when no admin exists and a bootstrap secret is
 configured.
 Session tokens are opaque, returned only to the client, and stored as hashes by
@@ -324,9 +324,10 @@ as the JSON API, with the raw session token stored in an HttpOnly
 SameSite=Strict cookie scoped to `/admin`.
 
 Authenticated admin pages first require completed admin second-factor setup and
-active-factor session verification when TOTP or WebAuthn is active. Setup
+active-factor session verification when email challenge, TOTP, or WebAuthn is active. Setup
 screens support email challenge fallback where mail delivery is configured,
-and TOTP-active admin web sessions can verify through
+and email-active or TOTP-active admin web sessions can verify through
+`POST /admin/second-factor/email/verify` or
 `POST /admin/second-factor/totp/verify`. After the gate passes, the dashboard
 lists local accounts and supports local account administration workflows.
 `POST /admin/accounts` creates a local account that requires second-factor setup,

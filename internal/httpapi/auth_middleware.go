@@ -178,6 +178,10 @@ func secondFactorVerificationAllowedRoute(r *http.Request) bool {
 		return true
 	case r.Method == http.MethodGet && path == "v1/auth/web/csrf":
 		return true
+	case r.Method == http.MethodPost && path == "v1/account/second-factor/email/challenge":
+		return true
+	case r.Method == http.MethodPost && path == "v1/account/second-factor/email/verify":
+		return true
 	case r.Method == http.MethodPost && path == "v1/account/second-factor/totp/verify":
 		return true
 	case r.Method == http.MethodPost && path == "v1/account/second-factor/webauthn/verify/start":

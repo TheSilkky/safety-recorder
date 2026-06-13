@@ -369,6 +369,20 @@ func TestPostgresSchemaConstraints(t *testing.T) {
 		now,
 		now,
 	)))
+	if err := execErr(conn.ExecContext(ctx, `
+		INSERT INTO auth_sessions (
+			id, account_id, token_hash, second_factor_method, created_at, expires_at
+		)
+		VALUES ($1, $2, $3, $4, $5, $6)`,
+		"ses_email_method",
+		"acct_default_2fa",
+		strings.Repeat("e", 64),
+		auth.SecondFactorTypeEmailChallenge,
+		now,
+		now.Add(time.Hour),
+	)); err != nil {
+		t.Fatalf("insert valid email second-factor session method: %v", err)
+	}
 	assertPostgresConstraint(t, execErr(conn.ExecContext(ctx, `
 		INSERT INTO auth_sessions (
 			id, account_id, token_hash, second_factor_method, created_at, expires_at

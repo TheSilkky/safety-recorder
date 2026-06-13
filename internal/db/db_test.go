@@ -236,6 +236,20 @@ func TestMigrateAddsTOTPSecondFactorSchema(t *testing.T) {
 			id, account_id, token_hash, second_factor_method, created_at, expires_at
 		)
 		VALUES (
+			'ses_email_method',
+			'acct_totp_2fa',
+			'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+			'email_challenge',
+			'2026-06-10T00:00:00Z',
+			'2026-06-10T01:00:00Z'
+		)`); err != nil {
+		t.Fatalf("insert valid email second-factor session method: %v", err)
+	}
+	if _, err := conn.ExecContext(ctx, `
+		INSERT INTO auth_sessions (
+			id, account_id, token_hash, second_factor_method, created_at, expires_at
+		)
+		VALUES (
 			'ses_bad_method',
 			'acct_totp_2fa',
 			'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',

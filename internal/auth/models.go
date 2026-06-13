@@ -298,7 +298,7 @@ func ValidSecondFactorState(state string) bool {
 
 func ValidSecondFactorMethod(method string) bool {
 	switch method {
-	case SecondFactorTypeTOTP, SecondFactorTypeWebAuthn:
+	case SecondFactorTypeEmailChallenge, SecondFactorTypeTOTP, SecondFactorTypeWebAuthn:
 		return true
 	default:
 		return false

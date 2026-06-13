@@ -165,7 +165,55 @@ func (a *API) adminWebRequestEmailSecondFactorChallenge(w http.ResponseWriter, r
 		return
 	}
 	if !adminRequiresSecondFactorSetup(principal.Account) {
-		http.Redirect(w, r, "/admin", http.StatusSeeOther)
+		required, err := a.sessionRequiresSecondFactorVerification(r.Context(), principal.Account, principal.Session)
+		if err != nil {
+			a.adminWebInternalError(w, "check admin web email second factor requirement", err)
+			return
+		}
+		if !required {
+			http.Redirect(w, r, "/admin", http.StatusSeeOther)
+			return
+		}
+		data, err := a.makeAdminWebSecondFactorVerificationDataForRequest(r, principal, "", "The email verification form could not be read.")
+		if err != nil {
+			a.adminWebInternalError(w, "build admin web email second factor verification data", err)
+			return
+		}
+		if ok := a.parseAdminWebForm(w, r, data); !ok {
+			return
+		}
+		data.Error = ""
+		if !a.validateAdminWebCSRFForData(w, r, data) {
+			return
+		}
+		if a.emailSender == nil {
+			data.Error = "Email second-factor delivery is not configured."
+			a.renderAdminWeb(w, http.StatusServiceUnavailable, data)
+			return
+		}
+		if !data.SecondFactorEmailAvailable {
+			data.Error = "Email verification is not configured for this account."
+			a.renderAdminWeb(w, http.StatusConflict, data)
+			return
+		}
+		expiresAt := time.Now().UTC().Add(a.secondFactorEmailTTL)
+		challenge, rawToken, err := a.repo.CreateActiveEmailSecondFactorChallenge(r.Context(), principal.Account.ID, expiresAt)
+		if errors.Is(err, auth.ErrNotFound) {
+			data.SecondFactorEmailAvailable = false
+			data.Error = "Email verification is not configured for this account."
+			a.renderAdminWeb(w, http.StatusConflict, data)
+			return
+		}
+		if err != nil {
+			a.adminWebInternalError(w, "create admin web active email second factor challenge", err)
+			return
+		}
+		if !a.sendSecondFactorChallengeEmail(r, challenge.EmailNormalized, rawToken, challenge.ExpiresAt) {
+			data.Error = "Email delivery is temporarily unavailable."
+			a.renderAdminWeb(w, http.StatusServiceUnavailable, data)
+			return
+		}
+		http.Redirect(w, r, "/admin?notice=second_factor_challenge_sent", http.StatusSeeOther)
 		return
 	}
 	data := makeAdminWebSecondFactorSetupData(principal, adminWebCSRFTokenFromRequest(r), "", "The second-factor setup form could not be read.", a.emailSender != nil, a.adminWebAuthnAvailable())
@@ -232,7 +280,48 @@ func (a *API) adminWebVerifyEmailSecondFactorChallenge(w http.ResponseWriter, r 
 		return
 	}
 	if !adminRequiresSecondFactorSetup(principal.Account) {
-		http.Redirect(w, r, "/admin", http.StatusSeeOther)
+		required, err := a.sessionRequiresSecondFactorVerification(r.Context(), principal.Account, principal.Session)
+		if err != nil {
+			a.adminWebInternalError(w, "check admin web email second factor requirement", err)
+			return
+		}
+		if !required {
+			http.Redirect(w, r, "/admin", http.StatusSeeOther)
+			return
+		}
+		data, err := a.makeAdminWebSecondFactorVerificationDataForRequest(r, principal, "", "The email verification form could not be read.")
+		if err != nil {
+			a.adminWebInternalError(w, "build admin web email second factor verification data", err)
+			return
+		}
+		if ok := a.parseAdminWebForm(w, r, data); !ok {
+			return
+		}
+		data.Error = ""
+		if !a.validateAdminWebCSRFForData(w, r, data) {
+			return
+		}
+		rawToken := strings.TrimSpace(r.FormValue("code"))
+		if rawToken == "" {
+			data.Error = "Second-factor challenge is invalid or expired."
+			a.renderAdminWeb(w, http.StatusBadRequest, data)
+			return
+		}
+		factor, _, err := a.repo.ConsumeEmailSecondFactorChallenge(r.Context(), principal.Account.ID, rawToken, time.Now().UTC())
+		if err != nil {
+			if errors.Is(err, auth.ErrNotFound) {
+				data.Error = "Second-factor challenge is invalid or expired."
+				a.renderAdminWeb(w, http.StatusBadRequest, data)
+				return
+			}
+			a.adminWebInternalError(w, "consume admin web active email second factor challenge", err)
+			return
+		}
+		if _, err := a.repo.MarkSessionSecondFactorVerified(r.Context(), principal.Session.ID, factor.ID, auth.SecondFactorTypeEmailChallenge, time.Now().UTC()); err != nil {
+			a.adminWebInternalError(w, "mark admin web email session verified", err)
+			return
+		}
+		http.Redirect(w, r, "/admin?notice=second_factor_verified", http.StatusSeeOther)
 		return
 	}
 	data := makeAdminWebSecondFactorSetupData(principal, adminWebCSRFTokenFromRequest(r), "", "The second-factor verification form could not be read.", a.emailSender != nil, a.adminWebAuthnAvailable())
@@ -250,13 +339,18 @@ func (a *API) adminWebVerifyEmailSecondFactorChallenge(w http.ResponseWriter, r 
 		a.renderAdminWeb(w, http.StatusBadRequest, data)
 		return
 	}
-	if _, _, err := a.repo.ConsumeEmailSecondFactorChallenge(r.Context(), principal.Account.ID, rawToken, time.Now().UTC()); err != nil {
+	factor, _, err := a.repo.ConsumeEmailSecondFactorChallenge(r.Context(), principal.Account.ID, rawToken, time.Now().UTC())
+	if err != nil {
 		if errors.Is(err, auth.ErrNotFound) {
 			data.Error = "Second-factor challenge is invalid or expired."
 			a.renderAdminWeb(w, http.StatusBadRequest, data)
 			return
 		}
 		a.adminWebInternalError(w, "consume admin web email second factor challenge", err)
+		return
+	}
+	if _, err := a.repo.MarkSessionSecondFactorVerified(r.Context(), principal.Session.ID, factor.ID, auth.SecondFactorTypeEmailChallenge, time.Now().UTC()); err != nil {
+		a.adminWebInternalError(w, "mark admin web email setup session verified", err)
 		return
 	}
 	http.Redirect(w, r, "/admin?notice=second_factor_setup_complete", http.StatusSeeOther)
@@ -272,7 +366,11 @@ func (a *API) adminWebVerifyTOTPSecondFactorChallenge(w http.ResponseWriter, r *
 		a.renderAdminWebSecondFactorSetup(w, r, principal, http.StatusForbidden, "", "")
 		return
 	}
-	data := makeAdminWebSecondFactorVerificationData(principal, adminWebCSRFTokenFromRequest(r), "", "The TOTP verification form could not be read.", true, a.adminWebAuthnAvailable())
+	data, err := a.makeAdminWebSecondFactorVerificationDataForRequest(r, principal, "", "The TOTP verification form could not be read.")
+	if err != nil {
+		a.adminWebInternalError(w, "build admin web TOTP verification data", err)
+		return
+	}
 	if ok := a.parseAdminWebForm(w, r, data); !ok {
 		return
 	}

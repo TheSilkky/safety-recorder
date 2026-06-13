@@ -192,7 +192,14 @@ func (a *API) sessionRequiresSecondFactorVerification(rctx context.Context, acco
 	if !auth.CanAccessProductRoutes(account) {
 		return false, nil
 	}
-	_, err := a.repo.GetActiveTOTPSecondFactor(rctx, account.ID)
+	_, err := a.repo.GetActiveEmailSecondFactor(rctx, account.ID)
+	if err == nil {
+		return true, nil
+	}
+	if err != nil && !errors.Is(err, auth.ErrNotFound) {
+		return false, err
+	}
+	_, err = a.repo.GetActiveTOTPSecondFactor(rctx, account.ID)
 	if err == nil {
 		return true, nil
 	}

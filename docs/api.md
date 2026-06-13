@@ -178,11 +178,12 @@ return:
 ```
 
 Email challenge, TOTP, and disabled-by-default WebAuthn/FIDO2 are the
-implemented second-factor setup methods. Accounts with active TOTP or WebAuthn
-factors also require per-session second-factor verification after primary login
-before product routes are available. Until that challenge is satisfied,
-authenticated sessions can inspect `GET /v1/account`, obtain browser CSRF
-metadata, verify the active TOTP or WebAuthn challenge, and log out. Other main
+implemented second-factor setup methods. Accounts with active email challenge,
+TOTP, or WebAuthn factors also require per-session second-factor verification
+after primary login before product routes are available. Until that challenge
+is satisfied, authenticated sessions can inspect `GET /v1/account`, obtain
+browser CSRF metadata, verify the active email, TOTP, or WebAuthn challenge,
+and log out. Other main
 product routes return:
 
 ```json
@@ -212,9 +213,9 @@ compatibility. Admin accounts must have `second_factor_setup_state=complete`
 before using the private `/admin` dashboard actions or `/admin/api/...` JSON
 admin routes. Legacy admin accounts that still have `not_required` are treated
 as setup-incomplete on the private admin surface. After setup is complete,
-admin sessions with active TOTP or WebAuthn factors must verify that same
-session before operator actions. WebAuthn/FIDO2 security keys are preferred
-when configured; TOTP and email challenge remain lower-preference setup or
+admin sessions with active email challenge, TOTP, or WebAuthn factors must
+verify that same session before operator actions. WebAuthn/FIDO2 security keys
+are preferred when configured; TOTP and email challenge remain lower-preference setup or
 verification paths where available. If all admin factors are lost, recovery is
 an operator procedure: use another already verified admin to run the private
 second-factor reset route, or perform a deployment-local database/operator
@@ -222,9 +223,10 @@ recovery under the private boundary. There is no public recovery bypass.
 
 ### `POST /v1/account/second-factor/email/challenge`
 
-Authenticated setup route for starting email second-factor setup after primary
-login. Setup-incomplete bearer and browser-cookie sessions may call this route;
-cookie-authenticated requests still require the configured CSRF header.
+Authenticated route for starting email second-factor setup after primary login
+or sending an active email-factor session verification code. Setup-incomplete
+bearer and browser-cookie sessions may call this route; cookie-authenticated
+requests still require the configured CSRF header.
 
 Request:
 
@@ -258,12 +260,15 @@ Challenge codes use `SAFE_SECOND_FACTOR_EMAIL_CHALLENGE_TTL`, defaulting to
 `SAFE_MAIN_API_RATE_LIMIT_AUTH_EMAIL_VERIFY` route class. Email delivery
 failures return `503 email_unavailable`; invalid or missing email input returns
 `400 email_required` or `400 invalid_email`; an account that already has an
-active email factor returns `409 second_factor_already_configured`.
+active email factor returns `409 second_factor_already_configured` when the
+current session is already second-factor verified. If an active email factor is
+the configured session challenge, the route sends a new code to the stored
+factor email address and does not require or return the destination address.
 
 ### `POST /v1/account/second-factor/email/verify`
 
-Authenticated setup route for consuming an email second-factor challenge code.
-The code is account-bound, single-use, expires, and is looked up by hash.
+Authenticated route for consuming an email second-factor challenge code. The
+code is account-bound, single-use, expires, and is looked up by hash.
 
 Request:
 
@@ -275,7 +280,8 @@ Request:
 
 `token` is accepted as a compatibility alias for `code`. Successful verification
 marks the email factor active, consumes other pending challenges for that
-factor, and sets the account `second_factor_setup_state` to `complete`.
+factor, sets the account `second_factor_setup_state` to `complete`, and marks
+the current session email-verified.
 
 Response `200`:
 
@@ -298,6 +304,11 @@ Response `200`:
     "created_at": "2026-06-10T11:00:00Z",
     "updated_at": "2026-06-10T12:04:00Z",
     "password_changed_at": "2026-06-10T11:00:00Z"
+  },
+  "session": {
+    "session_id": "ses_...",
+    "second_factor_verified_at": "2026-06-10T12:04:00Z",
+    "second_factor_method": "email_challenge"
   }
 }
 ```
@@ -621,9 +632,9 @@ Response `201`:
 }
 ```
 
-For accounts with an active TOTP or WebAuthn factor, primary login still
+For accounts with an active email challenge, TOTP, or WebAuthn factor, primary login still
 returns a session token, but `second_factor_verification_required` is `true`
-and product routes fail closed until the matching TOTP or WebAuthn verification
+and product routes fail closed until the matching second-factor verification
 route succeeds.
 
 ### `POST /v1/auth/register`
@@ -717,8 +728,8 @@ JSON.
 
 Response metadata includes `second_factor_verification_required`,
 `second_factor_verified_at`, and `second_factor_method` with the same meaning
-as bearer login. For accounts with an active TOTP or WebAuthn factor,
-`second_factor_verification_required` is `true` until the matching
+as bearer login. For accounts with an active email challenge, TOTP, or WebAuthn
+factor, `second_factor_verification_required` is `true` until the matching
 second-factor verification route succeeds with a valid CSRF header.
 
 The preferred production cookie is `__Host-proofline_session` with `HttpOnly`,
@@ -786,15 +797,19 @@ setup is complete. After an admin exists, `/admin` shows the login screen and
 requires an admin account. Non-admin sessions are rejected.
 
 The authenticated dashboard lists local accounts and safe incident-operation
-metadata only after admin second-factor setup and any active TOTP/WebAuthn
+metadata only after admin second-factor setup and any active email/TOTP/WebAuthn
 session verification are satisfied. Setup-incomplete admins see a
 second-factor setup screen instead of the dashboard. The screen prefers
 configured WebAuthn/FIDO2 passkey or security-key setup, points TOTP setup to
 the authenticated second-factor API, and offers an email challenge fallback
-only when mail delivery is configured. Admins with active TOTP factors can
-verify the admin web session through `POST /admin/second-factor/totp/verify`;
-WebAuthn/FIDO2 verification remains available through configured second-factor
-clients/API sessions. `POST /admin/logout` revokes the current admin web
+only when mail delivery is configured. Admins with active email factors can
+send and verify an email code through
+`POST /admin/second-factor/email/challenge` and
+`POST /admin/second-factor/email/verify`, and admins with active TOTP factors
+can verify the admin web session through
+`POST /admin/second-factor/totp/verify`; WebAuthn/FIDO2 verification remains
+available through configured second-factor clients/API sessions.
+`POST /admin/logout` revokes the current admin web
 session and remains available from the setup and verification screens.
 
 Account forms can create local accounts, change the current admin password
@@ -825,7 +840,7 @@ the private-admin listener.
 
 The following routes are mounted only on the private-admin listener and require
 an admin account session with completed admin second-factor setup. If the admin
-account has active TOTP or WebAuthn factors, the same session must also be
+account has active email challenge, TOTP, or WebAuthn factors, the same session must also be
 second-factor verified before these routes run:
 
 - `GET /admin/api/accounts`

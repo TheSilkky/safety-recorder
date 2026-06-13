@@ -152,7 +152,7 @@ encrypted evidence bundles.
   bytes.
 - Existing `/admin/api/...` JSON routes require an admin account with completed
   admin second-factor setup, are mounted on the private-admin server, require
-  active-factor session verification when TOTP or WebAuthn is active, and must
+  active-factor session verification when email challenge, TOTP, or WebAuthn is active, and must
   not be routed from public entry points. This includes legacy unowned incident
   candidate review, reassignment, and keep-unowned audit decisions, account
   password/session management, and account second-factor recovery resets.
@@ -250,9 +250,9 @@ encrypted evidence bundles.
   open-registration accounts start with required second-factor setup state; this
   state blocks main product routes after primary login until email challenge,
   TOTP, or WebAuthn setup verifies the account. Registration email verification
-  does not count as second-factor setup. Active TOTP or WebAuthn factors also
-  require each new primary-authenticated session to verify a fresh factor
-  challenge before product-route access. Existing migrated accounts default to
+  does not count as second-factor setup. Active email challenge, TOTP, or
+  WebAuthn factors also require each new primary-authenticated session to
+  verify a fresh factor challenge before product-route access. Existing migrated accounts default to
   `not_required` for preview product-route compatibility, but admin accounts
   with `not_required` are gated from private admin operator actions until admin
   second-factor setup is complete. Paid registration fails closed and does not
