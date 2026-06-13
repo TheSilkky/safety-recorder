@@ -56,6 +56,7 @@
 
   button:focus-visible,
   input:focus-visible,
+  select:focus-visible,
   a:focus-visible {
     @apply outline outline-2 outline-offset-2 outline-proofline-focus;
   }
@@ -64,12 +65,14 @@
     @apply grid gap-2 text-sm font-medium text-proofline-text-secondary;
   }
 
-  input {
+  input,
+  select {
     @apply min-h-11 w-full rounded-md border border-proofline-border bg-proofline-bg-deep px-3 py-2.5 text-base text-proofline-text shadow-inner transition-colors;
     font: inherit;
   }
 
-  input:hover {
+  input:hover,
+  select:hover {
     @apply border-proofline-border-strong;
   }
 

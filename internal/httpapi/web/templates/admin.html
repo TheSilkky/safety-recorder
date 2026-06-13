@@ -154,7 +154,11 @@
             </label>
             <label>
               <span>Role</span>
-              <input name="role" type="text" value="user" pattern="user|admin" required>
+              <select name="role" required>
+                {{range .RoleOptions}}
+                <option value="{{.Value}}"{{if .Selected}} selected{{end}}>{{.Label}}</option>
+                {{end}}
+              </select>
             </label>
             <label>
               <span>Password</span>

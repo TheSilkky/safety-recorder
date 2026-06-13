@@ -33,6 +33,7 @@ type adminWebData struct {
 	Account                       adminWebAccount
 	Accounts                      []adminWebAccount
 	AccountPagination             adminWebAccountPagination
+	RoleOptions                   []adminWebOption
 	IncidentCandidates            []adminWebIncidentCandidate
 	DeletionStatus                adminWebDeletionStatus
 	NavItems                      []adminWebNavItem
@@ -111,6 +112,12 @@ type adminWebStatusItem struct {
 	Value       string
 	Description string
 	Tone        string
+}
+
+type adminWebOption struct {
+	Label    string
+	Value    string
+	Selected bool
 }
 
 func (a *API) renderAdminWeb(w http.ResponseWriter, status int, data adminWebData) {
@@ -342,16 +349,24 @@ func makeAdminWebSettingsData(principal privatePrincipal, csrfToken, notice, mes
 
 func makeAdminWebShellData(principal privatePrincipal, page, title, lead, csrfToken, notice, message string) adminWebData {
 	return adminWebData{
-		Title:      "Proofline Admin",
-		Mode:       page,
-		AdminShell: true,
-		PageTitle:  title,
-		PageLead:   lead,
-		Error:      message,
-		Notice:     notice,
-		CSRFToken:  csrfToken,
-		Account:    makeAdminWebAccount(principal.Account, principal.Account.ID),
-		NavItems:   adminWebNavItems(page),
+		Title:       "Proofline Admin",
+		Mode:        page,
+		AdminShell:  true,
+		PageTitle:   title,
+		PageLead:    lead,
+		Error:       message,
+		Notice:      notice,
+		CSRFToken:   csrfToken,
+		Account:     makeAdminWebAccount(principal.Account, principal.Account.ID),
+		RoleOptions: adminWebRoleOptions(),
+		NavItems:    adminWebNavItems(page),
+	}
+}
+
+func adminWebRoleOptions() []adminWebOption {
+	return []adminWebOption{
+		{Label: "User", Value: auth.RoleUser, Selected: true},
+		{Label: "Admin", Value: auth.RoleAdmin},
 	}
 }
 

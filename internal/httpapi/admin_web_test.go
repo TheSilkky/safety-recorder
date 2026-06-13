@@ -110,6 +110,9 @@ func TestAdminWebDashboardListsAccounts(t *testing.T) {
 		`action="/admin/accounts"`,
 		`method="get"`,
 		`name="q"`,
+		`<select name="role" required>`,
+		`<option value="user" selected>User</option>`,
+		`<option value="admin">Admin</option>`,
 		"Back",
 		"Next",
 		"test-admin",
@@ -124,7 +127,7 @@ func TestAdminWebDashboardListsAccounts(t *testing.T) {
 			t.Fatalf("admin dashboard missing %q: %s", expected, body)
 		}
 	}
-	for _, disallowed := range []string{app.authToken, "test-password", "managed-password", "password_hash", "Authorization"} {
+	for _, disallowed := range []string{app.authToken, "test-password", "managed-password", "password_hash", "Authorization", `type="text" value="user" pattern="user|admin"`} {
 		if bytes.Contains(body, []byte(disallowed)) {
 			t.Fatalf("admin dashboard exposed %q: %s", disallowed, body)
 		}
