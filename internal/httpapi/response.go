@@ -37,23 +37,6 @@ func decodeJSON(w http.ResponseWriter, r *http.Request, target any) bool {
 	return true
 }
 
-func writeJSON(w http.ResponseWriter, status int, value any) {
-	setNoSniff(w)
-	setNoStore(w)
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(value)
-}
-
-func writeError(w http.ResponseWriter, status int, code, message string) {
-	writeJSON(w, status, map[string]map[string]string{
-		"error": {
-			"code":    code,
-			"message": message,
-		},
-	})
-}
-
 func (a *API) internalError(w http.ResponseWriter, operation string, err error) {
 	a.logInternalError(operation, err)
 	writeError(w, http.StatusInternalServerError, "internal_error", "internal server error")
