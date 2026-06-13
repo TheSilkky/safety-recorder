@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/open-proofline/server/internal/evidencebundle"
 	"github.com/open-proofline/server/internal/incidents"
 )
 
@@ -19,7 +20,7 @@ func (a *API) openBundleChunk(ctx context.Context) func(string) (io.ReadCloser, 
 	}
 }
 
-func writeStreamBundle(w io.Writer, openChunk func(string) (io.ReadCloser, error), bundle streamBundleData, prefix string) error {
+func writeStreamBundle(w io.Writer, openChunk func(string) (io.ReadCloser, error), bundle evidencebundle.StreamData, prefix string) error {
 	zipWriter := zip.NewWriter(w)
 	if err := writeStreamBundleToZip(zipWriter, openChunk, bundle, prefix); err != nil {
 		_ = zipWriter.Close()
@@ -28,7 +29,7 @@ func writeStreamBundle(w io.Writer, openChunk func(string) (io.ReadCloser, error
 	return zipWriter.Close()
 }
 
-func writeStreamBundleToZip(zipWriter *zip.Writer, openChunk func(string) (io.ReadCloser, error), bundle streamBundleData, prefix string) error {
+func writeStreamBundleToZip(zipWriter *zip.Writer, openChunk func(string) (io.ReadCloser, error), bundle evidencebundle.StreamData, prefix string) error {
 	if err := writeJSONZipEntry(zipWriter, prefix+"manifest.json", bundle.Manifest, bundle.Stream.UpdatedAt); err != nil {
 		return err
 	}
@@ -82,18 +83,6 @@ func writeJSONZipEntry(zipWriter *zip.Writer, name string, value any, modified t
 		return fmt.Errorf("write json zip entry: %w", err)
 	}
 	return nil
-}
-
-func validStreamBundleChunks(stream incidents.MediaStream, chunks []incidents.Chunk) bool {
-	if stream.ExpectedChunkCount != nil && len(chunks) != *stream.ExpectedChunkCount {
-		return false
-	}
-	for i, chunk := range chunks {
-		if chunk.ChunkIndex != i+1 || chunk.MediaType != stream.MediaType {
-			return false
-		}
-	}
-	return true
 }
 
 func setBundleHeaders(w http.ResponseWriter, filename string) {
