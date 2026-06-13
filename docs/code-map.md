@@ -361,6 +361,10 @@ Token-neutral CSS is generated from
 `internal/httpapi/web/admin/static`, and served without authentication under
 `/admin/static/...`.
 
+Admin web scope, visual direction, sensitive-data display rules, non-goals,
+and validation expectations are documented in
+[private-admin-web-scope.md](private-admin-web-scope.md).
+
 The admin web surface shows only safe route-boundary status, local
 account-management data, count-oriented legacy unowned incident metadata, and
 non-sensitive deletion status fields. It does not show incident notes, evidence

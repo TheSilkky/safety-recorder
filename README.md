@@ -375,6 +375,7 @@ infrastructure.
 - [Mode-aware retention policy](docs/mode-aware-retention-policy.md)
 - [/v1 access control](docs/v1-access-control.md)
 - [Main API public exposure listener split](docs/public-api-listener-split.md)
+- [Private admin web scope](docs/private-admin-web-scope.md)
 - [Legacy unowned incident reassignment](docs/legacy-unowned-incident-reassignment.md)
 - [Encryption](docs/encryption.md)
 - [iOS local recorder prototype](docs/ios-local-recorder-prototype.md)

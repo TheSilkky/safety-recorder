@@ -751,8 +751,10 @@ Changes the authenticated account password after verifying `current_password`; o
 
 ### Private Admin Web Routes
 
-The private-admin listener serves a small admin web surface outside the
-`/v1` API namespace:
+The private-admin listener serves the admin web surface outside the `/v1` API
+namespace. Scope, visual direction, sensitive-data display rules, and
+validation expectations are documented in
+[private admin web scope](private-admin-web-scope.md). Current routes are:
 
 - `GET /admin`
 - `POST /admin/login`
@@ -762,8 +764,13 @@ The private-admin listener serves a small admin web surface outside the
 - `POST /admin/second-factor/email/verify`
 - `POST /admin/second-factor/totp/verify`
 - `POST /admin/password`
+- `POST /admin/accounts`
 - `POST /admin/accounts/{account_id}/password`
-- `GET /admin/static/styles.css`
+- `POST /admin/accounts/{account_id}/second-factor/recovery/reset`
+- `POST /admin/accounts/{account_id}/sessions/revoke`
+- `POST /admin/incidents/{incident_id}/deletion`
+- `POST /admin/incidents/{incident_id}/reassignment`
+- `GET /admin/static/...`
 
 `GET /admin` renders either the first-admin bootstrap form, the admin login
 form, or the authenticated admin dashboard. The form handlers reuse the same
@@ -778,34 +785,41 @@ second-factor setup required and cannot use dashboard operator actions until
 setup is complete. After an admin exists, `/admin` shows the login screen and
 requires an admin account. Non-admin sessions are rejected.
 
-The authenticated dashboard lists local accounts and offers password workflows
-only after admin second-factor setup and any active TOTP/WebAuthn session
-verification are satisfied. Setup-incomplete admins see a second-factor setup
-screen instead of the dashboard. The screen prefers configured WebAuthn/FIDO2
-security-key setup, points TOTP setup to the authenticated second-factor API,
-and offers an email challenge fallback only when mail delivery is configured.
-Admins with active TOTP factors can verify the admin web session through
-`POST /admin/second-factor/totp/verify`; WebAuthn/FIDO2 verification remains
-available through configured second-factor clients/API sessions. `POST
-/admin/logout` revokes the current admin web session and remains available from
-the setup and verification screens. `POST /admin/password` changes the current
-admin account password after verifying the current password, then revokes other
-sessions for that account. `POST /admin/accounts/{account_id}/password` lets an
-admin reset another local account password and revokes all sessions for that
-account. These authenticated state-changing forms use a session-bound CSRF
-token.
+The authenticated dashboard lists local accounts and safe incident-operation
+metadata only after admin second-factor setup and any active TOTP/WebAuthn
+session verification are satisfied. Setup-incomplete admins see a
+second-factor setup screen instead of the dashboard. The screen prefers
+configured WebAuthn/FIDO2 passkey or security-key setup, points TOTP setup to
+the authenticated second-factor API, and offers an email challenge fallback
+only when mail delivery is configured. Admins with active TOTP factors can
+verify the admin web session through `POST /admin/second-factor/totp/verify`;
+WebAuthn/FIDO2 verification remains available through configured second-factor
+clients/API sessions. `POST /admin/logout` revokes the current admin web
+session and remains available from the setup and verification screens.
+
+Account forms can create local accounts, change the current admin password
+after verifying the current password, reset another local account password,
+revoke another account's sessions, and reset another account's second-factor
+recovery state with controlled reason codes. Incident forms can record a
+legacy unowned incident assignment or keep-unowned decision, request the same
+admin-global incident deletion decision as the private JSON API, and look up
+non-sensitive deletion status fields for an operator-provided incident ID.
+These authenticated state-changing forms use a session-bound CSRF token and
+block unsafe current-admin self-reset actions from per-account forms.
 
 `/admin/static/styles.css` is unauthenticated because it is token-neutral static
 CSS from the AGPL-licensed source tree. It does not contain incident data,
 tokens, deployment details, keys, or evidence metadata. The admin HTML pages
 use `Cache-Control: no-store` and conservative browser security headers.
 
-The admin web surface shows only route-boundary status, safe navigation stubs,
-and local account-management data. It does not expose incident evidence, viewer
-tokens, session tokens, password hashes, request bodies, uploaded bytes,
-Authorization headers, plaintext, raw keys, stored paths, object keys, private
-deployment details, or sensitive evidence metadata. It is not a public admin
-dashboard and must stay on the private-admin listener.
+The admin web surface shows only safe route-boundary status, local
+account-management data, count-oriented legacy unowned incident metadata, and
+non-sensitive deletion status fields. It does not expose incident notes,
+evidence content, viewer tokens, session tokens, CSRF tokens, password hashes,
+request bodies, uploaded bytes, Authorization headers, plaintext, raw keys,
+wrapped-key ciphertext, stored paths, object keys, private deployment details,
+or user safety narratives. It is not a public admin dashboard and must stay on
+the private-admin listener.
 
 ### Admin API Routes
 
