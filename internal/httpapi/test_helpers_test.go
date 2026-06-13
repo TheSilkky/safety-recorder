@@ -31,6 +31,8 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
+// Test application fixtures.
+
 type testApp struct {
 	mainHandler    http.Handler
 	adminHandler   http.Handler
@@ -142,6 +144,8 @@ func newTestAppWithOptionsAndTestAccount(t *testing.T, options httpapi.Options, 
 		authToken:      authToken,
 	}
 }
+
+// Incident, token, check-in, and stream fixtures.
 
 func createIncident(t *testing.T, app *testApp, requestBody string) string {
 	t.Helper()
@@ -333,6 +337,8 @@ func updateStoredStreamChunkIndex(t *testing.T, app *testApp, incidentID, stream
 	}
 }
 
+// Upload and post-quantum envelope fixtures.
+
 func uploadChunk(t *testing.T, app *testApp, incidentID string, index int, mediaType string, payload []byte, hash string) (*http.Response, []byte) {
 	t.Helper()
 
@@ -473,6 +479,8 @@ func assertPQPayloadFrame(t *testing.T, payload []byte, incidentID, streamID str
 	return meta
 }
 
+// Stable test timestamps.
+
 func testChunkStartedAt() time.Time {
 	return time.Date(2026, 5, 21, 10, 0, 0, 0, time.UTC)
 }
@@ -488,6 +496,8 @@ func testChunkStartedAtString() string {
 func testChunkEndedAtString() string {
 	return testChunkEndedAt().Format(time.RFC3339Nano)
 }
+
+// HTTP request helpers.
 
 func post(t *testing.T, app *testApp, target string, contentType string, body io.Reader) (*http.Response, []byte) {
 	t.Helper()
@@ -566,6 +576,8 @@ func requestWithAuthAndHeaders(t *testing.T, handler http.Handler, method string
 	return response, responseBody
 }
 
+// Small value helpers.
+
 func sha256Hex(payload []byte) string {
 	sum := sha256.Sum256(payload)
 	return hex.EncodeToString(sum[:])
@@ -578,6 +590,8 @@ func stringsOf(value string, count int) string {
 	}
 	return builder.String()
 }
+
+// Response header and error assertions.
 
 func assertIncidentViewerPrivacyHeaders(t *testing.T, response *http.Response) {
 	t.Helper()
@@ -689,6 +703,8 @@ func assertErrorCode(t *testing.T, body []byte, expected string) {
 	}
 }
 
+// ZIP bundle assertions.
+
 func readZipEntries(t *testing.T, body []byte) map[string][]byte {
 	t.Helper()
 
@@ -721,6 +737,8 @@ func assertZipEntry(t *testing.T, entries map[string][]byte, name string) {
 		t.Fatalf("expected zip entry %q, got entries %+v", name, entries)
 	}
 }
+
+// Database and storage assertions.
 
 type incidentTokenDBRow struct {
 	ID         string
@@ -815,6 +833,8 @@ func assertTempDirEmpty(t *testing.T, app *testApp) {
 		t.Fatalf("expected temp dir to be empty, found %d entries", len(entries))
 	}
 }
+
+// Generic test helpers.
 
 func must(t *testing.T, err error) {
 	t.Helper()
