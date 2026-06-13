@@ -5,11 +5,11 @@
 @layer base {
   :root {
     color-scheme: light dark;
-    font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   }
 
   body {
-    @apply m-0 bg-slate-50 text-proofline-ink dark:bg-slate-950 dark:text-slate-50;
+    @apply m-0 bg-[#f4f2f8] text-proofline-ink dark:bg-proofline-night dark:text-slate-50;
   }
 
   h1,
@@ -19,24 +19,28 @@
   }
 
   h1 {
-    @apply mb-0 text-2xl font-bold;
+    @apply mb-0 text-2xl font-bold text-white;
     letter-spacing: 0;
   }
 
   h2 {
-    @apply mb-3 text-base font-bold;
+    @apply mb-0 text-base font-bold text-proofline-ink dark:text-white;
     letter-spacing: 0;
   }
 
   button,
   .secondary-action {
-    @apply cursor-pointer rounded-md border border-proofline-action bg-proofline-action px-3 py-2 font-bold text-white;
+    @apply cursor-pointer rounded-md border border-proofline-action bg-proofline-action px-3 py-2 text-sm font-bold text-white shadow-sm;
+  }
+
+  button:hover {
+    @apply bg-proofline-action-soft;
   }
 
   button:focus-visible,
   .secondary-action:focus-visible,
   input:focus-visible {
-    @apply outline outline-2 outline-offset-2 outline-blue-600;
+    @apply outline outline-2 outline-offset-2 outline-amber-300;
   }
 
   label {
@@ -44,11 +48,11 @@
   }
 
   label span {
-    @apply text-sm font-bold text-proofline-ink-soft dark:text-slate-300;
+    @apply text-sm font-bold text-slate-600 dark:text-slate-300;
   }
 
   input {
-    @apply rounded-md border border-slate-400 bg-white p-2.5 dark:border-slate-600 dark:bg-slate-800;
+    @apply rounded-md border border-slate-400 bg-white p-2.5 shadow-inner dark:border-slate-600 dark:bg-slate-950;
     color: inherit;
     font: inherit;
   }
@@ -56,31 +60,56 @@
 
 @layer components {
   .admin-shell {
-    @apply mx-auto max-w-5xl px-4 py-5 sm:px-6;
+    @apply mx-auto min-h-screen max-w-6xl px-4 py-5 sm:px-6;
   }
 
   .topbar {
-    @apply mb-5 flex items-start justify-between gap-4 border-b border-slate-300 pb-4 dark:border-slate-700;
+    @apply mb-5 flex items-start justify-between gap-4 rounded-md border border-purple-900/40 bg-proofline-shell px-4 py-4 shadow-panel dark:border-purple-400/20;
   }
 
-  .eyebrow {
-    @apply mb-1.5 text-xs font-bold uppercase text-slate-600 dark:text-slate-300;
+  .brand-lockup {
+    @apply flex items-center gap-3;
+  }
+
+  .brand-mark,
+  .panel-icon,
+  .nav-icon,
+  .status-dot {
+    @apply inline-block shrink-0;
+  }
+
+  .brand-mark {
+    @apply grid h-10 w-10 place-items-center rounded-md border border-amber-300/60 bg-purple-950 text-sm font-black text-amber-200;
     letter-spacing: 0;
   }
 
+  .eyebrow,
+  .section-kicker {
+    @apply mb-1 text-xs font-bold uppercase text-amber-200;
+    letter-spacing: 0;
+  }
+
+  .shell-subtitle {
+    @apply mb-0 text-sm font-semibold text-purple-100;
+  }
+
   .secondary-action {
-    @apply bg-white text-proofline-action dark:bg-slate-900 dark:text-slate-50;
+    @apply border-purple-300/40 bg-purple-950/60 text-purple-50;
+  }
+
+  .secondary-action:hover {
+    @apply bg-purple-900;
   }
 
   .admin-nav,
   .status-grid,
   .account-list {
-    @apply grid gap-2.5;
+    @apply grid gap-3;
   }
 
   .admin-nav,
   .status-grid {
-    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(168px, 1fr));
   }
 
   .admin-nav {
@@ -91,11 +120,27 @@
   .status-card,
   .account-item,
   .panel {
-    @apply rounded-md border border-proofline-line bg-proofline-panel shadow-panel dark:border-slate-700 dark:bg-slate-900;
+    @apply rounded-md border border-slate-300 bg-white shadow-panel dark:border-purple-400/20 dark:bg-proofline-surface;
   }
 
   .nav-item {
-    @apply flex flex-col gap-1 p-2.5;
+    @apply flex min-h-20 flex-col gap-1 p-3;
+  }
+
+  .nav-icon {
+    @apply mb-1 h-2 w-6 rounded-full bg-slate-300 dark:bg-purple-300/40;
+  }
+
+  .nav-item.is-active {
+    @apply border-purple-700 bg-purple-50 dark:border-amber-300/60 dark:bg-proofline-surface-soft;
+  }
+
+  .nav-item.is-active .nav-icon {
+    @apply bg-amber-400;
+  }
+
+  .nav-item.is-disabled {
+    @apply text-slate-600 dark:text-slate-300;
   }
 
   .nav-item span,
@@ -107,32 +152,37 @@
 
   .nav-item small,
   .label {
-    @apply text-xs text-slate-500 dark:text-slate-300;
-  }
-
-  .nav-item.is-active {
-    @apply border-blue-600;
-  }
-
-  .nav-item.is-disabled {
-    @apply text-slate-600 dark:text-slate-300;
+    @apply text-xs font-semibold uppercase text-slate-500 dark:text-purple-200;
+    letter-spacing: 0;
   }
 
   .panel {
-    @apply my-4 p-3.5;
+    @apply my-4 p-4;
   }
 
   .form-panel {
-    @apply max-w-md;
+    @apply max-w-lg;
+  }
+
+  .panel-header {
+    @apply mb-4 flex items-center gap-3;
+  }
+
+  .panel-icon {
+    @apply h-8 w-8 rounded-md border border-purple-700 bg-purple-100 dark:border-amber-300/40 dark:bg-purple-950;
+  }
+
+  .panel-icon.warning {
+    @apply border-amber-500 bg-amber-100 dark:bg-amber-950;
   }
 
   .form-error,
   .form-notice {
-    @apply rounded-md border border-orange-300 bg-orange-50 p-3 font-bold text-orange-900;
+    @apply rounded-md border border-orange-300 bg-orange-50 p-3 font-bold text-orange-900 dark:border-orange-400/50 dark:bg-orange-950 dark:text-orange-100;
   }
 
   .form-notice {
-    @apply border-emerald-300 bg-emerald-50 text-emerald-900;
+    @apply border-emerald-300 bg-emerald-50 text-emerald-900 dark:border-emerald-400/50 dark:bg-emerald-950 dark:text-emerald-100;
   }
 
   .muted {
@@ -140,8 +190,8 @@
   }
 
   .inline-form {
-    @apply grid items-end gap-2.5;
-    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    @apply grid items-end gap-3;
+    grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
   }
 
   .compact-form {
@@ -157,7 +207,7 @@
   }
 
   .tag {
-    @apply ml-1.5 inline-block rounded-full bg-sky-100 px-2 py-0.5 text-xs text-sky-800 dark:bg-sky-950 dark:text-sky-100;
+    @apply ml-1.5 inline-block rounded-full bg-purple-100 px-2 py-0.5 text-xs text-purple-900 dark:bg-purple-950 dark:text-purple-100;
   }
 
   .status-grid {
@@ -165,23 +215,39 @@
   }
 
   .status-card {
-    @apply border-l-4 p-3;
+    @apply grid gap-1 border-l-4 p-3;
+  }
+
+  .status-dot {
+    @apply h-2 w-6 rounded-full;
   }
 
   .status-card.ok {
     @apply border-l-proofline-ok;
   }
 
+  .status-card.ok .status-dot {
+    @apply bg-emerald-500;
+  }
+
   .status-card.neutral {
     @apply border-l-blue-600;
+  }
+
+  .status-card.neutral .status-dot {
+    @apply bg-blue-500;
   }
 
   .status-card.warn {
     @apply border-l-proofline-warn;
   }
 
+  .status-card.warn .status-dot {
+    @apply bg-amber-500;
+  }
+
   .boundary-list {
-    @apply m-0 list-disc pl-5;
+    @apply m-0 list-disc pl-5 text-sm text-slate-700 dark:text-slate-200;
   }
 
   .boundary-list li + li {
