@@ -4,45 +4,238 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="referrer" content="no-referrer">
+  <meta name="theme-color" content="#10051F">
   <title>{{.Title}}</title>
+  <link rel="icon" href="/admin/static/favicon.ico" sizes="any">
+  <link rel="icon" type="image/svg+xml" href="/admin/static/favicon.svg">
+  <link rel="icon" type="image/png" sizes="16x16" href="/admin/static/favicon-16x16.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/admin/static/favicon-32x32.png">
+  <link rel="apple-touch-icon" href="/admin/static/apple-touch-icon.png">
+  <link rel="manifest" href="/admin/static/site.webmanifest">
   <link rel="stylesheet" href="/admin/static/styles.css">
 </head>
 <body>
-  <main class="admin-shell" data-admin-mode="{{.Mode}}">
-    <header class="topbar" aria-label="Proofline admin header">
-      <div class="brand-lockup">
-        <span class="brand-mark" aria-hidden="true">P</span>
-        <div>
-        <p class="eyebrow">Private admin</p>
-        <h1>Proofline Admin</h1>
-        <p class="shell-subtitle">Operator Console</p>
-        </div>
-      </div>
-      {{if eq .Mode "dashboard"}}
-      <form method="post" action="/admin/logout">
+  <a href="#content" class="skip-link">Skip to content</a>
+
+  {{if eq .Mode "dashboard"}}
+  <div class="admin-shell" data-admin-mode="{{.Mode}}">
+    <header class="mobile-header" aria-label="Proofline admin header">
+      <a href="/admin" class="brand-lockup" aria-label="Proofline Admin home">
+        <img src="/admin/static/proofline-shield-logo.svg" alt="" aria-hidden="true" class="brand-logo">
+        <span class="brand-copy">
+          <span class="brand-title">Proofline Admin</span>
+          <span class="brand-subtitle">Operator Console</span>
+        </span>
+      </a>
+      <form method="post" action="/admin/logout" class="logout-form">
         <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
-        <button type="submit" class="secondary-action">Sign out</button>
+        <button type="submit" class="ghost-button">Sign out</button>
       </form>
-      {{end}}
     </header>
 
-    {{if .Error}}
-    <p class="form-error" role="alert">{{.Error}}</p>
-    {{end}}
-    {{if .Notice}}
-    <p class="form-notice" role="status">{{.Notice}}</p>
-    {{end}}
+    <aside class="admin-sidebar" aria-label="Admin navigation">
+      <a href="/admin" class="sidebar-brand" aria-label="Proofline Admin home">
+        <img src="/admin/static/proofline-shield-logo.svg" alt="" aria-hidden="true" class="sidebar-logo">
+        <span>
+          <span class="sidebar-title">Proofline</span>
+          <span class="sidebar-kicker">Private admin</span>
+        </span>
+      </a>
 
-    {{if eq .Mode "bootstrap"}}
-    <section class="panel form-panel">
-      <div class="panel-header">
-        <span class="panel-icon" aria-hidden="true"></span>
+      <nav class="sidebar-nav" aria-label="Admin sections">
+        {{range .NavItems}}
+        <span class="nav-link {{if eq .State "Active"}}is-active{{else}}is-disabled{{end}}">
+          <span class="nav-link-main">
+            <svg class="icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M3 5a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z"></path>
+            </svg>
+            <span>{{.Label}}</span>
+          </span>
+          <small>{{.State}}</small>
+        </span>
+        {{end}}
+      </nav>
+
+      <section class="sidebar-note" aria-label="Admin route boundary">
+        <svg class="icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M7 11V8a5 5 0 0 1 10 0v3"></path>
+          <path d="M6 11h12v10H6z"></path>
+        </svg>
+        <span>Private listener only</span>
+      </section>
+    </aside>
+
+    <main id="content" class="dashboard-main" tabindex="-1">
+      <section class="page-header" aria-labelledby="admin-dashboard-title">
         <div>
-          <p class="section-kicker">Bootstrap</p>
-          <h2>Create First Admin</h2>
+          <p class="eyebrow">Local operations</p>
+          <h1 id="admin-dashboard-title">Proofline Admin</h1>
+          <p class="page-lead">Operator Console for local account administration and private route checks.</p>
+        </div>
+        <form method="post" action="/admin/logout" class="desktop-logout">
+          <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+          <button type="submit" class="ghost-button">Sign out</button>
+        </form>
+      </section>
+
+      {{if .Error}}
+      <p class="inline-status danger" role="alert">{{.Error}}</p>
+      {{end}}
+      {{if .Notice}}
+      <p class="inline-status success" role="status">{{.Notice}}</p>
+      {{end}}
+
+      <section class="metric-grid" aria-label="Admin boundary status">
+        {{range .StatusItems}}
+        <article class="metric-card {{.Tone}}">
+          <span class="metric-icon" aria-hidden="true"></span>
+          <dl>
+            <div>
+              <dt>{{.Label}}</dt>
+              <dd>{{.Value}}</dd>
+            </div>
+          </dl>
+        </article>
+        {{end}}
+      </section>
+
+      <section class="workspace-grid" aria-label="Admin tools">
+        <article class="content-section accounts-section">
+          <div class="section-header">
+            <div>
+              <p class="eyebrow">Local directory</p>
+              <h2>User Accounts</h2>
+            </div>
+            <span class="status-badge">{{len .Accounts}} visible</span>
+          </div>
+
+          <div class="account-list">
+            {{range .Accounts}}
+            <section class="account-row">
+              <div class="account-summary">
+                <div class="account-avatar" aria-hidden="true">{{if .IsCurrent}}You{{else}}{{.Role}}{{end}}</div>
+                <div class="account-copy">
+                  <h3>{{.Username}}{{if .IsCurrent}} <span class="status-badge current">You</span>{{end}}</h3>
+                  <dl class="metadata-row">
+                    <div>
+                      <dt>Role</dt>
+                      <dd>{{.Role}}</dd>
+                    </div>
+                    <div>
+                      <dt>Created</dt>
+                      <dd>{{humanTime .CreatedAt}}</dd>
+                    </div>
+                    <div>
+                      <dt>Password changed</dt>
+                      <dd>{{humanTime .PasswordChangedAt}}</dd>
+                    </div>
+                  </dl>
+                </div>
+              </div>
+              {{if .IsCurrent}}
+              <p class="muted">Use the admin password form to update this account.</p>
+              {{else}}
+              <form method="post" action="/admin/accounts/{{.ID}}/password" class="inline-form compact-form">
+                <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+                <label>
+                  <span>New password</span>
+                  <input name="new_password" type="password" autocomplete="new-password" required>
+                </label>
+                <button type="submit">Reset password</button>
+              </form>
+              {{end}}
+            </section>
+            {{end}}
+          </div>
+        </article>
+
+        <div class="side-stack">
+          <article class="content-section">
+            <div class="section-header">
+              <div>
+                <p class="eyebrow">Current admin</p>
+                <h2>Admin Password</h2>
+              </div>
+              <svg class="section-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"></path>
+                <path d="M9.5 12.5 11.2 14 15 9.8"></path>
+              </svg>
+            </div>
+            <p class="muted">Change the password for {{.Account.Username}}.</p>
+            <form method="post" action="/admin/password" class="stack-form">
+              <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+              <label>
+                <span>Current password</span>
+                <input name="current_password" type="password" autocomplete="current-password" required>
+              </label>
+              <label>
+                <span>New password</span>
+                <input name="new_password" type="password" autocomplete="new-password" required>
+              </label>
+              <button type="submit">Change password</button>
+            </form>
+          </article>
+
+          <article class="content-section boundary-section">
+            <div class="section-header">
+              <div>
+                <p class="eyebrow">Evidence Boundary</p>
+                <h2>Boundaries</h2>
+              </div>
+              <svg class="section-icon warning" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"></path>
+                <path d="M12 8v4"></path>
+                <path d="M12 16h.01"></path>
+              </svg>
+            </div>
+            <ul class="boundary-list">
+              <li>No incident evidence, bearer tokens, raw keys, plaintext, stored paths, object keys, or private deployment details are shown.</li>
+              <li>Public incident viewer routes stay read-only and separate from this private admin route group.</li>
+              <li>Incident and operator workflows remain on the JSON API until separate scoped implementation work adds them here.</li>
+            </ul>
+          </article>
+        </div>
+      </section>
+    </main>
+  </div>
+  {{else}}
+  <main id="content" class="admin-shell auth-shell" data-admin-mode="{{.Mode}}" tabindex="-1">
+    <section class="auth-card" aria-labelledby="auth-title">
+      <div class="auth-brand">
+        <img src="/admin/static/proofline-shield-logo.svg" alt="" aria-hidden="true" class="auth-logo">
+        <div>
+          <p class="auth-kicker">Proofline</p>
+          {{if eq .Mode "bootstrap"}}
+          <h1 id="auth-title">Create First Admin</h1>
+          {{else if eq .Mode "login"}}
+          <h1 id="auth-title">Admin Login</h1>
+          {{else if eq .Mode "forbidden"}}
+          <h1 id="auth-title">Access Denied</h1>
+          {{else}}
+          <h1 id="auth-title">Proofline Admin</h1>
+          {{end}}
         </div>
       </div>
-      <form method="post" action="/admin/bootstrap">
+
+      {{if eq .Mode "bootstrap"}}
+      <p class="auth-lead">Create the first local admin account for this private Proofline server.</p>
+      {{else if eq .Mode "login"}}
+      <p class="auth-lead">Sign in to the private operator console for local account administration.</p>
+      {{else if eq .Mode "forbidden"}}
+      <p class="auth-lead">This account cannot open the admin interface.</p>
+      {{else}}
+      <p class="auth-lead">The admin interface could not complete the request.</p>
+      {{end}}
+
+      {{if .Error}}
+      <p class="inline-status danger" role="alert">{{.Error}}</p>
+      {{end}}
+      {{if .Notice}}
+      <p class="inline-status success" role="status">{{.Notice}}</p>
+      {{end}}
+
+      {{if eq .Mode "bootstrap"}}
+      <form method="post" action="/admin/bootstrap" class="stack-form">
         <label>
           <span>Bootstrap secret</span>
           <input name="bootstrap_secret" type="password" autocomplete="off" required>
@@ -57,17 +250,8 @@
         </label>
         <button type="submit">Create admin</button>
       </form>
-    </section>
-    {{else if eq .Mode "login"}}
-    <section class="panel form-panel">
-      <div class="panel-header">
-        <span class="panel-icon" aria-hidden="true"></span>
-        <div>
-          <p class="section-kicker">Session</p>
-          <h2>Admin Login</h2>
-        </div>
-      </div>
-      <form method="post" action="/admin/login">
+      {{else if eq .Mode "login"}}
+      <form method="post" action="/admin/login" class="stack-form">
         <label>
           <span>Username</span>
           <input name="username" type="text" autocomplete="username" required>
@@ -78,111 +262,11 @@
         </label>
         <button type="submit">Sign in</button>
       </form>
-    </section>
-    {{else if eq .Mode "forbidden"}}
-    <section class="panel">
-      <div class="panel-header">
-        <span class="panel-icon warning" aria-hidden="true"></span>
-        <div>
-          <p class="section-kicker">Access</p>
-          <h2>Access Denied</h2>
-        </div>
-      </div>
-      <p>This account cannot open the admin interface.</p>
-    </section>
-    {{else}}
-    <nav class="admin-nav" aria-label="Admin sections">
-      {{range .NavItems}}
-      <span class="nav-item {{if eq .State "Active"}}is-active{{else}}is-disabled{{end}}">
-        <span class="nav-icon" aria-hidden="true"></span>
-        <span>{{.Label}}</span>
-        <small>{{.State}}</small>
-      </span>
-      {{end}}
-    </nav>
-
-    <section class="status-grid" aria-label="Admin boundary status">
-      {{range .StatusItems}}
-      <div class="status-card {{.Tone}}">
-        <span class="status-dot" aria-hidden="true"></span>
-        <div class="label">{{.Label}}</div>
-        <div class="value">{{.Value}}</div>
-      </div>
+      {{else if eq .Mode "forbidden"}}
+      <p class="muted">Admin role is required.</p>
       {{end}}
     </section>
-
-    <section class="panel action-panel">
-      <div class="panel-header">
-        <span class="panel-icon" aria-hidden="true"></span>
-        <div>
-          <p class="section-kicker">Current admin</p>
-          <h2>Admin Password</h2>
-        </div>
-      </div>
-      <p class="muted">Change the password for {{.Account.Username}}.</p>
-      <form method="post" action="/admin/password" class="inline-form">
-        <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
-        <label>
-          <span>Current password</span>
-          <input name="current_password" type="password" autocomplete="current-password" required>
-        </label>
-        <label>
-          <span>New password</span>
-          <input name="new_password" type="password" autocomplete="new-password" required>
-        </label>
-        <button type="submit">Change password</button>
-      </form>
-    </section>
-
-    <section class="panel">
-      <div class="panel-header">
-        <span class="panel-icon" aria-hidden="true"></span>
-        <div>
-          <p class="section-kicker">Local directory</p>
-          <h2>User Accounts</h2>
-        </div>
-      </div>
-      <div class="account-list">
-        {{range .Accounts}}
-        <article class="account-item">
-          <div class="account-summary">
-            <div>
-              <div class="value">{{.Username}}{{if .IsCurrent}} <span class="tag">You</span>{{end}}</div>
-              <div class="muted">{{.Role}} · created {{humanTime .CreatedAt}} · password changed {{humanTime .PasswordChangedAt}}</div>
-            </div>
-          </div>
-          {{if .IsCurrent}}
-          <p class="muted">Use the admin password form above to change this account.</p>
-          {{else}}
-          <form method="post" action="/admin/accounts/{{.ID}}/password" class="inline-form compact-form">
-            <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
-            <label>
-              <span>New password</span>
-              <input name="new_password" type="password" autocomplete="new-password" required>
-            </label>
-            <button type="submit">Reset password</button>
-          </form>
-          {{end}}
-        </article>
-        {{end}}
-      </div>
-    </section>
-
-    <section class="panel">
-      <div class="panel-header">
-        <span class="panel-icon warning" aria-hidden="true"></span>
-        <div>
-          <p class="section-kicker">Evidence Boundary</p>
-          <h2>Boundaries</h2>
-        </div>
-      </div>
-      <ul class="boundary-list">
-        <li>No incident evidence, bearer tokens, raw keys, plaintext, stored paths, object keys, or private deployment details are shown.</li>
-        <li>Public incident viewer routes stay read-only and separate from this private admin route group.</li>
-        <li>Incident and operator workflows remain on the JSON API until separate scoped implementation work adds them here.</li>
-      </ul>
-    </section>
-    {{end}}
   </main>
+  {{end}}
 </body>
 </html>

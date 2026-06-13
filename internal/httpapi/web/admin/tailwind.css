@@ -4,253 +4,381 @@
 
 @layer base {
   :root {
-    color-scheme: light dark;
+    color-scheme: dark;
     font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   }
 
+  * {
+    box-sizing: border-box;
+  }
+
+  html {
+    min-width: 320px;
+    background: #1a0c2e;
+  }
+
   body {
-    @apply m-0 bg-[#f4f2f8] text-proofline-ink dark:bg-proofline-night dark:text-slate-50;
+    @apply m-0 min-h-screen bg-proofline-bg text-proofline-text antialiased;
   }
 
   h1,
   h2,
-  p {
-    @apply mt-0;
+  h3,
+  p,
+  dl,
+  dd {
+    @apply m-0;
   }
 
   h1 {
-    @apply mb-0 text-2xl font-bold text-white;
+    @apply text-2xl font-semibold leading-tight text-proofline-text;
     letter-spacing: 0;
   }
 
   h2 {
-    @apply mb-0 text-base font-bold text-proofline-ink dark:text-white;
+    @apply text-lg font-semibold leading-6 text-proofline-text;
     letter-spacing: 0;
   }
 
-  button,
-  .secondary-action {
-    @apply cursor-pointer rounded-md border border-proofline-action bg-proofline-action px-3 py-2 text-sm font-bold text-white shadow-sm;
+  h3 {
+    @apply text-base font-semibold leading-6 text-proofline-text;
+    letter-spacing: 0;
+  }
+
+  button {
+    @apply inline-flex min-h-11 w-fit cursor-pointer items-center justify-center rounded-md border border-proofline-primary bg-proofline-primary px-4 py-2.5 text-sm font-semibold text-proofline-primary-text transition-colors;
+    letter-spacing: 0;
   }
 
   button:hover {
-    @apply bg-proofline-action-soft;
+    @apply border-proofline-primary-hover bg-proofline-primary-hover;
   }
 
   button:focus-visible,
-  .secondary-action:focus-visible,
-  input:focus-visible {
-    @apply outline outline-2 outline-offset-2 outline-amber-300;
+  input:focus-visible,
+  a:focus-visible {
+    @apply outline outline-2 outline-offset-2 outline-proofline-focus;
   }
 
   label {
-    @apply mb-3 grid gap-1.5;
-  }
-
-  label span {
-    @apply text-sm font-bold text-slate-600 dark:text-slate-300;
+    @apply grid gap-2 text-sm font-medium text-proofline-text-secondary;
   }
 
   input {
-    @apply rounded-md border border-slate-400 bg-white p-2.5 shadow-inner dark:border-slate-600 dark:bg-slate-950;
-    color: inherit;
+    @apply min-h-11 w-full rounded-md border border-proofline-border bg-proofline-bg-deep px-3 py-2.5 text-base text-proofline-text shadow-inner transition-colors;
     font: inherit;
+  }
+
+  input:hover {
+    @apply border-proofline-border-strong;
+  }
+
+  input::placeholder {
+    @apply text-proofline-text-disabled;
   }
 }
 
 @layer components {
+  .skip-link {
+    @apply sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-50 focus:rounded-md focus:border focus:border-proofline-border-strong focus:bg-proofline-surface-strong focus:px-4 focus:py-2 focus:text-sm focus:font-medium focus:text-proofline-text;
+  }
+
   .admin-shell {
-    @apply mx-auto min-h-screen max-w-6xl px-4 py-5 sm:px-6;
+    @apply min-h-screen bg-proofline-bg text-proofline-text;
   }
 
-  .topbar {
-    @apply mb-5 flex items-start justify-between gap-4 rounded-md border border-purple-900/40 bg-proofline-shell px-4 py-4 shadow-panel dark:border-purple-400/20;
+  .admin-shell[data-admin-mode="dashboard"] {
+    @apply lg:grid;
   }
 
-  .brand-lockup {
-    @apply flex items-center gap-3;
+  @media (min-width: 1024px) {
+    .admin-shell[data-admin-mode="dashboard"] {
+      grid-template-columns: 248px minmax(0, 1fr);
+    }
   }
 
-  .brand-mark,
-  .panel-icon,
-  .nav-icon,
-  .status-dot {
-    @apply inline-block shrink-0;
+  .auth-shell {
+    @apply grid place-items-center px-4 py-10 sm:px-6;
   }
 
-  .brand-mark {
-    @apply grid h-10 w-10 place-items-center rounded-md border border-amber-300/60 bg-purple-950 text-sm font-black text-amber-200;
+  .auth-card {
+    @apply w-full max-w-md rounded-lg border border-proofline-border bg-proofline-surface p-5 shadow-panel sm:p-6;
+  }
+
+  .auth-brand {
+    @apply flex items-start gap-3;
+  }
+
+  .auth-logo {
+    @apply h-16 w-16 shrink-0 scale-125 object-contain;
+  }
+
+  .auth-kicker {
+    @apply text-sm font-medium text-proofline-text-muted;
+  }
+
+  .auth-lead {
+    @apply mt-4 text-sm leading-6 text-proofline-text-secondary;
+  }
+
+  .mobile-header {
+    @apply sticky top-0 z-20 flex items-center justify-between gap-3 border-b border-proofline-border bg-proofline-bg-deep/95 px-4 py-3 backdrop-blur lg:hidden;
+  }
+
+  .brand-lockup,
+  .sidebar-brand {
+    @apply inline-flex min-w-0 items-center gap-3 rounded-md text-proofline-text no-underline;
+  }
+
+  .brand-logo {
+    @apply h-10 w-10 shrink-0 object-contain;
+  }
+
+  .brand-copy,
+  .sidebar-brand span {
+    @apply grid min-w-0 gap-0.5;
+  }
+
+  .brand-title,
+  .sidebar-title {
+    @apply truncate text-lg font-semibold leading-6 text-proofline-text;
+  }
+
+  .brand-subtitle,
+  .sidebar-kicker {
+    @apply truncate text-xs font-medium text-proofline-text-muted;
+  }
+
+  .logout-form {
+    @apply shrink-0;
+  }
+
+  .admin-sidebar {
+    @apply hidden min-h-screen flex-col gap-6 border-r border-proofline-border bg-proofline-bg-deep px-4 py-5 lg:flex;
+  }
+
+  .sidebar-brand {
+    @apply px-1;
+  }
+
+  .sidebar-logo {
+    @apply h-11 w-11 shrink-0 object-contain;
+  }
+
+  .sidebar-nav {
+    @apply grid gap-2;
+  }
+
+  .nav-link {
+    @apply rounded-lg border border-transparent px-3 py-3 text-sm text-proofline-text-muted;
+  }
+
+  .nav-link-main {
+    @apply flex items-center gap-2 font-medium;
+  }
+
+  .nav-link small {
+    @apply mt-1 block text-xs font-medium text-proofline-text-disabled;
     letter-spacing: 0;
   }
 
-  .eyebrow,
-  .section-kicker {
-    @apply mb-1 text-xs font-bold uppercase text-amber-200;
+  .nav-link.is-active {
+    @apply border-proofline-border-strong bg-proofline-surface-strong text-proofline-text shadow-soft;
+  }
+
+  .nav-link.is-active small {
+    @apply text-proofline-text-secondary;
+  }
+
+  .nav-link.is-disabled {
+    @apply bg-transparent;
+  }
+
+  .sidebar-note {
+    @apply mt-auto flex items-center gap-2 rounded-lg border border-proofline-warning/40 bg-proofline-warning-bg px-3 py-3 text-sm font-medium text-proofline-warning;
+  }
+
+  .dashboard-main {
+    @apply mx-auto w-full max-w-7xl px-4 py-5 sm:px-6 lg:px-8 lg:py-6;
+  }
+
+  .page-header,
+  .content-section,
+  .metric-card {
+    @apply rounded-lg border border-proofline-border bg-proofline-surface shadow-panel;
+  }
+
+  .page-header {
+    @apply flex flex-col gap-4 p-5 sm:flex-row sm:items-start sm:justify-between sm:p-6;
+  }
+
+  .page-lead {
+    @apply mt-3 max-w-3xl text-sm leading-6 text-proofline-text-secondary;
+  }
+
+  .eyebrow {
+    @apply mb-2 text-sm font-medium text-proofline-text-muted;
     letter-spacing: 0;
   }
 
-  .shell-subtitle {
-    @apply mb-0 text-sm font-semibold text-purple-100;
+  .desktop-logout {
+    @apply hidden shrink-0 lg:block;
   }
 
-  .secondary-action {
-    @apply border-purple-300/40 bg-purple-950/60 text-purple-50;
+  .ghost-button {
+    @apply border-proofline-border bg-proofline-surface-elevated text-proofline-text-secondary;
   }
 
-  .secondary-action:hover {
-    @apply bg-purple-900;
+  .ghost-button:hover {
+    @apply border-proofline-border-strong bg-proofline-surface-strong text-proofline-text;
   }
 
-  .admin-nav,
-  .status-grid,
+  .inline-status {
+    @apply mt-4 rounded-md border p-3 text-sm font-medium leading-6;
+  }
+
+  .inline-status.success {
+    @apply border-proofline-success/40 bg-proofline-success-bg text-proofline-success;
+  }
+
+  .inline-status.danger {
+    @apply border-proofline-danger/40 bg-proofline-danger-bg text-proofline-danger;
+  }
+
+  .metric-grid {
+    @apply mt-5 grid gap-4 sm:grid-cols-3;
+  }
+
+  .metric-card {
+    @apply grid min-h-20 grid-cols-[auto_minmax(0,1fr)] items-start gap-3 px-4 py-3;
+  }
+
+  .metric-card dt {
+    @apply text-sm font-medium text-proofline-text-muted;
+  }
+
+  .metric-card dd {
+    @apply mt-1 break-words text-xl font-semibold leading-tight text-proofline-text;
+  }
+
+  .metric-icon {
+    @apply mt-1 h-3 w-3 rounded-full bg-proofline-info;
+  }
+
+  .metric-card.ok .metric-icon {
+    @apply bg-proofline-success;
+  }
+
+  .metric-card.neutral .metric-icon {
+    @apply bg-proofline-info;
+  }
+
+  .metric-card.warn .metric-icon {
+    @apply bg-proofline-warning;
+  }
+
+  .workspace-grid {
+    @apply mt-5 grid gap-5 xl:grid-cols-3;
+  }
+
+  .content-section {
+    @apply p-5 sm:p-6;
+  }
+
+  .accounts-section {
+    @apply min-w-0 xl:col-span-2;
+  }
+
+  .section-header {
+    @apply mb-4 flex items-start justify-between gap-4;
+  }
+
+  .section-icon {
+    @apply h-9 w-9 shrink-0 rounded-md border border-proofline-border-strong bg-proofline-surface-strong p-2 text-proofline-primary;
+  }
+
+  .section-icon.warning {
+    @apply border-proofline-warning/40 bg-proofline-warning-bg text-proofline-warning;
+  }
+
+  .status-badge {
+    @apply inline-flex w-fit shrink-0 items-center rounded-md border border-proofline-border bg-proofline-surface-elevated px-2 py-1 text-xs font-medium text-proofline-text-secondary;
+  }
+
+  .status-badge.current {
+    @apply ml-2 border-proofline-success/40 bg-proofline-success-bg text-proofline-success;
+  }
+
   .account-list {
-    @apply grid gap-3;
+    @apply divide-y divide-proofline-border;
   }
 
-  .admin-nav,
-  .status-grid {
-    grid-template-columns: repeat(auto-fit, minmax(168px, 1fr));
-  }
-
-  .admin-nav {
-    @apply mb-4;
-  }
-
-  .nav-item,
-  .status-card,
-  .account-item,
-  .panel {
-    @apply rounded-md border border-slate-300 bg-white shadow-panel dark:border-purple-400/20 dark:bg-proofline-surface;
-  }
-
-  .nav-item {
-    @apply flex min-h-20 flex-col gap-1 p-3;
-  }
-
-  .nav-icon {
-    @apply mb-1 h-2 w-6 rounded-full bg-slate-300 dark:bg-purple-300/40;
-  }
-
-  .nav-item.is-active {
-    @apply border-purple-700 bg-purple-50 dark:border-amber-300/60 dark:bg-proofline-surface-soft;
-  }
-
-  .nav-item.is-active .nav-icon {
-    @apply bg-amber-400;
-  }
-
-  .nav-item.is-disabled {
-    @apply text-slate-600 dark:text-slate-300;
-  }
-
-  .nav-item span,
-  .tag,
-  .value {
-    @apply font-bold;
-    overflow-wrap: anywhere;
-  }
-
-  .nav-item small,
-  .label {
-    @apply text-xs font-semibold uppercase text-slate-500 dark:text-purple-200;
-    letter-spacing: 0;
-  }
-
-  .panel {
-    @apply my-4 p-4;
-  }
-
-  .form-panel {
-    @apply max-w-lg;
-  }
-
-  .panel-header {
-    @apply mb-4 flex items-center gap-3;
-  }
-
-  .panel-icon {
-    @apply h-8 w-8 rounded-md border border-purple-700 bg-purple-100 dark:border-amber-300/40 dark:bg-purple-950;
-  }
-
-  .panel-icon.warning {
-    @apply border-amber-500 bg-amber-100 dark:bg-amber-950;
-  }
-
-  .form-error,
-  .form-notice {
-    @apply rounded-md border border-orange-300 bg-orange-50 p-3 font-bold text-orange-900 dark:border-orange-400/50 dark:bg-orange-950 dark:text-orange-100;
-  }
-
-  .form-notice {
-    @apply border-emerald-300 bg-emerald-50 text-emerald-900 dark:border-emerald-400/50 dark:bg-emerald-950 dark:text-emerald-100;
-  }
-
-  .muted {
-    @apply text-sm text-slate-600 dark:text-slate-300;
-  }
-
-  .inline-form {
-    @apply grid items-end gap-3;
-    grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
-  }
-
-  .compact-form {
-    @apply mt-3;
-  }
-
-  .account-item {
-    @apply p-3;
+  .account-row {
+    @apply grid gap-3 py-4 first:pt-0 last:pb-0;
   }
 
   .account-summary {
-    @apply flex items-start justify-between gap-3;
+    @apply grid gap-3 sm:grid-cols-[auto_minmax(0,1fr)] sm:items-start;
   }
 
-  .tag {
-    @apply ml-1.5 inline-block rounded-full bg-purple-100 px-2 py-0.5 text-xs text-purple-900 dark:bg-purple-950 dark:text-purple-100;
+  .account-avatar {
+    @apply grid h-11 min-w-11 place-items-center rounded-md border border-proofline-border bg-proofline-surface-elevated px-2 text-xs font-semibold uppercase text-proofline-text-secondary;
   }
 
-  .status-grid {
-    @apply my-4;
+  .account-copy {
+    @apply min-w-0;
   }
 
-  .status-card {
-    @apply grid gap-1 border-l-4 p-3;
+  .account-copy h3 {
+    @apply break-words;
   }
 
-  .status-dot {
-    @apply h-2 w-6 rounded-full;
+  .metadata-row {
+    @apply mt-3 grid gap-3 sm:grid-cols-3;
   }
 
-  .status-card.ok {
-    @apply border-l-proofline-ok;
+  .metadata-row dt {
+    @apply text-xs font-medium uppercase text-proofline-text-muted;
+    letter-spacing: 0;
   }
 
-  .status-card.ok .status-dot {
-    @apply bg-emerald-500;
+  .metadata-row dd {
+    @apply mt-1 break-words text-sm leading-5 text-proofline-text-secondary;
   }
 
-  .status-card.neutral {
-    @apply border-l-blue-600;
+  .side-stack {
+    @apply grid content-start gap-5;
   }
 
-  .status-card.neutral .status-dot {
-    @apply bg-blue-500;
+  .stack-form {
+    @apply mt-5 grid gap-4;
   }
 
-  .status-card.warn {
-    @apply border-l-proofline-warn;
+  .inline-form {
+    @apply grid items-end gap-3 sm:grid-cols-[minmax(0,1fr)_auto];
   }
 
-  .status-card.warn .status-dot {
-    @apply bg-amber-500;
+  .compact-form {
+    @apply max-w-2xl;
+  }
+
+  .muted {
+    @apply text-sm leading-6 text-proofline-text-muted;
+  }
+
+  .boundary-section {
+    @apply border-proofline-warning/40;
   }
 
   .boundary-list {
-    @apply m-0 list-disc pl-5 text-sm text-slate-700 dark:text-slate-200;
+    @apply m-0 list-disc pl-5 text-sm leading-6 text-proofline-text-secondary;
   }
 
   .boundary-list li + li {
     @apply mt-2;
+  }
+
+  .icon {
+    @apply h-4 w-4 shrink-0;
   }
 }

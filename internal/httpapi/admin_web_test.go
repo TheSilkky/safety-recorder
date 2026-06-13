@@ -301,16 +301,30 @@ func TestAdminWebBootstrapScreenCreatesFirstAdminSession(t *testing.T) {
 func TestAdminWebStaticAssetsAreUnauthenticated(t *testing.T) {
 	app := newTestApp(t)
 
-	response, body := request(t, app.adminHandler, http.MethodGet, "/admin/static/styles.css", "", nil)
-	defer response.Body.Close()
+	for _, asset := range []struct {
+		path        string
+		contentType string
+		contains    string
+	}{
+		{path: "/admin/static/styles.css", contentType: "text/css", contains: ".admin-shell"},
+		{path: "/admin/static/proofline-shield-logo.svg", contentType: "image/svg+xml", contains: "<svg"},
+		{path: "/admin/static/proofline-p-mark.svg", contentType: "image/svg+xml", contains: "<svg"},
+		{path: "/admin/static/favicon.svg", contentType: "image/svg+xml", contains: "<svg"},
+		{path: "/admin/static/site.webmanifest", contains: "/admin/static/android-chrome-192x192.png"},
+	} {
+		response, body := request(t, app.adminHandler, http.MethodGet, asset.path, "", nil)
+		response.Body.Close()
 
-	if response.StatusCode != http.StatusOK {
-		t.Fatalf("expected admin static status 200, got %d: %s", response.StatusCode, body)
-	}
-	assertContentTypeContains(t, response, "text/css")
-	assertPublicBrowserSecurityHeaders(t, response)
-	if !bytes.Contains(body, []byte(".admin-shell")) {
-		t.Fatalf("admin static CSS did not contain expected admin styles: %s", body)
+		if response.StatusCode != http.StatusOK {
+			t.Fatalf("expected admin static %s status 200, got %d: %s", asset.path, response.StatusCode, body)
+		}
+		if asset.contentType != "" {
+			assertContentTypeContains(t, response, asset.contentType)
+		}
+		assertPublicBrowserSecurityHeaders(t, response)
+		if !bytes.Contains(body, []byte(asset.contains)) {
+			t.Fatalf("admin static %s did not contain %q: %s", asset.path, asset.contains, body)
+		}
 	}
 }
 
