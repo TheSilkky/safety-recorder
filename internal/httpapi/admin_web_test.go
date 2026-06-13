@@ -63,7 +63,7 @@ func TestAdminWebLoginSetsHttpOnlyCookieAndOpensDashboard(t *testing.T) {
 		t.Fatalf("expected admin dashboard status 200, got %d: %s", response.StatusCode, body)
 	}
 	assertAdminWebPageHeaders(t, response)
-	for _, expected := range []string{"Proofline Admin", "Admin session", "Private /admin", "Public viewer", "Not mounted"} {
+	for _, expected := range []string{"Proofline Admin", "Operator Console", "Admin session", "Private /admin", "Public viewer", "Not mounted", "Evidence Boundary"} {
 		if !bytes.Contains(body, []byte(expected)) {
 			t.Fatalf("admin dashboard missing %q: %s", expected, body)
 		}

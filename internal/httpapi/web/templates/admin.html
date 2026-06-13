@@ -9,10 +9,14 @@
 </head>
 <body>
   <main class="admin-shell" data-admin-mode="{{.Mode}}">
-    <header class="topbar">
-      <div>
+    <header class="topbar" aria-label="Proofline admin header">
+      <div class="brand-lockup">
+        <span class="brand-mark" aria-hidden="true">P</span>
+        <div>
         <p class="eyebrow">Private admin</p>
         <h1>Proofline Admin</h1>
+        <p class="shell-subtitle">Operator Console</p>
+        </div>
       </div>
       {{if eq .Mode "dashboard"}}
       <form method="post" action="/admin/logout">
@@ -31,7 +35,13 @@
 
     {{if eq .Mode "bootstrap"}}
     <section class="panel form-panel">
-      <h2>Create First Admin</h2>
+      <div class="panel-header">
+        <span class="panel-icon" aria-hidden="true"></span>
+        <div>
+          <p class="section-kicker">Bootstrap</p>
+          <h2>Create First Admin</h2>
+        </div>
+      </div>
       <form method="post" action="/admin/bootstrap">
         <label>
           <span>Bootstrap secret</span>
@@ -50,7 +60,13 @@
     </section>
     {{else if eq .Mode "login"}}
     <section class="panel form-panel">
-      <h2>Admin Login</h2>
+      <div class="panel-header">
+        <span class="panel-icon" aria-hidden="true"></span>
+        <div>
+          <p class="section-kicker">Session</p>
+          <h2>Admin Login</h2>
+        </div>
+      </div>
       <form method="post" action="/admin/login">
         <label>
           <span>Username</span>
@@ -65,13 +81,20 @@
     </section>
     {{else if eq .Mode "forbidden"}}
     <section class="panel">
-      <h2>Access Denied</h2>
+      <div class="panel-header">
+        <span class="panel-icon warning" aria-hidden="true"></span>
+        <div>
+          <p class="section-kicker">Access</p>
+          <h2>Access Denied</h2>
+        </div>
+      </div>
       <p>This account cannot open the admin interface.</p>
     </section>
     {{else}}
     <nav class="admin-nav" aria-label="Admin sections">
       {{range .NavItems}}
       <span class="nav-item {{if eq .State "Active"}}is-active{{else}}is-disabled{{end}}">
+        <span class="nav-icon" aria-hidden="true"></span>
         <span>{{.Label}}</span>
         <small>{{.State}}</small>
       </span>
@@ -81,14 +104,21 @@
     <section class="status-grid" aria-label="Admin boundary status">
       {{range .StatusItems}}
       <div class="status-card {{.Tone}}">
+        <span class="status-dot" aria-hidden="true"></span>
         <div class="label">{{.Label}}</div>
         <div class="value">{{.Value}}</div>
       </div>
       {{end}}
     </section>
 
-    <section class="panel">
-      <h2>Admin Password</h2>
+    <section class="panel action-panel">
+      <div class="panel-header">
+        <span class="panel-icon" aria-hidden="true"></span>
+        <div>
+          <p class="section-kicker">Current admin</p>
+          <h2>Admin Password</h2>
+        </div>
+      </div>
       <p class="muted">Change the password for {{.Account.Username}}.</p>
       <form method="post" action="/admin/password" class="inline-form">
         <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
@@ -105,7 +135,13 @@
     </section>
 
     <section class="panel">
-      <h2>User Accounts</h2>
+      <div class="panel-header">
+        <span class="panel-icon" aria-hidden="true"></span>
+        <div>
+          <p class="section-kicker">Local directory</p>
+          <h2>User Accounts</h2>
+        </div>
+      </div>
       <div class="account-list">
         {{range .Accounts}}
         <article class="account-item">
@@ -133,7 +169,13 @@
     </section>
 
     <section class="panel">
-      <h2>Boundaries</h2>
+      <div class="panel-header">
+        <span class="panel-icon warning" aria-hidden="true"></span>
+        <div>
+          <p class="section-kicker">Evidence Boundary</p>
+          <h2>Boundaries</h2>
+        </div>
+      </div>
       <ul class="boundary-list">
         <li>No incident evidence, bearer tokens, raw keys, plaintext, stored paths, object keys, or private deployment details are shown.</li>
         <li>Public incident viewer routes stay read-only and separate from this private admin route group.</li>
