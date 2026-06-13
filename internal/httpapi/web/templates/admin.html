@@ -13,11 +13,12 @@
   <link rel="apple-touch-icon" href="/admin/static/apple-touch-icon.png">
   <link rel="manifest" href="/admin/static/site.webmanifest">
   <link rel="stylesheet" href="/admin/static/styles.css">
+  <script src="/admin/static/admin.js" defer></script>
 </head>
 <body>
   <a href="#content" class="skip-link">Skip to content</a>
 
-  {{if eq .Mode "dashboard"}}
+  {{if .AdminShell}}
   <div class="admin-shell" data-admin-mode="{{.Mode}}">
     <header class="mobile-header" aria-label="Proofline admin header">
       <a href="/admin" class="brand-lockup" aria-label="Proofline Admin home">
@@ -27,10 +28,41 @@
           <span class="brand-subtitle">Operator Console</span>
         </span>
       </a>
-      <form method="post" action="/admin/logout" class="logout-form">
-        <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
-        <button type="submit" class="ghost-button">Sign out</button>
-      </form>
+      <details class="mobile-menu" data-mobile-nav-details>
+        <summary class="mobile-menu-button" aria-controls="admin-mobile-navigation">
+          <span class="sr-only">Admin menu</span>
+          <svg class="mobile-menu-icon mobile-menu-icon-open" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+            <path d="M4 7h16"></path>
+            <path d="M4 12h16"></path>
+            <path d="M4 17h16"></path>
+          </svg>
+          <svg class="mobile-menu-icon mobile-menu-icon-close" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+            <path d="m6 6 12 12"></path>
+            <path d="m18 6-12 12"></path>
+          </svg>
+        </summary>
+        <div id="admin-mobile-navigation" class="mobile-menu-panel">
+          <nav class="mobile-nav" aria-label="Admin sections">
+            {{range .NavItems}}
+            <a href="{{.Href}}" class="mobile-nav-link {{if .Current}}is-active{{end}}">
+              <span>{{.Label}}</span>
+              <small>{{.Description}}</small>
+            </a>
+            {{end}}
+          </nav>
+          <section class="mobile-menu-note" aria-label="Admin route boundary">
+            <svg class="icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M7 11V8a5 5 0 0 1 10 0v3"></path>
+              <path d="M6 11h12v10H6z"></path>
+            </svg>
+            <span>Private listener only</span>
+          </section>
+          <form method="post" action="/admin/logout" class="mobile-menu-logout">
+            <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+            <button type="submit" class="ghost-button">Sign out</button>
+          </form>
+        </div>
+      </details>
     </header>
 
     <aside class="admin-sidebar" aria-label="Admin navigation">
@@ -68,9 +100,9 @@
     <main id="content" class="dashboard-main" tabindex="-1">
       <section class="page-header" aria-labelledby="admin-dashboard-title">
         <div>
-          <p class="eyebrow">Local operations</p>
-          <h1 id="admin-dashboard-title">Proofline Admin</h1>
-          <p class="page-lead">Operator Console for local account administration and private route checks.</p>
+          <p class="eyebrow">Private admin</p>
+          <h1 id="admin-dashboard-title">{{.PageTitle}}</h1>
+          <p class="page-lead">{{.PageLead}}</p>
         </div>
         <form method="post" action="/admin/logout" class="desktop-logout">
           <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
@@ -85,7 +117,8 @@
       <p class="inline-status success" role="status">{{.Notice}}</p>
       {{end}}
 
-      <section class="metric-grid" aria-label="Admin boundary status">
+      {{if eq .Mode "dashboard"}}
+      <section class="metric-grid" aria-label="Admin overview">
         {{range .StatusItems}}
         <article class="metric-card {{.Tone}}">
           <span class="metric-icon" aria-hidden="true"></span>
@@ -93,103 +126,193 @@
             <div>
               <dt>{{.Label}}</dt>
               <dd>{{.Value}}</dd>
+              {{if .Description}}<p class="metric-description">{{.Description}}</p>{{end}}
             </div>
           </dl>
         </article>
         {{end}}
       </section>
 
-      <section class="workspace-grid" aria-label="Admin tools">
-        <article id="accounts" class="content-section accounts-section">
+      <section class="overview-grid" aria-label="Admin overview details">
+        <article class="content-section">
+          <div class="section-header">
+            <div>
+              <p class="eyebrow">Blob storage</p>
+              <h2>Usage Boundary</h2>
+            </div>
+          </div>
+          <dl class="detail-list">
+            <div>
+              <dt>Committed encrypted chunks</dt>
+              <dd>{{with index .StatusItems 3}}{{.Value}}{{end}}</dd>
+            </div>
+            <div>
+              <dt>Capacity totals</dt>
+              <dd>Not exposed by the current admin API</dd>
+            </div>
+          </dl>
+        </article>
+
+        <article class="content-section boundary-section">
+          <div class="section-header">
+            <div>
+              <p class="eyebrow">Boundary</p>
+              <h2>Private Only</h2>
+            </div>
+          </div>
+          <ul class="boundary-list">
+            <li>No incident evidence, bearer tokens, raw keys, plaintext, stored paths, object keys, or private deployment details are shown.</li>
+            <li>Public incident viewer routes stay read-only and separate from this private admin route group.</li>
+            <li>Detailed filesystem, object-store, and host capacity metrics are placeholders until explicit safe admin API fields exist.</li>
+          </ul>
+        </article>
+      </section>
+      {{else if eq .Mode "accounts"}}
+      <section class="workspace-grid single-column" aria-label="Account management">
+        <article class="content-section accounts-section" aria-labelledby="create-account-title">
+          <div class="section-header">
+            <div>
+              <p class="eyebrow">Local directory</p>
+              <h2 id="create-account-title">Create Account</h2>
+              <p class="muted">New local accounts require second-factor setup before private operator actions.</p>
+            </div>
+            <div class="account-avatar" aria-hidden="true">New</div>
+          </div>
+          <form method="post" action="/admin/accounts" class="stack-form compact-form">
+            <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+            <label>
+              <span>Username</span>
+              <input name="username" type="text" autocomplete="username" required>
+            </label>
+            <label>
+              <span>Role</span>
+              <select name="role" required>
+                {{range .RoleOptions}}
+                <option value="{{.Value}}"{{if .Selected}} selected{{end}}>{{.Label}}</option>
+                {{end}}
+              </select>
+            </label>
+            <label>
+              <span>Password</span>
+              <input name="password" type="password" autocomplete="new-password" required>
+            </label>
+            <button type="submit">Create account</button>
+          </form>
+        </article>
+
+        <article class="content-section accounts-section">
           <div class="section-header">
             <div>
               <p class="eyebrow">Local directory</p>
               <h2>User Accounts</h2>
             </div>
-            <span class="status-badge">{{len .Accounts}} visible</span>
+            <span class="status-badge">{{.AccountPagination.RangeLabel}}</span>
           </div>
 
-          <div class="account-list">
-            <section class="account-row">
-              <div class="account-summary">
-                <div class="account-avatar" aria-hidden="true">New</div>
-                <div class="account-copy">
-                  <h3>Create Account</h3>
-                  <p class="muted">New local accounts require second-factor setup before private operator actions.</p>
-                </div>
-              </div>
-              <form method="post" action="/admin/accounts" class="stack-form compact-form">
-                <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
-                <label>
-                  <span>Username</span>
-                  <input name="username" type="text" autocomplete="username" required>
-                </label>
-                <label>
-                  <span>Role</span>
-                  <input name="role" type="text" value="user" pattern="user|admin" required>
-                </label>
-                <label>
-                  <span>Password</span>
-                  <input name="password" type="password" autocomplete="new-password" required>
-                </label>
-                <button type="submit">Create account</button>
-              </form>
-            </section>
+          <form method="get" action="/admin/accounts" class="toolbar-form" role="search">
+            <label>
+              <span>Search accounts</span>
+              <input name="q" type="search" value="{{.AccountPagination.Search}}" autocomplete="off" placeholder="Username or email">
+            </label>
+            <button type="submit">Search</button>
+            {{if .AccountPagination.Search}}<a href="/admin/accounts" class="ghost-link">Clear</a>{{end}}
+          </form>
 
+          <div class="account-list fixed-list">
             {{range .Accounts}}
             <section class="account-row">
-              <div class="account-summary">
-                <div class="account-avatar" aria-hidden="true">{{if .IsCurrent}}You{{else}}{{.Role}}{{end}}</div>
-                <div class="account-copy">
-                  <h3>{{.Username}}{{if .IsCurrent}} <span class="status-badge current">You</span>{{end}}</h3>
-                  <dl class="metadata-row">
-                    <div>
-                      <dt>Role</dt>
-                      <dd>{{.Role}}</dd>
-                    </div>
-                    <div>
-                      <dt>Created</dt>
-                      <dd>{{humanTime .CreatedAt}}</dd>
-                    </div>
-                    <div>
-                      <dt>Password changed</dt>
-                      <dd>{{humanTime .PasswordChangedAt}}</dd>
-                    </div>
-                  </dl>
+              <div class="account-record">
+                <div class="account-summary">
+                  <div class="account-avatar" aria-hidden="true">{{if .IsCurrent}}You{{else}}{{.Role}}{{end}}</div>
+                  <div class="account-copy">
+                    <h3>{{.Username}}{{if .IsCurrent}} <span class="status-badge current">You</span>{{end}}</h3>
+                    <dl class="metadata-row">
+                      <div>
+                        <dt>Email</dt>
+                        <dd>{{if .Email}}{{.Email}}{{else}}not set{{end}}</dd>
+                      </div>
+                      <div>
+                        <dt>Role</dt>
+                        <dd>{{.Role}}</dd>
+                      </div>
+                      <div>
+                        <dt>State</dt>
+                        <dd>{{if .AccountState}}{{.AccountState}}{{else}}active{{end}}</dd>
+                      </div>
+                      <div>
+                        <dt>2FA setup</dt>
+                        <dd>{{if .SecondFactorSetup}}{{.SecondFactorSetup}}{{else}}not_required{{end}}</dd>
+                      </div>
+                      <div>
+                        <dt>Created</dt>
+                        <dd>{{humanTime .CreatedAt}}</dd>
+                      </div>
+                      <div>
+                        <dt>Password changed</dt>
+                        <dd>{{humanTime .PasswordChangedAt}}</dd>
+                      </div>
+                    </dl>
+                  </div>
                 </div>
+                {{if .IsCurrent}}
+                <div class="account-actions">
+                  <p class="muted">Current admin account. Use Settings to change this password.</p>
+                  <a href="/admin/settings" class="ghost-link">Open settings</a>
+                </div>
+                {{else}}
+                <div class="account-actions">
+                  <form method="post" action="/admin/accounts/{{.ID}}/password" class="account-password-form">
+                    <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+                    <label>
+                      <span>New password</span>
+                      <input name="new_password" type="password" autocomplete="new-password" required>
+                    </label>
+                    <button type="submit">Reset password</button>
+                  </form>
+                  <div class="account-danger-zone">
+                    <div>
+                      <p class="account-danger-title">Operator danger zone</p>
+                      <p class="account-danger-copy">Session revocation ends active logins. 2FA recovery requires setup again after operator review.</p>
+                    </div>
+                    <div class="account-secondary-actions">
+                      <form method="post" action="/admin/accounts/{{.ID}}/sessions/revoke">
+                        <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+                        <button type="submit" class="ghost-button danger-button">Revoke sessions</button>
+                      </form>
+                      <form method="post" action="/admin/accounts/{{.ID}}/second-factor/recovery/reset">
+                        <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+                        <input type="hidden" name="reason" value="operator_review">
+                        <button type="submit" class="ghost-button danger-button">Reset 2FA recovery</button>
+                      </form>
+                    </div>
+                  </div>
+                </div>
+                {{end}}
               </div>
-              {{if .IsCurrent}}
-              <p class="muted">Use the admin password form to update this account.</p>
-              {{else}}
-              <div class="stack-form compact-form">
-                <form method="post" action="/admin/accounts/{{.ID}}/password" class="inline-form">
-                  <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
-                  <label>
-                    <span>New password</span>
-                    <input name="new_password" type="password" autocomplete="new-password" required>
-                  </label>
-                  <button type="submit">Reset password</button>
-                </form>
-                <form method="post" action="/admin/accounts/{{.ID}}/sessions/revoke" class="inline-form">
-                  <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
-                  <p class="muted">End active sessions for this account.</p>
-                  <button type="submit" class="ghost-button">Revoke sessions</button>
-                </form>
-                <form method="post" action="/admin/accounts/{{.ID}}/second-factor/recovery/reset" class="inline-form">
-                  <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
-                  <input type="hidden" name="reason" value="operator_review">
-                  <p class="muted">Require second-factor setup again after operator review.</p>
-                  <button type="submit" class="ghost-button">Reset 2FA recovery</button>
-                </form>
-              </div>
-              {{end}}
             </section>
+            {{else}}
+            <p class="muted">No accounts match the current search.</p>
             {{end}}
           </div>
-        </article>
 
-        <div class="side-stack">
-          <article id="operations" class="content-section">
+          <nav class="pager" aria-label="Account pages">
+            {{if .AccountPagination.HasPrev}}
+            <a href="{{.AccountPagination.PrevHref}}" class="ghost-link">Back</a>
+            {{else}}
+            <span class="ghost-link is-disabled">Back</span>
+            {{end}}
+            <span class="pager-current">Page {{.AccountPagination.Page}}</span>
+            {{if .AccountPagination.HasNext}}
+            <a href="{{.AccountPagination.NextHref}}" class="ghost-link">Next</a>
+            {{else}}
+            <span class="ghost-link is-disabled">Next</span>
+            {{end}}
+          </nav>
+        </article>
+      </section>
+      {{else if eq .Mode "incidents"}}
+      <section class="workspace-grid single-column" aria-label="Incident controls">
+          <article class="content-section">
             <div class="section-header">
               <div>
                 <p class="eyebrow">Private admin API</p>
@@ -198,7 +321,7 @@
               <span class="status-badge">{{len .IncidentCandidates}} visible</span>
             </div>
 
-            <form method="get" action="/admin" class="stack-form compact-form">
+            <form method="get" action="/admin/incidents" class="stack-form compact-form">
               <label>
                 <span>Deletion incident ID</span>
                 <input name="deletion_incident_id" type="text">
@@ -350,7 +473,9 @@
               {{end}}
             </div>
           </article>
-
+      </section>
+      {{else if eq .Mode "settings"}}
+      <section class="settings-grid" aria-label="Admin settings">
           <article class="content-section">
             <div class="section-header">
               <div>
@@ -377,26 +502,107 @@
             </form>
           </article>
 
-          <article id="boundary" class="content-section boundary-section">
+          <article class="content-section">
             <div class="section-header">
               <div>
-                <p class="eyebrow">Evidence Boundary</p>
-                <h2>Boundaries</h2>
+                <p class="eyebrow">Current admin</p>
+                <h2>Second Factor</h2>
               </div>
-              <svg class="section-icon warning" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"></path>
-                <path d="M12 8v4"></path>
-                <path d="M12 16h.01"></path>
-              </svg>
             </div>
-            <ul class="boundary-list">
-              <li>No incident evidence, bearer tokens, raw keys, plaintext, stored paths, object keys, or private deployment details are shown.</li>
-              <li>Public incident viewer routes stay read-only and separate from this private admin route group.</li>
-              <li>Incident and operator workflows remain on the JSON API until separate scoped implementation work adds them here.</li>
-            </ul>
+            <div class="config-grid">
+              {{range .SecondFactorItems}}
+              <div class="config-item {{.Tone}}">
+                <dl>
+                  <div>
+                    <dt>{{.Label}}</dt>
+                    <dd>{{.Value}}</dd>
+                  </div>
+                </dl>
+                {{if .Description}}<p>{{.Description}}</p>{{end}}
+              </div>
+              {{end}}
+            </div>
+            <div class="settings-factor-panel">
+              <div class="method-heading">
+                <div>
+                  <h3>Authenticator app</h3>
+                  <p class="muted">TOTP is the recommended fallback provider when WebAuthn/FIDO2 is not configured.</p>
+                </div>
+                <span class="method-badge recommended">{{if .SecondFactorWebAuthnAvailable}}Recommended fallback{{else}}Recommended{{end}}</span>
+              </div>
+              {{if .SecondFactorTOTPActive}}
+              <p class="inline-status success" role="status">Authenticator-app TOTP is configured for this admin account.</p>
+              {{else if .SecondFactorTOTPEnrollment.Secret}}
+              <div class="totp-enrollment" role="group" aria-label="Authenticator app setup details">
+                <div class="qr-code" role="img" aria-label="TOTP QR code">
+                  {{range .SecondFactorTOTPEnrollment.QRCodeRows}}
+                  <div class="qr-row" aria-hidden="true">
+                    {{range .}}<span class="qr-cell {{if .}}is-dark{{end}}"></span>{{end}}
+                  </div>
+                  {{end}}
+                </div>
+                <dl class="detail-list">
+                  <div>
+                    <dt>Manual setup key</dt>
+                    <dd class="secret-value">{{.SecondFactorTOTPEnrollment.Secret}}</dd>
+                  </div>
+                  <div>
+                    <dt>OTPAuth URI</dt>
+                    <dd class="uri-value">{{.SecondFactorTOTPEnrollment.OTPAuthURL}}</dd>
+                  </div>
+                  <div>
+                    <dt>Policy</dt>
+                    <dd>{{.SecondFactorTOTPEnrollment.Digits}} digits, {{.SecondFactorTOTPEnrollment.PeriodSeconds}} seconds, {{.SecondFactorTOTPEnrollment.Algorithm}}</dd>
+                  </div>
+                </dl>
+              </div>
+              <form method="post" action="/admin/settings/second-factor/totp/confirm" class="stack-form">
+                <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+                <label>
+                  <span>TOTP code</span>
+                  <input name="code" type="text" autocomplete="one-time-code" inputmode="numeric" required>
+                </label>
+                <button type="submit">Confirm authenticator app</button>
+              </form>
+              {{else}}
+              <form method="post" action="/admin/settings/second-factor/totp/enroll" class="stack-form">
+                <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+                <button type="submit">Set up authenticator app</button>
+              </form>
+              {{end}}
+            </div>
           </article>
-        </div>
+
+          <article class="content-section settings-wide">
+            <div class="section-header">
+              <div>
+                <p class="eyebrow">Server</p>
+                <h2>Configuration</h2>
+              </div>
+            </div>
+            <div class="config-groups">
+              {{range .ConfigGroups}}
+              <section class="config-group" aria-label="{{.Label}}">
+                <h3>{{.Label}}</h3>
+                <div class="config-grid">
+                  {{range .Items}}
+                  <div class="config-item {{.Tone}}">
+                    <dl>
+                      <div>
+                        <dt>{{.Label}}</dt>
+                        <dd>{{.Value}}</dd>
+                      </div>
+                    </dl>
+                    {{if .Description}}<p>{{.Description}}</p>{{end}}
+                  </div>
+                  {{end}}
+                </div>
+              </section>
+              {{end}}
+            </div>
+          </article>
       </section>
+      {{end}}
     </main>
   </div>
   {{else}}
@@ -412,8 +618,12 @@
           <h1 id="auth-title">Admin Login</h1>
           {{else if eq .Mode "second_factor_setup"}}
           <h1 id="auth-title">Set Up Admin 2FA</h1>
+          {{else if eq .Mode "second_factor_setup_email_verify"}}
+          <h1 id="auth-title">Verify Email Code</h1>
           {{else if eq .Mode "second_factor_verify"}}
           <h1 id="auth-title">Verify Admin 2FA</h1>
+          {{else if eq .Mode "second_factor_verify_email"}}
+          <h1 id="auth-title">Verify Email Code</h1>
           {{else if eq .Mode "forbidden"}}
           <h1 id="auth-title">Access Denied</h1>
           {{else}}
@@ -428,8 +638,12 @@
       <p class="auth-lead">Sign in to the private operator console for local account administration.</p>
       {{else if eq .Mode "second_factor_setup"}}
       <p class="auth-lead">Complete admin 2FA for {{.Account.Username}} before using private operator actions.</p>
+      {{else if eq .Mode "second_factor_setup_email_verify"}}
+      <p class="auth-lead">Enter the email code for {{.Account.Username}} to finish admin 2FA setup.</p>
       {{else if eq .Mode "second_factor_verify"}}
       <p class="auth-lead">Verify the active second factor for {{.Account.Username}} before opening the operator console.</p>
+      {{else if eq .Mode "second_factor_verify_email"}}
+      <p class="auth-lead">Enter the email code for {{.Account.Username}} to continue.</p>
       {{else if eq .Mode "forbidden"}}
       <p class="auth-lead">This account cannot open the admin interface.</p>
       {{else}}
@@ -472,77 +686,177 @@
         <button type="submit">Sign in</button>
       </form>
       {{else if eq .Mode "second_factor_setup"}}
-      <ul class="boundary-list">
+      <div class="auth-methods">
         {{if .SecondFactorWebAuthnAvailable}}
-        <li>Security keys are preferred. Complete WebAuthn/FIDO2 setup through the authenticated second-factor API, then return to this private admin route.</li>
-        {{else}}
-        <li>Security-key setup is preferred when WebAuthn/FIDO2 is configured for this server.</li>
+        <section class="auth-method">
+          <div class="method-heading">
+            <h2>Security keys</h2>
+            <span class="method-badge recommended">Recommended</span>
+          </div>
+          <p class="muted">WebAuthn/FIDO2 security-key setup is available when this private admin listener is configured for browser registration.</p>
+        </section>
         {{end}}
-        <li>TOTP setup remains available through the authenticated second-factor API.</li>
-        <li>Email challenge setup is a lower-preference fallback when mail delivery is configured.</li>
-      </ul>
-      {{if .SecondFactorEmailAvailable}}
-      <form method="post" action="/admin/second-factor/email/challenge" class="stack-form">
-        <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
-        <label>
-          <span>Email address</span>
-          <input name="email" type="email" autocomplete="email" required>
-        </label>
-        <button type="submit">Send email code</button>
-      </form>
-      <form method="post" action="/admin/second-factor/email/verify" class="stack-form">
-        <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
-        <label>
-          <span>Email code</span>
-          <input name="code" type="text" autocomplete="one-time-code" inputmode="numeric" required>
-        </label>
-        <button type="submit">Complete setup</button>
-      </form>
-      {{else}}
-      <p class="inline-status danger" role="status">Email fallback is not configured on this server.</p>
-      {{end}}
+        <section class="auth-method">
+          <div class="method-heading">
+            <h2>Authenticator app</h2>
+            <span class="method-badge recommended">{{if .SecondFactorWebAuthnAvailable}}Recommended fallback{{else}}Recommended{{end}}</span>
+          </div>
+          <p class="muted">Use a TOTP authenticator app for admin access. This works without WebAuthn/FIDO2 configuration.</p>
+          {{if .SecondFactorTOTPEnrollment.Secret}}
+          <div class="totp-enrollment" role="group" aria-label="Authenticator app setup details">
+            <div class="qr-code" role="img" aria-label="TOTP QR code">
+              {{range .SecondFactorTOTPEnrollment.QRCodeRows}}
+              <div class="qr-row" aria-hidden="true">
+                {{range .}}<span class="qr-cell {{if .}}is-dark{{end}}"></span>{{end}}
+              </div>
+              {{end}}
+            </div>
+            <dl class="detail-list">
+              <div>
+                <dt>Manual setup key</dt>
+                <dd class="secret-value">{{.SecondFactorTOTPEnrollment.Secret}}</dd>
+              </div>
+              <div>
+                <dt>OTPAuth URI</dt>
+                <dd class="uri-value">{{.SecondFactorTOTPEnrollment.OTPAuthURL}}</dd>
+              </div>
+              <div>
+                <dt>Policy</dt>
+                <dd>{{.SecondFactorTOTPEnrollment.Digits}} digits, {{.SecondFactorTOTPEnrollment.PeriodSeconds}} seconds, {{.SecondFactorTOTPEnrollment.Algorithm}}</dd>
+              </div>
+            </dl>
+          </div>
+          <form method="post" action="/admin/second-factor/totp/confirm" class="stack-form">
+            <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+            <label>
+              <span>TOTP code</span>
+              <input name="code" type="text" autocomplete="one-time-code" inputmode="numeric" required>
+            </label>
+            <button type="submit">Confirm authenticator app</button>
+          </form>
+          {{else}}
+          <form method="post" action="/admin/second-factor/totp/enroll" class="stack-form">
+            <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+            <button type="submit">Set up authenticator app</button>
+          </form>
+          {{end}}
+        </section>
+        <section class="auth-method">
+          <div class="method-heading">
+            <h2>Email challenge</h2>
+            <span class="method-badge backup">Backup</span>
+          </div>
+          {{if .SecondFactorEmailAvailable}}
+          <p class="muted">Use email as a lower-assurance fallback when authenticator-app setup is not available.</p>
+          <form method="post" action="/admin/second-factor/email/challenge" class="stack-form">
+            <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+            <label>
+              <span>Email address</span>
+              <input name="email" type="email" autocomplete="email" required>
+            </label>
+            <button type="submit" class="ghost-button">Send email code</button>
+          </form>
+          {{else}}
+          <p class="inline-status danger" role="status">Email fallback is not configured on this server.</p>
+          {{end}}
+        </section>
+      </div>
       <form method="post" action="/admin/logout" class="stack-form">
         <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
         <button type="submit" class="ghost-button">Sign out</button>
       </form>
+      {{else if eq .Mode "second_factor_setup_email_verify"}}
+      <div class="auth-methods">
+        <section class="auth-method">
+          <h2>Email code</h2>
+          <form method="post" action="/admin/second-factor/email/verify" class="stack-form">
+            <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+            <label>
+              <span>Email code</span>
+              <input name="code" type="text" autocomplete="one-time-code" inputmode="numeric" required>
+            </label>
+            <button type="submit">Complete setup</button>
+          </form>
+        </section>
+      </div>
+      <div class="auth-actions">
+        <a href="/admin" class="ghost-link">Back</a>
+        <form method="post" action="/admin/logout">
+          <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+          <button type="submit" class="ghost-button">Sign out</button>
+        </form>
+      </div>
       {{else if eq .Mode "second_factor_verify"}}
-      <ul class="boundary-list">
+      <div class="auth-methods">
         {{if .SecondFactorWebAuthnAvailable}}
-        <li>Security-key verification is preferred for configured WebAuthn/FIDO2 admin accounts.</li>
-        {{else}}
-        <li>WebAuthn/FIDO2 verification is unavailable until configured for this server.</li>
+        <section class="auth-method">
+          <div class="method-heading">
+            <h2>Security keys</h2>
+            <span class="method-badge recommended">Recommended</span>
+          </div>
+          <p class="muted">WebAuthn/FIDO2 verification is available for configured security-key factors.</p>
+        </section>
         {{end}}
-        <li>Use the TOTP form when this admin account has an active authenticator app factor.</li>
-        <li>Email challenge verification is available for admin accounts configured with email 2FA.</li>
-      </ul>
-      {{if .SecondFactorEmailAvailable}}
-      <form method="post" action="/admin/second-factor/email/challenge" class="stack-form">
-        <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
-        <button type="submit">Send email code</button>
-      </form>
-      <form method="post" action="/admin/second-factor/email/verify" class="stack-form">
-        <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
-        <label>
-          <span>Email code</span>
-          <input name="code" type="text" autocomplete="one-time-code" inputmode="numeric" required>
-        </label>
-        <button type="submit">Verify email code</button>
-      </form>
-      {{end}}
-      {{if .SecondFactorTOTPAvailable}}
-      <form method="post" action="/admin/second-factor/totp/verify" class="stack-form">
-        <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
-        <label>
-          <span>TOTP code</span>
-          <input name="code" type="text" autocomplete="one-time-code" inputmode="numeric" required>
-        </label>
-        <button type="submit">Verify</button>
-      </form>
-      {{end}}
+        {{if .SecondFactorTOTPAvailable}}
+        <section class="auth-method">
+          <div class="method-heading">
+            <h2>Authenticator app</h2>
+            <span class="method-badge recommended">{{if .SecondFactorWebAuthnAvailable}}Recommended fallback{{else}}Recommended{{end}}</span>
+          </div>
+          <form method="post" action="/admin/second-factor/totp/verify" class="stack-form">
+            <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+            <label>
+              <span>TOTP code</span>
+              <input name="code" type="text" autocomplete="one-time-code" inputmode="numeric" required>
+            </label>
+            <button type="submit">Verify</button>
+          </form>
+        </section>
+        {{end}}
+        {{if .SecondFactorEmailAvailable}}
+        <section class="auth-method">
+          <div class="method-heading">
+            <h2>Email challenge</h2>
+            <span class="method-badge backup">Backup</span>
+          </div>
+          <form method="post" action="/admin/second-factor/email/challenge" class="stack-form">
+            <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+            <button type="submit" class="ghost-button">Send email code</button>
+          </form>
+        </section>
+        {{end}}
+        {{if and (not .SecondFactorEmailAvailable) (not .SecondFactorTOTPAvailable)}}
+        <section class="auth-method">
+          <h2>No web form available</h2>
+          <p class="muted">This account does not have an email or TOTP factor available for the admin web form.</p>
+        </section>
+        {{end}}
+      </div>
       <form method="post" action="/admin/logout" class="stack-form">
         <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
         <button type="submit" class="ghost-button">Sign out</button>
       </form>
+      {{else if eq .Mode "second_factor_verify_email"}}
+      <div class="auth-methods">
+        <section class="auth-method">
+          <h2>Email code</h2>
+          <form method="post" action="/admin/second-factor/email/verify" class="stack-form">
+            <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+            <label>
+              <span>Email code</span>
+              <input name="code" type="text" autocomplete="one-time-code" inputmode="numeric" required>
+            </label>
+            <button type="submit">Verify email code</button>
+          </form>
+        </section>
+      </div>
+      <div class="auth-actions">
+        <a href="/admin" class="ghost-link">Back</a>
+        <form method="post" action="/admin/logout">
+          <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+          <button type="submit" class="ghost-button">Sign out</button>
+        </form>
+      </div>
       {{else if eq .Mode "forbidden"}}
       <p class="muted">Admin role is required.</p>
       {{end}}

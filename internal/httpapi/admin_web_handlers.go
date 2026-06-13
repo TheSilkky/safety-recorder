@@ -12,6 +12,22 @@ import (
 )
 
 func (a *API) adminWebPage(w http.ResponseWriter, r *http.Request) {
+	a.adminWebServePage(w, r, adminWebPageOverview)
+}
+
+func (a *API) adminWebAccountsPage(w http.ResponseWriter, r *http.Request) {
+	a.adminWebServePage(w, r, adminWebPageAccounts)
+}
+
+func (a *API) adminWebIncidentsPage(w http.ResponseWriter, r *http.Request) {
+	a.adminWebServePage(w, r, adminWebPageIncidents)
+}
+
+func (a *API) adminWebSettingsPage(w http.ResponseWriter, r *http.Request) {
+	a.adminWebServePage(w, r, adminWebPageSettings)
+}
+
+func (a *API) adminWebServePage(w http.ResponseWriter, r *http.Request, page string) {
 	setAdminWebPageHeaders(w)
 
 	hasAdmin, err := a.repo.HasAdminAccount(r.Context())
@@ -48,7 +64,7 @@ func (a *API) adminWebPage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	a.renderAdminWebDashboard(w, r, principal, http.StatusOK, adminWebNotice(r), "")
+	a.renderAdminWebPage(w, r, principal, page, http.StatusOK, adminWebNotice(r), "")
 }
 
 func (a *API) adminWebLogin(w http.ResponseWriter, r *http.Request) {
@@ -158,6 +174,48 @@ func (a *API) adminWebLogout(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/admin", http.StatusSeeOther)
 }
 
+func (a *API) adminWebEmailSecondFactorVerifyPage(w http.ResponseWriter, r *http.Request) {
+	setAdminWebPageHeaders(w)
+	principal, ok := a.requireAdminWebSession(w, r)
+	if !ok {
+		return
+	}
+	if adminRequiresSecondFactorSetup(principal.Account) {
+		if a.emailSender == nil {
+			a.renderAdminWebSecondFactorSetup(w, r, principal, http.StatusForbidden, adminWebNotice(r), "")
+			return
+		}
+		a.renderAdminWeb(w, http.StatusForbidden, makeAdminWebSecondFactorSetupEmailVerifyData(
+			principal,
+			adminWebCSRFTokenFromRequest(r),
+			adminWebNotice(r),
+			"",
+			a.adminWebAuthnAvailable(),
+		))
+		return
+	}
+	required, err := a.sessionRequiresSecondFactorVerification(r.Context(), principal.Account, principal.Session)
+	if err != nil {
+		a.adminWebInternalError(w, "check admin web email second factor requirement", err)
+		return
+	}
+	if !required {
+		http.Redirect(w, r, "/admin", http.StatusSeeOther)
+		return
+	}
+	data, err := a.makeAdminWebSecondFactorVerificationDataForRequest(r, principal, adminWebNotice(r), "")
+	if err != nil {
+		a.adminWebInternalError(w, "build admin web email second factor verification data", err)
+		return
+	}
+	if !data.SecondFactorEmailAvailable {
+		a.renderAdminWeb(w, http.StatusForbidden, data)
+		return
+	}
+	data.Mode = "second_factor_verify_email"
+	a.renderAdminWeb(w, http.StatusForbidden, data)
+}
+
 func (a *API) adminWebRequestEmailSecondFactorChallenge(w http.ResponseWriter, r *http.Request) {
 	setAdminWebPageHeaders(w)
 	principal, ok := a.requireAdminWebSession(w, r)
@@ -213,7 +271,7 @@ func (a *API) adminWebRequestEmailSecondFactorChallenge(w http.ResponseWriter, r
 			a.renderAdminWeb(w, http.StatusServiceUnavailable, data)
 			return
 		}
-		http.Redirect(w, r, "/admin?notice=second_factor_challenge_sent", http.StatusSeeOther)
+		http.Redirect(w, r, "/admin/second-factor/email/verify?notice=second_factor_challenge_sent", http.StatusSeeOther)
 		return
 	}
 	data := makeAdminWebSecondFactorSetupData(principal, adminWebCSRFTokenFromRequest(r), "", "The second-factor setup form could not be read.", a.emailSender != nil, a.adminWebAuthnAvailable())
@@ -270,7 +328,7 @@ func (a *API) adminWebRequestEmailSecondFactorChallenge(w http.ResponseWriter, r
 		a.renderAdminWeb(w, http.StatusServiceUnavailable, data)
 		return
 	}
-	http.Redirect(w, r, "/admin?notice=second_factor_challenge_sent", http.StatusSeeOther)
+	http.Redirect(w, r, "/admin/second-factor/email/verify?notice=second_factor_challenge_sent", http.StatusSeeOther)
 }
 
 func (a *API) adminWebVerifyEmailSecondFactorChallenge(w http.ResponseWriter, r *http.Request) {
@@ -294,6 +352,7 @@ func (a *API) adminWebVerifyEmailSecondFactorChallenge(w http.ResponseWriter, r 
 			a.adminWebInternalError(w, "build admin web email second factor verification data", err)
 			return
 		}
+		data.Mode = "second_factor_verify_email"
 		if ok := a.parseAdminWebForm(w, r, data); !ok {
 			return
 		}
@@ -324,7 +383,7 @@ func (a *API) adminWebVerifyEmailSecondFactorChallenge(w http.ResponseWriter, r 
 		http.Redirect(w, r, "/admin?notice=second_factor_verified", http.StatusSeeOther)
 		return
 	}
-	data := makeAdminWebSecondFactorSetupData(principal, adminWebCSRFTokenFromRequest(r), "", "The second-factor verification form could not be read.", a.emailSender != nil, a.adminWebAuthnAvailable())
+	data := makeAdminWebSecondFactorSetupEmailVerifyData(principal, adminWebCSRFTokenFromRequest(r), "", "The second-factor verification form could not be read.", a.adminWebAuthnAvailable())
 	if ok := a.parseAdminWebForm(w, r, data); !ok {
 		return
 	}
@@ -351,6 +410,131 @@ func (a *API) adminWebVerifyEmailSecondFactorChallenge(w http.ResponseWriter, r 
 	}
 	if _, err := a.repo.MarkSessionSecondFactorVerified(r.Context(), principal.Session.ID, factor.ID, auth.SecondFactorTypeEmailChallenge, time.Now().UTC()); err != nil {
 		a.adminWebInternalError(w, "mark admin web email setup session verified", err)
+		return
+	}
+	http.Redirect(w, r, "/admin?notice=second_factor_setup_complete", http.StatusSeeOther)
+}
+
+func (a *API) adminWebStartTOTPSecondFactorEnrollment(w http.ResponseWriter, r *http.Request) {
+	setAdminWebPageHeaders(w)
+	principal, ok := a.requireAdminWebSession(w, r)
+	if !ok {
+		return
+	}
+	if !adminRequiresSecondFactorSetup(principal.Account) {
+		http.Redirect(w, r, "/admin", http.StatusSeeOther)
+		return
+	}
+	data := makeAdminWebSecondFactorSetupData(principal, adminWebCSRFTokenFromRequest(r), "", "The TOTP setup form could not be read.", a.emailSender != nil, a.adminWebAuthnAvailable())
+	if ok := a.parseAdminWebForm(w, r, data); !ok {
+		return
+	}
+	data.Error = ""
+	if !a.validateAdminWebCSRFForData(w, r, data) {
+		return
+	}
+
+	enrollment, err := auth.GenerateTOTPEnrollment(principal.Account.Username)
+	if err != nil {
+		a.adminWebInternalError(w, "generate admin web TOTP enrollment", err)
+		return
+	}
+	factor, err := a.repo.CreateTOTPSecondFactorEnrollment(r.Context(), auth.CreateTOTPSecondFactorEnrollmentParams{
+		AccountID:     principal.Account.ID,
+		Secret:        enrollment.Secret,
+		PeriodSeconds: enrollment.PeriodSeconds,
+		Digits:        enrollment.Digits,
+		Algorithm:     enrollment.Algorithm,
+	})
+	if errors.Is(err, auth.ErrDuplicate) {
+		data.Error = "TOTP second factor is already configured."
+		a.renderAdminWeb(w, http.StatusConflict, data)
+		return
+	}
+	if errors.Is(err, auth.ErrNotFound) {
+		data.Error = "Account was not found."
+		a.renderAdminWeb(w, http.StatusNotFound, data)
+		return
+	}
+	if err != nil {
+		a.adminWebInternalError(w, "create admin web TOTP enrollment", err)
+		return
+	}
+	enrollmentData, err := makeAdminWebTOTPEnrollment(principal.Account, factor)
+	if err != nil {
+		a.adminWebInternalError(w, "build admin web TOTP enrollment view", err)
+		return
+	}
+	data.Notice = "TOTP setup started. Enter the current authenticator app code to finish setup."
+	data.SecondFactorTOTPEnrollment = enrollmentData
+	a.renderAdminWeb(w, http.StatusForbidden, data)
+}
+
+func (a *API) adminWebConfirmTOTPSecondFactorEnrollment(w http.ResponseWriter, r *http.Request) {
+	setAdminWebPageHeaders(w)
+	principal, ok := a.requireAdminWebSession(w, r)
+	if !ok {
+		return
+	}
+	if !adminRequiresSecondFactorSetup(principal.Account) {
+		http.Redirect(w, r, "/admin", http.StatusSeeOther)
+		return
+	}
+	data := makeAdminWebSecondFactorSetupData(principal, adminWebCSRFTokenFromRequest(r), "", "The TOTP confirmation form could not be read.", a.emailSender != nil, a.adminWebAuthnAvailable())
+	if ok := a.parseAdminWebForm(w, r, data); !ok {
+		return
+	}
+	data.Error = ""
+	if !a.validateAdminWebCSRFForData(w, r, data) {
+		return
+	}
+
+	factor, err := a.repo.GetPendingTOTPSecondFactor(r.Context(), principal.Account.ID)
+	if errors.Is(err, auth.ErrNotFound) {
+		data.Error = "TOTP setup is not active. Start authenticator-app setup again."
+		a.renderAdminWeb(w, http.StatusBadRequest, data)
+		return
+	}
+	if err != nil {
+		a.adminWebInternalError(w, "get admin web pending TOTP factor", err)
+		return
+	}
+	enrollmentData, err := makeAdminWebTOTPEnrollment(principal.Account, factor)
+	if err != nil {
+		a.adminWebInternalError(w, "build admin web pending TOTP enrollment view", err)
+		return
+	}
+	data.SecondFactorTOTPEnrollment = enrollmentData
+
+	code := strings.TrimSpace(r.FormValue("code"))
+	if code == "" {
+		data.Error = "TOTP challenge is invalid or expired."
+		a.renderAdminWeb(w, http.StatusBadRequest, data)
+		return
+	}
+	now := time.Now().UTC()
+	timeStep, valid, err := auth.MatchTOTPCode(factor.TOTPSecret, code, now, factor.TOTPPeriodSeconds, factor.TOTPDigits, factor.TOTPAlgorithm)
+	if err != nil {
+		a.adminWebInternalError(w, "validate admin web pending TOTP code", err)
+		return
+	}
+	if !valid {
+		data.Error = "TOTP challenge is invalid or expired."
+		a.renderAdminWeb(w, http.StatusBadRequest, data)
+		return
+	}
+	factor, _, err = a.repo.ActivateTOTPSecondFactor(r.Context(), principal.Account.ID, factor.ID, now, timeStep)
+	if errors.Is(err, auth.ErrNotFound) {
+		data.Error = "TOTP challenge is invalid or expired."
+		a.renderAdminWeb(w, http.StatusBadRequest, data)
+		return
+	}
+	if err != nil {
+		a.adminWebInternalError(w, "activate admin web TOTP factor", err)
+		return
+	}
+	if _, err := a.repo.MarkSessionSecondFactorVerified(r.Context(), principal.Session.ID, factor.ID, auth.SecondFactorTypeTOTP, now); err != nil {
+		a.adminWebInternalError(w, "mark admin web TOTP setup session verified", err)
 		return
 	}
 	http.Redirect(w, r, "/admin?notice=second_factor_setup_complete", http.StatusSeeOther)
@@ -430,14 +614,14 @@ func (a *API) adminWebChangeOwnPassword(w http.ResponseWriter, r *http.Request) 
 	if !ok {
 		return
 	}
-	if ok := a.parseAdminWebDashboardForm(w, r, principal, "The password form could not be read."); !ok {
+	if ok := a.parseAdminWebPageForm(w, r, principal, adminWebPageSettings, "The password form could not be read."); !ok {
 		return
 	}
 	if !a.validateAdminWebCSRF(w, r, principal) {
 		return
 	}
 	if !auth.VerifyPassword(principal.Account.PasswordHash, r.FormValue("current_password")) {
-		a.renderAdminWebDashboard(w, r, principal, http.StatusUnauthorized, "", "Current password is invalid.")
+		a.renderAdminWebSettings(w, r, principal, http.StatusUnauthorized, "", "Current password is invalid.")
 		return
 	}
 	account, status, message, err, ok := a.adminWebUpdatePassword(r, principal.Account.ID, r.FormValue("new_password"))
@@ -446,14 +630,140 @@ func (a *API) adminWebChangeOwnPassword(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	if !ok {
-		a.renderAdminWebDashboard(w, r, principal, status, "", message)
+		a.renderAdminWebSettings(w, r, principal, status, "", message)
 		return
 	}
 	if _, err := a.repo.RevokeAccountSessions(r.Context(), account.ID, principal.Session.ID); err != nil {
 		a.adminWebInternalError(w, "revoke admin web own sessions", err)
 		return
 	}
-	http.Redirect(w, r, "/admin?notice=password_changed", http.StatusSeeOther)
+	http.Redirect(w, r, "/admin/settings?notice=password_changed", http.StatusSeeOther)
+}
+
+func (a *API) adminWebStartSettingsTOTPSecondFactorEnrollment(w http.ResponseWriter, r *http.Request) {
+	setAdminWebPageHeaders(w)
+	principal, ok := a.requireAdminWeb(w, r)
+	if !ok {
+		return
+	}
+	data, err := a.makeAdminWebSettingsDataForRequest(r, principal, "", "The TOTP setup form could not be read.")
+	if err != nil {
+		a.adminWebInternalError(w, "build admin web settings TOTP setup data", err)
+		return
+	}
+	if ok := a.parseAdminWebForm(w, r, data); !ok {
+		return
+	}
+	data.Error = ""
+	if !a.validateAdminWebCSRFForData(w, r, data) {
+		return
+	}
+
+	enrollment, err := auth.GenerateTOTPEnrollment(principal.Account.Username)
+	if err != nil {
+		a.adminWebInternalError(w, "generate admin web settings TOTP enrollment", err)
+		return
+	}
+	factor, err := a.repo.CreateTOTPSecondFactorEnrollment(r.Context(), auth.CreateTOTPSecondFactorEnrollmentParams{
+		AccountID:     principal.Account.ID,
+		Secret:        enrollment.Secret,
+		PeriodSeconds: enrollment.PeriodSeconds,
+		Digits:        enrollment.Digits,
+		Algorithm:     enrollment.Algorithm,
+	})
+	if errors.Is(err, auth.ErrDuplicate) {
+		data.Error = "TOTP second factor is already configured."
+		data.SecondFactorTOTPActive = true
+		a.renderAdminWeb(w, http.StatusConflict, data)
+		return
+	}
+	if errors.Is(err, auth.ErrNotFound) {
+		data.Error = "Account was not found."
+		a.renderAdminWeb(w, http.StatusNotFound, data)
+		return
+	}
+	if err != nil {
+		a.adminWebInternalError(w, "create admin web settings TOTP enrollment", err)
+		return
+	}
+	enrollmentData, err := makeAdminWebTOTPEnrollment(principal.Account, factor)
+	if err != nil {
+		a.adminWebInternalError(w, "build admin web settings TOTP enrollment view", err)
+		return
+	}
+	data.Notice = "TOTP setup started. Enter the current authenticator app code to finish setup."
+	data.SecondFactorTOTPEnrollment = enrollmentData
+	a.renderAdminWeb(w, http.StatusOK, data)
+}
+
+func (a *API) adminWebConfirmSettingsTOTPSecondFactorEnrollment(w http.ResponseWriter, r *http.Request) {
+	setAdminWebPageHeaders(w)
+	principal, ok := a.requireAdminWeb(w, r)
+	if !ok {
+		return
+	}
+	data, err := a.makeAdminWebSettingsDataForRequest(r, principal, "", "The TOTP confirmation form could not be read.")
+	if err != nil {
+		a.adminWebInternalError(w, "build admin web settings TOTP confirmation data", err)
+		return
+	}
+	if ok := a.parseAdminWebForm(w, r, data); !ok {
+		return
+	}
+	data.Error = ""
+	if !a.validateAdminWebCSRFForData(w, r, data) {
+		return
+	}
+
+	factor, err := a.repo.GetPendingTOTPSecondFactor(r.Context(), principal.Account.ID)
+	if errors.Is(err, auth.ErrNotFound) {
+		data.Error = "TOTP setup is not active. Start authenticator-app setup again."
+		a.renderAdminWeb(w, http.StatusBadRequest, data)
+		return
+	}
+	if err != nil {
+		a.adminWebInternalError(w, "get admin web settings pending TOTP factor", err)
+		return
+	}
+	enrollmentData, err := makeAdminWebTOTPEnrollment(principal.Account, factor)
+	if err != nil {
+		a.adminWebInternalError(w, "build admin web settings pending TOTP enrollment view", err)
+		return
+	}
+	data.SecondFactorTOTPEnrollment = enrollmentData
+
+	code := strings.TrimSpace(r.FormValue("code"))
+	if code == "" {
+		data.Error = "TOTP challenge is invalid or expired."
+		a.renderAdminWeb(w, http.StatusBadRequest, data)
+		return
+	}
+	now := time.Now().UTC()
+	timeStep, valid, err := auth.MatchTOTPCode(factor.TOTPSecret, code, now, factor.TOTPPeriodSeconds, factor.TOTPDigits, factor.TOTPAlgorithm)
+	if err != nil {
+		a.adminWebInternalError(w, "validate admin web settings pending TOTP code", err)
+		return
+	}
+	if !valid {
+		data.Error = "TOTP challenge is invalid or expired."
+		a.renderAdminWeb(w, http.StatusBadRequest, data)
+		return
+	}
+	factor, _, err = a.repo.ActivateTOTPSecondFactor(r.Context(), principal.Account.ID, factor.ID, now, timeStep)
+	if errors.Is(err, auth.ErrNotFound) {
+		data.Error = "TOTP challenge is invalid or expired."
+		a.renderAdminWeb(w, http.StatusBadRequest, data)
+		return
+	}
+	if err != nil {
+		a.adminWebInternalError(w, "activate admin web settings TOTP factor", err)
+		return
+	}
+	if _, err := a.repo.MarkSessionSecondFactorVerified(r.Context(), principal.Session.ID, factor.ID, auth.SecondFactorTypeTOTP, now); err != nil {
+		a.adminWebInternalError(w, "mark admin web settings TOTP session verified", err)
+		return
+	}
+	http.Redirect(w, r, "/admin/settings?notice=second_factor_setup_complete", http.StatusSeeOther)
 }
 
 func (a *API) adminWebCreateAccount(w http.ResponseWriter, r *http.Request) {
@@ -462,7 +772,7 @@ func (a *API) adminWebCreateAccount(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if ok := a.parseAdminWebDashboardForm(w, r, principal, "The account form could not be read."); !ok {
+	if ok := a.parseAdminWebPageForm(w, r, principal, adminWebPageAccounts, "The account form could not be read."); !ok {
 		return
 	}
 	if !a.validateAdminWebCSRF(w, r, principal) {
@@ -475,10 +785,10 @@ func (a *API) adminWebCreateAccount(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !ok {
-		a.renderAdminWebDashboard(w, r, principal, status, "", message)
+		a.renderAdminWebAccounts(w, r, principal, status, "", message)
 		return
 	}
-	http.Redirect(w, r, "/admin?notice=account_created", http.StatusSeeOther)
+	http.Redirect(w, r, "/admin/accounts?notice=account_created", http.StatusSeeOther)
 }
 
 func (a *API) adminWebResetAccountPassword(w http.ResponseWriter, r *http.Request) {
@@ -487,7 +797,7 @@ func (a *API) adminWebResetAccountPassword(w http.ResponseWriter, r *http.Reques
 	if !ok {
 		return
 	}
-	if ok := a.parseAdminWebDashboardForm(w, r, principal, "The password reset form could not be read."); !ok {
+	if ok := a.parseAdminWebPageForm(w, r, principal, adminWebPageAccounts, "The password reset form could not be read."); !ok {
 		return
 	}
 	if !a.validateAdminWebCSRF(w, r, principal) {
@@ -496,7 +806,7 @@ func (a *API) adminWebResetAccountPassword(w http.ResponseWriter, r *http.Reques
 
 	accountID := r.PathValue("account_id")
 	if accountID == principal.Account.ID {
-		a.renderAdminWebDashboard(w, r, principal, http.StatusBadRequest, "", "Use the admin password form to change your own password.")
+		a.renderAdminWebAccounts(w, r, principal, http.StatusBadRequest, "", "Use the admin password form to change your own password.")
 		return
 	}
 	account, status, message, err, ok := a.adminWebUpdatePassword(r, accountID, r.FormValue("new_password"))
@@ -505,14 +815,14 @@ func (a *API) adminWebResetAccountPassword(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	if !ok {
-		a.renderAdminWebDashboard(w, r, principal, status, "", message)
+		a.renderAdminWebAccounts(w, r, principal, status, "", message)
 		return
 	}
 	if _, err := a.repo.RevokeAccountSessions(r.Context(), account.ID, ""); err != nil {
 		a.adminWebInternalError(w, "revoke admin web account sessions", err)
 		return
 	}
-	http.Redirect(w, r, "/admin?notice=account_password_reset", http.StatusSeeOther)
+	http.Redirect(w, r, "/admin/accounts?notice=account_password_reset", http.StatusSeeOther)
 }
 
 func (a *API) adminWebResetAccountSecondFactorRecovery(w http.ResponseWriter, r *http.Request) {
@@ -521,7 +831,7 @@ func (a *API) adminWebResetAccountSecondFactorRecovery(w http.ResponseWriter, r 
 	if !ok {
 		return
 	}
-	if ok := a.parseAdminWebDashboardForm(w, r, principal, "The second-factor recovery form could not be read."); !ok {
+	if ok := a.parseAdminWebPageForm(w, r, principal, adminWebPageAccounts, "The second-factor recovery form could not be read."); !ok {
 		return
 	}
 	if !a.validateAdminWebCSRF(w, r, principal) {
@@ -530,12 +840,12 @@ func (a *API) adminWebResetAccountSecondFactorRecovery(w http.ResponseWriter, r 
 
 	accountID := r.PathValue("account_id")
 	if accountID == principal.Account.ID {
-		a.renderAdminWebDashboard(w, r, principal, http.StatusBadRequest, "", "Second-factor recovery reset for the current admin account is not available from this form.")
+		a.renderAdminWebAccounts(w, r, principal, http.StatusBadRequest, "", "Second-factor recovery reset for the current admin account is not available from this form.")
 		return
 	}
 	reason := strings.TrimSpace(r.FormValue("reason"))
 	if !auth.ValidAccountRecoveryReason(reason) {
-		a.renderAdminWebDashboard(w, r, principal, http.StatusBadRequest, "", "Recovery reason is not supported.")
+		a.renderAdminWebAccounts(w, r, principal, http.StatusBadRequest, "", "Recovery reason is not supported.")
 		return
 	}
 	if _, _, err := a.repo.ResetAccountSecondFactorRecovery(r.Context(), auth.ResetAccountSecondFactorRecoveryParams{
@@ -543,13 +853,13 @@ func (a *API) adminWebResetAccountSecondFactorRecovery(w http.ResponseWriter, r 
 		AdminAccountID: principal.Account.ID,
 		Reason:         reason,
 	}); errors.Is(err, auth.ErrNotFound) {
-		a.renderAdminWebDashboard(w, r, principal, http.StatusNotFound, "", "Account was not found.")
+		a.renderAdminWebAccounts(w, r, principal, http.StatusNotFound, "", "Account was not found.")
 		return
 	} else if err != nil {
 		a.adminWebInternalError(w, "reset admin web account second-factor recovery", err)
 		return
 	}
-	http.Redirect(w, r, "/admin?notice=account_second_factor_reset", http.StatusSeeOther)
+	http.Redirect(w, r, "/admin/accounts?notice=account_second_factor_reset", http.StatusSeeOther)
 }
 
 func (a *API) adminWebRevokeAccountSessions(w http.ResponseWriter, r *http.Request) {
@@ -558,7 +868,7 @@ func (a *API) adminWebRevokeAccountSessions(w http.ResponseWriter, r *http.Reque
 	if !ok {
 		return
 	}
-	if ok := a.parseAdminWebDashboardForm(w, r, principal, "The session revocation form could not be read."); !ok {
+	if ok := a.parseAdminWebPageForm(w, r, principal, adminWebPageAccounts, "The session revocation form could not be read."); !ok {
 		return
 	}
 	if !a.validateAdminWebCSRF(w, r, principal) {
@@ -567,11 +877,11 @@ func (a *API) adminWebRevokeAccountSessions(w http.ResponseWriter, r *http.Reque
 
 	accountID := r.PathValue("account_id")
 	if accountID == principal.Account.ID {
-		a.renderAdminWebDashboard(w, r, principal, http.StatusBadRequest, "", "Use sign out to end the current admin session.")
+		a.renderAdminWebAccounts(w, r, principal, http.StatusBadRequest, "", "Use sign out to end the current admin session.")
 		return
 	}
 	if _, err := a.repo.GetAccountByID(r.Context(), accountID); errors.Is(err, auth.ErrNotFound) {
-		a.renderAdminWebDashboard(w, r, principal, http.StatusNotFound, "", "Account was not found.")
+		a.renderAdminWebAccounts(w, r, principal, http.StatusNotFound, "", "Account was not found.")
 		return
 	} else if err != nil {
 		a.adminWebInternalError(w, "get admin web account for session revocation", err)
@@ -581,7 +891,7 @@ func (a *API) adminWebRevokeAccountSessions(w http.ResponseWriter, r *http.Reque
 		a.adminWebInternalError(w, "revoke admin web account sessions", err)
 		return
 	}
-	http.Redirect(w, r, "/admin?notice=account_sessions_revoked", http.StatusSeeOther)
+	http.Redirect(w, r, "/admin/accounts?notice=account_sessions_revoked", http.StatusSeeOther)
 }
 
 func (a *API) adminWebRequestIncidentDeletion(w http.ResponseWriter, r *http.Request) {
@@ -590,7 +900,7 @@ func (a *API) adminWebRequestIncidentDeletion(w http.ResponseWriter, r *http.Req
 	if !ok {
 		return
 	}
-	if ok := a.parseAdminWebDashboardForm(w, r, principal, "The incident deletion form could not be read."); !ok {
+	if ok := a.parseAdminWebPageForm(w, r, principal, adminWebPageIncidents, "The incident deletion form could not be read."); !ok {
 		return
 	}
 	if !a.validateAdminWebCSRF(w, r, principal) {
@@ -599,7 +909,7 @@ func (a *API) adminWebRequestIncidentDeletion(w http.ResponseWriter, r *http.Req
 
 	reasonCode, statusCode, message, ok := adminWebNormalizeDeletionReasonCode(r.FormValue("reason_code"))
 	if !ok {
-		a.renderAdminWebDashboard(w, r, principal, statusCode, "", message)
+		a.renderAdminWebIncidents(w, r, principal, statusCode, "", message)
 		return
 	}
 	status, err := a.repo.RequestIncidentDeletion(r.Context(), incidents.IncidentDeletionRequest{
@@ -610,18 +920,18 @@ func (a *API) adminWebRequestIncidentDeletion(w http.ResponseWriter, r *http.Req
 		AllowOpen:      adminWebFormBool(r.FormValue("allow_open")),
 	})
 	if errors.Is(err, incidents.ErrNotFound) {
-		a.renderAdminWebDashboard(w, r, principal, http.StatusNotFound, "", "Incident was not found.")
+		a.renderAdminWebIncidents(w, r, principal, http.StatusNotFound, "", "Incident was not found.")
 		return
 	}
 	if errors.Is(err, incidents.ErrInvalidState) {
-		a.renderAdminWebDashboard(w, r, principal, http.StatusConflict, "", "Incident cannot be deleted in its current state.")
+		a.renderAdminWebIncidents(w, r, principal, http.StatusConflict, "", "Incident cannot be deleted in its current state.")
 		return
 	}
 	if err != nil {
 		a.adminWebInternalError(w, "request admin web incident deletion", err)
 		return
 	}
-	redirect := "/admin?notice=incident_deletion_requested&deletion_incident_id=" + url.QueryEscape(status.IncidentID)
+	redirect := "/admin/incidents?notice=incident_deletion_requested&deletion_incident_id=" + url.QueryEscape(status.IncidentID)
 	http.Redirect(w, r, redirect, http.StatusSeeOther)
 }
 
@@ -631,7 +941,7 @@ func (a *API) adminWebReassignLegacyUnownedIncident(w http.ResponseWriter, r *ht
 	if !ok {
 		return
 	}
-	if ok := a.parseAdminWebDashboardForm(w, r, principal, "The incident reassignment form could not be read."); !ok {
+	if ok := a.parseAdminWebPageForm(w, r, principal, adminWebPageIncidents, "The incident reassignment form could not be read."); !ok {
 		return
 	}
 	if !a.validateAdminWebCSRF(w, r, principal) {
@@ -642,27 +952,27 @@ func (a *API) adminWebReassignLegacyUnownedIncident(w http.ResponseWriter, r *ht
 	newOwnerAccountID := strings.TrimSpace(r.FormValue("new_owner_account_id"))
 	reasonCode := strings.TrimSpace(r.FormValue("reason_code"))
 	if !validLegacyReassignmentAction(action) {
-		a.renderAdminWebDashboard(w, r, principal, http.StatusBadRequest, "", "Reassignment action is not supported.")
+		a.renderAdminWebIncidents(w, r, principal, http.StatusBadRequest, "", "Reassignment action is not supported.")
 		return
 	}
 	if !validLegacyReassignmentReasonCode(reasonCode) {
-		a.renderAdminWebDashboard(w, r, principal, http.StatusBadRequest, "", "Reassignment reason code is not supported.")
+		a.renderAdminWebIncidents(w, r, principal, http.StatusBadRequest, "", "Reassignment reason code is not supported.")
 		return
 	}
 	if action == incidents.LegacyIncidentReassignmentActionAssignOwner {
 		if newOwnerAccountID == "" {
-			a.renderAdminWebDashboard(w, r, principal, http.StatusBadRequest, "", "New owner account ID is required.")
+			a.renderAdminWebIncidents(w, r, principal, http.StatusBadRequest, "", "New owner account ID is required.")
 			return
 		}
 		if _, err := a.repo.GetAccountByID(r.Context(), newOwnerAccountID); errors.Is(err, auth.ErrNotFound) {
-			a.renderAdminWebDashboard(w, r, principal, http.StatusNotFound, "", "Destination account was not found.")
+			a.renderAdminWebIncidents(w, r, principal, http.StatusNotFound, "", "Destination account was not found.")
 			return
 		} else if err != nil {
 			a.adminWebInternalError(w, "get admin web reassignment account", err)
 			return
 		}
 	} else if newOwnerAccountID != "" {
-		a.renderAdminWebDashboard(w, r, principal, http.StatusBadRequest, "", "New owner account ID is only allowed when assigning an owner.")
+		a.renderAdminWebIncidents(w, r, principal, http.StatusBadRequest, "", "New owner account ID is only allowed when assigning an owner.")
 		return
 	}
 
@@ -675,18 +985,18 @@ func (a *API) adminWebReassignLegacyUnownedIncident(w http.ResponseWriter, r *ht
 		Source:            incidents.LegacyIncidentReassignmentSourceAdminAPI,
 	})
 	if errors.Is(err, incidents.ErrNotFound) {
-		a.renderAdminWebDashboard(w, r, principal, http.StatusNotFound, "", "Legacy unowned incident was not found.")
+		a.renderAdminWebIncidents(w, r, principal, http.StatusNotFound, "", "Legacy unowned incident was not found.")
 		return
 	}
 	if errors.Is(err, incidents.ErrInvalidState) {
-		a.renderAdminWebDashboard(w, r, principal, http.StatusConflict, "", "Incident is not an active unowned legacy incident.")
+		a.renderAdminWebIncidents(w, r, principal, http.StatusConflict, "", "Incident is not an active unowned legacy incident.")
 		return
 	}
 	if err != nil {
 		a.adminWebInternalError(w, "reassign admin web legacy unowned incident", err)
 		return
 	}
-	http.Redirect(w, r, "/admin?notice=incident_reassignment_recorded", http.StatusSeeOther)
+	http.Redirect(w, r, "/admin/incidents?notice=incident_reassignment_recorded", http.StatusSeeOther)
 }
 
 func (a *API) adminWebDeletionStatusFromQuery(r *http.Request) (adminWebDeletionStatus, string, error) {

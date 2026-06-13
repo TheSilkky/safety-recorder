@@ -56,6 +56,8 @@
 
   button:focus-visible,
   input:focus-visible,
+  select:focus-visible,
+  summary:focus-visible,
   a:focus-visible {
     @apply outline outline-2 outline-offset-2 outline-proofline-focus;
   }
@@ -64,12 +66,14 @@
     @apply grid gap-2 text-sm font-medium text-proofline-text-secondary;
   }
 
-  input {
+  input,
+  select {
     @apply min-h-11 w-full rounded-md border border-proofline-border bg-proofline-bg-deep px-3 py-2.5 text-base text-proofline-text shadow-inner transition-colors;
     font: inherit;
   }
 
-  input:hover {
+  input:hover,
+  select:hover {
     @apply border-proofline-border-strong;
   }
 
@@ -87,12 +91,18 @@
     @apply min-h-screen bg-proofline-bg text-proofline-text;
   }
 
-  .admin-shell[data-admin-mode="dashboard"] {
+  .admin-shell[data-admin-mode="dashboard"],
+  .admin-shell[data-admin-mode="accounts"],
+  .admin-shell[data-admin-mode="incidents"],
+  .admin-shell[data-admin-mode="settings"] {
     @apply lg:grid;
   }
 
   @media (min-width: 1024px) {
-    .admin-shell[data-admin-mode="dashboard"] {
+    .admin-shell[data-admin-mode="dashboard"],
+    .admin-shell[data-admin-mode="accounts"],
+    .admin-shell[data-admin-mode="incidents"],
+    .admin-shell[data-admin-mode="settings"] {
       grid-template-columns: 248px minmax(0, 1fr);
     }
   }
@@ -125,8 +135,120 @@
     @apply mt-4;
   }
 
+  .auth-methods {
+    @apply mt-5 grid gap-5;
+  }
+
+  .auth-method {
+    @apply border-t border-proofline-border pt-5;
+  }
+
+  .auth-method:first-child {
+    @apply border-t-0 pt-0;
+  }
+
+  .auth-method h2 {
+    @apply text-base font-semibold leading-6 text-proofline-text;
+  }
+
+  .method-heading {
+    @apply flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between;
+  }
+
+  .method-badge {
+    @apply inline-flex w-fit rounded-md border px-2 py-1 text-xs font-semibold;
+  }
+
+  .method-badge.recommended {
+    @apply border-proofline-success/40 bg-proofline-success-bg text-proofline-success;
+  }
+
+  .method-badge.backup {
+    @apply border-proofline-warning/40 bg-proofline-warning-bg text-proofline-warning;
+  }
+
+  .auth-actions {
+    @apply mt-5 flex flex-wrap items-center gap-3;
+  }
+
+  .auth-actions form,
+  .auth-actions button,
+  .auth-actions .ghost-link,
+  .stack-form button {
+    @apply w-full sm:w-fit;
+  }
+
   .mobile-header {
-    @apply sticky top-0 z-20 flex items-center justify-between gap-3 border-b border-proofline-border bg-proofline-bg-deep/95 px-4 py-3 backdrop-blur lg:hidden;
+    @apply sticky top-0 z-30 flex items-center justify-between gap-3 border-b border-proofline-border bg-proofline-bg-deep/95 px-4 py-3 backdrop-blur lg:hidden;
+  }
+
+  .mobile-menu {
+    @apply relative shrink-0 lg:hidden;
+  }
+
+  .mobile-menu-button {
+    @apply flex size-10 cursor-pointer list-none items-center justify-center rounded-md border border-proofline-border bg-proofline-surface text-proofline-text transition-colors;
+  }
+
+  .mobile-menu-button:hover {
+    @apply border-proofline-border-strong bg-proofline-surface-strong;
+  }
+
+  .mobile-menu-button::-webkit-details-marker {
+    display: none;
+  }
+
+  .mobile-menu-icon {
+    @apply h-5 w-5;
+  }
+
+  .mobile-menu-icon-close {
+    @apply hidden;
+  }
+
+  .mobile-menu[open] .mobile-menu-icon-open {
+    @apply hidden;
+  }
+
+  .mobile-menu[open] .mobile-menu-icon-close {
+    @apply block;
+  }
+
+  .mobile-menu-panel {
+    @apply absolute right-0 top-12 z-30 grid max-h-[calc(100vh-6rem)] w-[min(22rem,calc(100vw-2rem))] gap-3 overflow-y-auto rounded-lg border border-proofline-border bg-proofline-bg-deep p-3 shadow-panel;
+  }
+
+  .mobile-nav {
+    @apply grid gap-1;
+  }
+
+  .mobile-nav-link {
+    @apply grid min-h-11 rounded-md border border-transparent px-3 py-2 text-sm font-medium text-proofline-text-secondary no-underline transition-colors;
+  }
+
+  .mobile-nav-link:hover {
+    @apply border-proofline-border bg-proofline-surface-elevated text-proofline-text;
+  }
+
+  .mobile-nav-link small {
+    @apply mt-0.5 text-xs font-medium text-proofline-text-disabled;
+    letter-spacing: 0;
+  }
+
+  .mobile-nav-link.is-active {
+    @apply border-proofline-border-strong bg-proofline-surface-strong text-proofline-text;
+  }
+
+  .mobile-nav-link.is-active small {
+    @apply text-proofline-text-secondary;
+  }
+
+  .mobile-menu-note {
+    @apply flex items-center gap-2 rounded-md border border-proofline-warning/40 bg-proofline-warning-bg px-3 py-3 text-sm font-medium text-proofline-warning;
+  }
+
+  .mobile-menu-logout button {
+    @apply w-full;
   }
 
   .brand-lockup,
@@ -158,7 +280,7 @@
   }
 
   .admin-sidebar {
-    @apply hidden min-h-screen flex-col gap-6 border-r border-proofline-border bg-proofline-bg-deep px-4 py-5 lg:flex;
+    @apply hidden min-h-screen flex-col gap-6 border-r border-proofline-border bg-proofline-bg-deep px-4 py-5 lg:sticky lg:top-0 lg:flex lg:h-screen;
   }
 
   .sidebar-brand {
@@ -170,7 +292,7 @@
   }
 
   .sidebar-nav {
-    @apply grid gap-2;
+    @apply grid flex-1 content-start gap-2;
   }
 
   .nav-link {
@@ -265,6 +387,10 @@
     @apply mt-1 break-words text-xl font-semibold leading-tight text-proofline-text;
   }
 
+  .metric-description {
+    @apply mt-1 text-xs leading-5 text-proofline-text-disabled;
+  }
+
   .metric-icon {
     @apply mt-1 h-3 w-3 rounded-full bg-proofline-info;
   }
@@ -281,8 +407,38 @@
     @apply bg-proofline-warning;
   }
 
+  .metric-card.danger .metric-icon {
+    @apply bg-proofline-danger;
+  }
+
   .workspace-grid {
     @apply mt-5 grid gap-5 xl:grid-cols-3;
+  }
+
+  .workspace-grid.single-column {
+    @apply xl:grid-cols-1;
+  }
+
+  .overview-grid,
+  .settings-grid {
+    @apply mt-5 grid gap-5 lg:grid-cols-2;
+  }
+
+  .settings-wide {
+    @apply lg:col-span-2;
+  }
+
+  .config-groups {
+    @apply grid gap-5;
+  }
+
+  .config-group {
+    @apply grid gap-3;
+  }
+
+  .config-group h3 {
+    @apply text-sm font-semibold uppercase text-proofline-text-muted;
+    letter-spacing: 0;
   }
 
   .content-section {
@@ -294,7 +450,7 @@
   }
 
   .section-header {
-    @apply mb-4 flex items-start justify-between gap-4;
+    @apply mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4;
   }
 
   .section-icon {
@@ -313,12 +469,24 @@
     @apply ml-2 border-proofline-success/40 bg-proofline-success-bg text-proofline-success;
   }
 
+  .toolbar-form {
+    @apply mb-5 grid items-end gap-3 sm:grid-cols-[minmax(0,1fr)_auto_auto];
+  }
+
   .account-list {
     @apply divide-y divide-proofline-border;
   }
 
+  .fixed-list {
+    @apply min-h-0 sm:min-h-[42rem];
+  }
+
   .account-row {
-    @apply grid gap-3 py-4 first:pt-0 last:pb-0;
+    @apply py-5 first:pt-0 last:pb-0;
+  }
+
+  .account-record {
+    @apply grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(19rem,28rem)] lg:items-start;
   }
 
   .account-summary {
@@ -338,7 +506,7 @@
   }
 
   .metadata-row {
-    @apply mt-3 grid gap-3 sm:grid-cols-3;
+    @apply mt-3 grid gap-x-6 gap-y-3 sm:grid-cols-2 2xl:grid-cols-3;
   }
 
   .metadata-row dt {
@@ -348,6 +516,49 @@
 
   .metadata-row dd {
     @apply mt-1 break-words text-sm leading-5 text-proofline-text-secondary;
+  }
+
+  .account-actions {
+    @apply grid gap-3 border-t border-proofline-border pt-4 lg:border-l lg:border-t-0 lg:pl-5 lg:pt-0;
+  }
+
+  .account-password-form {
+    @apply grid items-end gap-3 sm:grid-cols-[minmax(0,1fr)_auto];
+  }
+
+  .account-password-form button,
+  .toolbar-form button,
+  .toolbar-form .ghost-link {
+    @apply w-full sm:w-fit;
+  }
+
+  .account-secondary-actions {
+    @apply flex flex-wrap gap-3;
+  }
+
+  .account-secondary-actions form,
+  .account-secondary-actions button {
+    @apply w-full sm:w-fit;
+  }
+
+  .account-danger-zone {
+    @apply grid gap-3 rounded-md border border-proofline-danger/40 bg-proofline-danger-bg/40 p-3;
+  }
+
+  .account-danger-title {
+    @apply text-sm font-semibold text-proofline-danger;
+  }
+
+  .account-danger-copy {
+    @apply mt-1 text-xs leading-5 text-proofline-text-muted;
+  }
+
+  .danger-button {
+    @apply border-proofline-danger/50 bg-proofline-danger-bg text-proofline-danger;
+  }
+
+  .danger-button:hover {
+    @apply border-proofline-danger bg-proofline-danger text-proofline-primary-text;
   }
 
   .side-stack {
@@ -364,6 +575,103 @@
 
   .compact-form {
     @apply max-w-2xl;
+  }
+
+  .pager {
+    @apply mt-5 grid gap-3 border-t border-proofline-border pt-4 sm:flex sm:items-center sm:justify-between;
+  }
+
+  .pager-current {
+    @apply text-center text-sm font-medium text-proofline-text-muted sm:text-left;
+  }
+
+  .pager .ghost-link {
+    @apply w-full sm:w-fit;
+  }
+
+  .ghost-link {
+    @apply inline-flex min-h-10 items-center justify-center rounded-md border border-proofline-border bg-proofline-surface-elevated px-3 py-2 text-sm font-semibold text-proofline-text-secondary;
+  }
+
+  .ghost-link:hover {
+    @apply border-proofline-border-strong bg-proofline-surface-strong text-proofline-text;
+  }
+
+  .ghost-link.is-disabled {
+    @apply cursor-default opacity-50;
+  }
+
+  .detail-list {
+    @apply grid gap-4;
+  }
+
+  .totp-enrollment {
+    @apply mt-4 grid max-w-full gap-4 rounded-md border border-proofline-border bg-proofline-bg-deep/50 p-4;
+  }
+
+  .qr-code {
+    @apply grid w-fit gap-0.5 rounded-md border border-proofline-border bg-proofline-text p-2;
+  }
+
+  .qr-row {
+    @apply flex gap-0.5;
+  }
+
+  .qr-cell {
+    @apply block h-1.5 w-1.5 bg-proofline-text;
+  }
+
+  .qr-cell.is-dark {
+    @apply bg-proofline-bg-deep;
+  }
+
+  .settings-factor-panel {
+    @apply mt-5 border-t border-proofline-border pt-5;
+  }
+
+  .secret-value,
+  .uri-value {
+    @apply min-w-0 break-all font-mono text-xs leading-5 text-proofline-text;
+    overflow-wrap: anywhere;
+  }
+
+  .uri-value {
+    @apply break-all;
+  }
+
+  .detail-list dt,
+  .config-item dt {
+    @apply text-xs font-medium uppercase text-proofline-text-muted;
+    letter-spacing: 0;
+  }
+
+  .detail-list dd,
+  .config-item dd {
+    @apply mt-1 break-words text-sm font-semibold leading-5 text-proofline-text-secondary;
+  }
+
+  .config-grid {
+    @apply grid gap-3 sm:grid-cols-2 lg:grid-cols-3;
+  }
+
+  .config-item {
+    @apply min-h-24 rounded-lg border border-proofline-border bg-proofline-bg-deep/40 p-4;
+  }
+
+  .config-item.ok {
+    @apply border-proofline-success/40;
+  }
+
+  .config-item.warn {
+    @apply border-proofline-warning/40;
+  }
+
+  .config-item.danger {
+    @apply border-proofline-danger/40;
+  }
+
+  .config-item p {
+    @apply mt-2 text-xs leading-5 text-proofline-text-disabled;
   }
 
   .muted {
