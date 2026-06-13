@@ -51,6 +51,7 @@ This directory contains the detailed documentation for Proofline Server, the Go 
 | [Compose smoke tests](../compose/README.md) | Local release-smoke stacks for SQLite/local, PostgreSQL/local, SQLite/S3-compatible MinIO, and full PostgreSQL/MinIO/Valkey combinations. |
 | [Codex change control](codex-change-control.md) | Rollback points, scoped Codex tasks, review steps, and issue-first backlog rules. |
 | [Code map](code-map.md) | Package layout and main backend request flows. |
+| [Staged internal/httpapi cleanup plan](httpapi-package-cleanup-plan.md) | Planning note for staged `internal/httpapi` file/package cleanup, route-boundary risks, and safe PR sequencing. |
 | [Reports](reports/README.md) | Public technical review reports and report-generation workflow notes. |
 
 ## Current Repository Scope

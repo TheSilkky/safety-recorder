@@ -84,6 +84,8 @@ contact key-sharing boundaries in
   file helpers.
 - `internal/auth`: normalizes local account usernames and email addresses, validates passwords, hashes passwords with bcrypt, hashes opaque session or verification tokens before storage, defines controlled second-factor recovery action/reason values, and maps WebAuthn user and credential records to the go-webauthn library types.
 - `internal/httpapi`: owns separate main and private-admin muxes, JSON responses, request logging, recovery, local account/session authentication, request validation, upload handling, stream state handlers, relay session capability issuance, service-authenticated core relay preflight/commit/fanout authorization handlers, trusted-contact relationship handlers, contact public-key handlers, sharing-grant handlers, wrapped-key handlers, incident deletion handlers, ZIP bundle streaming, app-level main API and public viewer rate limiting, private admin JSON API routes including second-factor recovery reset, the private admin web surface, the incident viewer, and the narrow metadata repository boundary consumed by handlers. Logging changes in this package should follow [logging-requirements.md](logging-requirements.md).
+  Staged cleanup planning for this package lives in
+  [httpapi-package-cleanup-plan.md](httpapi-package-cleanup-plan.md).
 - `internal/relaycap`: signs and validates short-lived regional relay upload
   and fanout capability tokens with HMAC-SHA256, explicit expiry, role checks,
   relay session binding, and incident/stream binding. It does not implement
