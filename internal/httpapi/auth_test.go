@@ -601,6 +601,19 @@ func TestEmailSecondFactorSetupBearerSessionEnrollsAndUnlocksProductRoutes(t *te
 	if sender.messages[0].To != "setup.user@example.invalid" {
 		t.Fatalf("challenge email to = %q", sender.messages[0].To)
 	}
+	if sender.messages[0].Subject != email.EmailChallengeSubject {
+		t.Fatalf("challenge email subject = %q", sender.messages[0].Subject)
+	}
+	for _, expected := range []string{
+		"Proofline email security code",
+		"This code expires at ",
+		"If you did not request this email challenge, ignore this email",
+		"does not send alerts, contact responders, change billing, or guarantee any response",
+	} {
+		if !strings.Contains(sender.messages[0].Body, expected) {
+			t.Fatalf("challenge email body missing %q: %q", expected, sender.messages[0].Body)
+		}
+	}
 	rawCode := secondFactorCodeFromEmail(t, sender.messages[0])
 	if rawCode == "" {
 		t.Fatal("email challenge did not contain a code")
@@ -1264,6 +1277,19 @@ func TestOpenRegistrationRequiresEmailVerificationBeforeLogin(t *testing.T) {
 	}
 	if sender.messages[0].To != "new.user@example.invalid" {
 		t.Fatalf("verification email to = %q", sender.messages[0].To)
+	}
+	if sender.messages[0].Subject != email.AccountVerificationSubject {
+		t.Fatalf("verification email subject = %q", sender.messages[0].Subject)
+	}
+	for _, expected := range []string{
+		"Proofline account verification",
+		"This link expires at ",
+		"If you did not create this Proofline account, ignore this email",
+		"does not send alerts, contact responders, change billing, or guarantee any response",
+	} {
+		if !strings.Contains(sender.messages[0].Body, expected) {
+			t.Fatalf("verification email body missing %q: %q", expected, sender.messages[0].Body)
+		}
 	}
 	rawToken := verificationTokenFromEmail(t, sender.messages[0])
 	if rawToken == "" {
