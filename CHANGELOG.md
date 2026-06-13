@@ -2,6 +2,30 @@
 
 ## Unreleased
 
+## v0.11.1 - 2026-06-13
+
+This is an ordinary pre-v1, experimental patch release. It is not
+production-ready public infrastructure and not a v1 preview readiness claim.
+
+- Added a staged `internal/httpapi` cleanup plan that records private/public
+  route-boundary risks and safe sequencing before further handler
+  reorganization.
+
+- Organized private admin web files before feature expansion, preserving the
+  private-admin listener boundary and existing bootstrap, login, logout, CSRF,
+  and password workflows.
+
+- Added a Tailwind build path for embedded private admin templates, with the
+  source CSS, generated checked-in stylesheet, and maintainer build
+  documentation kept scoped to the server-rendered private admin surface.
+
+- Redesigned and polished the private admin shell with Proofline visual parity
+  while keeping it server-rendered and private-admin only.
+
+- Added branded Proofline email templates for registration verification and
+  email challenge 2FA without adding notification providers or changing email
+  challenge semantics.
+
 - Require admin accounts to complete second-factor setup before private
   `/admin` operator actions or `/admin/api/...` JSON admin actions. Newly
   bootstrapped admins and legacy `not_required` admins are gated until admin
