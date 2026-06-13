@@ -198,14 +198,20 @@ func TestAdminWebSettingsShowsAdminControlsAndRedactedConfig(t *testing.T) {
 		"Security keys",
 		"Recommended fallback without WebAuthn",
 		"Configuration",
+		"Auth",
+		"Storage",
+		"Rate limits",
+		"Blob store",
 		"Max upload",
 		"Account blob quota",
 		"Registration",
+		"Relay",
 		"Browser sessions",
 		"WebAuthn",
 		"Email sender",
 		"Relay capability",
 		"Relay service auth",
+		`action="/admin/settings/second-factor/totp/enroll"`,
 		"Provider details redacted",
 		"RP details redacted",
 		"Secret redacted",
@@ -222,6 +228,8 @@ func TestAdminWebSettingsShowsAdminControlsAndRedactedConfig(t *testing.T) {
 		"relay-service-token",
 		"admin.example.invalid",
 		"https://admin.example.invalid",
+		"Manual setup key",
+		"otpauth://",
 		"Authorization",
 	} {
 		if bytes.Contains(body, []byte(disallowed)) {
@@ -1192,6 +1200,190 @@ func TestAdminWebTOTPSecondFactorSetupUnlocksDashboard(t *testing.T) {
 	for _, disallowed := range []string{factor.TOTPSecret, code, app.authToken} {
 		if bytes.Contains(body, []byte(disallowed)) {
 			t.Fatalf("admin dashboard after TOTP setup exposed %q: %s", disallowed, body)
+		}
+	}
+}
+
+func TestAdminWebSettingsTOTPSetupAndVerification(t *testing.T) {
+	app := newTestApp(t)
+	cookie := loginAdminWeb(t, app)
+
+	response, body := requestWithCookie(t, app.adminHandler, http.MethodGet, "/admin/settings", "", nil, cookie)
+	response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("expected admin settings status 200, got %d: %s", response.StatusCode, body)
+	}
+	for _, expected := range []string{"Second Factor", "Authenticator app", `action="/admin/settings/second-factor/totp/enroll"`} {
+		if !bytes.Contains(body, []byte(expected)) {
+			t.Fatalf("admin settings TOTP setup missing %q: %s", expected, body)
+		}
+	}
+	for _, disallowed := range []string{"Manual setup key", "OTPAuth URI", "otpauth://", app.authToken} {
+		if bytes.Contains(body, []byte(disallowed)) {
+			t.Fatalf("admin settings TOTP setup exposed %q before enrollment: %s", disallowed, body)
+		}
+	}
+	csrfToken := adminWebCSRFTokenFromBody(t, body)
+
+	response, body = postAdminWebFormWithCookie(t, app, "/admin/settings/second-factor/totp/enroll", url.Values{
+		"csrf_token": {csrfToken},
+	}, cookie)
+	response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("expected settings TOTP enrollment status 200, got %d: %s", response.StatusCode, body)
+	}
+	adminAccount := mustGetAccountByUsername(t, app, "test-admin")
+	factor, err := incidents.NewRepository(app.db).GetPendingTOTPSecondFactor(t.Context(), adminAccount.ID)
+	if err != nil {
+		t.Fatalf("get pending settings TOTP factor: %v", err)
+	}
+	for _, expected := range []string{
+		"TOTP setup started.",
+		"TOTP QR code",
+		"Manual setup key",
+		factor.TOTPSecret,
+		"OTPAuth URI",
+		"otpauth://totp/Proofline:test-admin",
+		`action="/admin/settings/second-factor/totp/confirm"`,
+		"Confirm authenticator app",
+	} {
+		if !bytes.Contains(body, []byte(expected)) {
+			t.Fatalf("admin settings TOTP enrollment missing %q: %s", expected, body)
+		}
+	}
+	for _, disallowed := range []string{app.authToken} {
+		if bytes.Contains(body, []byte(disallowed)) {
+			t.Fatalf("admin settings TOTP enrollment exposed %q: %s", disallowed, body)
+		}
+	}
+	csrfToken = adminWebCSRFTokenFromBody(t, body)
+
+	code, err := auth.GenerateTOTPCodeForTest(factor.TOTPSecret, time.Now().UTC())
+	if err != nil {
+		t.Fatalf("generate settings TOTP setup code: %v", err)
+	}
+	response, body = postAdminWebFormWithCookie(t, app, "/admin/settings/second-factor/totp/confirm", url.Values{
+		"csrf_token": {csrfToken},
+		"code":       {code},
+	}, cookie)
+	response.Body.Close()
+	if response.StatusCode != http.StatusSeeOther {
+		t.Fatalf("expected settings TOTP confirmation redirect 303, got %d: %s", response.StatusCode, body)
+	}
+	if location := response.Header.Get("Location"); location != "/admin/settings?notice=second_factor_setup_complete" {
+		t.Fatalf("expected settings TOTP setup complete redirect, got %q", location)
+	}
+
+	response, body = requestWithCookie(t, app.adminHandler, http.MethodGet, "/admin/settings?notice=second_factor_setup_complete", "", nil, cookie)
+	response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("expected settings after TOTP setup status 200, got %d: %s", response.StatusCode, body)
+	}
+	for _, expected := range []string{"Admin second-factor setup completed.", "Authenticator-app TOTP is configured", "Configured"} {
+		if !bytes.Contains(body, []byte(expected)) {
+			t.Fatalf("admin settings after TOTP setup missing %q: %s", expected, body)
+		}
+	}
+	for _, disallowed := range []string{factor.TOTPSecret, code, "Manual setup key", "OTPAuth URI", "otpauth://", app.authToken} {
+		if bytes.Contains(body, []byte(disallowed)) {
+			t.Fatalf("admin settings after TOTP setup exposed %q: %s", disallowed, body)
+		}
+	}
+
+	newCookie := loginAdminWeb(t, app)
+	response, body = requestWithCookie(t, app.adminHandler, http.MethodGet, "/admin", "", nil, newCookie)
+	response.Body.Close()
+	if response.StatusCode != http.StatusForbidden {
+		t.Fatalf("expected admin TOTP gate after relogin status 403, got %d: %s", response.StatusCode, body)
+	}
+	for _, expected := range []string{"Verify Admin 2FA", "Authenticator app", `action="/admin/second-factor/totp/verify"`} {
+		if !bytes.Contains(body, []byte(expected)) {
+			t.Fatalf("admin TOTP gate after settings setup missing %q: %s", expected, body)
+		}
+	}
+	for _, disallowed := range []string{factor.TOTPSecret, code, app.authToken} {
+		if bytes.Contains(body, []byte(disallowed)) {
+			t.Fatalf("admin TOTP gate after settings setup exposed %q: %s", disallowed, body)
+		}
+	}
+	csrfToken = adminWebCSRFTokenFromBody(t, body)
+	verifyCode, err := auth.GenerateTOTPCodeForTest(factor.TOTPSecret, time.Now().UTC().Add(time.Duration(auth.TOTPDefaultPeriodSeconds)*time.Second))
+	if err != nil {
+		t.Fatalf("generate settings TOTP verification code: %v", err)
+	}
+	response, body = postAdminWebFormWithCookie(t, app, "/admin/second-factor/totp/verify", url.Values{
+		"csrf_token": {csrfToken},
+		"code":       {verifyCode},
+	}, newCookie)
+	response.Body.Close()
+	if response.StatusCode != http.StatusSeeOther {
+		t.Fatalf("expected admin TOTP verify redirect 303, got %d: %s", response.StatusCode, body)
+	}
+	if location := response.Header.Get("Location"); location != "/admin?notice=second_factor_verified" {
+		t.Fatalf("expected admin TOTP verified redirect, got %q", location)
+	}
+
+	response, body = requestWithCookie(t, app.adminHandler, http.MethodGet, "/admin", "", nil, newCookie)
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("expected admin dashboard after TOTP verification status 200, got %d: %s", response.StatusCode, body)
+	}
+	for _, disallowed := range []string{factor.TOTPSecret, code, verifyCode, app.authToken} {
+		if bytes.Contains(body, []byte(disallowed)) {
+			t.Fatalf("admin dashboard after TOTP verification exposed %q: %s", disallowed, body)
+		}
+	}
+}
+
+func TestAdminWebSettingsTOTPSetupRequiresCSRFToken(t *testing.T) {
+	app := newTestApp(t)
+	cookie := loginAdminWeb(t, app)
+
+	response, body := postAdminWebFormWithCookie(t, app, "/admin/settings/second-factor/totp/enroll", url.Values{}, cookie)
+	response.Body.Close()
+	if response.StatusCode != http.StatusForbidden {
+		t.Fatalf("expected settings TOTP enroll without CSRF status 403, got %d: %s", response.StatusCode, body)
+	}
+	if !bytes.Contains(body, []byte("The form expired.")) {
+		t.Fatalf("expected settings TOTP enroll CSRF error: %s", body)
+	}
+	for _, disallowed := range []string{"Manual setup key", "OTPAuth URI", "otpauth://", app.authToken} {
+		if bytes.Contains(body, []byte(disallowed)) {
+			t.Fatalf("settings TOTP enroll CSRF error exposed %q: %s", disallowed, body)
+		}
+	}
+
+	csrfToken := adminWebDashboardCSRFToken(t, app, cookie)
+	response, body = postAdminWebFormWithCookie(t, app, "/admin/settings/second-factor/totp/enroll", url.Values{
+		"csrf_token": {csrfToken},
+	}, cookie)
+	response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("expected settings TOTP enrollment status 200, got %d: %s", response.StatusCode, body)
+	}
+	adminAccount := mustGetAccountByUsername(t, app, "test-admin")
+	factor, err := incidents.NewRepository(app.db).GetPendingTOTPSecondFactor(t.Context(), adminAccount.ID)
+	if err != nil {
+		t.Fatalf("get pending settings TOTP factor: %v", err)
+	}
+
+	code, err := auth.GenerateTOTPCodeForTest(factor.TOTPSecret, time.Now().UTC())
+	if err != nil {
+		t.Fatalf("generate settings TOTP CSRF code: %v", err)
+	}
+	response, body = postAdminWebFormWithCookie(t, app, "/admin/settings/second-factor/totp/confirm", url.Values{
+		"code": {code},
+	}, cookie)
+	response.Body.Close()
+	if response.StatusCode != http.StatusForbidden {
+		t.Fatalf("expected settings TOTP confirm without CSRF status 403, got %d: %s", response.StatusCode, body)
+	}
+	if !bytes.Contains(body, []byte("The form expired.")) {
+		t.Fatalf("expected settings TOTP confirm CSRF error: %s", body)
+	}
+	for _, disallowed := range []string{factor.TOTPSecret, code, "Manual setup key", "OTPAuth URI", "otpauth://", app.authToken} {
+		if bytes.Contains(body, []byte(disallowed)) {
+			t.Fatalf("settings TOTP confirm CSRF error exposed %q: %s", disallowed, body)
 		}
 	}
 }

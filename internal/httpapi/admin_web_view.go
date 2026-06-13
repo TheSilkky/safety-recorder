@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/boombuler/barcode/qr"
 	"github.com/open-proofline/server/internal/auth"
 	"github.com/open-proofline/server/internal/incidents"
 )
@@ -38,10 +39,11 @@ type adminWebData struct {
 	DeletionStatus                adminWebDeletionStatus
 	NavItems                      []adminWebNavItem
 	StatusItems                   []adminWebStatusItem
-	ConfigItems                   []adminWebStatusItem
+	ConfigGroups                  []adminWebStatusGroup
 	SecondFactorItems             []adminWebStatusItem
 	SecondFactorEmailAvailable    bool
 	SecondFactorTOTPAvailable     bool
+	SecondFactorTOTPActive        bool
 	SecondFactorWebAuthnAvailable bool
 	SecondFactorTOTPEnrollment    adminWebTOTPEnrollment
 }
@@ -115,9 +117,15 @@ type adminWebStatusItem struct {
 	Tone        string
 }
 
+type adminWebStatusGroup struct {
+	Label string
+	Items []adminWebStatusItem
+}
+
 type adminWebTOTPEnrollment struct {
 	Secret        string
 	OTPAuthURL    string
+	QRCodeRows    [][]bool
 	Issuer        string
 	AccountName   string
 	PeriodSeconds int
@@ -209,7 +217,22 @@ func (a *API) renderAdminWebIncidents(w http.ResponseWriter, r *http.Request, pr
 }
 
 func (a *API) renderAdminWebSettings(w http.ResponseWriter, r *http.Request, principal privatePrincipal, status int, notice, message string) {
-	a.renderAdminWeb(w, status, makeAdminWebSettingsData(principal, adminWebCSRFTokenFromRequest(r), notice, message, a.adminWebConfigItems(), a.adminWebSecondFactorItems()))
+	data, err := a.makeAdminWebSettingsDataForRequest(r, principal, notice, message)
+	if err != nil {
+		a.adminWebInternalError(w, "build admin web settings data", err)
+		return
+	}
+	a.renderAdminWeb(w, status, data)
+}
+
+func (a *API) makeAdminWebSettingsDataForRequest(r *http.Request, principal privatePrincipal, notice, message string) (adminWebData, error) {
+	secondFactorItems, totpActive, err := a.adminWebSecondFactorItems(r, principal)
+	if err != nil {
+		return adminWebData{}, err
+	}
+	data := makeAdminWebSettingsData(principal, adminWebCSRFTokenFromRequest(r), notice, message, a.adminWebConfigGroups(), secondFactorItems, totpActive)
+	data.SecondFactorWebAuthnAvailable = a.adminWebAuthnAvailable()
+	return data, nil
 }
 
 func (a *API) adminWebCommittedBlobBytes(r *http.Request, accounts []auth.Account) (int64, error) {
@@ -351,10 +374,12 @@ func makeAdminWebIncidentsData(principal privatePrincipal, candidates []incident
 	return data
 }
 
-func makeAdminWebSettingsData(principal privatePrincipal, csrfToken, notice, message string, configItems, secondFactorItems []adminWebStatusItem) adminWebData {
+func makeAdminWebSettingsData(principal privatePrincipal, csrfToken, notice, message string, configGroups []adminWebStatusGroup, secondFactorItems []adminWebStatusItem, totpActive bool) adminWebData {
 	data := makeAdminWebShellData(principal, adminWebPageSettings, "Settings", "Current admin account settings and safe server configuration.", csrfToken, notice, message)
-	data.ConfigItems = configItems
+	data.ConfigGroups = configGroups
 	data.SecondFactorItems = secondFactorItems
+	data.SecondFactorTOTPAvailable = true
+	data.SecondFactorTOTPActive = totpActive
 	return data
 }
 
@@ -470,16 +495,22 @@ func makeAdminWebSecondFactorVerificationData(principal privatePrincipal, csrfTo
 	}
 }
 
-func makeAdminWebTOTPEnrollment(account auth.Account, factor auth.SecondFactor) adminWebTOTPEnrollment {
+func makeAdminWebTOTPEnrollment(account auth.Account, factor auth.SecondFactor) (adminWebTOTPEnrollment, error) {
+	otpAuthURL := adminWebTOTPAuthURL(account.Username, factor.TOTPSecret, factor.TOTPPeriodSeconds, factor.TOTPDigits, factor.TOTPAlgorithm)
+	qrRows, err := adminWebTOTPQRCodeRows(otpAuthURL)
+	if err != nil {
+		return adminWebTOTPEnrollment{}, err
+	}
 	return adminWebTOTPEnrollment{
 		Secret:        factor.TOTPSecret,
-		OTPAuthURL:    adminWebTOTPAuthURL(account.Username, factor.TOTPSecret, factor.TOTPPeriodSeconds, factor.TOTPDigits, factor.TOTPAlgorithm),
+		OTPAuthURL:    otpAuthURL,
+		QRCodeRows:    qrRows,
 		Issuer:        auth.TOTPIssuer,
 		AccountName:   account.Username,
 		PeriodSeconds: factor.TOTPPeriodSeconds,
 		Digits:        factor.TOTPDigits,
 		Algorithm:     factor.TOTPAlgorithm,
-	}
+	}, nil
 }
 
 func adminWebTOTPAuthURL(accountName, secret string, periodSeconds, digits int, algorithm string) string {
@@ -495,6 +526,24 @@ func adminWebTOTPAuthURL(accountName, secret string, periodSeconds, digits int, 
 		Path:     "/" + auth.TOTPIssuer + ":" + strings.TrimSpace(accountName),
 		RawQuery: query.Encode(),
 	}).String()
+}
+
+func adminWebTOTPQRCodeRows(value string) ([][]bool, error) {
+	code, err := qr.Encode(value, qr.M, qr.Auto)
+	if err != nil {
+		return nil, err
+	}
+	bounds := code.Bounds()
+	rows := make([][]bool, bounds.Dy())
+	for y := bounds.Min.Y; y < bounds.Max.Y; y++ {
+		row := make([]bool, bounds.Dx())
+		for x := bounds.Min.X; x < bounds.Max.X; x++ {
+			red, green, blue, alpha := code.At(x, y).RGBA()
+			row[x-bounds.Min.X] = alpha > 0 && red+green+blue < 0x8000*3
+		}
+		rows[y-bounds.Min.Y] = row
+	}
+	return rows, nil
 }
 
 func makeAdminWebAccounts(accounts []auth.Account, currentAccountID string) []adminWebAccount {
@@ -658,12 +707,27 @@ func (a *API) adminWebEmailAvailable(r *http.Request, principal privatePrincipal
 	return false, err
 }
 
-func (a *API) adminWebSecondFactorItems() []adminWebStatusItem {
+func (a *API) adminWebSecondFactorItems(r *http.Request, principal privatePrincipal) ([]adminWebStatusItem, bool, error) {
 	emailValue := "Not configured"
 	emailTone := "warn"
 	if a.emailSender != nil {
 		emailValue = "Available"
 		emailTone = "neutral"
+		emailActive, err := a.adminWebEmailAvailable(r, principal)
+		if err != nil {
+			return nil, false, err
+		}
+		if emailActive {
+			emailValue = "Configured"
+		}
+	}
+	totpActive, err := a.adminWebTOTPAvailable(r, principal)
+	if err != nil {
+		return nil, false, err
+	}
+	totpValue := "Available"
+	if totpActive {
+		totpValue = "Configured"
 	}
 	webAuthnValue := "Not configured"
 	webAuthnTone := "warn"
@@ -673,25 +737,51 @@ func (a *API) adminWebSecondFactorItems() []adminWebStatusItem {
 	}
 	return []adminWebStatusItem{
 		{Label: "Security keys", Value: webAuthnValue, Description: "Recommended when WebAuthn/FIDO2 is configured", Tone: webAuthnTone},
-		{Label: "TOTP", Value: "Available", Description: "Recommended fallback without WebAuthn", Tone: "neutral"},
+		{Label: "TOTP", Value: totpValue, Description: "Recommended fallback without WebAuthn", Tone: "neutral"},
 		{Label: "Email challenge", Value: emailValue, Description: "Backup mail delivery fallback", Tone: emailTone},
-	}
+	}, totpActive, nil
 }
 
-func (a *API) adminWebConfigItems() []adminWebStatusItem {
-	return []adminWebStatusItem{
-		{Label: "Max upload", Value: formatAdminWebBytes(a.maxUploadBytes), Description: "Per request body limit", Tone: "neutral"},
-		{Label: "Account blob quota", Value: formatAdminWebBytes(a.accountBlobQuotaBytes), Description: "Default committed chunk quota", Tone: "neutral"},
-		{Label: "Session TTL", Value: formatAdminWebDuration(a.sessionTTL), Description: "Server-side auth session expiry", Tone: "neutral"},
-		{Label: "Incident token TTL", Value: formatAdminWebDuration(a.defaultIncidentTokenTTL), Description: "Default viewer token expiry", Tone: "neutral"},
-		{Label: "Registration", Value: a.accountRegistration.Mode, Description: "Account registration mode", Tone: "neutral"},
-		{Label: "Browser sessions", Value: adminWebEnabledValue(a.webAuth.Enabled), Description: "Cookie auth for main API", Tone: adminWebEnabledTone(a.webAuth.Enabled)},
-		{Label: "WebAuthn", Value: adminWebEnabledValue(a.webAuthn.Enabled), Description: "RP details redacted", Tone: adminWebEnabledTone(a.webAuthn.Enabled)},
-		{Label: "Email sender", Value: adminWebConfiguredValue(a.emailSender != nil), Description: "Provider details redacted", Tone: adminWebEnabledTone(a.emailSender != nil)},
-		{Label: "Main rate limits", Value: adminWebEnabledValue(a.mainRateLimit.Enabled), Description: formatAdminWebDuration(a.mainRateLimit.Window), Tone: adminWebEnabledTone(a.mainRateLimit.Enabled)},
-		{Label: "Viewer rate limits", Value: adminWebEnabledValue(a.publicRateLimit.Enabled), Description: formatAdminWebDuration(a.publicRateLimit.Window), Tone: adminWebEnabledTone(a.publicRateLimit.Enabled)},
-		{Label: "Relay capability", Value: adminWebConfiguredValue(a.relayCapability.Secret != ""), Description: "Secret redacted", Tone: adminWebEnabledTone(a.relayCapability.Secret != "")},
-		{Label: "Relay service auth", Value: adminWebConfiguredValue(a.relayService.AuthToken != ""), Description: "Token redacted", Tone: adminWebEnabledTone(a.relayService.AuthToken != "")},
+func (a *API) adminWebConfigGroups() []adminWebStatusGroup {
+	return []adminWebStatusGroup{
+		{
+			Label: "Auth",
+			Items: []adminWebStatusItem{
+				{Label: "Session TTL", Value: formatAdminWebDuration(a.sessionTTL), Description: "Server-side auth session expiry", Tone: "neutral"},
+				{Label: "Incident token TTL", Value: formatAdminWebDuration(a.defaultIncidentTokenTTL), Description: "Default viewer token expiry", Tone: "neutral"},
+				{Label: "Browser sessions", Value: adminWebEnabledValue(a.webAuth.Enabled), Description: "Cookie auth for main API", Tone: adminWebEnabledTone(a.webAuth.Enabled)},
+				{Label: "WebAuthn", Value: adminWebEnabledValue(a.webAuthn.Enabled), Description: "RP details redacted", Tone: adminWebEnabledTone(a.webAuthn.Enabled)},
+				{Label: "Email sender", Value: adminWebConfiguredValue(a.emailSender != nil), Description: "Provider details redacted", Tone: adminWebEnabledTone(a.emailSender != nil)},
+			},
+		},
+		{
+			Label: "Storage",
+			Items: []adminWebStatusItem{
+				{Label: "Blob store", Value: adminWebConfiguredValue(a.store != nil), Description: "Backend details redacted", Tone: adminWebEnabledTone(a.store != nil)},
+				{Label: "Max upload", Value: formatAdminWebBytes(a.maxUploadBytes), Description: "Per request body limit", Tone: "neutral"},
+				{Label: "Account blob quota", Value: formatAdminWebBytes(a.accountBlobQuotaBytes), Description: "Default committed chunk quota", Tone: "neutral"},
+			},
+		},
+		{
+			Label: "Registration",
+			Items: []adminWebStatusItem{
+				{Label: "Registration", Value: a.accountRegistration.Mode, Description: "Account registration mode", Tone: "neutral"},
+			},
+		},
+		{
+			Label: "Relay",
+			Items: []adminWebStatusItem{
+				{Label: "Relay capability", Value: adminWebConfiguredValue(a.relayCapability.Secret != ""), Description: "Secret redacted", Tone: adminWebEnabledTone(a.relayCapability.Secret != "")},
+				{Label: "Relay service auth", Value: adminWebConfiguredValue(a.relayService.AuthToken != ""), Description: "Token redacted", Tone: adminWebEnabledTone(a.relayService.AuthToken != "")},
+			},
+		},
+		{
+			Label: "Rate limits",
+			Items: []adminWebStatusItem{
+				{Label: "Main rate limits", Value: adminWebEnabledValue(a.mainRateLimit.Enabled), Description: formatAdminWebDuration(a.mainRateLimit.Window), Tone: adminWebEnabledTone(a.mainRateLimit.Enabled)},
+				{Label: "Viewer rate limits", Value: adminWebEnabledValue(a.publicRateLimit.Enabled), Description: formatAdminWebDuration(a.publicRateLimit.Window), Tone: adminWebEnabledTone(a.publicRateLimit.Enabled)},
+			},
+		},
 	}
 }
 

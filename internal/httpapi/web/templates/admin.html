@@ -522,6 +522,55 @@
               </div>
               {{end}}
             </div>
+            <div class="settings-factor-panel">
+              <div class="method-heading">
+                <div>
+                  <h3>Authenticator app</h3>
+                  <p class="muted">TOTP is the recommended fallback provider when WebAuthn/FIDO2 is not configured.</p>
+                </div>
+                <span class="method-badge recommended">{{if .SecondFactorWebAuthnAvailable}}Recommended fallback{{else}}Recommended{{end}}</span>
+              </div>
+              {{if .SecondFactorTOTPActive}}
+              <p class="inline-status success" role="status">Authenticator-app TOTP is configured for this admin account.</p>
+              {{else if .SecondFactorTOTPEnrollment.Secret}}
+              <div class="totp-enrollment" role="group" aria-label="Authenticator app setup details">
+                <div class="qr-code" role="img" aria-label="TOTP QR code">
+                  {{range .SecondFactorTOTPEnrollment.QRCodeRows}}
+                  <div class="qr-row" aria-hidden="true">
+                    {{range .}}<span class="qr-cell {{if .}}is-dark{{end}}"></span>{{end}}
+                  </div>
+                  {{end}}
+                </div>
+                <dl class="detail-list">
+                  <div>
+                    <dt>Manual setup key</dt>
+                    <dd class="secret-value">{{.SecondFactorTOTPEnrollment.Secret}}</dd>
+                  </div>
+                  <div>
+                    <dt>OTPAuth URI</dt>
+                    <dd class="uri-value">{{.SecondFactorTOTPEnrollment.OTPAuthURL}}</dd>
+                  </div>
+                  <div>
+                    <dt>Policy</dt>
+                    <dd>{{.SecondFactorTOTPEnrollment.Digits}} digits, {{.SecondFactorTOTPEnrollment.PeriodSeconds}} seconds, {{.SecondFactorTOTPEnrollment.Algorithm}}</dd>
+                  </div>
+                </dl>
+              </div>
+              <form method="post" action="/admin/settings/second-factor/totp/confirm" class="stack-form">
+                <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+                <label>
+                  <span>TOTP code</span>
+                  <input name="code" type="text" autocomplete="one-time-code" inputmode="numeric" required>
+                </label>
+                <button type="submit">Confirm authenticator app</button>
+              </form>
+              {{else}}
+              <form method="post" action="/admin/settings/second-factor/totp/enroll" class="stack-form">
+                <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+                <button type="submit">Set up authenticator app</button>
+              </form>
+              {{end}}
+            </div>
           </article>
 
           <article class="content-section settings-wide">
@@ -531,17 +580,24 @@
                 <h2>Configuration</h2>
               </div>
             </div>
-            <div class="config-grid">
-              {{range .ConfigItems}}
-              <div class="config-item {{.Tone}}">
-                <dl>
-                  <div>
-                    <dt>{{.Label}}</dt>
-                    <dd>{{.Value}}</dd>
+            <div class="config-groups">
+              {{range .ConfigGroups}}
+              <section class="config-group" aria-label="{{.Label}}">
+                <h3>{{.Label}}</h3>
+                <div class="config-grid">
+                  {{range .Items}}
+                  <div class="config-item {{.Tone}}">
+                    <dl>
+                      <div>
+                        <dt>{{.Label}}</dt>
+                        <dd>{{.Value}}</dd>
+                      </div>
+                    </dl>
+                    {{if .Description}}<p>{{.Description}}</p>{{end}}
                   </div>
-                </dl>
-                {{if .Description}}<p>{{.Description}}</p>{{end}}
-              </div>
+                  {{end}}
+                </div>
+              </section>
               {{end}}
             </div>
           </article>
@@ -648,6 +704,13 @@
           <p class="muted">Use a TOTP authenticator app for admin access. This works without WebAuthn/FIDO2 configuration.</p>
           {{if .SecondFactorTOTPEnrollment.Secret}}
           <div class="totp-enrollment" role="group" aria-label="Authenticator app setup details">
+            <div class="qr-code" role="img" aria-label="TOTP QR code">
+              {{range .SecondFactorTOTPEnrollment.QRCodeRows}}
+              <div class="qr-row" aria-hidden="true">
+                {{range .}}<span class="qr-cell {{if .}}is-dark{{end}}"></span>{{end}}
+              </div>
+              {{end}}
+            </div>
             <dl class="detail-list">
               <div>
                 <dt>Manual setup key</dt>

@@ -113,6 +113,8 @@ func (a *API) registerPrivateAdminWebRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /admin/second-factor/totp/confirm", a.adminWebConfirmTOTPSecondFactorEnrollment)
 	mux.HandleFunc("POST /admin/second-factor/totp/verify", a.adminWebVerifyTOTPSecondFactorChallenge)
 	mux.HandleFunc("POST /admin/password", a.adminWebChangeOwnPassword)
+	mux.HandleFunc("POST /admin/settings/second-factor/totp/enroll", a.adminWebStartSettingsTOTPSecondFactorEnrollment)
+	mux.HandleFunc("POST /admin/settings/second-factor/totp/confirm", a.adminWebConfirmSettingsTOTPSecondFactorEnrollment)
 	mux.HandleFunc("POST /admin/accounts", a.adminWebCreateAccount)
 	mux.HandleFunc("POST /admin/accounts/{account_id}/password", a.adminWebResetAccountPassword)
 	mux.HandleFunc("POST /admin/accounts/{account_id}/second-factor/recovery/reset", a.adminWebResetAccountSecondFactorRecovery)

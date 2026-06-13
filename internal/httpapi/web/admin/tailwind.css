@@ -428,6 +428,19 @@
     @apply lg:col-span-2;
   }
 
+  .config-groups {
+    @apply grid gap-5;
+  }
+
+  .config-group {
+    @apply grid gap-3;
+  }
+
+  .config-group h3 {
+    @apply text-sm font-semibold uppercase text-proofline-text-muted;
+    letter-spacing: 0;
+  }
+
   .content-section {
     @apply p-5 sm:p-6;
   }
@@ -593,7 +606,27 @@
   }
 
   .totp-enrollment {
-    @apply mt-4 rounded-md border border-proofline-border bg-proofline-bg-deep/50 p-4;
+    @apply mt-4 grid gap-4 rounded-md border border-proofline-border bg-proofline-bg-deep/50 p-4 sm:grid-cols-[auto_minmax(0,1fr)] sm:items-start;
+  }
+
+  .qr-code {
+    @apply grid w-fit gap-0.5 rounded-md border border-proofline-border bg-proofline-text p-2;
+  }
+
+  .qr-row {
+    @apply flex gap-0.5;
+  }
+
+  .qr-cell {
+    @apply block h-1.5 w-1.5 bg-proofline-text;
+  }
+
+  .qr-cell.is-dark {
+    @apply bg-proofline-bg-deep;
+  }
+
+  .settings-factor-panel {
+    @apply mt-5 border-t border-proofline-border pt-5;
   }
 
   .secret-value,
