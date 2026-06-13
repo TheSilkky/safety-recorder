@@ -68,6 +68,8 @@ func TestAdminWebLoginSetsHttpOnlyCookieAndOpensDashboard(t *testing.T) {
 	for _, expected := range []string{
 		"Proofline Admin",
 		"Operator Console",
+		`data-mobile-nav-details`,
+		`id="admin-mobile-navigation"`,
 		`href="/admin/accounts"`,
 		`href="/admin/incidents"`,
 		`href="/admin/settings"`,
@@ -77,6 +79,7 @@ func TestAdminWebLoginSetsHttpOnlyCookieAndOpensDashboard(t *testing.T) {
 		"Registered local accounts",
 		"Committed blobs",
 		"Private Only",
+		"Private listener only",
 	} {
 		if !bytes.Contains(body, []byte(expected)) {
 			t.Fatalf("admin dashboard missing %q: %s", expected, body)

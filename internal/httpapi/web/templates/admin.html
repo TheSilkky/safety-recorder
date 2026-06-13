@@ -27,10 +27,41 @@
           <span class="brand-subtitle">Operator Console</span>
         </span>
       </a>
-      <form method="post" action="/admin/logout" class="logout-form">
-        <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
-        <button type="submit" class="ghost-button">Sign out</button>
-      </form>
+      <details class="mobile-menu" data-mobile-nav-details>
+        <summary class="mobile-menu-button" aria-controls="admin-mobile-navigation">
+          <span class="sr-only">Admin menu</span>
+          <svg class="mobile-menu-icon mobile-menu-icon-open" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+            <path d="M4 7h16"></path>
+            <path d="M4 12h16"></path>
+            <path d="M4 17h16"></path>
+          </svg>
+          <svg class="mobile-menu-icon mobile-menu-icon-close" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+            <path d="m6 6 12 12"></path>
+            <path d="m18 6-12 12"></path>
+          </svg>
+        </summary>
+        <div id="admin-mobile-navigation" class="mobile-menu-panel">
+          <nav class="mobile-nav" aria-label="Admin sections">
+            {{range .NavItems}}
+            <a href="{{.Href}}" class="mobile-nav-link {{if .Current}}is-active{{end}}">
+              <span>{{.Label}}</span>
+              <small>{{.Description}}</small>
+            </a>
+            {{end}}
+          </nav>
+          <section class="mobile-menu-note" aria-label="Admin route boundary">
+            <svg class="icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M7 11V8a5 5 0 0 1 10 0v3"></path>
+              <path d="M6 11h12v10H6z"></path>
+            </svg>
+            <span>Private listener only</span>
+          </section>
+          <form method="post" action="/admin/logout" class="mobile-menu-logout">
+            <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+            <button type="submit" class="ghost-button">Sign out</button>
+          </form>
+        </div>
+      </details>
     </header>
 
     <aside class="admin-sidebar" aria-label="Admin navigation">

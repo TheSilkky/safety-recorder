@@ -57,6 +57,7 @@
   button:focus-visible,
   input:focus-visible,
   select:focus-visible,
+  summary:focus-visible,
   a:focus-visible {
     @apply outline outline-2 outline-offset-2 outline-proofline-focus;
   }
@@ -154,8 +155,84 @@
     @apply mt-5 flex flex-wrap items-center gap-3;
   }
 
+  .auth-actions form,
+  .auth-actions button,
+  .auth-actions .ghost-link,
+  .stack-form button {
+    @apply w-full sm:w-fit;
+  }
+
   .mobile-header {
-    @apply sticky top-0 z-20 flex items-center justify-between gap-3 border-b border-proofline-border bg-proofline-bg-deep/95 px-4 py-3 backdrop-blur lg:hidden;
+    @apply sticky top-0 z-30 flex items-center justify-between gap-3 border-b border-proofline-border bg-proofline-bg-deep/95 px-4 py-3 backdrop-blur lg:hidden;
+  }
+
+  .mobile-menu {
+    @apply relative shrink-0 lg:hidden;
+  }
+
+  .mobile-menu-button {
+    @apply flex size-10 cursor-pointer list-none items-center justify-center rounded-md border border-proofline-border bg-proofline-surface text-proofline-text transition-colors;
+  }
+
+  .mobile-menu-button:hover {
+    @apply border-proofline-border-strong bg-proofline-surface-strong;
+  }
+
+  .mobile-menu-button::-webkit-details-marker {
+    display: none;
+  }
+
+  .mobile-menu-icon {
+    @apply h-5 w-5;
+  }
+
+  .mobile-menu-icon-close {
+    @apply hidden;
+  }
+
+  .mobile-menu[open] .mobile-menu-icon-open {
+    @apply hidden;
+  }
+
+  .mobile-menu[open] .mobile-menu-icon-close {
+    @apply block;
+  }
+
+  .mobile-menu-panel {
+    @apply absolute right-0 top-12 z-30 grid max-h-[calc(100vh-6rem)] w-[min(22rem,calc(100vw-2rem))] gap-3 overflow-y-auto rounded-lg border border-proofline-border bg-proofline-bg-deep p-3 shadow-panel;
+  }
+
+  .mobile-nav {
+    @apply grid gap-1;
+  }
+
+  .mobile-nav-link {
+    @apply grid min-h-11 rounded-md border border-transparent px-3 py-2 text-sm font-medium text-proofline-text-secondary no-underline transition-colors;
+  }
+
+  .mobile-nav-link:hover {
+    @apply border-proofline-border bg-proofline-surface-elevated text-proofline-text;
+  }
+
+  .mobile-nav-link small {
+    @apply mt-0.5 text-xs font-medium text-proofline-text-disabled;
+    letter-spacing: 0;
+  }
+
+  .mobile-nav-link.is-active {
+    @apply border-proofline-border-strong bg-proofline-surface-strong text-proofline-text;
+  }
+
+  .mobile-nav-link.is-active small {
+    @apply text-proofline-text-secondary;
+  }
+
+  .mobile-menu-note {
+    @apply flex items-center gap-2 rounded-md border border-proofline-warning/40 bg-proofline-warning-bg px-3 py-3 text-sm font-medium text-proofline-warning;
+  }
+
+  .mobile-menu-logout button {
+    @apply w-full;
   }
 
   .brand-lockup,
@@ -344,7 +421,7 @@
   }
 
   .section-header {
-    @apply mb-4 flex items-start justify-between gap-4;
+    @apply mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4;
   }
 
   .section-icon {
@@ -372,7 +449,7 @@
   }
 
   .fixed-list {
-    min-height: 42rem;
+    @apply min-h-0 sm:min-h-[42rem];
   }
 
   .account-row {
@@ -420,8 +497,19 @@
     @apply grid items-end gap-3 sm:grid-cols-[minmax(0,1fr)_auto];
   }
 
+  .account-password-form button,
+  .toolbar-form button,
+  .toolbar-form .ghost-link {
+    @apply w-full sm:w-fit;
+  }
+
   .account-secondary-actions {
     @apply flex flex-wrap gap-3;
+  }
+
+  .account-secondary-actions form,
+  .account-secondary-actions button {
+    @apply w-full sm:w-fit;
   }
 
   .side-stack {
@@ -441,11 +529,15 @@
   }
 
   .pager {
-    @apply mt-5 flex items-center justify-between gap-3 border-t border-proofline-border pt-4;
+    @apply mt-5 grid gap-3 border-t border-proofline-border pt-4 sm:flex sm:items-center sm:justify-between;
   }
 
   .pager-current {
-    @apply text-sm font-medium text-proofline-text-muted;
+    @apply text-center text-sm font-medium text-proofline-text-muted sm:text-left;
+  }
+
+  .pager .ghost-link {
+    @apply w-full sm:w-fit;
   }
 
   .ghost-link {
