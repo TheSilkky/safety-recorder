@@ -376,7 +376,11 @@
   }
 
   .account-row {
-    @apply grid gap-3 py-4 first:pt-0 last:pb-0;
+    @apply py-5 first:pt-0 last:pb-0;
+  }
+
+  .account-record {
+    @apply grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(19rem,28rem)] lg:items-start;
   }
 
   .account-summary {
@@ -396,7 +400,7 @@
   }
 
   .metadata-row {
-    @apply mt-3 grid gap-3 sm:grid-cols-3;
+    @apply mt-3 grid gap-x-6 gap-y-3 sm:grid-cols-2 2xl:grid-cols-3;
   }
 
   .metadata-row dt {
@@ -406,6 +410,18 @@
 
   .metadata-row dd {
     @apply mt-1 break-words text-sm leading-5 text-proofline-text-secondary;
+  }
+
+  .account-actions {
+    @apply grid gap-3 border-t border-proofline-border pt-4 lg:border-l lg:border-t-0 lg:pl-5 lg:pt-0;
+  }
+
+  .account-password-form {
+    @apply grid items-end gap-3 sm:grid-cols-[minmax(0,1fr)_auto];
+  }
+
+  .account-secondary-actions {
+    @apply flex flex-wrap gap-3;
   }
 
   .side-stack {

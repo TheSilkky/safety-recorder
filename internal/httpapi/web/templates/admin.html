@@ -189,63 +189,69 @@
           <div class="account-list fixed-list">
             {{range .Accounts}}
             <section class="account-row">
-              <div class="account-summary">
-                <div class="account-avatar" aria-hidden="true">{{if .IsCurrent}}You{{else}}{{.Role}}{{end}}</div>
-                <div class="account-copy">
-                  <h3>{{.Username}}{{if .IsCurrent}} <span class="status-badge current">You</span>{{end}}</h3>
-                  <dl class="metadata-row">
-                    <div>
-                      <dt>Email</dt>
-                      <dd>{{if .Email}}{{.Email}}{{else}}not set{{end}}</dd>
-                    </div>
-                    <div>
-                      <dt>Role</dt>
-                      <dd>{{.Role}}</dd>
-                    </div>
-                    <div>
-                      <dt>State</dt>
-                      <dd>{{if .AccountState}}{{.AccountState}}{{else}}active{{end}}</dd>
-                    </div>
-                    <div>
-                      <dt>2FA setup</dt>
-                      <dd>{{if .SecondFactorSetup}}{{.SecondFactorSetup}}{{else}}not_required{{end}}</dd>
-                    </div>
-                    <div>
-                      <dt>Created</dt>
-                      <dd>{{humanTime .CreatedAt}}</dd>
-                    </div>
-                    <div>
-                      <dt>Password changed</dt>
-                      <dd>{{humanTime .PasswordChangedAt}}</dd>
-                    </div>
-                  </dl>
+              <div class="account-record">
+                <div class="account-summary">
+                  <div class="account-avatar" aria-hidden="true">{{if .IsCurrent}}You{{else}}{{.Role}}{{end}}</div>
+                  <div class="account-copy">
+                    <h3>{{.Username}}{{if .IsCurrent}} <span class="status-badge current">You</span>{{end}}</h3>
+                    <dl class="metadata-row">
+                      <div>
+                        <dt>Email</dt>
+                        <dd>{{if .Email}}{{.Email}}{{else}}not set{{end}}</dd>
+                      </div>
+                      <div>
+                        <dt>Role</dt>
+                        <dd>{{.Role}}</dd>
+                      </div>
+                      <div>
+                        <dt>State</dt>
+                        <dd>{{if .AccountState}}{{.AccountState}}{{else}}active{{end}}</dd>
+                      </div>
+                      <div>
+                        <dt>2FA setup</dt>
+                        <dd>{{if .SecondFactorSetup}}{{.SecondFactorSetup}}{{else}}not_required{{end}}</dd>
+                      </div>
+                      <div>
+                        <dt>Created</dt>
+                        <dd>{{humanTime .CreatedAt}}</dd>
+                      </div>
+                      <div>
+                        <dt>Password changed</dt>
+                        <dd>{{humanTime .PasswordChangedAt}}</dd>
+                      </div>
+                    </dl>
+                  </div>
                 </div>
+                {{if .IsCurrent}}
+                <div class="account-actions">
+                  <p class="muted">Current admin account. Use Settings to change this password.</p>
+                  <a href="/admin/settings" class="ghost-link">Open settings</a>
+                </div>
+                {{else}}
+                <div class="account-actions">
+                  <form method="post" action="/admin/accounts/{{.ID}}/password" class="account-password-form">
+                    <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+                    <label>
+                      <span>New password</span>
+                      <input name="new_password" type="password" autocomplete="new-password" required>
+                    </label>
+                    <button type="submit">Reset password</button>
+                  </form>
+                  <div class="account-secondary-actions">
+                    <form method="post" action="/admin/accounts/{{.ID}}/sessions/revoke">
+                      <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+                      <button type="submit" class="ghost-button">Revoke sessions</button>
+                    </form>
+                    <form method="post" action="/admin/accounts/{{.ID}}/second-factor/recovery/reset">
+                      <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+                      <input type="hidden" name="reason" value="operator_review">
+                      <button type="submit" class="ghost-button">Reset 2FA recovery</button>
+                    </form>
+                  </div>
+                  <p class="muted">Session revocation ends active logins. 2FA recovery requires setup again after operator review.</p>
+                </div>
+                {{end}}
               </div>
-              {{if .IsCurrent}}
-              <p class="muted">Use the admin password form to update this account.</p>
-              {{else}}
-              <div class="stack-form compact-form">
-                <form method="post" action="/admin/accounts/{{.ID}}/password" class="inline-form">
-                  <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
-                  <label>
-                    <span>New password</span>
-                    <input name="new_password" type="password" autocomplete="new-password" required>
-                  </label>
-                  <button type="submit">Reset password</button>
-                </form>
-                <form method="post" action="/admin/accounts/{{.ID}}/sessions/revoke" class="inline-form">
-                  <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
-                  <p class="muted">End active sessions for this account.</p>
-                  <button type="submit" class="ghost-button">Revoke sessions</button>
-                </form>
-                <form method="post" action="/admin/accounts/{{.ID}}/second-factor/recovery/reset" class="inline-form">
-                  <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
-                  <input type="hidden" name="reason" value="operator_review">
-                  <p class="muted">Require second-factor setup again after operator review.</p>
-                  <button type="submit" class="ghost-button">Reset 2FA recovery</button>
-                </form>
-              </div>
-              {{end}}
             </section>
             {{else}}
             <p class="muted">No accounts match the current search.</p>
