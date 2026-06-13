@@ -356,6 +356,31 @@ func (a *API) adminWebChangeOwnPassword(w http.ResponseWriter, r *http.Request) 
 	http.Redirect(w, r, "/admin?notice=password_changed", http.StatusSeeOther)
 }
 
+func (a *API) adminWebCreateAccount(w http.ResponseWriter, r *http.Request) {
+	setAdminWebPageHeaders(w)
+	principal, ok := a.requireAdminWeb(w, r)
+	if !ok {
+		return
+	}
+	if ok := a.parseAdminWebDashboardForm(w, r, principal, "The account form could not be read."); !ok {
+		return
+	}
+	if !a.validateAdminWebCSRF(w, r, principal) {
+		return
+	}
+
+	_, status, message, err, ok := a.adminWebCreateManagedAccount(r, r.FormValue("username"), r.FormValue("password"), r.FormValue("role"))
+	if err != nil {
+		a.adminWebInternalError(w, "create admin web account", err)
+		return
+	}
+	if !ok {
+		a.renderAdminWebDashboard(w, r, principal, status, "", message)
+		return
+	}
+	http.Redirect(w, r, "/admin?notice=account_created", http.StatusSeeOther)
+}
+
 func (a *API) adminWebResetAccountPassword(w http.ResponseWriter, r *http.Request) {
 	setAdminWebPageHeaders(w)
 	principal, ok := a.requireAdminWeb(w, r)
@@ -388,4 +413,73 @@ func (a *API) adminWebResetAccountPassword(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	http.Redirect(w, r, "/admin?notice=account_password_reset", http.StatusSeeOther)
+}
+
+func (a *API) adminWebResetAccountSecondFactorRecovery(w http.ResponseWriter, r *http.Request) {
+	setAdminWebPageHeaders(w)
+	principal, ok := a.requireAdminWeb(w, r)
+	if !ok {
+		return
+	}
+	if ok := a.parseAdminWebDashboardForm(w, r, principal, "The second-factor recovery form could not be read."); !ok {
+		return
+	}
+	if !a.validateAdminWebCSRF(w, r, principal) {
+		return
+	}
+
+	accountID := r.PathValue("account_id")
+	if accountID == principal.Account.ID {
+		a.renderAdminWebDashboard(w, r, principal, http.StatusBadRequest, "", "Second-factor recovery reset for the current admin account is not available from this form.")
+		return
+	}
+	reason := strings.TrimSpace(r.FormValue("reason"))
+	if !auth.ValidAccountRecoveryReason(reason) {
+		a.renderAdminWebDashboard(w, r, principal, http.StatusBadRequest, "", "Recovery reason is not supported.")
+		return
+	}
+	if _, _, err := a.repo.ResetAccountSecondFactorRecovery(r.Context(), auth.ResetAccountSecondFactorRecoveryParams{
+		AccountID:      accountID,
+		AdminAccountID: principal.Account.ID,
+		Reason:         reason,
+	}); errors.Is(err, auth.ErrNotFound) {
+		a.renderAdminWebDashboard(w, r, principal, http.StatusNotFound, "", "Account was not found.")
+		return
+	} else if err != nil {
+		a.adminWebInternalError(w, "reset admin web account second-factor recovery", err)
+		return
+	}
+	http.Redirect(w, r, "/admin?notice=account_second_factor_reset", http.StatusSeeOther)
+}
+
+func (a *API) adminWebRevokeAccountSessions(w http.ResponseWriter, r *http.Request) {
+	setAdminWebPageHeaders(w)
+	principal, ok := a.requireAdminWeb(w, r)
+	if !ok {
+		return
+	}
+	if ok := a.parseAdminWebDashboardForm(w, r, principal, "The session revocation form could not be read."); !ok {
+		return
+	}
+	if !a.validateAdminWebCSRF(w, r, principal) {
+		return
+	}
+
+	accountID := r.PathValue("account_id")
+	if accountID == principal.Account.ID {
+		a.renderAdminWebDashboard(w, r, principal, http.StatusBadRequest, "", "Use sign out to end the current admin session.")
+		return
+	}
+	if _, err := a.repo.GetAccountByID(r.Context(), accountID); errors.Is(err, auth.ErrNotFound) {
+		a.renderAdminWebDashboard(w, r, principal, http.StatusNotFound, "", "Account was not found.")
+		return
+	} else if err != nil {
+		a.adminWebInternalError(w, "get admin web account for session revocation", err)
+		return
+	}
+	if _, err := a.repo.RevokeAccountSessions(r.Context(), accountID, ""); err != nil {
+		a.adminWebInternalError(w, "revoke admin web account sessions", err)
+		return
+	}
+	http.Redirect(w, r, "/admin?notice=account_sessions_revoked", http.StatusSeeOther)
 }

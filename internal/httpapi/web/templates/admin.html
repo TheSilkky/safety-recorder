@@ -110,6 +110,32 @@
           </div>
 
           <div class="account-list">
+            <section class="account-row">
+              <div class="account-summary">
+                <div class="account-avatar" aria-hidden="true">New</div>
+                <div class="account-copy">
+                  <h3>Create Account</h3>
+                  <p class="muted">New local accounts require second-factor setup before private operator actions.</p>
+                </div>
+              </div>
+              <form method="post" action="/admin/accounts" class="stack-form compact-form">
+                <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+                <label>
+                  <span>Username</span>
+                  <input name="username" type="text" autocomplete="username" required>
+                </label>
+                <label>
+                  <span>Role</span>
+                  <input name="role" type="text" value="user" pattern="user|admin" required>
+                </label>
+                <label>
+                  <span>Password</span>
+                  <input name="password" type="password" autocomplete="new-password" required>
+                </label>
+                <button type="submit">Create account</button>
+              </form>
+            </section>
+
             {{range .Accounts}}
             <section class="account-row">
               <div class="account-summary">
@@ -135,14 +161,27 @@
               {{if .IsCurrent}}
               <p class="muted">Use the admin password form to update this account.</p>
               {{else}}
-              <form method="post" action="/admin/accounts/{{.ID}}/password" class="inline-form compact-form">
-                <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
-                <label>
-                  <span>New password</span>
-                  <input name="new_password" type="password" autocomplete="new-password" required>
-                </label>
-                <button type="submit">Reset password</button>
-              </form>
+              <div class="stack-form compact-form">
+                <form method="post" action="/admin/accounts/{{.ID}}/password" class="inline-form">
+                  <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+                  <label>
+                    <span>New password</span>
+                    <input name="new_password" type="password" autocomplete="new-password" required>
+                  </label>
+                  <button type="submit">Reset password</button>
+                </form>
+                <form method="post" action="/admin/accounts/{{.ID}}/sessions/revoke" class="inline-form">
+                  <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+                  <p class="muted">End active sessions for this account.</p>
+                  <button type="submit" class="ghost-button">Revoke sessions</button>
+                </form>
+                <form method="post" action="/admin/accounts/{{.ID}}/second-factor/recovery/reset" class="inline-form">
+                  <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+                  <input type="hidden" name="reason" value="operator_review">
+                  <p class="muted">Require second-factor setup again after operator review.</p>
+                  <button type="submit" class="ghost-button">Reset 2FA recovery</button>
+                </form>
+              </div>
               {{end}}
             </section>
             {{end}}

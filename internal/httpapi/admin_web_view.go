@@ -111,10 +111,16 @@ func makeAdminWebLoginData(message string) adminWebData {
 
 func adminWebNotice(r *http.Request) string {
 	switch r.URL.Query().Get("notice") {
+	case "account_created":
+		return "Account created."
 	case "password_changed":
 		return "Password changed."
 	case "account_password_reset":
 		return "Account password reset."
+	case "account_sessions_revoked":
+		return "Account sessions revoked."
+	case "account_second_factor_reset":
+		return "Account second-factor recovery reset."
 	case "second_factor_challenge_sent":
 		return "Second-factor challenge sent."
 	case "second_factor_setup_complete":

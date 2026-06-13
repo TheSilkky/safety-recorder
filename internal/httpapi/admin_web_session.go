@@ -119,6 +119,34 @@ func (a *API) createAdminWebBootstrapAccount(r *http.Request) (auth.Account, int
 	return account, http.StatusCreated, "", nil, true
 }
 
+func (a *API) adminWebCreateManagedAccount(r *http.Request, username, password, role string) (auth.Account, int, string, error, bool) {
+	username = auth.NormalizeUsername(username)
+	role = strings.TrimSpace(role)
+	if err := auth.ValidateUsername(username); err != nil {
+		return auth.Account{}, http.StatusBadRequest, err.Error(), nil, false
+	}
+	if !auth.ValidRole(role) {
+		return auth.Account{}, http.StatusBadRequest, "Role must be user or admin.", nil, false
+	}
+	passwordHash, err := auth.HashPassword(password, a.passwordCost)
+	if err != nil {
+		return auth.Account{}, http.StatusBadRequest, err.Error(), nil, false
+	}
+	account, err := a.repo.CreateAccount(r.Context(), auth.CreateAccountParams{
+		Username:          username,
+		SecondFactorSetup: auth.SecondFactorSetupStateSetupRequired,
+		PasswordHash:      passwordHash,
+		Role:              role,
+	})
+	if errors.Is(err, auth.ErrDuplicate) {
+		return auth.Account{}, http.StatusConflict, "Username is already in use.", nil, false
+	}
+	if err != nil {
+		return auth.Account{}, 0, "", err, false
+	}
+	return account, http.StatusCreated, "", nil, true
+}
+
 func (a *API) adminWebUpdatePassword(r *http.Request, accountID, password string) (auth.Account, int, string, error, bool) {
 	passwordHash, err := auth.HashPassword(password, a.passwordCost)
 	if err != nil {

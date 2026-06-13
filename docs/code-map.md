@@ -328,13 +328,19 @@ active-factor session verification when TOTP or WebAuthn is active. Setup
 screens support email challenge fallback where mail delivery is configured,
 and TOTP-active admin web sessions can verify through
 `POST /admin/second-factor/totp/verify`. After the gate passes, the dashboard
-lists local accounts and supports limited password workflows. `POST
-/admin/password` changes the current admin account password after verifying the
-current password, keeping the current session and revoking other sessions.
-`POST /admin/accounts/{account_id}/password` resets another local account
-password and revokes that account's sessions. `POST /admin/logout` revokes the
-current admin web session. These authenticated state-changing forms use a
-session-bound CSRF token.
+lists local accounts and supports local account administration workflows.
+`POST /admin/accounts` creates a local account that requires second-factor setup,
+`POST /admin/password` changes the current admin account password after
+verifying the current password, keeping the current session and revoking other
+sessions, `POST /admin/accounts/{account_id}/password` resets another local
+account password and revokes that account's sessions,
+`POST /admin/accounts/{account_id}/sessions/revoke` revokes another account's
+sessions, and
+`POST /admin/accounts/{account_id}/second-factor/recovery/reset` resets another
+account's second-factor recovery state with controlled reason codes. `POST
+/admin/logout` revokes the current admin web session. These authenticated
+state-changing forms use a session-bound CSRF token and block unsafe
+current-admin self-reset actions.
 
 The admin web implementation is split by concern: `admin_web_handlers.go`
 contains the private admin page, second-factor, and form handlers,

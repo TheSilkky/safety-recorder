@@ -108,8 +108,12 @@ func TestAdminWebDashboardListsAccounts(t *testing.T) {
 		`id="operations"`,
 		"test-admin",
 		"managed-user",
+		`action="/admin/accounts"`,
 		`action="/admin/password"`,
 		`action="/admin/accounts/` + userAccount.ID + `/password"`,
+		`action="/admin/accounts/` + userAccount.ID + `/sessions/revoke"`,
+		`action="/admin/accounts/` + userAccount.ID + `/second-factor/recovery/reset"`,
+		`name="reason" value="operator_review"`,
 		`name="csrf_token"`,
 	} {
 		if !bytes.Contains(body, []byte(expected)) {
@@ -119,6 +123,52 @@ func TestAdminWebDashboardListsAccounts(t *testing.T) {
 	for _, disallowed := range []string{app.authToken, "test-password", "managed-password", "password_hash", "Authorization"} {
 		if bytes.Contains(body, []byte(disallowed)) {
 			t.Fatalf("admin dashboard exposed %q: %s", disallowed, body)
+		}
+	}
+}
+
+func TestAdminWebAdminCanCreateAccount(t *testing.T) {
+	app := newTestApp(t)
+	cookie := loginAdminWeb(t, app)
+	csrfToken := adminWebDashboardCSRFToken(t, app, cookie)
+
+	form := url.Values{
+		"csrf_token": {csrfToken},
+		"username":   {"created-user"},
+		"role":       {auth.RoleUser},
+		"password":   {"created-password"},
+	}
+	response, body := postAdminWebFormWithCookie(t, app, "/admin/accounts", form, cookie)
+	response.Body.Close()
+	if response.StatusCode != http.StatusSeeOther {
+		t.Fatalf("expected account create redirect 303, got %d: %s", response.StatusCode, body)
+	}
+	if location := response.Header.Get("Location"); location != "/admin?notice=account_created" {
+		t.Fatalf("expected account create redirect notice, got %q", location)
+	}
+
+	account := mustGetRegistrationAccount(t, app, "created-user")
+	if account.Role != auth.RoleUser || account.SecondFactorSetup != auth.SecondFactorSetupStateSetupRequired {
+		t.Fatalf("unexpected created account state: %+v", account)
+	}
+	_, loginAccount := loginWithAccountForTest(t, app, "created-user", "created-password")
+	if loginAccount.SecondFactorSetup != auth.SecondFactorSetupStateSetupRequired || !loginAccount.RequiresSetup {
+		t.Fatalf("created account should require setup: %+v", loginAccount)
+	}
+
+	response, body = requestWithCookie(t, app.adminHandler, http.MethodGet, "/admin?notice=account_created", "", nil, cookie)
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("expected dashboard after account create status 200, got %d: %s", response.StatusCode, body)
+	}
+	for _, expected := range []string{"Account created.", "created-user"} {
+		if !bytes.Contains(body, []byte(expected)) {
+			t.Fatalf("account create dashboard missing %q: %s", expected, body)
+		}
+	}
+	for _, disallowed := range []string{"created-password", app.authToken, "Authorization"} {
+		if bytes.Contains(body, []byte(disallowed)) {
+			t.Fatalf("account create dashboard exposed %q: %s", disallowed, body)
 		}
 	}
 }
@@ -184,9 +234,80 @@ func TestAdminWebAdminCanResetUserPassword(t *testing.T) {
 	loginForTest(t, app, "reset-user", "replacement-password")
 }
 
-func TestAdminWebPasswordFormsRequireCSRFToken(t *testing.T) {
+func TestAdminWebAdminCanRevokeUserSessions(t *testing.T) {
+	app := newTestApp(t)
+	userToken := createAccountAndLogin(t, app, "session-web-user", "session-password", auth.RoleUser)
+	userAccount := mustGetAccountByUsername(t, app, "session-web-user")
+	cookie := loginAdminWeb(t, app)
+	csrfToken := adminWebDashboardCSRFToken(t, app, cookie)
+
+	form := url.Values{"csrf_token": {csrfToken}}
+	response, body := postAdminWebFormWithCookie(t, app, "/admin/accounts/"+userAccount.ID+"/sessions/revoke", form, cookie)
+	response.Body.Close()
+	if response.StatusCode != http.StatusSeeOther {
+		t.Fatalf("expected session revoke redirect 303, got %d: %s", response.StatusCode, body)
+	}
+	if location := response.Header.Get("Location"); location != "/admin?notice=account_sessions_revoked" {
+		t.Fatalf("expected session revoke redirect notice, got %q", location)
+	}
+
+	response, body = requestWithAuth(t, app.mainHandler, http.MethodGet, "/v1/account", "", nil, userToken)
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("expected revoked user session status 401, got %d: %s", response.StatusCode, body)
+	}
+}
+
+func TestAdminWebAdminCanResetUserSecondFactorRecovery(t *testing.T) {
+	app := newTestApp(t)
+	userToken := createAccountAndLogin(t, app, "recovery-web-user", "recovery-password", auth.RoleUser)
+	userAccount := mustGetRegistrationAccount(t, app, "recovery-web-user")
+	if userAccount.SecondFactorSetup != auth.SecondFactorSetupStateComplete {
+		t.Fatalf("test account setup state = %q, want complete", userAccount.SecondFactorSetup)
+	}
+	cookie := loginAdminWeb(t, app)
+	csrfToken := adminWebDashboardCSRFToken(t, app, cookie)
+
+	form := url.Values{
+		"csrf_token": {csrfToken},
+		"reason":     {auth.AccountRecoveryReasonOperatorReview},
+	}
+	response, body := postAdminWebFormWithCookie(t, app, "/admin/accounts/"+userAccount.ID+"/second-factor/recovery/reset", form, cookie)
+	response.Body.Close()
+	if response.StatusCode != http.StatusSeeOther {
+		t.Fatalf("expected second-factor recovery redirect 303, got %d: %s", response.StatusCode, body)
+	}
+	if location := response.Header.Get("Location"); location != "/admin?notice=account_second_factor_reset" {
+		t.Fatalf("expected second-factor recovery redirect notice, got %q", location)
+	}
+
+	updated := mustGetRegistrationAccount(t, app, "recovery-web-user")
+	if updated.SecondFactorSetup != auth.SecondFactorSetupStateSetupRequired {
+		t.Fatalf("updated account second-factor setup = %q, want setup_required", updated.SecondFactorSetup)
+	}
+	response, body = requestWithAuth(t, app.mainHandler, http.MethodGet, "/v1/account", "", nil, userToken)
+	response.Body.Close()
+	if response.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("expected recovered user session status 401, got %d: %s", response.StatusCode, body)
+	}
+
+	response, body = requestWithCookie(t, app.adminHandler, http.MethodGet, "/admin?notice=account_second_factor_reset", "", nil, cookie)
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("expected dashboard after recovery reset status 200, got %d: %s", response.StatusCode, body)
+	}
+	for _, disallowed := range []string{"recovery-password", app.authToken, "Authorization", "raw operator note"} {
+		if bytes.Contains(body, []byte(disallowed)) {
+			t.Fatalf("recovery reset dashboard exposed %q: %s", disallowed, body)
+		}
+	}
+}
+
+func TestAdminWebAccountFormsRequireCSRFToken(t *testing.T) {
 	app := newTestApp(t)
 	cookie := loginAdminWeb(t, app)
+	userToken := createAccountAndLogin(t, app, "csrf-account-user", "csrf-password", auth.RoleUser)
+	userAccount := mustGetAccountByUsername(t, app, "csrf-account-user")
 
 	form := url.Values{
 		"csrf_token":       {"not-a-valid-token"},
@@ -202,6 +323,136 @@ func TestAdminWebPasswordFormsRequireCSRFToken(t *testing.T) {
 		t.Fatalf("expected CSRF error message: %s", body)
 	}
 	loginForTest(t, app, "test-admin", "test-password")
+
+	tests := []struct {
+		name   string
+		target string
+		form   url.Values
+	}{
+		{
+			name:   "create account",
+			target: "/admin/accounts",
+			form: url.Values{
+				"username": {"csrf-created-user"},
+				"role":     {auth.RoleUser},
+				"password": {"csrf-created-password"},
+			},
+		},
+		{
+			name:   "revoke sessions",
+			target: "/admin/accounts/" + userAccount.ID + "/sessions/revoke",
+			form:   url.Values{},
+		},
+		{
+			name:   "reset second factor recovery",
+			target: "/admin/accounts/" + userAccount.ID + "/second-factor/recovery/reset",
+			form: url.Values{
+				"reason": {auth.AccountRecoveryReasonOperatorReview},
+			},
+		},
+	}
+	for _, tt := range tests {
+		response, body := postAdminWebFormWithCookie(t, app, tt.target, tt.form, cookie)
+		response.Body.Close()
+		if response.StatusCode != http.StatusForbidden {
+			t.Fatalf("%s: expected bad CSRF status 403, got %d: %s", tt.name, response.StatusCode, body)
+		}
+		if !bytes.Contains(body, []byte("The form expired.")) {
+			t.Fatalf("%s: expected CSRF error message: %s", tt.name, body)
+		}
+	}
+	response, body = requestWithAuth(t, app.mainHandler, http.MethodGet, "/v1/account", "", nil, userToken)
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("expected bad-CSRF user session to remain valid, got %d: %s", response.StatusCode, body)
+	}
+}
+
+func TestAdminWebAccountFormsRequireAdminSession(t *testing.T) {
+	app := newTestApp(t)
+
+	form := url.Values{
+		"username": {"unauthorized-user"},
+		"role":     {auth.RoleUser},
+		"password": {"unauthorized-password"},
+	}
+	response, body := postAdminWebForm(t, app, "/admin/accounts", form)
+	response.Body.Close()
+	if response.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("expected account form without session status 401, got %d: %s", response.StatusCode, body)
+	}
+	if !bytes.Contains(body, []byte("Admin login is required.")) {
+		t.Fatalf("expected admin login required message: %s", body)
+	}
+
+	userToken := createAccountAndLogin(t, app, "account-form-user", "account-form-password", auth.RoleUser)
+	userCookie := &http.Cookie{Name: adminWebSessionCookieName, Value: userToken}
+	response, body = postAdminWebFormWithCookie(t, app, "/admin/accounts", form, userCookie)
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusForbidden {
+		t.Fatalf("expected account form non-admin status 403, got %d: %s", response.StatusCode, body)
+	}
+	if !bytes.Contains(body, []byte("Access Denied")) {
+		t.Fatalf("expected access denied page: %s", body)
+	}
+	if !strings.Contains(response.Header.Get("Set-Cookie"), "Max-Age=0") {
+		t.Fatalf("expected non-admin cookie to be cleared, got %q", response.Header.Get("Set-Cookie"))
+	}
+}
+
+func TestAdminWebBlocksUnsafeOwnAccountActions(t *testing.T) {
+	app := newTestApp(t)
+	adminAccount := mustGetAccountByUsername(t, app, "test-admin")
+	cookie := loginAdminWeb(t, app)
+	csrfToken := adminWebDashboardCSRFToken(t, app, cookie)
+
+	tests := []struct {
+		name    string
+		target  string
+		form    url.Values
+		message string
+	}{
+		{
+			name:   "password reset",
+			target: "/admin/accounts/" + adminAccount.ID + "/password",
+			form: url.Values{
+				"csrf_token":   {csrfToken},
+				"new_password": {"replacement-password"},
+			},
+			message: "Use the admin password form to change your own password.",
+		},
+		{
+			name:    "session revoke",
+			target:  "/admin/accounts/" + adminAccount.ID + "/sessions/revoke",
+			form:    url.Values{"csrf_token": {csrfToken}},
+			message: "Use sign out to end the current admin session.",
+		},
+		{
+			name:   "second factor recovery reset",
+			target: "/admin/accounts/" + adminAccount.ID + "/second-factor/recovery/reset",
+			form: url.Values{
+				"csrf_token": {csrfToken},
+				"reason":     {auth.AccountRecoveryReasonOperatorReview},
+			},
+			message: "Second-factor recovery reset for the current admin account is not available from this form.",
+		},
+	}
+	for _, tt := range tests {
+		response, body := postAdminWebFormWithCookie(t, app, tt.target, tt.form, cookie)
+		response.Body.Close()
+		if response.StatusCode != http.StatusBadRequest {
+			t.Fatalf("%s: expected own-account action status 400, got %d: %s", tt.name, response.StatusCode, body)
+		}
+		if !bytes.Contains(body, []byte(tt.message)) {
+			t.Fatalf("%s: expected own-account message %q: %s", tt.name, tt.message, body)
+		}
+	}
+
+	response, body := requestWithCookie(t, app.adminHandler, http.MethodGet, "/admin", "", nil, cookie)
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK || !bytes.Contains(body, []byte("User Accounts")) {
+		t.Fatalf("expected own-account block to preserve admin session, got %d: %s", response.StatusCode, body)
+	}
 }
 
 func TestAdminWebLogoutRequiresCSRFToken(t *testing.T) {
