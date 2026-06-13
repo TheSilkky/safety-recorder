@@ -115,14 +115,17 @@ not expose evidence contents, free-form notes, token values, stored paths,
 plaintext, raw keys, or public viewer reassignment state.
 
 The private `/admin` surface is outside the `/v1` API namespace and remains on
-the private-admin listener. Its login and bootstrap forms reuse the same local account
-and server-side session store, with the raw session token held in an HttpOnly
-SameSite cookie scoped to `/admin`. The authenticated dashboard lists local
-accounts and supports current-admin password changes plus admin password resets
-for other local accounts. Authenticated state-changing forms use a
-session-bound CSRF token. The token-neutral CSS under `/admin/static/...` is
-unauthenticated because it contains no incident data, tokens, keys, or
-deployment details.
+the private-admin listener. Its login and bootstrap forms reuse the same local
+account and server-side session store, with the raw session token held in an
+HttpOnly SameSite cookie scoped to `/admin`. Newly bootstrapped admins and
+legacy admin `not_required` accounts see a second-factor setup gate instead of
+operator controls until admin second-factor setup is complete. Admin web
+sessions with active TOTP or WebAuthn factors must verify the session before
+the dashboard opens. The authenticated dashboard then lists local accounts and
+supports current-admin password changes plus admin password resets for other
+local accounts. Authenticated state-changing forms use a session-bound CSRF
+token. The token-neutral CSS under `/admin/static/...` is unauthenticated
+because it contains no incident data, tokens, keys, or deployment details.
 
 ## Listener Topology
 
@@ -211,7 +214,12 @@ complete. Registration email verification does not count as second-factor
 setup. Active TOTP or WebAuthn factors also require each new
 primary-authenticated session to verify an active factor before product-route
 access. Existing migrated accounts default to `not_required` for preview
-compatibility.
+compatibility on product routes. Private admin operator actions are stricter:
+admin accounts must be `complete`, and legacy admin `not_required` accounts are
+gated from `/admin` dashboard actions and `/admin/api/...` JSON admin routes
+until setup is complete. WebAuthn/FIDO2 security keys are preferred for admin
+accounts when configured; TOTP and email challenge remain lower-preference
+paths where available.
 
 The first admin account is created through a one-time bootstrap flow:
 

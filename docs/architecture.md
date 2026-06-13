@@ -62,7 +62,7 @@ is documented in [key-custody.md](key-custody.md),
 ```mermaid
 flowchart LR
     FutureClients["Future clients<br/>separate repos"] -->|"future encrypted chunks"| MainAPI["Main /v1 API<br/>local session auth"]
-    Operator["Admin browser<br/>private network"] -->|"bootstrap/login/account passwords"| AdminListener["Private-admin listener"]
+    Operator["Admin browser<br/>private network"] -->|"bootstrap/login/2FA/account passwords"| AdminListener["Private-admin listener"]
     AdminListener --> AdminWeb["/admin web<br/>admin cookie session"]
     Simulator["Simulator CLI<br/>implemented here"] -->|"login + upload"| MainAPI
     MainAPI --> Repo["Incident repository"]
@@ -198,7 +198,7 @@ flowchart LR
 
     subgraph AdminMux["Private-admin mux"]
         AdminAPI["/admin/api routes<br/>account and deletion administration"]
-        AdminWeb["/admin routes<br/>bootstrap, login, account list,<br/>password workflows"]
+        AdminWeb["/admin routes<br/>bootstrap, login, 2FA gate,<br/>account list, password workflows"]
     end
 
     MainMux --> MainBind["SAFE_MAIN_BIND_ADDRS"]

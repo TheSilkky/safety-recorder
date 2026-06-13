@@ -150,19 +150,24 @@ encrypted evidence bundles.
   invites, manage account-owned contact public keys, manage owner-scoped
   sharing grants, manage grant-bound wrapped-key records, and read encrypted
   bytes.
-- Existing `/admin/api/...` JSON routes require an admin account, are mounted on
-  the private-admin server, and must not be routed from public entry points.
-  This includes legacy unowned incident candidate review, reassignment, and
-  keep-unowned audit decisions, account password/session management, and
-  account second-factor recovery resets.
+- Existing `/admin/api/...` JSON routes require an admin account with completed
+  admin second-factor setup, are mounted on the private-admin server, require
+  active-factor session verification when TOTP or WebAuthn is active, and must
+  not be routed from public entry points. This includes legacy unowned incident
+  candidate review, reassignment, and keep-unowned audit decisions, account
+  password/session management, and account second-factor recovery resets.
 - `/v1/bootstrap/admin`, `/v1/health/live`, and `/v1/health/ready` are not
   mounted on either listener.
 - `/admin`, `/admin/login`, `/admin/bootstrap`, `/admin/logout`,
-  `/admin/password`, and `/admin/accounts/{account_id}/password` are private
-  admin web routes. They use the same server-side session store as `/v1`
-  authentication, require the admin role after login, and are mounted only on
-  the private-admin server. The token-neutral `/admin/static/...` CSS route is
-  unauthenticated.
+  `/admin/second-factor/email/challenge`,
+  `/admin/second-factor/email/verify`,
+  `/admin/second-factor/totp/verify`, `/admin/password`, and
+  `/admin/accounts/{account_id}/password` are private admin web routes. They
+  use the same server-side session store as `/v1` authentication, require the
+  admin role after login, require completed admin second-factor setup and
+  active-factor session verification before operator actions, and are mounted
+  only on the private-admin server. The token-neutral `/admin/static/...` CSS
+  route is unauthenticated.
 - `/i/{token}`, `/i/{token}/data`, `/i/{token}/viewer-payload`, and viewer
   bundle download routes are public-shaped read-only routes gated by a bearer
   token. Pre-rename
@@ -248,8 +253,10 @@ encrypted evidence bundles.
   does not count as second-factor setup. Active TOTP or WebAuthn factors also
   require each new primary-authenticated session to verify a fresh factor
   challenge before product-route access. Existing migrated accounts default to
-  `not_required` for preview compatibility. Paid registration fails closed and
-  does not create active accounts.
+  `not_required` for preview product-route compatibility, but admin accounts
+  with `not_required` are gated from private admin operator actions until admin
+  second-factor setup is complete. Paid registration fails closed and does not
+  create active accounts.
 - Cookie-authenticated unsafe `/v1` requests require a session-bound HMAC CSRF
   token in the configured header. Bearer-authenticated requests keep their
   existing behavior. Credentialed CORS is emitted only for exact configured web
@@ -298,11 +305,12 @@ encrypted evidence bundles.
   token-neutral CSS from the private admin prefix without authentication, and
   shows route-boundary status plus local account-management data rather than
   incident evidence, tokens, password hashes, stored paths, object keys,
-  plaintext, raw keys, or private deployment details. Its authenticated
-  state-changing forms use a session-bound CSRF token. Admin own-password
-  changes require the current password and revoke other sessions; admin resets
-  for other accounts revoke that account's sessions; logout revokes the current
-  admin web session.
+  plaintext, raw keys, or private deployment details. Operator forms are gated
+  on completed admin second-factor setup and active-factor session
+  verification. Authenticated state-changing forms use a session-bound CSRF
+  token. Admin own-password changes require the current password and revoke
+  other sessions; admin resets for other accounts revoke that account's
+  sessions; logout revokes the current admin web session.
 - Viewer tokens use 256 bits from `crypto/rand`; only SHA-256 token hashes are
   stored. Tokens created without an explicit `expires_at` default to a 24-hour
   lifetime unless `SAFE_DEFAULT_INCIDENT_TOKEN_TTL` is configured differently.

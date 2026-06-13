@@ -87,15 +87,15 @@ func (a *API) registerMainAuthRoutes(mux *http.ServeMux) {
 }
 
 func (a *API) registerAdminAPIRoutes(mux *http.ServeMux) {
-	mux.HandleFunc("GET /admin/api/accounts", a.withPrivateAuth(a.listAccounts))
-	mux.HandleFunc("POST /admin/api/accounts", a.withPrivateAuth(a.createAccount))
-	mux.HandleFunc("POST /admin/api/accounts/{account_id}/password", a.withPrivateAuth(a.resetAccountPassword))
-	mux.HandleFunc("POST /admin/api/accounts/{account_id}/second-factor/recovery/reset", a.withPrivateAuth(a.resetAccountSecondFactorRecovery))
-	mux.HandleFunc("POST /admin/api/accounts/{account_id}/sessions/revoke", a.withPrivateAuth(a.revokeAccountSessions))
-	mux.HandleFunc("GET /admin/api/incidents/unowned", a.withPrivateAuth(a.listLegacyUnownedIncidentCandidates))
-	mux.HandleFunc("GET /admin/api/incidents/{incident_id}/deletion", a.withPrivateAuth(a.getAdminIncidentDeletion))
-	mux.HandleFunc("POST /admin/api/incidents/{incident_id}/deletion", a.withPrivateAuth(a.requestAdminIncidentDeletion))
-	mux.HandleFunc("POST /admin/api/incidents/{incident_id}/reassignment", a.withPrivateAuth(a.reassignLegacyUnownedIncident))
+	mux.HandleFunc("GET /admin/api/accounts", a.withAdminAuth(a.listAccounts))
+	mux.HandleFunc("POST /admin/api/accounts", a.withAdminAuth(a.createAccount))
+	mux.HandleFunc("POST /admin/api/accounts/{account_id}/password", a.withAdminAuth(a.resetAccountPassword))
+	mux.HandleFunc("POST /admin/api/accounts/{account_id}/second-factor/recovery/reset", a.withAdminAuth(a.resetAccountSecondFactorRecovery))
+	mux.HandleFunc("POST /admin/api/accounts/{account_id}/sessions/revoke", a.withAdminAuth(a.revokeAccountSessions))
+	mux.HandleFunc("GET /admin/api/incidents/unowned", a.withAdminAuth(a.listLegacyUnownedIncidentCandidates))
+	mux.HandleFunc("GET /admin/api/incidents/{incident_id}/deletion", a.withAdminAuth(a.getAdminIncidentDeletion))
+	mux.HandleFunc("POST /admin/api/incidents/{incident_id}/deletion", a.withAdminAuth(a.requestAdminIncidentDeletion))
+	mux.HandleFunc("POST /admin/api/incidents/{incident_id}/reassignment", a.withAdminAuth(a.reassignLegacyUnownedIncident))
 }
 
 func (a *API) registerPrivateAdminWebRoutes(mux *http.ServeMux) {
@@ -103,6 +103,9 @@ func (a *API) registerPrivateAdminWebRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /admin/bootstrap", a.adminWebBootstrap)
 	mux.HandleFunc("POST /admin/login", a.adminWebLogin)
 	mux.HandleFunc("POST /admin/logout", a.adminWebLogout)
+	mux.HandleFunc("POST /admin/second-factor/email/challenge", a.adminWebRequestEmailSecondFactorChallenge)
+	mux.HandleFunc("POST /admin/second-factor/email/verify", a.adminWebVerifyEmailSecondFactorChallenge)
+	mux.HandleFunc("POST /admin/second-factor/totp/verify", a.adminWebVerifyTOTPSecondFactorChallenge)
 	mux.HandleFunc("POST /admin/password", a.adminWebChangeOwnPassword)
 	mux.HandleFunc("POST /admin/accounts/{account_id}/password", a.adminWebResetAccountPassword)
 	mux.Handle("GET /admin/static/", a.adminWebStaticHandler())

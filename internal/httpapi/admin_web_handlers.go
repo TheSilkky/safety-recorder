@@ -3,6 +3,8 @@ package httpapi
 import (
 	"errors"
 	"net/http"
+	"strings"
+	"time"
 
 	"github.com/open-proofline/server/internal/auth"
 )
@@ -38,6 +40,9 @@ func (a *API) adminWebPage(w http.ResponseWriter, r *http.Request) {
 	if principal.Account.Role != auth.RoleAdmin {
 		clearAdminWebSessionCookie(w)
 		a.renderAdminWeb(w, http.StatusForbidden, makeAdminWebForbiddenData())
+		return
+	}
+	if !a.adminWebSecondFactorSatisfied(w, r, principal, adminWebNotice(r), "") {
 		return
 	}
 
@@ -136,10 +141,10 @@ func (a *API) adminWebLogout(w http.ResponseWriter, r *http.Request) {
 		a.renderAdminWeb(w, http.StatusForbidden, makeAdminWebForbiddenData())
 		return
 	}
-	if ok := a.parseAdminWebDashboardForm(w, r, principal, "The logout form could not be read."); !ok {
+	if ok := a.parseAdminWebSessionForm(w, r, principal, "The logout form could not be read."); !ok {
 		return
 	}
-	if !a.validateAdminWebCSRF(w, r, principal) {
+	if !a.validateAdminWebSessionCSRF(w, r, principal) {
 		return
 	}
 	if err := a.repo.RevokeSession(r.Context(), principal.Session.ID); err != nil && !errors.Is(err, auth.ErrNotFound) {
@@ -149,6 +154,174 @@ func (a *API) adminWebLogout(w http.ResponseWriter, r *http.Request) {
 
 	clearAdminWebSessionCookie(w)
 	http.Redirect(w, r, "/admin", http.StatusSeeOther)
+}
+
+func (a *API) adminWebRequestEmailSecondFactorChallenge(w http.ResponseWriter, r *http.Request) {
+	setAdminWebPageHeaders(w)
+	principal, ok := a.requireAdminWebSession(w, r)
+	if !ok {
+		return
+	}
+	if !adminRequiresSecondFactorSetup(principal.Account) {
+		http.Redirect(w, r, "/admin", http.StatusSeeOther)
+		return
+	}
+	data := makeAdminWebSecondFactorSetupData(principal, adminWebCSRFTokenFromRequest(r), "", "The second-factor setup form could not be read.", a.emailSender != nil, a.adminWebAuthnAvailable())
+	if ok := a.parseAdminWebForm(w, r, data); !ok {
+		return
+	}
+	data.Error = ""
+	if !a.validateAdminWebCSRFForData(w, r, data) {
+		return
+	}
+	if a.emailSender == nil {
+		data.Error = "Email second-factor delivery is not configured."
+		a.renderAdminWeb(w, http.StatusServiceUnavailable, data)
+		return
+	}
+
+	emailAddress := auth.NormalizeEmail(r.FormValue("email"))
+	if emailAddress == "" && principal.Account.EmailNormalized != "" && principal.Account.EmailVerifiedAt != nil {
+		emailAddress = principal.Account.EmailNormalized
+	}
+	if emailAddress == "" {
+		data.Error = "Email address is required."
+		a.renderAdminWeb(w, http.StatusBadRequest, data)
+		return
+	}
+	if err := auth.ValidateEmail(emailAddress); err != nil {
+		data.Error = err.Error()
+		a.renderAdminWeb(w, http.StatusBadRequest, data)
+		return
+	}
+
+	expiresAt := time.Now().UTC().Add(a.secondFactorEmailTTL)
+	challenge, rawToken, err := a.repo.CreateEmailSecondFactorChallenge(r.Context(), auth.CreateEmailSecondFactorChallengeParams{
+		AccountID:       principal.Account.ID,
+		EmailNormalized: emailAddress,
+		ExpiresAt:       expiresAt,
+	})
+	if errors.Is(err, auth.ErrDuplicate) {
+		data.Error = "Email second factor is already configured."
+		a.renderAdminWeb(w, http.StatusConflict, data)
+		return
+	}
+	if errors.Is(err, auth.ErrNotFound) {
+		data.Error = "Account was not found."
+		a.renderAdminWeb(w, http.StatusNotFound, data)
+		return
+	}
+	if err != nil {
+		a.adminWebInternalError(w, "create admin web email second factor challenge", err)
+		return
+	}
+	if !a.sendSecondFactorChallengeEmail(r, challenge.EmailNormalized, rawToken, challenge.ExpiresAt) {
+		data.Error = "Email delivery is temporarily unavailable."
+		a.renderAdminWeb(w, http.StatusServiceUnavailable, data)
+		return
+	}
+	http.Redirect(w, r, "/admin?notice=second_factor_challenge_sent", http.StatusSeeOther)
+}
+
+func (a *API) adminWebVerifyEmailSecondFactorChallenge(w http.ResponseWriter, r *http.Request) {
+	setAdminWebPageHeaders(w)
+	principal, ok := a.requireAdminWebSession(w, r)
+	if !ok {
+		return
+	}
+	if !adminRequiresSecondFactorSetup(principal.Account) {
+		http.Redirect(w, r, "/admin", http.StatusSeeOther)
+		return
+	}
+	data := makeAdminWebSecondFactorSetupData(principal, adminWebCSRFTokenFromRequest(r), "", "The second-factor verification form could not be read.", a.emailSender != nil, a.adminWebAuthnAvailable())
+	if ok := a.parseAdminWebForm(w, r, data); !ok {
+		return
+	}
+	data.Error = ""
+	if !a.validateAdminWebCSRFForData(w, r, data) {
+		return
+	}
+
+	rawToken := strings.TrimSpace(r.FormValue("code"))
+	if rawToken == "" {
+		data.Error = "Second-factor challenge is invalid or expired."
+		a.renderAdminWeb(w, http.StatusBadRequest, data)
+		return
+	}
+	if _, _, err := a.repo.ConsumeEmailSecondFactorChallenge(r.Context(), principal.Account.ID, rawToken, time.Now().UTC()); err != nil {
+		if errors.Is(err, auth.ErrNotFound) {
+			data.Error = "Second-factor challenge is invalid or expired."
+			a.renderAdminWeb(w, http.StatusBadRequest, data)
+			return
+		}
+		a.adminWebInternalError(w, "consume admin web email second factor challenge", err)
+		return
+	}
+	http.Redirect(w, r, "/admin?notice=second_factor_setup_complete", http.StatusSeeOther)
+}
+
+func (a *API) adminWebVerifyTOTPSecondFactorChallenge(w http.ResponseWriter, r *http.Request) {
+	setAdminWebPageHeaders(w)
+	principal, ok := a.requireAdminWebSession(w, r)
+	if !ok {
+		return
+	}
+	if adminRequiresSecondFactorSetup(principal.Account) {
+		a.renderAdminWebSecondFactorSetup(w, r, principal, http.StatusForbidden, "", "")
+		return
+	}
+	data := makeAdminWebSecondFactorVerificationData(principal, adminWebCSRFTokenFromRequest(r), "", "The TOTP verification form could not be read.", true, a.adminWebAuthnAvailable())
+	if ok := a.parseAdminWebForm(w, r, data); !ok {
+		return
+	}
+	data.Error = ""
+	if !a.validateAdminWebCSRFForData(w, r, data) {
+		return
+	}
+
+	code := strings.TrimSpace(r.FormValue("code"))
+	if code == "" {
+		data.Error = "TOTP challenge is invalid or expired."
+		a.renderAdminWeb(w, http.StatusBadRequest, data)
+		return
+	}
+	factor, err := a.repo.GetActiveTOTPSecondFactor(r.Context(), principal.Account.ID)
+	if errors.Is(err, auth.ErrNotFound) {
+		data.SecondFactorTOTPAvailable = false
+		data.Error = "TOTP verification is not configured for this account."
+		a.renderAdminWeb(w, http.StatusConflict, data)
+		return
+	}
+	if err != nil {
+		a.adminWebInternalError(w, "get admin web active TOTP factor", err)
+		return
+	}
+	now := time.Now().UTC()
+	timeStep, valid, err := auth.MatchTOTPCode(factor.TOTPSecret, code, now, factor.TOTPPeriodSeconds, factor.TOTPDigits, factor.TOTPAlgorithm)
+	if err != nil {
+		a.adminWebInternalError(w, "validate admin web TOTP code", err)
+		return
+	}
+	if !valid {
+		data.Error = "TOTP challenge is invalid or expired."
+		a.renderAdminWeb(w, http.StatusBadRequest, data)
+		return
+	}
+	factor, err = a.repo.MarkTOTPSecondFactorUsed(r.Context(), factor.ID, now, timeStep)
+	if errors.Is(err, auth.ErrNotFound) {
+		data.Error = "TOTP challenge is invalid or expired."
+		a.renderAdminWeb(w, http.StatusBadRequest, data)
+		return
+	}
+	if err != nil {
+		a.adminWebInternalError(w, "mark admin web TOTP factor used", err)
+		return
+	}
+	if _, err := a.repo.MarkSessionSecondFactorVerified(r.Context(), principal.Session.ID, factor.ID, auth.SecondFactorTypeTOTP, now); err != nil {
+		a.adminWebInternalError(w, "mark admin web TOTP session verified", err)
+		return
+	}
+	http.Redirect(w, r, "/admin?notice=second_factor_verified", http.StatusSeeOther)
 }
 
 func (a *API) adminWebChangeOwnPassword(w http.ResponseWriter, r *http.Request) {

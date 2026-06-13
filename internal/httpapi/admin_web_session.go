@@ -32,7 +32,17 @@ func (a *API) parseAdminWebDashboardForm(w http.ResponseWriter, r *http.Request,
 	return true
 }
 
-func (a *API) requireAdminWeb(w http.ResponseWriter, r *http.Request) (privatePrincipal, bool) {
+func (a *API) parseAdminWebSessionForm(w http.ResponseWriter, r *http.Request, principal privatePrincipal, message string) bool {
+	r.Body = http.MaxBytesReader(w, r.Body, fieldLimit)
+	defer r.Body.Close()
+	if err := r.ParseForm(); err != nil {
+		a.renderAdminWebSessionGate(w, r, principal, http.StatusBadRequest, "", message)
+		return false
+	}
+	return true
+}
+
+func (a *API) requireAdminWebSession(w http.ResponseWriter, r *http.Request) (privatePrincipal, bool) {
 	principal, ok, err := a.adminWebPrincipal(r)
 	if err != nil {
 		a.adminWebInternalError(w, "load admin web session", err)
@@ -48,6 +58,41 @@ func (a *API) requireAdminWeb(w http.ResponseWriter, r *http.Request) (privatePr
 		return privatePrincipal{}, false
 	}
 	return principal, true
+}
+
+func (a *API) requireAdminWeb(w http.ResponseWriter, r *http.Request) (privatePrincipal, bool) {
+	principal, ok := a.requireAdminWebSession(w, r)
+	if !ok {
+		return privatePrincipal{}, false
+	}
+	if !a.adminWebSecondFactorSatisfied(w, r, principal, "", "") {
+		return privatePrincipal{}, false
+	}
+	return principal, true
+}
+
+func (a *API) adminWebSecondFactorSatisfied(w http.ResponseWriter, r *http.Request, principal privatePrincipal, notice, message string) bool {
+	if adminRequiresSecondFactorSetup(principal.Account) {
+		a.renderAdminWebSecondFactorSetup(w, r, principal, http.StatusForbidden, notice, message)
+		return false
+	}
+	required, err := a.sessionRequiresSecondFactorVerification(r.Context(), principal.Account, principal.Session)
+	if err != nil {
+		a.adminWebInternalError(w, "check admin web session second factor requirement", err)
+		return false
+	}
+	if required {
+		a.renderAdminWebSecondFactorVerification(w, r, principal, http.StatusForbidden, notice, message)
+		return false
+	}
+	return true
+}
+
+func (a *API) renderAdminWebSessionGate(w http.ResponseWriter, r *http.Request, principal privatePrincipal, status int, notice, message string) {
+	if !a.adminWebSecondFactorSatisfied(w, r, principal, notice, message) {
+		return
+	}
+	a.renderAdminWebDashboard(w, r, principal, status, notice, message)
 }
 
 func (a *API) createAdminWebBootstrapAccount(r *http.Request) (auth.Account, int, string, error, bool) {
@@ -155,13 +200,34 @@ func clearAdminWebSessionCookie(w http.ResponseWriter) {
 }
 
 func (a *API) validateAdminWebCSRF(w http.ResponseWriter, r *http.Request, principal privatePrincipal) bool {
-	want := adminWebCSRFTokenFromRequest(r)
-	got := strings.TrimSpace(r.FormValue("csrf_token"))
-	if want == "" || got == "" || !adminWebCSRFTokenValid(want, got) {
+	if !adminWebCSRFTokenFromFormValid(r) {
 		a.renderAdminWebDashboard(w, r, principal, http.StatusForbidden, "", "The form expired. Reload the page and try again.")
 		return false
 	}
 	return true
+}
+
+func (a *API) validateAdminWebSessionCSRF(w http.ResponseWriter, r *http.Request, principal privatePrincipal) bool {
+	if !adminWebCSRFTokenFromFormValid(r) {
+		a.renderAdminWebSessionGate(w, r, principal, http.StatusForbidden, "", "The form expired. Reload the page and try again.")
+		return false
+	}
+	return true
+}
+
+func (a *API) validateAdminWebCSRFForData(w http.ResponseWriter, r *http.Request, data adminWebData) bool {
+	if !adminWebCSRFTokenFromFormValid(r) {
+		data.Error = "The form expired. Reload the page and try again."
+		a.renderAdminWeb(w, http.StatusForbidden, data)
+		return false
+	}
+	return true
+}
+
+func adminWebCSRFTokenFromFormValid(r *http.Request) bool {
+	want := adminWebCSRFTokenFromRequest(r)
+	got := strings.TrimSpace(r.FormValue("csrf_token"))
+	return want != "" && got != "" && adminWebCSRFTokenValid(want, got)
 }
 
 func adminWebCSRFTokenFromRequest(r *http.Request) string {

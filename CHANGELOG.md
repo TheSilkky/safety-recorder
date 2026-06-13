@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Require admin accounts to complete second-factor setup before private
+  `/admin` operator actions or `/admin/api/...` JSON admin actions. Newly
+  bootstrapped admins and legacy `not_required` admins are gated until admin
+  second-factor setup is complete, and admin sessions with active TOTP or
+  WebAuthn factors must verify the session before operator access.
+
 ## v0.11.0 - 2026-06-13
 
 This is an ordinary pre-v1, experimental release. It is not production-ready

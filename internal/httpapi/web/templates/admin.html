@@ -209,6 +209,10 @@
           <h1 id="auth-title">Create First Admin</h1>
           {{else if eq .Mode "login"}}
           <h1 id="auth-title">Admin Login</h1>
+          {{else if eq .Mode "second_factor_setup"}}
+          <h1 id="auth-title">Set Up Admin 2FA</h1>
+          {{else if eq .Mode "second_factor_verify"}}
+          <h1 id="auth-title">Verify Admin 2FA</h1>
           {{else if eq .Mode "forbidden"}}
           <h1 id="auth-title">Access Denied</h1>
           {{else}}
@@ -221,6 +225,10 @@
       <p class="auth-lead">Create the first local admin account for this private Proofline server.</p>
       {{else if eq .Mode "login"}}
       <p class="auth-lead">Sign in to the private operator console for local account administration.</p>
+      {{else if eq .Mode "second_factor_setup"}}
+      <p class="auth-lead">Complete admin 2FA for {{.Account.Username}} before using private operator actions.</p>
+      {{else if eq .Mode "second_factor_verify"}}
+      <p class="auth-lead">Verify the active second factor for {{.Account.Username}} before opening the operator console.</p>
       {{else if eq .Mode "forbidden"}}
       <p class="auth-lead">This account cannot open the admin interface.</p>
       {{else}}
@@ -261,6 +269,63 @@
           <input name="password" type="password" autocomplete="current-password" required>
         </label>
         <button type="submit">Sign in</button>
+      </form>
+      {{else if eq .Mode "second_factor_setup"}}
+      <ul class="boundary-list">
+        {{if .SecondFactorWebAuthnAvailable}}
+        <li>Security keys are preferred. Complete WebAuthn/FIDO2 setup through the authenticated second-factor API, then return to this private admin route.</li>
+        {{else}}
+        <li>Security-key setup is preferred when WebAuthn/FIDO2 is configured for this server.</li>
+        {{end}}
+        <li>TOTP setup remains available through the authenticated second-factor API.</li>
+        <li>Email challenge setup is a lower-preference fallback when mail delivery is configured.</li>
+      </ul>
+      {{if .SecondFactorEmailAvailable}}
+      <form method="post" action="/admin/second-factor/email/challenge" class="stack-form">
+        <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+        <label>
+          <span>Email address</span>
+          <input name="email" type="email" autocomplete="email" required>
+        </label>
+        <button type="submit">Send email code</button>
+      </form>
+      <form method="post" action="/admin/second-factor/email/verify" class="stack-form">
+        <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+        <label>
+          <span>Email code</span>
+          <input name="code" type="text" autocomplete="one-time-code" inputmode="numeric" required>
+        </label>
+        <button type="submit">Complete setup</button>
+      </form>
+      {{else}}
+      <p class="inline-status danger" role="status">Email fallback is not configured on this server.</p>
+      {{end}}
+      <form method="post" action="/admin/logout" class="stack-form">
+        <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+        <button type="submit" class="ghost-button">Sign out</button>
+      </form>
+      {{else if eq .Mode "second_factor_verify"}}
+      <ul class="boundary-list">
+        {{if .SecondFactorWebAuthnAvailable}}
+        <li>Security-key verification is preferred for configured WebAuthn/FIDO2 admin accounts.</li>
+        {{else}}
+        <li>WebAuthn/FIDO2 verification is unavailable until configured for this server.</li>
+        {{end}}
+        <li>Use the TOTP form when this admin account has an active authenticator app factor.</li>
+      </ul>
+      {{if .SecondFactorTOTPAvailable}}
+      <form method="post" action="/admin/second-factor/totp/verify" class="stack-form">
+        <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+        <label>
+          <span>TOTP code</span>
+          <input name="code" type="text" autocomplete="one-time-code" inputmode="numeric" required>
+        </label>
+        <button type="submit">Verify</button>
+      </form>
+      {{end}}
+      <form method="post" action="/admin/logout" class="stack-form">
+        <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+        <button type="submit" class="ghost-button">Sign out</button>
       </form>
       {{else if eq .Mode "forbidden"}}
       <p class="muted">Admin role is required.</p>

@@ -1,6 +1,6 @@
 # API
 
-This is the current backend-only HTTP surface for Proofline. The API binary starts a main API/viewer listener and a private-admin listener on one or more configured bind addresses. Main `/v1` routes require local account authentication except for login and the disabled-by-default registration/email-verification routes, and they use app-level route-class rate limits. Existing `/admin/api/...` JSON routes require an admin account and are mounted only on the private-admin listener. The private-admin listener also serves the `/admin` dashboard route tree. Incident viewer routes are token-gated, read-only, and mounted on the main listener. The future canonical no-account viewer link belongs to the web-client origin as documented in [web-client-viewer-routing.md](web-client-viewer-routing.md); planned web, iOS, and Android clients are not part of this repository yet.
+This is the current backend-only HTTP surface for Proofline. The API binary starts a main API/viewer listener and a private-admin listener on one or more configured bind addresses. Main `/v1` routes require local account authentication except for login and the disabled-by-default registration/email-verification routes, and they use app-level route-class rate limits. Existing `/admin/api/...` JSON routes require an admin account with completed admin second-factor setup and are mounted only on the private-admin listener. The private-admin listener also serves the `/admin` dashboard route tree, which applies the same admin setup and active-factor session-verification gate before operator actions. Incident viewer routes are token-gated, read-only, and mounted on the main listener. The future canonical no-account viewer link belongs to the web-client origin as documented in [web-client-viewer-routing.md](web-client-viewer-routing.md); planned web, iOS, and Android clients are not part of this repository yet.
 
 Media bundle downloads are encrypted chunk bundles. The backend does not
 decrypt, merge, or produce playable media. Current encrypted uploads use the
@@ -206,6 +206,19 @@ the existing account recipient-key lost/revoke/replace routes after the account
 is recovered. WebAuthn routes remain unavailable with
 `503 webauthn_unavailable` until `[webauthn]` is explicitly enabled with an RP
 ID and exact allowed origins.
+
+Private admin operator access is stricter than product-route preview
+compatibility. Admin accounts must have `second_factor_setup_state=complete`
+before using the private `/admin` dashboard actions or `/admin/api/...` JSON
+admin routes. Legacy admin accounts that still have `not_required` are treated
+as setup-incomplete on the private admin surface. After setup is complete,
+admin sessions with active TOTP or WebAuthn factors must verify that same
+session before operator actions. WebAuthn/FIDO2 security keys are preferred
+when configured; TOTP and email challenge remain lower-preference setup or
+verification paths where available. If all admin factors are lost, recovery is
+an operator procedure: use another already verified admin to run the private
+second-factor reset route, or perform a deployment-local database/operator
+recovery under the private boundary. There is no public recovery bypass.
 
 ### `POST /v1/account/second-factor/email/challenge`
 
@@ -745,6 +758,9 @@ The private-admin listener serves a small admin web surface outside the
 - `POST /admin/login`
 - `POST /admin/bootstrap`
 - `POST /admin/logout`
+- `POST /admin/second-factor/email/challenge`
+- `POST /admin/second-factor/email/verify`
+- `POST /admin/second-factor/totp/verify`
 - `POST /admin/password`
 - `POST /admin/accounts/{account_id}/password`
 - `GET /admin/static/styles.css`
@@ -757,16 +773,27 @@ cookie scoped to `/admin`.
 
 The bootstrap screen is available only when no admin account exists and
 `SAFE_AUTH_BOOTSTRAP_SECRET` is configured. It requires the bootstrap secret,
-admin username, and admin password. After an admin exists, `/admin` shows the
-login screen and requires an admin account. Non-admin sessions are rejected.
+admin username, and admin password. The newly bootstrapped admin starts with
+second-factor setup required and cannot use dashboard operator actions until
+setup is complete. After an admin exists, `/admin` shows the login screen and
+requires an admin account. Non-admin sessions are rejected.
 
-The authenticated dashboard lists local accounts and offers password workflows.
-`POST /admin/logout` revokes the current admin web session. `POST
-/admin/password` changes the current admin account password after verifying the
-current password, then revokes other sessions for that account. `POST
-/admin/accounts/{account_id}/password` lets an admin reset another local
-account password and revokes all sessions for that account. These authenticated
-state-changing forms use a session-bound CSRF token.
+The authenticated dashboard lists local accounts and offers password workflows
+only after admin second-factor setup and any active TOTP/WebAuthn session
+verification are satisfied. Setup-incomplete admins see a second-factor setup
+screen instead of the dashboard. The screen prefers configured WebAuthn/FIDO2
+security-key setup, points TOTP setup to the authenticated second-factor API,
+and offers an email challenge fallback only when mail delivery is configured.
+Admins with active TOTP factors can verify the admin web session through
+`POST /admin/second-factor/totp/verify`; WebAuthn/FIDO2 verification remains
+available through configured second-factor clients/API sessions. `POST
+/admin/logout` revokes the current admin web session and remains available from
+the setup and verification screens. `POST /admin/password` changes the current
+admin account password after verifying the current password, then revokes other
+sessions for that account. `POST /admin/accounts/{account_id}/password` lets an
+admin reset another local account password and revokes all sessions for that
+account. These authenticated state-changing forms use a session-bound CSRF
+token.
 
 `/admin/static/styles.css` is unauthenticated because it is token-neutral static
 CSS from the AGPL-licensed source tree. It does not contain incident data,
@@ -783,7 +810,9 @@ dashboard and must stay on the private-admin listener.
 ### Admin API Routes
 
 The following routes are mounted only on the private-admin listener and require
-an admin account session:
+an admin account session with completed admin second-factor setup. If the admin
+account has active TOTP or WebAuthn factors, the same session must also be
+second-factor verified before these routes run:
 
 - `GET /admin/api/accounts`
 - `POST /admin/api/accounts`

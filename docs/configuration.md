@@ -773,17 +773,22 @@ tickets, screenshots, shell history, or public issue drafts.
 
 New admin-created, `/admin` bootstrap, and open-registration accounts are
 created with `second_factor_setup_state=setup_required`; existing migrated
-accounts default to `not_required` for preview compatibility. Password login
-and browser-cookie login can create a primary-authenticated session for an
-active setup-incomplete account, but main product routes fail closed until
-email challenge, TOTP, or WebAuthn second-factor setup verifies the account and
-marks the account `complete`. Email challenge uses the configured SMTP sender,
-stores only challenge-code hashes, and remains distinct from registration email
+accounts default to `not_required` for preview compatibility on product
+routes. Password login and browser-cookie login can create a
+primary-authenticated session for an active setup-incomplete account, but main
+product routes fail closed until email challenge, TOTP, or WebAuthn
+second-factor setup verifies the account and marks the account `complete`.
+Private admin operator actions are stricter: admin accounts, including legacy
+admin `not_required` accounts, must be `complete` before `/admin` dashboard
+actions or `/admin/api/...` JSON admin actions run. Active TOTP or WebAuthn
+factors require each new session to verify the factor before product-route or
+admin operator access. Email challenge uses the configured SMTP sender, stores
+only challenge-code hashes, and remains distinct from registration email
 verification. TOTP setup uses fixed six-digit SHA-1 codes with 30-second time
-steps and one adjacent step of clock skew on either side; active TOTP factors
-require each new session to verify TOTP before product-route access. WebAuthn
-is disabled by default and must be explicitly configured with a valid RP ID,
-exact allowed origins, and reviewed user-verification policy before passkey or
+steps and one adjacent step of clock skew on either side. WebAuthn/FIDO2
+security keys are preferred for admin accounts when configured. WebAuthn is
+disabled by default and must be explicitly configured with a valid RP ID, exact
+allowed origins, and reviewed user-verification policy before passkey or
 roaming security-key setup routes become available. WebAuthn origins are exact
 matches, wildcards are rejected, non-local origins must use HTTPS, and local
 plain-HTTP origins are accepted only for explicit localhost or loopback

@@ -132,8 +132,9 @@ returns safe session metadata without a raw token, and sets an HttpOnly session 
 cookie-authenticated requests, and `POST /v1/auth/web/logout` revokes the
 session and clears the cookie. Requests that send both bearer and browser
 cookie credentials are rejected. Existing `/admin/api/...` JSON routes are
-mounted on the private-admin handler and require an admin account. First-admin
-bootstrap uses the private
+mounted on the private-admin handler and require an admin account with
+completed admin second-factor setup plus active-factor session verification
+when TOTP or WebAuthn is active. First-admin bootstrap uses the private
 `/admin/bootstrap` form when no admin exists and a bootstrap secret is
 configured.
 Session tokens are opaque, returned only to the client, and stored as hashes by
@@ -317,17 +318,23 @@ present. `POST /admin/login`, `POST /admin/bootstrap`, and
 as the JSON API, with the raw session token stored in an HttpOnly
 SameSite=Strict cookie scoped to `/admin`.
 
-Authenticated admin pages list local accounts and support limited password
-workflows. `POST /admin/password` changes the current admin account password
-after verifying the current password, keeping the current session and revoking
-other sessions. `POST /admin/accounts/{account_id}/password` resets another
-local account password and revokes that account's sessions. `POST
-/admin/logout` revokes the current admin web session. These authenticated
-state-changing forms use a session-bound CSRF token.
+Authenticated admin pages first require completed admin second-factor setup and
+active-factor session verification when TOTP or WebAuthn is active. Setup
+screens support email challenge fallback where mail delivery is configured,
+and TOTP-active admin web sessions can verify through
+`POST /admin/second-factor/totp/verify`. After the gate passes, the dashboard
+lists local accounts and supports limited password workflows. `POST
+/admin/password` changes the current admin account password after verifying the
+current password, keeping the current session and revoking other sessions.
+`POST /admin/accounts/{account_id}/password` resets another local account
+password and revokes that account's sessions. `POST /admin/logout` revokes the
+current admin web session. These authenticated state-changing forms use a
+session-bound CSRF token.
 
 The admin web implementation is split by concern: `admin_web_handlers.go`
-contains the private admin page and form handlers, `admin_web_session.go`
-contains form parsing, session cookie, password-update, and CSRF helpers,
+contains the private admin page, second-factor, and form handlers,
+`admin_web_session.go` contains form parsing, session cookie, password-update,
+second-factor gate, and CSRF helpers,
 `admin_web_view.go` contains render/view-model helpers, and
 `admin_web_static.go` serves embedded static assets. The page renders
 `internal/httpapi/web/templates/admin.html` with Go `html/template`.
