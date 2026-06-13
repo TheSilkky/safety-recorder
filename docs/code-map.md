@@ -83,7 +83,12 @@ contact key-sharing boundaries in
   client-side chunk envelope, associated data builder, and local simulator key
   file helpers.
 - `internal/auth`: normalizes local account usernames and email addresses, validates passwords, hashes passwords with bcrypt, hashes opaque session or verification tokens before storage, defines controlled second-factor recovery action/reason values, and maps WebAuthn user and credential records to the go-webauthn library types.
-- `internal/httpapi`: owns separate main and private-admin muxes, JSON responses, request logging, recovery, local account/session authentication, request validation, upload handling, stream state handlers, relay session capability issuance, service-authenticated core relay preflight/commit/fanout authorization handlers, trusted-contact relationship handlers, contact public-key handlers, sharing-grant handlers, wrapped-key handlers, incident deletion handlers, ZIP bundle streaming, app-level main API and public viewer rate limiting, private admin JSON API routes including second-factor recovery reset, the private admin web surface, the incident viewer, and the narrow metadata repository boundary consumed by handlers. Logging changes in this package should follow [logging-requirements.md](logging-requirements.md).
+- `internal/httpapi`: owns separate main and private-admin muxes, JSON responses, request logging, recovery, local account/session authentication, request validation, upload handling, stream state handlers, relay session capability issuance, service-authenticated core relay preflight/commit/fanout authorization handlers, trusted-contact relationship handlers, contact public-key handlers, sharing-grant handlers, wrapped-key handlers, incident deletion handlers, ZIP bundle HTTP streaming, app-level main API and public viewer rate limiting, private admin JSON API routes including second-factor recovery reset, the private admin web surface, the incident viewer, and the narrow metadata repository boundary consumed by handlers. Logging changes in this package should follow [logging-requirements.md](logging-requirements.md).
+- `internal/evidencebundle`: builds encrypted bundle manifests, validates
+  completed-stream chunk ordering, and verifies committed chunk byte counts and
+  SHA-256 hashes against trusted metadata before `internal/httpapi` sends ZIP
+  headers or body bytes. It does not own routes, authorization, storage paths,
+  decryption, playable exports, or public exposure.
   Staged cleanup planning for this package lives in
   [httpapi-package-cleanup-plan.md](httpapi-package-cleanup-plan.md).
 - `internal/relaycap`: signs and validates short-lived regional relay upload
@@ -360,7 +365,15 @@ once, while the configured metadata repository stores only a SHA-256 hash.
 
 Token lookup checks the hash, expiry, and revocation state before incident metadata is loaded. Invalid, expired, and revoked tokens all return the same public error. The public viewer limiter groups requests by safe route class and a hash of the socket peer identity before token lookup; limiter keys do not include raw viewer tokens or token-bearing paths. Viewer responses use `Referrer-Policy: no-referrer`, `X-Content-Type-Options: nosniff`, a strict `Content-Security-Policy`, restrictive `Permissions-Policy`, and `Cache-Control: no-store` for token-protected responses.
 
-Completed stream bundle downloads are served by `internal/httpapi/bundles.go`. Bundles are generated on demand as ZIP responses and are not cached on disk. ZIP entry names are server-controlled, manifests are generated from database metadata, and committed chunk byte counts and SHA-256 hashes are verified against metadata before ZIP headers or body bytes are sent. After verification, chunk bytes are streamed from storage one file at a time. The first bundle format contains encrypted chunks and JSON manifests only; it does not decrypt, merge, or export playable media.
+Completed stream bundle downloads are served by `internal/httpapi/bundles.go`
+using manifest and integrity helpers from `internal/evidencebundle`. Bundles
+are generated on demand as ZIP responses and are not cached on disk. ZIP entry
+names are server-controlled, manifests are generated from database metadata,
+and committed chunk byte counts and SHA-256 hashes are verified against
+metadata before ZIP headers or body bytes are sent. After verification, chunk
+bytes are streamed from storage one file at a time. The first bundle format
+contains encrypted chunks and JSON manifests only; it does not decrypt, merge,
+or export playable media.
 
 ## Server Repository Boundary
 
