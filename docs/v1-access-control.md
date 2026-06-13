@@ -124,10 +124,13 @@ sessions with active TOTP or WebAuthn factors must verify the session before
 the dashboard opens. The authenticated dashboard then lists local accounts and
 supports current-admin password changes plus local account creation, password
 reset, session revocation, and second-factor recovery reset forms for other
-local accounts. Authenticated state-changing forms use a session-bound CSRF
-token and block unsafe current-admin self-reset actions. The token-neutral CSS
-under `/admin/static/...` is unauthenticated because it contains no incident
-data, tokens, keys, or deployment details.
+local accounts. It also shows safe count-oriented legacy unowned incident
+candidates, non-sensitive deletion status fields, and private reassignment or
+deletion request forms that keep existing reason-code behavior. Authenticated
+state-changing forms use a session-bound CSRF token and block unsafe
+current-admin self-reset actions. The token-neutral CSS under
+`/admin/static/...` is unauthenticated because it contains no incident data,
+tokens, keys, or deployment details.
 
 ## Listener Topology
 
@@ -186,7 +189,7 @@ describe policy shape; they are not implementation commitments.
 | Route class | Future exposure | Notes |
 |---|---|---|
 | Current main `/v1` routes | Main listener with local account/session authentication. | Includes login/logout, disabled-by-default registration/email verification, account/password routes, incident creation, stream creation, chunk upload, checkins, close/fail/complete actions, incident-token creation/revocation, contact public-key registration, owner-scoped sharing-grant management, and authenticated chunk reads. Public edges must not route `/admin/api/...`. |
-| Current private-admin routes | Private only with admin authentication or first-admin bootstrap secret. | Includes `/admin/api/...` JSON API routes, `/admin` bootstrap, login, logout, account listing and account administration forms, and token-neutral `/admin/static/...` assets. |
+| Current private-admin routes | Private only with admin authentication or first-admin bootstrap secret. | Includes `/admin/api/...` JSON API routes, `/admin` bootstrap, login, logout, account listing and account administration forms, safe incident operation forms, and token-neutral `/admin/static/...` assets. |
 | Public product API routes | Public-authenticated only after account/device/contact authz, upload abuse controls, request-size controls, and audit are implemented. | Should cover non-admin product flows: account-owner incidents, capture uploads, trusted-contact access, account-owner public-link grant issuance/revocation, sharing, and wrapped-key delivery. |
 | Public-link viewer routes | Public read-only viewer routes can remain separate from the public product API. | Current `/i/{token}` and `/e/{token}` paths are bearer-token URLs and must not become write or admin routes. |
 | Private admin API routes | Own private listener and route tree, authenticated and authorized even when bound only to VPN, WireGuard, LAN, loopback, firewall, or a private proxy. | Should be narrow, audited, and safe for support without exposing evidence contents, raw tokens, raw keys, or plaintext by default. |

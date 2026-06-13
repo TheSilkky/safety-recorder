@@ -317,9 +317,12 @@ screen and stores the resulting admin web session in an HttpOnly SameSite cookie
 scoped to `/admin`. Authenticated admin pages list local accounts and provide
 logout, current-admin password-change, local account creation, account
 password reset, session revocation, and second-factor recovery reset forms with
-CSRF checks. Current-admin self-reset actions are blocked from the per-account
-forms. The CSS under `/admin/static/...` is unauthenticated because it is
-token-neutral static source, but the admin pages and form handlers remain
+CSRF checks. They also expose safe legacy unowned incident counts, deletion
+status lookup, reassignment forms, and admin deletion request forms without
+showing evidence bytes, stored paths, object keys, raw tokens, plaintext, or
+user safety narratives. Current-admin self-reset actions are blocked from the
+per-account forms. The CSS under `/admin/static/...` is unauthenticated because
+it is token-neutral static source, but the admin pages and form handlers remain
 private-admin listener routes.
 
 This is not a public admin dashboard. Do not expose `/admin`, `/admin/...`, or
