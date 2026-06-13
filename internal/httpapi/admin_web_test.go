@@ -314,6 +314,28 @@ func TestAdminWebStaticAssetsAreUnauthenticated(t *testing.T) {
 	}
 }
 
+func TestAdminWebRoutesStayOnPrivateAdminHandler(t *testing.T) {
+	app := newTestApp(t)
+
+	response, body := request(t, app.mainHandler, http.MethodGet, "/admin", "", nil)
+	response.Body.Close()
+	if response.StatusCode != http.StatusNotFound {
+		t.Fatalf("expected main handler /admin status 404, got %d: %s", response.StatusCode, body)
+	}
+	assertMainJSONSecurityHeaders(t, response)
+	assertErrorCode(t, body, "not_found")
+
+	response, body = request(t, app.adminHandler, http.MethodGet, "/admin", "", nil)
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("expected private admin handler /admin status 200, got %d: %s", response.StatusCode, body)
+	}
+	assertAdminWebPageHeaders(t, response)
+	if !bytes.Contains(body, []byte("Admin Login")) {
+		t.Fatalf("expected private admin login page: %s", body)
+	}
+}
+
 func TestV1AdminWebRouteIsNotMounted(t *testing.T) {
 	app := newTestApp(t)
 
