@@ -6,7 +6,7 @@ require (
 	filippo.io/age v1.3.1
 	github.com/BurntSushi/toml v1.6.0
 	github.com/aws/aws-sdk-go-v2 v1.42.0
-	github.com/aws/aws-sdk-go-v2/service/s3 v1.103.3
+	github.com/aws/aws-sdk-go-v2/service/s3 v1.104.0
 	github.com/aws/smithy-go v1.27.2
 	github.com/boombuler/barcode v1.0.1-0.20190219062509-6c824513bacc
 	github.com/go-webauthn/webauthn v0.17.4
