@@ -26,6 +26,11 @@
 - Preserve the current deployment model: main `/v1` behind the reviewed localhost/LAN/WireGuard/firewall boundary, private `/admin` behind its own private listener, and only read-only incident viewer paths behind HTTPS/reverse proxy when exposed.
 - Separate bind addresses are a deployment boundary, not a complete security model.
 - Treat Codex prompts as scoped change requests, not open-ended permission to expand the project.
+- Treat the website repository as the project-level source of truth for public
+  governance posture, political alignment, public-good framing, public voice,
+  README baseline style, and source-of-truth mapping. Server docs should link
+  to those website source documents instead of re-declaring project-wide
+  posture differently.
 - Do not implement newly discovered future work during an unrelated task; document it as an issue/backlog item instead.
 - For larger changes, start from a clean working tree or an explicit checkpoint commit.
 - Backlog scanning should create draft Markdown files first, not GitHub issues directly.
@@ -38,7 +43,12 @@
 - This repository is the Go server backend component only.
 - Current organisation: `open-proofline`.
 - Current server repository: `open-proofline/server`.
-- Planned future companion repositories: `open-proofline/web-client`, `open-proofline/ios-client`, `open-proofline/android-client`, and `open-proofline/protocol`.
+- Current companion repositories include `open-proofline/website` and
+  `open-proofline/web-client`.
+- Planned future companion repositories include `open-proofline/ios-client`,
+  `open-proofline/android-client`, and `open-proofline/protocol`.
+- Project-wide public governance posture and reusable README baseline guidance
+  live in `open-proofline/website`.
 - The Go module path is `github.com/open-proofline/server` at the repository root, release binaries use `proofline-server-*` names, and the published GHCR image is `ghcr.io/open-proofline/server`.
 - Current runtime protocol and default data-layout identifiers use Proofline names. Historical reports and archived prompts may still mention earlier `safety-recorder` identifiers.
 - SQLite metadata by default.
@@ -91,6 +101,9 @@ Before accepting Codex changes, check:
 - wrapped-key ciphertext, private deployment details, stored paths, object keys, and user safety data are not logged
 - ZIP downloads use safe headers and controlled paths
 - documentation still matches `README.md`
+- public-facing docs still link to the website governance/README-baseline
+  source documents when making project-wide public posture or public voice
+  claims
 - future web, iOS, Android, or protocol work was not accidentally added to this server repository
 - key custody/decryption changes are explicit and security-reviewed
 - no public-production readiness is implied unless deployment hardening has actually been implemented

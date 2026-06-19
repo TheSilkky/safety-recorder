@@ -11,10 +11,10 @@ origin can be treated as a reviewed v1 preview deployment path.
 
 ## Summary
 
-The future `open-proofline/web-client` is v1-critical, but a public static web
-client is not safe merely because it is a static site. A public web client
-creates a browser credential boundary, a cross-origin API boundary, and a route
-exposure boundary for the server.
+The current experimental `open-proofline/web-client` repository is v1-critical,
+but a public static web client is not safe merely because it is a static site. A
+public web client creates a browser credential boundary, a cross-origin API
+boundary, and a route exposure boundary for the server.
 
 The deployment model should be:
 

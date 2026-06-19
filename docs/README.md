@@ -1,6 +1,16 @@
 # Documentation
 
-This directory contains the detailed documentation for Proofline Server, the Go backend component of the planned Proofline project. The top-level [README](../README.md) is a concise server overview; these docs keep operational, API, deployment, incident-capture, and development details in one place.
+This directory contains the detailed documentation for Proofline Server, the Go
+backend component of the Proofline project. The top-level
+[README](../README.md) is the server overview; these docs keep operational,
+API, deployment, incident-capture, and development details in one place.
+
+Project-wide public governance posture, political alignment, public-good
+framing, public voice, and reusable README baseline guidance live in the
+[`open-proofline/website`](https://github.com/open-proofline/website)
+repository. Server docs should link to those source documents for project-wide
+public posture and keep this repository focused on server behavior, deployment,
+and backend security facts.
 
 ## Contents
 
@@ -69,19 +79,22 @@ Companion repositories are separate current or future projects outside this
 server repository:
 
 ```text
+open-proofline/website
 open-proofline/web-client
 open-proofline/ios-client
 open-proofline/android-client
 open-proofline/protocol
 ```
 
-Those repositories do not exist in this repository and should not be implemented
-here by accident. This server repository may keep planning notes for client and
-protocol work only as repository-boundary context.
+The website and web-client repositories currently exist as separate
+experimental repositories. The iOS, Android, and protocol repositories remain
+planned until they exist and document their own scope. None of those components
+should be implemented here by accident. This server repository may keep
+planning notes for client and protocol work only as repository-boundary context.
 
 ## Current Backend Scope
 
-Proofline Server receives already-encrypted chunks, stores metadata in SQLite by default or optional PostgreSQL, stores encrypted blobs on local disk by default or in optional S3-compatible object storage, loads TOML config with `SAFE_*` environment and secret-file overrides, performs a startup check against optional Valkey/Redis-compatible coordination when explicitly configured, groups chunks into media streams, can issue configured short-lived regional relay upload and fanout capabilities for authorized open streams, exposes service-authenticated core relay preflight/commit/fanout authorization endpoints when relay-to-core auth is configured, includes a separate regional stream-ingress relay route for complete encrypted chunk upload/staging/forwarding, optimistic encrypted unconfirmed fanout, and bounded fanout state when configured, serves private admin JSON routes under `/admin/api/...` and a private admin web surface under `/admin`, applies app-level route-class rate limiting to main API routes, can use Valkey for short-lived complete-upload leases, supports optional browser cookie sessions with CSRF and credentialed CORS for future web-client calls, supports disabled-by-default configurable account registration with SMTP-backed email verification for open self-hosted registration, supports email challenge, TOTP, and disabled-by-default WebAuthn/FIDO2 passkey or roaming security-key second-factor setup for account gating, supports private-admin assisted second-factor reset for lost-factor recovery, and exposes a token-scoped read-only incident viewer with app-level route-class rate limiting. New chunk uploads must use the accepted post-quantum payload envelope by default, and the Go simulator now produces that PQ envelope unless an explicit v1 compatibility flag is used.
+Proofline Server receives already-encrypted chunks, stores metadata in SQLite by default or optional PostgreSQL, stores encrypted blobs on local disk by default or in optional S3-compatible object storage, loads TOML config with `SAFE_*` environment and secret-file overrides, performs a startup check against optional Valkey/Redis-compatible coordination when explicitly configured, groups chunks into media streams, can issue configured short-lived regional relay upload and fanout capabilities for authorized open streams, exposes service-authenticated core relay preflight/commit/fanout authorization endpoints when relay-to-core auth is configured, includes a separate regional stream-ingress relay route for complete encrypted chunk upload/staging/forwarding, optimistic encrypted unconfirmed fanout, and bounded fanout state when configured, serves private admin JSON routes under `/admin/api/...` and a private admin web surface under `/admin`, applies app-level route-class rate limiting to main API routes, can use Valkey for short-lived complete-upload leases, supports optional browser cookie sessions with CSRF and credentialed CORS for future production web-client calls, supports disabled-by-default configurable account registration with SMTP-backed email verification for open self-hosted registration, supports email challenge, TOTP, and disabled-by-default WebAuthn/FIDO2 passkey or roaming security-key second-factor setup for account gating, supports private-admin assisted second-factor reset for lost-factor recovery, and exposes a token-scoped read-only incident viewer with app-level route-class rate limiting. New chunk uploads must use the accepted post-quantum payload envelope by default, and the Go simulator now produces that PQ envelope unless an explicit v1 compatibility flag is used.
 
 The regional stream-ingress relay currently has a separate health/readiness
 route with safe aggregate readiness categories, backend-issued upload and
@@ -140,7 +153,7 @@ capture, escalation, sharing, and legal/export actions separate. The current
 main incident create/read routes support optional incident-mode,
 capture-profile, escalation-policy, and sharing-state metadata, and the account
 incident list/detail routes return only owner-scoped public-safe metadata for
-future web-client reads. Those mode fields do not drive access, notification,
+future production web-client reads. Those mode fields do not drive access, notification,
 retention, sharing, viewer, or key-custody behavior. Mode-driven behavior and
 migration boundaries are documented in
 [incident-modes.md](incident-modes.md). Current local account/session behavior

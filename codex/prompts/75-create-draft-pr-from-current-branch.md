@@ -192,6 +192,9 @@ The PR body should include:
 - concise summary
 - validation commands run
 - docs updated, if any
+- website governance/README-baseline source documents inspected, when
+  README structure, public voice, public governance, or source-of-truth mapping
+  changed
 - follow-up work, if any
 - tests skipped and why, if any
 - whether the issue was generated from a different reviewed branch/ref and whether it was revalidated against this PR base

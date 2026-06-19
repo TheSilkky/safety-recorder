@@ -24,6 +24,8 @@ Start with current source-of-truth files:
 - `docs/README.md`
 - `docs/v1-preview-direction.md`
 - `docs/v1-preview-readiness-checklist.md`
+- `open-proofline/website/docs/governance-and-political-alignment.md`
+- `open-proofline/website/docs/repository-readme-baseline.md`
 - every current source-of-truth file under `docs/`
 - `codex/README.md`
 - every reusable prompt under `codex/prompts/`, including this prompt
@@ -51,6 +53,8 @@ Review:
 - all reusable Codex prompt files
 - all public-facing project claims
 - source-of-truth alignment
+- website governance, public-good framing, public voice, README baseline, and
+  source-of-truth mapping alignment
 - technical accuracy
 - linguistic coherence
 - readability and approachability
@@ -77,6 +81,9 @@ Preserve these server-specific boundaries:
   media exports.
 - Do not imply the backend is production-ready public emergency
   infrastructure.
+- Link project-wide governance posture and README baseline guidance to
+  `open-proofline/website` instead of rewriting that posture differently in
+  server docs.
 
 ## Review Checks
 
@@ -84,6 +91,8 @@ Check source-of-truth consistency:
 
 - Do docs agree with current `README.md`, `AGENTS.md`, `SECURITY.md`, and
   `docs/`?
+- Do README, docs, and prompts point to the website governance and README
+  baseline docs where project-wide public posture or public voice is in scope?
 - Do Codex prompts agree with current repo rules?
 - Are public claims supported by implementation or source docs?
 
@@ -121,6 +130,9 @@ Check readability and approachability:
 - Are public-facing docs understandable without internal context?
 - Are technical docs precise without being needlessly dense?
 - Is wording direct, humane, and clear?
+- Does public-facing wording follow the current Proofline voice: serious
+  public-interest infrastructure, clear and humane, with dry humour only where
+  it clarifies values and never inside safety/security/key-custody claims?
 - Are acronyms and project-specific terms explained where needed?
 - Are there sections that sound like internal notes, legal fog, or startup
   hype?

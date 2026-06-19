@@ -59,6 +59,17 @@ read-only incident viewer.
 
 The product documentation now uses the name Proofline. Repository URLs, the Go module path, Docker image names, GHCR package names, release binary names, runtime protocol identifiers, and default data-layout identifiers use the `open-proofline/server` repository namespace and Proofline names. Historical reports, archived prompts, legacy `/e/{token}` aliases, and historical migration names may still mention `safety-recorder` or `emergency`.
 
+Project-wide public governance posture, political alignment, public-good
+framing, public voice, reusable README baseline guidance, and source-of-truth
+mapping live in `open-proofline/website`. When the report summarizes those
+project-wide claims, use the website source documents rather than inventing a
+server-local governance claim:
+
+```text
+open-proofline/website/docs/governance-and-political-alignment.md
+open-proofline/website/docs/repository-readme-baseline.md
+```
+
 The long-term product direction is broader than emergency-only recording. Planned modes include emergency incidents, non-emergency interaction records, timed safety checks, and evidence notes. These are planning direction unless the reviewed tree contains first-class implementation.
 
 Core project boundaries:
@@ -71,9 +82,9 @@ Core project boundaries:
   only unless the reviewed tree implements first-class behavior for them.
 - Backend decryption, browser decryption, production key custody, break-glass
   access, trusted-contact accounts, public account portals, OAuth/JWT, push
-  notifications, SMS, Messenger, web/iOS/Android clients, and first-class
-  escalation policies are future or out-of-scope items unless explicitly
-  implemented in the reviewed tree.
+  notifications, SMS, Messenger, production web/iOS/Android client behavior,
+  and first-class escalation policies are future or out-of-scope items unless
+  explicitly implemented in the reviewed tree.
 - The post-quantum envelope is documented as a v1 preview requirement, but it
   is not shipped runtime behavior unless implementation files prove it.
 - V1 preview, v1.0.0, or real-user evidence-upload readiness claims must be
@@ -84,6 +95,10 @@ Core project boundaries:
   direction, post-quantum envelope, and client prototype documents are
   design/planning guardrails or future preview requirements, not shipped
   implementation.
+- `open-proofline/web-client` may exist as a current experimental companion
+  repository. Do not treat that repository as absent when the project map
+  identifies it, and do not treat its existence as implemented server behavior
+  or production web-client readiness.
 - Do not treat documented future work as a current defect merely because it is not implemented.
 
 ## Validation Evidence Policy
@@ -139,6 +154,10 @@ Prioritize repository evidence first:
 
 Required external-source families when applicable:
 
+- Project-wide public governance posture, political alignment, public-good
+  framing, public voice, README baseline, or source-of-truth mapping claims:
+  `open-proofline/website/docs/governance-and-political-alignment.md` and
+  `open-proofline/website/docs/repository-readme-baseline.md`
 - Go/toolchain/standard-library/module claims: `go.dev` or `pkg.go.dev`
 - AES-GCM, nonce, randomness, authenticated encryption, or cryptographic-strength claims: NIST, Go official docs, or another primary standards/source document
 - SQLite WAL, foreign keys, migration, transaction, locking, backup, or restore claims: `sqlite.org`
@@ -192,6 +211,9 @@ Every registry entry must include:
 Minimum requirements:
 
 - List every repository file materially relied on, pinned to `<REVIEWED_COMMIT_SHA>`.
+- List every companion-project source materially relied on, including website
+  governance/README-baseline docs or web-client docs, with commit/ref/date and
+  limitations.
 - List every authoritative external source materially relied on.
 - List required authoritative external source categories that were not consulted and explain why.
 - List validation commands that were actually supported by supplied evidence.
@@ -246,8 +268,16 @@ Pay special attention to future-design and planning documents when present:
 - `docs/browser-decryption.md`
 - `docs/break-glass-key-access.md`
 - `docs/ios-local-recorder-prototype.md`
-- any future web, iOS, Android, account, protocol, Apple-platform, or client-planning documents
+- any current or future web-client, iOS, Android, account, protocol,
+  Apple-platform, or client-planning documents
 - any future client code, Swift/Kotlin/TypeScript package files, Xcode/Android project files, entitlement files, or App Store/Play Store metadata files if they exist in the reviewed tree
+
+When public governance posture, political alignment, public-good framing,
+public voice, reusable README baseline guidance, or source-of-truth mapping is
+in scope, inspect the website source documents listed in Repository Context.
+When the report discusses web-client behavior or prototype limits, inspect the
+current `open-proofline/web-client` source documents if accessible, and clearly
+separate companion-repository behavior from server behavior.
 
 Technical focus areas:
 
@@ -264,7 +294,8 @@ Technical focus areas:
 11. ZIP bundle generation, manifest completeness, fail-closed behavior, and path traversal handling
 12. Crypto-adjacent simulator envelope, ciphertext-only backend boundary, and naming-compatibility claims
 13. Future key custody, browser/client-side decryption, break-glass, trusted-contact access, and server escrow boundaries
-14. Future web/iOS/Android/protocol/client planning and platform assumptions
+14. Current web-client companion scope, future iOS/Android/protocol/client
+    planning, and platform assumptions
 15. Deployment guidance, Traefik examples, WireGuard/private boundary, rate limiting, and no `/v1` public exposure
 16. Docker/GHCR/GitHub Actions/supply-chain hygiene
 17. Public issue/report safety
@@ -294,7 +325,12 @@ Do not recommend public GitHub issues for private vulnerabilities, raw tokens, s
 ## Common False Positives To Avoid
 
 - Do not say `/v1` lacks public auth as a vulnerability unless the docs claim it is safe to expose publicly.
-- Do not say missing iOS, Android, web-client, accounts, incident modes, capture profiles, escalation policies, sharing state, browser decryption, production key custody, or break-glass behavior is a defect when docs mark those as future work.
+- Do not say missing iOS, Android, production web-client behavior, accounts,
+  incident modes, capture profiles, escalation policies, sharing state, browser
+  decryption, production key custody, or break-glass behavior is a defect when
+  docs mark those as future work.
+- Do not say `open-proofline/web-client` is missing when current project docs
+  mark it as an existing experimental companion repository.
 - Do not describe the post-quantum envelope as implemented unless code proves
   it. If reviewing a v1 preview readiness claim, verify that the post-quantum
   envelope is implemented, documented, tested, and default.

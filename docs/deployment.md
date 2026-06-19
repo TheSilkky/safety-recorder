@@ -103,7 +103,7 @@ the secret mount and restart. The bootstrap form is disabled after an admin
 account exists. Treat the bootstrap secret, account passwords, raw session
 tokens, raw idempotency keys, and Authorization headers as secrets.
 
-Browser cookie sessions for the future web client are disabled by default. For
+Browser cookie sessions for future production web-client use are disabled by default. For
 local plain-HTTP web-client development, enable them explicitly with a local
 allowed origin and a non-`__Host-` non-`Secure` cookie name:
 
@@ -878,8 +878,9 @@ https://developer.mozilla.org/en-US/observatory
 The reverse proxy should route only reviewed current-viewer paths to the main
 listener. Private dashboard routes should stay on localhost, WireGuard, LAN, or
 another private boundary, and public edges must block `/admin/api/...`. For a
-future web-client viewer, point shared viewer links at the web-client origin
-instead of making this built-in viewer route the canonical public entry point.
+future production web-client viewer, point shared viewer links at the
+web-client origin instead of making this built-in viewer route the canonical
+public entry point.
 
 One same-host shape is:
 

@@ -60,6 +60,11 @@ Read current repository files where present:
 - `LICENSE`
 - `docs/README.md`
 - `docs/v1-preview-direction.md`
+- `open-proofline/website/docs/governance-and-political-alignment.md`, when
+  public governance posture, political alignment, or public-good framing is in
+  scope
+- `open-proofline/website/docs/repository-readme-baseline.md`, when README
+  structure, public voice, or source-of-truth mapping is in scope
 - `docs/api.md`
 - `docs/architecture.md`
 - `docs/configuration.md`
@@ -125,6 +130,7 @@ Look for future work in these categories:
 12. Codex workflow/process improvements
 13. Key custody / emergency access design
 14. Branch/release-candidate follow-up work
+15. README baseline, public voice, and source-of-truth mapping drift
 
 ## Candidate discovery guidance
 
@@ -151,6 +157,8 @@ Bad candidate signals:
 - vague “improve code”
 - duplicate of existing issue
 - feature that contradicts README/AGENTS scope
+- stale project-map wording that should be fixed in docs instead of becoming a
+  broad product issue
 - production claims beyond current maturity
 - public issue containing sensitive vulnerability details
 - anything requiring secrets, raw tokens, or private deployment details

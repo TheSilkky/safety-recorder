@@ -14,6 +14,15 @@ open-proofline/server
 
 Product documentation currently uses the name Proofline. Repository URLs, the Go module path, Docker image names, GHCR package names, release binary names, runtime protocol identifiers, and default data-layout identifiers use the `open-proofline/server` repository namespace and Proofline names. Historical reports, archived prompts, legacy `/e/{token}` aliases, and historical migration names may still mention `safety-recorder` or `emergency`.
 
+Project-wide public governance posture, political alignment, public-good framing,
+public voice, reusable README baseline guidance, and source-of-truth mapping
+live in `open-proofline/website`, especially:
+
+```text
+docs/governance-and-political-alignment.md
+docs/repository-readme-baseline.md
+```
+
 ## Inputs
 
 Reviewed branch or ref:
@@ -127,7 +136,10 @@ Phase 0 should make sure the actual Phase 1 report run will follow:
    - Valkey/Redis-compatible short-lived coordination backend support
    - exact Go client package documentation on `pkg.go.dev` when package behavior is discussed
 
-7. Identify Apple/iOS/Swift, Android, web-client, protocol, legal-adjacent, or App Store/Play Store claims that would need primary sources if the report discusses them.
+7. Identify public governance posture, public voice, README baseline,
+   Apple/iOS/Swift, Android, web-client, protocol, legal-adjacent, or App
+   Store/Play Store claims that would need primary sources if the report
+   discusses them.
 
 8. Identify the required Source Registry sections and what each section must contain.
 
@@ -169,6 +181,11 @@ Do **not** claim formal security audit, penetration test, compliance certificati
 
 Do **not** describe future incident modes, account access, key custody, browser decryption, break-glass access, mobile clients, web clients, or the post-quantum envelope as implemented features unless the reviewed tree contains implementation code. The post-quantum envelope is a v1 preview requirement, not current runtime behavior unless implementation has landed.
 
+Do **not** describe `open-proofline/web-client` as absent if the current
+project map identifies it as an existing experimental companion repository.
+Distinguish current companion repositories from future production behavior and
+from future iOS, Android, and protocol repositories.
+
 ## Expected Source Plan
 
 The research plan should identify sources in these groups.
@@ -200,6 +217,15 @@ docs/key-custody.md
 docs/browser-decryption.md
 docs/break-glass-key-access.md
 docs/ios-local-recorder-prototype.md
+```
+
+When public governance posture, political alignment, public-good framing,
+public voice, reusable README baseline guidance, or source-of-truth mapping is
+in scope, also plan to inspect the website source documents:
+
+```text
+open-proofline/website/docs/governance-and-political-alignment.md
+open-proofline/website/docs/repository-readme-baseline.md
 ```
 
 For the v0.8.0 optional backend-support review, also plan repository inspection for:

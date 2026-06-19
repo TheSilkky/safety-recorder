@@ -48,7 +48,7 @@ or redirect issue changes runtime behavior. They are not the long-term
 canonical viewer surface.
 
 `GET /i/{token}/viewer-payload` is the backend primitive intended for the
-future web-client no-account viewer. Completed encrypted ZIP download routes
+future production web-client no-account viewer. Completed encrypted ZIP download routes
 may remain backend primitives for a web-client viewer, subject to reviewed
 edge routing, no-store headers, rate limits, and token-redaction controls.
 

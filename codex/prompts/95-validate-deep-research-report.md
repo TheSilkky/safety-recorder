@@ -58,6 +58,12 @@ Allowed values:
 
 Product documentation now uses the name Proofline. Repository paths, the Go module path, Docker image names, GHCR package names, release binary names, runtime protocol identifiers, and default data-layout identifiers use the `open-proofline/server` repository namespace and Proofline names. Historical reports, archived prompts, legacy `/e/{token}` aliases, and historical migration names may still mention `safety-recorder` or `emergency`.
 
+The website repository is the project-level source of truth for public
+governance posture, political alignment, public-good framing, public voice,
+reusable README baseline guidance, and source-of-truth mapping. Report wording
+that summarizes project-wide public posture should use those website source
+documents rather than inventing a server-local governance claim.
+
 Proofline's planned product scope includes emergency incidents, non-emergency interaction records, timed safety checks, and evidence notes. The current backend stores generic incidents by default; optional incident-mode, capture-profile, escalation-policy, and sharing-state metadata are labels only unless the reviewed tree explicitly implements first-class behavior for them. The post-quantum envelope is a v1 preview requirement, but it is not current runtime behavior unless implementation files prove it. Any report claim that Proofline is ready for `v1 preview`, `v1.0.0`, or real-user evidence upload must be checked against `docs/v1-preview-readiness-checklist.md`.
 
 ## Rules
@@ -91,6 +97,8 @@ sed -n '1,240p' README.md
 sed -n '1,220p' SECURITY.md
 sed -n '1,260p' AGENTS.md
 sed -n '1,280p' docs/README.md
+sed -n '1,260p' ../website/docs/governance-and-political-alignment.md
+sed -n '1,260p' ../website/docs/repository-readme-baseline.md
 cat docs/v1-preview-direction.md
 test -f docs/v1-preview-readiness-checklist.md && sed -n '1,260p' docs/v1-preview-readiness-checklist.md
 sed -n '1,260p' docs/incident-modes.md
@@ -185,7 +193,10 @@ Check and fix, if needed:
 
 - Missing public product API authentication when docs state `/v1` is private
   and protected by local account sessions.
-- Missing web/iOS/Android clients when docs mark them as future work.
+- Missing iOS/Android/protocol clients when docs mark them as planned future
+  repositories.
+- Missing production web-client behavior when docs mark `open-proofline/web-client`
+  as a separate current experimental prototype rather than a production client.
 - Missing first-class incident-mode behavior, capture-profile behavior,
   escalation policies, sharing-state behavior, or dead-man switch when docs mark
   them as future work.

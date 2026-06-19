@@ -12,7 +12,8 @@ Customer Portal boundary for the official hosted Proofline server.
 Official Proofline hosted accounts are intended as **cost-recovery subscription
 access** for the shared main server, not as a for-profit product strategy.
 Proofline remains an open source project maintained by one person across the
-planned server, web-client, iOS-client, Android-client, and protocol surfaces.
+current server and web-client surfaces plus planned iOS-client, Android-client,
+and protocol surfaces.
 
 The subscription requirement for the official hosted service exists because the
 server, object storage, database, email delivery, monitoring, backups,

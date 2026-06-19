@@ -1,8 +1,22 @@
 # Codex Prompts
 
-This directory records the Codex prompt workflow used for AI-assisted development.
+This directory records the Codex prompt workflow used for AI-assisted
+development in `open-proofline/server`.
 
 Codex output is treated as maintainer-reviewed work, not as endorsement, audit, certification, security review, or maintenance by OpenAI.
+
+The server repository owns server behavior, API, deployment, security, and
+release workflow facts. The website repository owns project-wide public
+governance posture, political alignment, public-good framing, public voice,
+reusable README baseline guidance, and source-of-truth mapping:
+
+- [`open-proofline/website/docs/governance-and-political-alignment.md`](https://github.com/open-proofline/website/blob/main/docs/governance-and-political-alignment.md)
+- [`open-proofline/website/docs/repository-readme-baseline.md`](https://github.com/open-proofline/website/blob/main/docs/repository-readme-baseline.md)
+
+Reusable server prompts that touch README structure, public-facing wording,
+project-wide governance, public-good framing, or source-of-truth mapping should
+inspect those website documents and link to them instead of re-declaring the
+project posture inside server docs.
 
 ## Directory Structure
 
@@ -122,12 +136,17 @@ For any `v1 preview`, `v1.0.0`, or real-user evidence-upload readiness claim,
 run [docs/v1-preview-readiness-checklist.md](../docs/v1-preview-readiness-checklist.md)
 as part of the release workflow before using preview-ready language.
 
-## Current project constraints
+## Current Project Constraints
 
 Treat `README.md`, `AGENTS.md`, `SECURITY.md`, and the `docs/` directory as the current source of truth. For v1 preview terminology, repository roles, and current-versus-future product direction, read `docs/v1-preview-direction.md` before turning prototype gaps into backlog or implementation assumptions.
 For v1 preview release claims, also read
 `docs/v1-preview-readiness-checklist.md` and preserve its hard-blocker,
 non-goal, optional hosted-service, and issue-hygiene boundaries.
+
+For public governance posture, political alignment, public-good framing,
+public voice, README baseline style, and source-of-truth mapping, read the two
+website source documents above. Keep server-specific facts in this repository;
+link project-wide posture to the website source of truth.
 
 Product documentation now uses the name Proofline. The repository URL is `open-proofline/server`, the root Go module path is `github.com/open-proofline/server`, release binaries use `proofline-server-*` names, and the published GHCR image is `ghcr.io/open-proofline/server`. Current runtime protocol and default data-layout identifiers use Proofline names. Historical reports and archived prompts may still mention earlier `safety-recorder` identifiers.
 
@@ -166,6 +185,7 @@ When project scope, architecture, security posture, or workflow changes, update 
 
 | Project change | Prompt/doc action |
 |---|---|
+| README baseline, public voice, governance posture, public-good framing, or source-of-truth mapping changes | Read the website governance and README baseline docs, update `README.md`, `AGENTS.md`, `docs/`, `codex/README.md`, and reusable prompts only where they consume that project-wide source of truth. |
 | Product rename or repository/artifact namespace migration | Update `README.md`, `AGENTS.md`, `SECURITY.md`, relevant `docs/`, `codex/README.md`, and reusable prompts that mention product or artifact names. Keep docs-only renames separate from repository/module/Docker/GHCR migrations. |
 | First-class incident modes, capture profiles, escalation policies, sharing state, safety checks, interaction records, or evidence notes | Update `docs/incident-modes.md`, `README.md`, API docs, security/threat docs, client prototype docs, and relevant review prompts. |
 | New API routes or listener exposure | Review `AGENTS.md`, `docs/api.md`, security/threat docs, and relevant review prompts. |

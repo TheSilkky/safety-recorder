@@ -233,7 +233,7 @@ values for the same field. Within TOML, set either the direct secret key or the
 | `SAFE_SMTP_TIMEOUT` | `10s` | SMTP dial timeout. Must be positive. |
 | `SAFE_AUTH_BOOTSTRAP_SECRET` | unset | One-time bootstrap secret required to create the first admin account when no admin exists. Remove after bootstrap. |
 | `SAFE_AUTH_BOOTSTRAP_SECRET_FILE` | unset | File containing the one-time bootstrap secret. Overrides `SAFE_AUTH_BOOTSTRAP_SECRET` when set. |
-| `SAFE_WEB_AUTH_ENABLED` | `false` | Enables main `/v1` browser cookie-session routes for the future web client. Existing bearer-token routes continue to work. |
+| `SAFE_WEB_AUTH_ENABLED` | `false` | Enables main `/v1` browser cookie-session routes for future production web-client use. Existing bearer-token routes continue to work. |
 | `SAFE_WEB_ALLOWED_ORIGINS` | unset | Comma-separated exact web origins that may receive credentialed CORS responses. Wildcards are rejected. |
 | `SAFE_WEB_SESSION_COOKIE_NAME` | `__Host-proofline_session` | Browser session cookie name. The default production name requires `SAFE_WEB_SESSION_COOKIE_SECURE=true`; local plain-HTTP development should use a non-`__Host-` name. |
 | `SAFE_WEB_SESSION_COOKIE_SECURE` | `true` | Sets the browser session cookie `Secure` attribute. `false` is accepted only with local loopback web origins. |
