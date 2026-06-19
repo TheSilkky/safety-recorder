@@ -22,7 +22,7 @@ account/device wrapped-key delivery, trusted-contact incident reads,
 dead-man-switch notifications, provider-backed trusted-contact alerts,
 mode-driven sharing, browser decryption, backend decryption, or public
 account-based product access beyond the narrow owner incident metadata
-list/detail read surface for the future web client. Future notification
+list/detail read surface for future production web-client use. Future notification
 delivery boundaries are documented in
 [notification-boundary.md](notification-boundary.md).
 
@@ -125,7 +125,7 @@ by another already verified admin; there is no public recovery route or
 factor-bypass mode.
 
 When enabled, main `/v1` browser cookie auth uses a dedicated session cookie
-for future web-client calls. Bearer auth remains supported for CLI, simulator,
+for future production web-client calls. Bearer auth remains supported for CLI, simulator,
 and API clients. If bearer and browser-cookie credentials are sent together,
 the request is rejected as ambiguous. Cookie-authenticated unsafe requests
 require a session-bound HMAC CSRF token in the configured header; bearer

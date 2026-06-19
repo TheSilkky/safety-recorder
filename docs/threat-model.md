@@ -385,7 +385,8 @@ The current backend does not implement incident-mode-specific controls yet, so f
   they are not a complete security model.
 - `/v1` must not be routed as an unreviewed public catch-all; public deployment
   should be reviewed route group by route group.
-- No iOS app, Android app, web client, production local recording client,
+- No iOS app, Android app, web-client implementation in this server repository,
+  production local recording client,
   production client key storage, push notifications, SMS, Messenger
   integration, or public admin dashboard. The private `/admin` surface
   is not a complete operator UI, and the local desktop-recorder behavior in

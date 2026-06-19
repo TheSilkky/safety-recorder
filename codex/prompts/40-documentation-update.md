@@ -15,6 +15,11 @@ Before making changes, read current source-of-truth files as relevant:
 - `SECURITY.md`
 - `docs/README.md`
 - `docs/v1-preview-direction.md`
+- `open-proofline/website/docs/governance-and-political-alignment.md`, when
+  public governance posture, political alignment, or public-good framing is in
+  scope
+- `open-proofline/website/docs/repository-readme-baseline.md`, when README
+  structure, public voice, or source-of-truth mapping is in scope
 - relevant files in `docs/`
 - relevant source files
 - relevant tests
@@ -94,6 +99,8 @@ Update only relevant files:
 - Codex change-control workflow
 - AI-assisted development disclosure
 - next steps / roadmap
+- links to website source documents for project-wide governance, public voice,
+  and reusable README baseline claims
 
 ## Constraints
 
@@ -102,6 +109,8 @@ Update only relevant files:
 - Do not claim the iOS client exists.
 - Do not claim production-readiness.
 - Do not describe future key custody/decryption as implemented unless it is implemented.
+- Do not duplicate project-wide governance or public-voice posture in server
+  docs when a link to the website source of truth is clearer.
 - Keep wording clear and concise.
 
 ## Validation

@@ -32,6 +32,11 @@ Read:
 - all files under `codex/`
 - `docs/codex-change-control.md`, if present
 - `docs/development.md`, if relevant
+- `open-proofline/website/docs/governance-and-political-alignment.md`, if
+  prompt workflow wording touches public governance or public-good framing
+- `open-proofline/website/docs/repository-readme-baseline.md`, if prompt
+  workflow wording touches README structure, public voice, or source-of-truth
+  mapping
 
 ## Standard directory structure
 
@@ -130,6 +135,9 @@ Check for:
 - historical prompts missing date prefixes
 - spaces, uppercase words, or inconsistent filenames
 - prompt files that reference stale project state
+- prompt files that miss the website source documents when their workflow
+  covers README structure, public voice, governance posture, or source-of-truth
+  mapping
 - prompt files that contradict `AGENTS.md`
 - prompt files that still say server-side key storage/decryption is permanently impossible
 - prompt files that do not distinguish current implementation from future key custody design

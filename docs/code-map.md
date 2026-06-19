@@ -12,14 +12,14 @@ metadata, trusted-contact public-key metadata, incident/stream sharing-grant
 metadata, and grant-bound wrapped-key records without adding decryption.
 
 This repository is the server/backend component only. In the current
-`open-proofline` organisation it is `open-proofline/server`. Web-client,
-iOS-client, Android-client, and protocol implementation should live in separate
-repositories.
+`open-proofline` organisation it is `open-proofline/server`. Web-client work
+lives in `open-proofline/web-client`; iOS-client, Android-client, and protocol
+implementation should live in separate repositories when those scopes exist.
 
 The current backend stores generic incidents by default and can store optional
 incident-mode, capture-profile, escalation-policy, and sharing-state metadata on
 main incident create/read routes. The account incident list/detail routes return
-owner-only public-safe metadata for future web-client reads. Those mode fields
+owner-only public-safe metadata for future production web-client reads. Those mode fields
 do not drive access, notification, retention, sharing, viewer, or key-custody behavior.
 Account/device recipient-key, trusted-contact relationship, contact public-key,
 sharing-grant, and wrapped-key metadata is implemented separately behind
@@ -380,7 +380,7 @@ Viewer tokens are created on the authenticated main API listener by
 `POST /v1/incidents/{incident_id}/incident-tokens`. The raw token is returned
 once, while the configured metadata repository stores only a SHA-256 hash.
 
-`GET /i/{token}` is mounted on the main API/viewer listener. It renders `internal/httpapi/web/templates/incident_viewer.html` with `html/template`. CSS and JavaScript are embedded from `internal/httpapi/web/static`. `GET /i/{token}/data` returns the same read-only summary as JSON for polling. `GET /i/{token}/viewer-payload` returns the narrower token-scoped payload intended for the future web-client viewer. Pre-rename `/e/{token}` viewer, data, and download paths remain read-only aliases only while explicit local/test compatibility needs them; future canonical no-account viewer links should point at the web-client origin as documented in `docs/web-client-viewer-routing.md`.
+`GET /i/{token}` is mounted on the main API/viewer listener. It renders `internal/httpapi/web/templates/incident_viewer.html` with `html/template`. CSS and JavaScript are embedded from `internal/httpapi/web/static`. `GET /i/{token}/data` returns the same read-only summary as JSON for polling. `GET /i/{token}/viewer-payload` returns the narrower token-scoped payload intended for the future production web-client viewer. Pre-rename `/e/{token}` viewer, data, and download paths remain read-only aliases only while explicit local/test compatibility needs them; future canonical no-account viewer links should point at the web-client origin as documented in `docs/web-client-viewer-routing.md`.
 
 Token lookup checks the hash, expiry, and revocation state before incident metadata is loaded. Invalid, expired, and revoked tokens all return the same public error. The public viewer limiter groups requests by safe route class and a hash of the socket peer identity before token lookup; limiter keys do not include raw viewer tokens or token-bearing paths. Viewer responses use `Referrer-Policy: no-referrer`, `X-Content-Type-Options: nosniff`, a strict `Content-Security-Policy`, restrictive `Permissions-Policy`, and `Cache-Control: no-store` for token-protected responses.
 

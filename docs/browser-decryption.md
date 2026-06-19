@@ -197,7 +197,9 @@ Browser decryption UX should reflect why the incident was captured:
 | Safety check | Missed check-ins may trigger trusted-contact access, but false positives need careful wording and cancellation/audit policy. |
 | Evidence note | Often a controlled export/review workflow rather than live emergency access. |
 
-Do not hard-code emergency language into all decrypting viewer flows. A future web client should distinguish urgent safety review from ordinary authorised incident review.
+Do not hard-code emergency language into all decrypting viewer flows. Future
+production web-client decryption UX should distinguish urgent safety review
+from ordinary authorised incident review.
 
 ## URL Fragment Model
 

@@ -56,6 +56,7 @@ Post this PR comment only after confirming the base branch is correct:
 @codex review
 
 Please review this PR for correctness, security, scope control, and consistency with README.md, AGENTS.md, SECURITY.md, docs/v1-preview-direction.md where product direction is relevant, and relevant docs.
+If the PR changes README structure, public voice, governance posture, or source-of-truth mapping, also check the website governance and README baseline source documents.
 
 Base branch: `<ACTUAL_BASE_BRANCH>`
 Head branch: `<ACTUAL_HEAD_BRANCH>`
@@ -104,9 +105,10 @@ Then review for:
 5. documentation accuracy
 6. consistency with README.md, AGENTS.md, and docs/v1-preview-direction.md where product direction is relevant
 7. whether it satisfies the linked issue acceptance criteria
-8. whether it should remain draft
-9. whether it changes key custody/decryption assumptions, and whether those changes are explicitly designed and documented
-10. whether branch-scoped issue/report findings were revalidated against the PR base branch
+8. consistency with the website governance and README baseline source documents if README structure, public voice, governance posture, or source-of-truth mapping changed
+9. whether it should remain draft
+10. whether it changes key custody/decryption assumptions, and whether those changes are explicitly designed and documented
+11. whether branch-scoped issue/report findings were revalidated against the PR base branch
 
 Do not modify files unless explicitly requested.
 

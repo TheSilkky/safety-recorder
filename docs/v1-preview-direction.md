@@ -69,7 +69,7 @@ backend source of truth.
 
 The current server is experimental, local-first, and ciphertext-only by default.
 It implements local username/password accounts, opaque server-side sessions,
-optional browser cookie sessions for future web-client calls, disabled-by-default
+optional browser cookie sessions for future production web-client calls, disabled-by-default
 public registration with SMTP-backed email verification when open mode is
 explicitly configured, owner-scoped incident metadata, contact public-key
 metadata, owner-scoped sharing grants, owner-scoped wrapped-key metadata, private

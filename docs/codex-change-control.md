@@ -29,6 +29,10 @@ Codex can draft changes, but the maintainer remains responsible for reviewing, t
    - `AGENTS.md`
    - relevant files in `docs/`
    - relevant prompt in `codex/prompts/`
+   - `open-proofline/website/docs/governance-and-political-alignment.md` and
+     `open-proofline/website/docs/repository-readme-baseline.md` when public
+     governance posture, public voice, README structure, or source-of-truth
+     mapping is in scope
 
    For prompt-maintenance triggers, see [Codex prompt maintenance](../codex/README.md#when-to-update-prompts).
 

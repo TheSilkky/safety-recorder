@@ -216,6 +216,11 @@ Codex output should summarize:
 When editing docs, keep these claims aligned:
 
 - current name, version, and scope in [../README.md](../README.md)
+- project-wide public governance posture, political alignment, public-good
+  framing, public voice, reusable README baseline, and source-of-truth mapping
+  in `open-proofline/website`, especially
+  `docs/governance-and-political-alignment.md` and
+  `docs/repository-readme-baseline.md`
 - planned incident modes in [incident-modes.md](incident-modes.md)
 - route details in [api.md](api.md)
 - security assumptions in [security-model.md](security-model.md) and [threat-model.md](threat-model.md)

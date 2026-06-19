@@ -67,7 +67,10 @@ Related source-of-truth docs:
 
 - No broad unreviewed public exposure of the current main `/v1` API.
 - No OAuth, JWT, public account portal, or identity-provider implementation.
-- No web-client, iOS-client, Android-client, or protocol implementation.
+- No web-client, iOS-client, Android-client, or protocol implementation in
+  this server repository. Current web-client work belongs in
+  `open-proofline/web-client`; iOS, Android, and protocol work remain future
+  companion-repository scope.
 - No push notification, SMS, Messenger, email notification beyond registration
   verification, password recovery email, or emergency-services integration.
 - No backend decryption, browser decryption, key escrow, trusted-contact
@@ -209,7 +212,7 @@ be explicitly configured with SMTP email verification and activates accounts
 only after a single-use verification token is consumed. Paid registration fails
 closed until a future billing system exists. Bearer login returns the raw
 session token once for CLI/simulator/API clients. Optional browser login sets a
-dedicated HttpOnly cookie for future web-client calls and does not return the
+dedicated HttpOnly cookie for future production web-client calls and does not return the
 raw token in JSON. Stored session material is hashed. Sessions expire and can
 be revoked. New admin-created, `/admin` bootstrap, and open-registration
 accounts start as setup-incomplete for required second-factor setup; primary

@@ -1,6 +1,6 @@
 # API
 
-This is the current backend-only HTTP surface for Proofline. The API binary starts a main API/viewer listener and a private-admin listener on one or more configured bind addresses. Main `/v1` routes require local account authentication except for login and the disabled-by-default registration/email-verification routes, and they use app-level route-class rate limits. Existing `/admin/api/...` JSON routes require an admin account with completed admin second-factor setup and are mounted only on the private-admin listener. The private-admin listener also serves the `/admin` dashboard route tree, which applies the same admin setup and active-factor session-verification gate before operator actions. Incident viewer routes are token-gated, read-only, and mounted on the main listener. The future canonical no-account viewer link belongs to the web-client origin as documented in [web-client-viewer-routing.md](web-client-viewer-routing.md); planned web, iOS, and Android clients are not part of this repository yet.
+This is the current backend-only HTTP surface for Proofline. The API binary starts a main API/viewer listener and a private-admin listener on one or more configured bind addresses. Main `/v1` routes require local account authentication except for login and the disabled-by-default registration/email-verification routes, and they use app-level route-class rate limits. Existing `/admin/api/...` JSON routes require an admin account with completed admin second-factor setup and are mounted only on the private-admin listener. The private-admin listener also serves the `/admin` dashboard route tree, which applies the same admin setup and active-factor session-verification gate before operator actions. Incident viewer routes are token-gated, read-only, and mounted on the main listener. The future canonical no-account viewer link belongs to the web-client origin as documented in [web-client-viewer-routing.md](web-client-viewer-routing.md); web-client implementation lives in `open-proofline/web-client`, while planned iOS and Android clients are not part of this repository yet.
 
 Media bundle downloads are encrypted chunk bundles. The backend does not
 decrypt, merge, or produce playable media. Current encrypted uploads use the
@@ -31,8 +31,8 @@ or backend decryption, notifications, raw key storage, and key escrow do not
 exist yet. Future trusted-contact alerts, missed-check-in messages, and
 viewer-link delivery are planned separately in
 [notification-boundary.md](notification-boundary.md). The main API does include
-a narrow public-safe owner incident list/detail read surface for the future web
-client, but this does not make every `/v1` route group public-ready without
+a narrow public-safe owner incident list/detail read surface for future
+production web-client use, but this does not make every `/v1` route group public-ready without
 route-level deployment review.
 The public web-client route, CORS, CSRF, cookie, cache, edge, and logging
 boundary is documented in
@@ -112,8 +112,8 @@ Session tokens are opaque server-side credentials. The raw token is returned onl
 
 When `SAFE_WEB_AUTH_ENABLED=true`, the main API also accepts a dedicated
 browser session cookie for `/v1` routes when no bearer token is present. Browser
-cookie mode is intended for the future `open-proofline/web-client`: web clients
-should call with `credentials: "include"` and should not store raw bearer
+cookie mode is intended for future production use by `open-proofline/web-client`:
+web clients should call with `credentials: "include"` and should not store raw bearer
 tokens in localStorage in production. If a request sends both
 `Authorization: Bearer ...` and the browser session cookie, the server rejects
 it with `400 ambiguous_credentials`.
@@ -148,7 +148,8 @@ Verification links use:
 {SAFE_PUBLIC_WEB_ORIGIN}/verify-email#token=<raw-token>
 ```
 
-The token is placed in the URL fragment so a future web client can submit it in
+The token is placed in the URL fragment so a future production web-client
+viewer can submit it in
 the JSON request body without sending it to the web server as a path or query
 value. The backend stores only token hashes, not raw verification tokens.
 
@@ -2716,7 +2717,7 @@ The Go app does not set `Strict-Transport-Security` in local/dev HTTP mode. Set 
 ### `GET /i/{token}/viewer-payload`
 
 Returns the stable, token-scoped no-account viewer payload intended for the
-future web-client viewer. It is narrower than `/i/{token}/data`: it provides
+future production web-client viewer. It is narrower than `/i/{token}/data`: it provides
 incident status, latest check-in time, safe device state when present, and a
 single latest shared or last reported location context when a check-in contains
 both latitude and longitude. It does not expose chunk summaries, stream

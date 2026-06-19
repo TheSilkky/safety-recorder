@@ -20,6 +20,11 @@ Before making changes, read current source-of-truth files as relevant:
 - `SECURITY.md`
 - `docs/README.md`
 - `docs/v1-preview-direction.md`
+- `open-proofline/website/docs/governance-and-political-alignment.md`, when
+  public governance posture, political alignment, or public-good framing is in
+  scope
+- `open-proofline/website/docs/repository-readme-baseline.md`, when README
+  structure, public voice, or source-of-truth mapping is in scope
 - relevant files in `docs/`
 - relevant source files
 - relevant tests

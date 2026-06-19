@@ -20,8 +20,9 @@ rotation, and deployment automation remain planned in
 [regional-stream-ingress-relay.md](regional-stream-ingress-relay.md).
 
 This repository is the server/backend component only. In the current
-`open-proofline` organisation it is `open-proofline/server`. Web, iOS, Android,
-and shared protocol work should live in separate repositories.
+`open-proofline` organisation it is `open-proofline/server`. Public website and
+web-client work live in their own current repositories; iOS, Android, and shared
+protocol work should live in separate repositories when those scopes are ready.
 
 The long-term product direction is broader than emergency-only recording. Future
 clients may support emergency incidents, non-emergency interaction records,
@@ -29,14 +30,14 @@ timed safety checks, and evidence notes. The current backend stores generic
 incidents by default, can store optional incident-mode, capture-profile,
 escalation-policy, and sharing-state metadata on main incident create/read
 routes, exposes owner-only public-safe incident list/detail metadata for future
-web-client reads, and has local username/password accounts with opaque
+production web-client reads, and has local username/password accounts with opaque
 server-side sessions for the main `/v1` API, private-admin JSON routes under
 `/admin/api/...`, plus a private admin web surface under `/admin`.
 Sharing metadata, owner wrapped-key records, and signed-in trusted-contact
 wrapped-key reads are implemented behind authenticated `/v1` routes.
 Mode-driven access, escalation, retention, key custody, trusted-contact
-incident delivery, notification delivery, and mobile/web clients are not
-implemented yet. Planned mode behavior, escalation, migration, and
+incident delivery, notification delivery, production web-client behavior, and
+mobile clients are not implemented yet. Planned mode behavior, escalation, migration, and
 viewer-wording boundaries are documented in [incident-modes.md](incident-modes.md),
 and current local session behavior plus future public product API, separately
 bound private admin API, role, and grant boundaries are documented in
@@ -44,8 +45,8 @@ bound private admin API, role, and grant boundaries are documented in
 viewer-link, retry, suppression, opt-out, rate-limit, and audit boundaries are
 documented in [notification-boundary.md](notification-boundary.md).
 
-The repository does not contain an iOS app, Android app, web client, protocol
-package, production recording client, production client key storage, key
+The repository does not contain an iOS app, Android app, web-client
+implementation, protocol package, production recording client, production client key storage, key
 sharing, browser/client-side decryption, server-assisted break-glass key access,
 notification system, trusted-contact delivery model, future public product API,
 future separately bound private admin API, OAuth/JWT identity integration, or
@@ -85,6 +86,7 @@ The current organisation is `open-proofline`.
 Current and planned repositories:
 
 ```text
+open-proofline/website
 open-proofline/server
 open-proofline/web-client
 open-proofline/ios-client
@@ -94,13 +96,14 @@ open-proofline/protocol
 
 Responsibilities:
 
-| Repository | Responsibility |
-|---|---|
-| `open-proofline/server` | Go backend, authenticated main API, private admin web surface, public incident viewer, SQLite migrations, encrypted blob storage, deployment docs, and server release workflow. |
-| `open-proofline/web-client` | Account portal, authorised incident review, trusted-contact access, and eventual replacement for the current token-only viewer. |
-| `open-proofline/ios-client` | iOS incident capture, encrypted staging, upload, local account flows, and platform-specific recording behavior. |
-| `open-proofline/android-client` | Android incident capture, encrypted staging, upload, local account flows, and platform-specific recording behavior. |
-| `open-proofline/protocol` | Shared API specs, encryption envelope specs, bundle manifests, compatibility matrix, and conformance tests. |
+| Repository | Status | Responsibility |
+|---|---|---|
+| `open-proofline/website` | Current, experimental | Static public website, public framing, governance posture, reusable README baseline, and website Codex workflows. |
+| `open-proofline/server` | Current, experimental | Go backend, authenticated main API, private admin web surface, public incident viewer, SQLite migrations, encrypted blob storage, deployment docs, and server release workflow. |
+| `open-proofline/web-client` | Current, experimental | React account portal and incident-review prototype for account flows and metadata review. It is not a recorder, emergency workflow, production decryption client, or production account portal. |
+| `open-proofline/ios-client` | Planned | Future iOS incident capture, encrypted staging, upload, local account flows, and platform-specific recording behavior. |
+| `open-proofline/android-client` | Planned | Future Android incident capture, encrypted staging, upload, local account flows, and platform-specific recording behavior. |
+| `open-proofline/protocol` | Planned | Future shared API specs, encryption envelope specs, bundle manifests, compatibility matrix, and conformance tests. |
 
 The Go module path is `github.com/open-proofline/server`, release binaries use `proofline-server-*` names, and the published GHCR image is `ghcr.io/open-proofline/server`. Current runtime protocol and default data-layout identifiers use Proofline names. Historical reports and archived prompts may still mention earlier `safety-recorder` identifiers.
 
@@ -116,7 +119,9 @@ This repository should remain scoped to backend server responsibilities:
 - simulator/reference backend flow
 - backend security, retention, and threat-model docs
 
-Do not add future web-client, iOS-client, Android-client, or protocol implementation here unless the maintainer explicitly changes the repository strategy.
+Do not add website, web-client, iOS-client, Android-client, or protocol
+implementation here unless the maintainer explicitly changes the repository
+strategy.
 
 ## Example Network Topology
 
