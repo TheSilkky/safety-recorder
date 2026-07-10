@@ -37,6 +37,18 @@ preview readiness claim.
   non-goals, and validation expectations in
   `docs/private-admin-web-scope.md`.
 
+- Migrated the public technical-review workflow to Codex maximum-reasoning
+  prompts while preserving an independent Phase 2 validation pass.
+
+- Consolidated duplicate key-metadata rate-limit classification, removed
+  unreachable internal helpers, and reconciled current implementation docs for
+  complete-upload coordination, the regional relay, trusted-contact wrapped-key
+  delivery, and the accepted post-quantum envelope.
+
+- Updated the simulator for active-TOTP session verification through a
+  short-lived environment value that is never printed, and refreshed its
+  desktop-recorder, poor-network, and disposable-smoke guidance.
+
 - Fixed active email challenge 2FA session enforcement so fresh primary-login
   sessions must complete an email challenge before product-route or private
   admin operator access alongside the existing TOTP and WebAuthn session gates.

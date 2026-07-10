@@ -34,6 +34,40 @@ func prepareEncryption(out io.Writer, cfg config) (simulatorEncryption, error) {
 	return encryption, nil
 }
 
+func authenticateSimulatorSession(ctx context.Context, out io.Writer, sim *client, cfg config) error {
+	fmt.Fprintln(out, "Logging in...")
+	login, err := sim.login(ctx, cfg.username, cfg.password)
+	if err != nil {
+		return err
+	}
+	sim.sessionToken = login.Token
+
+	if cfg.setupTOTPSecondFactor {
+		if login.SecondFactorVerificationRequired {
+			return fmt.Errorf("--setup-totp-second-factor cannot be used when an active factor already requires verification")
+		}
+		fmt.Fprintln(out, "Setting up TOTP second factor...")
+		if err := sim.setupTOTPSecondFactor(ctx); err != nil {
+			return err
+		}
+		fmt.Fprintln(out, "TOTP second factor verified.")
+		return nil
+	}
+
+	if !login.SecondFactorVerificationRequired {
+		return nil
+	}
+	if cfg.totpCode == "" {
+		return fmt.Errorf("account session requires second-factor verification; set the current TOTP code through PROOFLINE_SIM_TOTP_CODE")
+	}
+	fmt.Fprintln(out, "Verifying TOTP second factor...")
+	if err := sim.verifyTOTPSecondFactor(ctx, cfg.totpCode); err != nil {
+		return err
+	}
+	fmt.Fprintln(out, "TOTP second factor verified.")
+	return nil
+}
+
 func uploadChunks(ctx context.Context, out io.Writer, sim client, cfg config, incidentID, streamID string, encryption simulatorEncryption, relaySession relaySession) error {
 	startedAt := time.Now().UTC()
 	for i := 1; i <= cfg.chunks; i++ {

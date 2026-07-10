@@ -102,16 +102,26 @@ bootstrap secret from TOML, the environment, or the secret mount and restart
 the server. See
 [deployment](deployment.md) for the bootstrap flow.
 
-Then run:
+For a disposable fresh database, the simulator can complete the new account's
+required TOTP setup in the same session. This setup path intentionally does not
+print or persist the TOTP seed, so use it only with account state that will be
+discarded after the smoke test:
 
 ```bash
 PROOFLINE_SIM_USERNAME=admin \
 PROOFLINE_SIM_PASSWORD='replace-with-a-long-local-password' \
-go run ./cmd/simclient --chunks 12 --interval 5s
+go run ./cmd/simclient --chunks 12 --interval 5s \
+  --setup-totp-second-factor
 ```
 
 The simulator creates a read-only incident viewer token for the flow but omits
 token-bearing viewer URLs from output.
+
+For an established local account with active TOTP, provide the current
+short-lived code through `PROOFLINE_SIM_TOTP_CODE`. The simulator uses it only
+to verify the new session and does not print it. Do not put TOTP codes in
+committed files, terminal output, or issue text. Active email-only or
+WebAuthn-only session challenges are not automated by `simclient`.
 
 ## Relay Upload Mode
 
@@ -473,10 +483,10 @@ session token.
 
 The standard simulator can call the duplicate chunk reconciliation route with
 `--reconcile-duplicate` to compare a local expected chunk fingerprint with
-accepted server metadata without re-uploading ciphertext. Broader desktop
-recorder ambiguous-network and process-restart reconciliation drills remain
-future work planned in
-[cluster-safe-upload-semantics.md](cluster-safe-upload-semantics.md).
+accepted server metadata without re-uploading ciphertext. Desktop recorder
+retries and process restarts reuse the durable staged bytes and stable
+`Idempotency-Key`. The separate reconciliation drill remains
+direct-upload-only; desktop and relay modes do not call that endpoint.
 
 ## Poor-Network Desktop Controls
 
@@ -516,6 +526,7 @@ attempts and durable metadata for accepted chunks.
 | `--relay-url` | Stream-ingress relay base URL. Required when `--upload-mode=relay`; rejected for direct mode. |
 | `--username` | Proofline account username. Defaults to `PROOFLINE_SIM_USERNAME`. |
 | `--password` | Proofline account password. Defaults to `PROOFLINE_SIM_PASSWORD`. |
+| `--setup-totp-second-factor` | Enroll and verify TOTP before product-route calls for a fresh account whose required setup is incomplete. Use only with disposable/local test account state. |
 | `--chunks` | Number of chunks to upload. |
 | `--interval` | Delay between chunk uploads. |
 | `--chunk-size` | Size of each fake plaintext chunk before optional encryption. |

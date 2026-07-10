@@ -82,6 +82,8 @@ Generated local artifacts should not be placed under `codex/`.
 
 Current generated artifact locations:
 
+- `.technical-review-drafts/` for source-cited Codex Phase 1 report drafts that
+  still require independent Phase 2 validation before publication
 - `.backlog-drafts/YYYY-MM-DD/<branch-slug>/` or `.backlog-drafts/current/<branch-slug>/` for backlog issue drafts
 - `.issue-review-drafts/YYYY-MM-DD/<branch-slug>/` or `.issue-review-drafts/current/<branch-slug>/` for open-issue review drafts
 - `scripts/create-backlog-issues.sh` only when explicitly generated from reviewed backlog drafts
@@ -130,7 +132,7 @@ Use prompts in this rough order:
 ### Release workflow
 
 22. `90-release-check.md`
-23. `95-validate-deep-research-report.md`, for Phase 2 validation of public technical review reports
+23. `95-validate-technical-review-report.md`, for independent Phase 2 validation of public technical review reports
 
 For any `v1 preview`, `v1.0.0`, or real-user evidence-upload readiness claim,
 run [docs/v1-preview-readiness-checklist.md](../docs/v1-preview-readiness-checklist.md)
@@ -179,9 +181,11 @@ Core constraints:
 
 ## When To Update Prompts
 
-Treat current code and source-of-truth docs as project truth. Reusable prompts are workflow helpers, Deep Research prompts are report-generation and validation helpers, and historical prompts are reference-only.
+Treat current code and source-of-truth docs as project truth. Reusable prompts
+are workflow helpers, Codex technical-review prompts are report-generation and
+validation helpers, and historical prompts are reference-only.
 
-When project scope, architecture, security posture, or workflow changes, update implementation or design docs first. Then update `README.md`, `AGENTS.md`, `SECURITY.md`, and relevant `docs/` files as needed. Update reusable Codex prompts only when their assumptions, guardrails, or repeated workflow steps have changed. Update Deep Research prompts when report scope, citation policy, source policy, or recurring validation failures change. Leave historical prompts untouched unless the maintainer explicitly requests otherwise.
+When project scope, architecture, security posture, or workflow changes, update implementation or design docs first. Then update `README.md`, `AGENTS.md`, `SECURITY.md`, and relevant `docs/` files as needed. Update reusable Codex prompts only when their assumptions, guardrails, or repeated workflow steps have changed. Update Codex technical-review prompts when report scope, citation policy, source policy, execution-evidence policy, or recurring validation failures change. Leave historical prompts untouched unless the maintainer explicitly requests otherwise.
 
 | Project change | Prompt/doc action |
 |---|---|
@@ -191,17 +195,25 @@ When project scope, architecture, security posture, or workflow changes, update 
 | New API routes or listener exposure | Review `AGENTS.md`, `docs/api.md`, security/threat docs, and relevant review prompts. |
 | Private `/v1` exposure or authentication model changes | Review `AGENTS.md`, `docs/deployment.md`, `docs/security-model.md`, `docs/threat-model.md`, and every reusable prompt that references private/public route separation. |
 | Logging behavior, startup/config error logs, request logs, or worker/operator logs | Review `docs/logging-requirements.md`, `docs/security-model.md`, `docs/threat-model.md`, and relevant review prompts. |
-| Encryption envelope changes | Update `docs/encryption.md`, `docs/post-quantum-envelope.md`, `docs/simulator.md`, `60-simulator-maintenance.md`, `30-security-review.md`, and Deep Research review scope. |
+| Encryption envelope changes | Update `docs/encryption.md`, `docs/post-quantum-envelope.md`, `docs/simulator.md`, `60-simulator-maintenance.md`, `30-security-review.md`, and the Codex technical-review scope. |
 | Key custody, browser decryption, break-glass, or dead-man-switch design changes | Use or update the key-custody prompts and update threat model, security model, encryption docs, incident-mode docs, and operational guidance. |
-| Bundle, storage, schema, or manifest changes | Update API docs, code-map docs, simulator docs/prompts, and Deep Research scope. |
+| Bundle, storage, schema, or manifest changes | Update API docs, code-map docs, simulator docs/prompts, and the Codex technical-review scope. |
 | CI/CD, Docker, GHCR, or release workflow changes | Update release/development docs and release/report prompts. |
 | New repeated Codex workflow | Add one reusable `NN-short-kebab-title.md` prompt and list it in this README. |
 | One-off implementation, refactor, or work order | Add a dated historical prompt under `archive/` or `work-orders/`. |
-| Validated Deep Research report finds a recurring false-positive pattern | Update the Deep Research Phase 1 and/or Codex Phase 2 validation prompts so the same mistake is less likely to recur. |
+| Validated technical review finds a recurring false-positive pattern | Update the Codex Phase 1 and/or independent Phase 2 validation prompts so the same mistake is less likely to recur. |
 
 Key custody guardrails need special care. Preserve the current backend ciphertext-only implementation unless the task explicitly concerns key custody, emergency access, or decryption design. Do not turn "no server keys ever" into a permanent absolute rule, and do not introduce backend decryption, browser decryption, raw server-held keys, key escrow, or key-sharing behaviour incidentally. Explicit key custody or decryption work must update the threat model, security model, encryption docs, tests, and operational guidance before or alongside implementation.
 
-For the public-safe report workflow, review Deep Research Phase 1 and Codex Phase 2 validation together when report workflow changes. Phase 1 lives in `docs/reports/prompts/phase-1-deep-research-technical-review.md`. Codex Phase 2 validation lives in `codex/prompts/95-validate-deep-research-report.md`. Keep portable citation keys, pin repository citations to reviewed commits, do not allow ChatGPT internal citation tokens in public reports, and add newly discovered recurring false positives to the Phase 2 checklist.
+For the public-safe report workflow, review the Codex Phase 0 preflight, Codex
+Phase 1 draft, and independent Codex Phase 2 validation prompts together when
+the workflow changes. Phase 0 lives in
+`docs/reports/prompts/phase-0-codex-technical-review-preflight.md`, Phase 1 lives
+in `docs/reports/prompts/phase-1-codex-technical-review.md`, and Phase 2 lives in
+`codex/prompts/95-validate-technical-review-report.md`. Keep portable citation
+keys, pin repository citations to reviewed commits, remove internal renderer or
+tool citation identifiers from public reports, and add newly discovered
+recurring false positives to the Phase 2 checklist.
 
 Do not add a reusable prompt for every one-off idea. Add reusable prompts only for repeated workflows. One-off prompts belong in `archive/` or `work-orders/`, and generated local artifacts belong outside `codex/`.
 
@@ -235,9 +247,22 @@ Use `38-break-glass-and-dead-mans-switch-key-access-design.md` for server escrow
 
 ## Technical review report workflow
 
-Use `docs/reports/prompts/phase-1-deep-research-technical-review.md` outside Codex to draft a source-cited public technical review report.
+Use `docs/reports/prompts/phase-0-codex-technical-review-preflight.md` in Codex
+Max for a focused single-agent preflight, or Ultra when meaningful independent
+read-only lanes justify subagent delegation. Load the governing Phase 1 prompt,
+prepare the source and execution plan, and stop for maintainer approval.
 
-Use `95-validate-deep-research-report.md` in Codex to verify repository claims, remove draft-only material, pin repository citations, check public-safety constraints, and produce a cleaned report under `docs/reports/`.
+After approval, use `docs/reports/prompts/phase-1-codex-technical-review.md` in
+Codex Max for a focused review, or Ultra when the review has meaningful
+independent research lanes. Create a source-cited draft under the ignored
+`.technical-review-drafts/` directory. Phase 1 may directly execute safe
+validation commands, but its Source Registry must record the exact command,
+context, result, and limitations.
+
+Use `95-validate-technical-review-report.md` as an independent Phase 2 pass to
+verify repository and execution-evidence claims, remove draft-only material,
+pin repository citations, check public-safety constraints, and publish the
+cleaned report under `docs/reports/`.
 
 ## Validation
 

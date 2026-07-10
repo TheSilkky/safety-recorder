@@ -46,11 +46,13 @@ viewer-link, retry, suppression, opt-out, rate-limit, and audit boundaries are
 documented in [notification-boundary.md](notification-boundary.md).
 
 The repository does not contain an iOS app, Android app, web-client
-implementation, protocol package, production recording client, production client key storage, key
-sharing, browser/client-side decryption, server-assisted break-glass key access,
-notification system, trusted-contact delivery model, future public product API,
-future separately bound private admin API, OAuth/JWT identity integration, or
-playable media export. The Go simulator defaults to the accepted PQ payload
+implementation, protocol package, production recording client, production
+client key storage or decryption UX, server-assisted break-glass key access,
+notification system, trusted-contact incident viewer, public product API
+deployment, OAuth/JWT identity integration, or playable media export. The
+implemented private-admin API and web surface remain separately bound, and the
+implemented trusted-contact surface is limited to authenticated grant-scoped
+wrapped-key delivery. The Go simulator defaults to the accepted PQ payload
 envelope for development and test flows, can use the older v1 AES-GCM envelope
 only through explicit compatibility flags, and can produce local
 desktop-recorder test segments. Future key custody and emergency access design
@@ -73,7 +75,8 @@ flowchart LR
     Store --> Files[(Encrypted chunk files)]
     MainAPI --> Coord["Optional coordination<br/>Valkey/Redis counters + upload leases"]
     MainAPI --> Token["Viewer token creation"]
-    Contact["Trusted contact"] --> Viewer["Public incident viewer<br/>/i/{token}"]
+    TokenHolder["Viewer-token holder"] --> Viewer["Public incident viewer<br/>/i/{token}"]
+    Contact["Signed-in trusted contact"] -->|"grant-scoped wrapped-key read"| MainAPI
     Viewer --> Repo
     Viewer --> Store
     Viewer --> Bundle["Encrypted ZIP evidence bundles"]

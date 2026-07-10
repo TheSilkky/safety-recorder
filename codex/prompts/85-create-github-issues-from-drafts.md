@@ -26,7 +26,8 @@ open-proofline/server
 
 ## Draft directory
 
-Backlog drafts are normally created by `80-backlog-scan-issue-drafts.md` or `95-validate-deep-research-report.md`.
+Backlog drafts are normally created by `80-backlog-scan-issue-drafts.md` or the
+independent Phase 2 `95-validate-technical-review-report.md` workflow.
 
 They should live under a branch-scoped timestamped directory such as:
 

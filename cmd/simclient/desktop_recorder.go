@@ -28,12 +28,9 @@ func runDesktopRecorder(ctx context.Context, out io.Writer, cfg config) error {
 		viewerBase: cfg.viewerBase,
 	}
 
-	fmt.Fprintln(out, "Logging in...")
-	sessionToken, err := sim.login(ctx, cfg.username, cfg.password)
-	if err != nil {
+	if err := authenticateSimulatorSession(ctx, out, &sim, cfg); err != nil {
 		return err
 	}
-	sim.sessionToken = sessionToken
 
 	manifest, err := prepareDesktopStage(ctx, out, sim, cfg, stage, encryption)
 	if err != nil {

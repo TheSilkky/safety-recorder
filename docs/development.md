@@ -43,11 +43,18 @@ AI-assisted engineering review artifacts reviewed by the maintainer, not formal
 security audits, penetration tests, compliance certifications, or production
 readiness endorsements.
 
-Use the Phase 1 prompt in
-[reports/prompts/phase-1-deep-research-technical-review.md](reports/prompts/phase-1-deep-research-technical-review.md)
-to create a source-cited draft outside Codex. Use
-[../codex/prompts/95-validate-deep-research-report.md](../codex/prompts/95-validate-deep-research-report.md)
-for the Phase 2 Codex cleanup and public-safety validation pass.
+Use the
+[Phase 0 preflight](reports/prompts/phase-0-codex-technical-review-preflight.md)
+in Codex Max for a focused single-agent plan, or Ultra when meaningful
+independent read-only lanes justify delegation. Load the governing prompt,
+plan the review, and stop for maintainer approval. After approval, use the
+[Phase 1 technical review](reports/prompts/phase-1-codex-technical-review.md) to
+create a source-cited draft under the ignored `.technical-review-drafts/`
+directory. Phase 1 may directly run safe validation commands when it records
+the exact command, context, result, and limitations. Use the
+[Phase 2 validation prompt](../codex/prompts/95-validate-technical-review-report.md)
+for an independent cleanup, evidence check, and public-safety pass before
+publishing the cleaned report under `docs/reports/`.
 
 ## Commands
 

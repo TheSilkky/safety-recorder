@@ -447,7 +447,8 @@ In another terminal, run the simulator:
 ```bash
 PROOFLINE_SIM_USERNAME=admin \
 PROOFLINE_SIM_PASSWORD='replace-with-a-long-local-password' \
-go run ./cmd/simclient --chunks 5 --interval 1s --download-bundle
+go run ./cmd/simclient --chunks 5 --interval 1s --download-bundle \
+  --setup-totp-second-factor
 ```
 
 The simulator creates an incident, creates a viewer token without printing the
@@ -458,6 +459,12 @@ encrypted bundle output, offline bundle verification, the durable
 desktop-recorder mode, local file input, ffmpeg segment capture, and
 poor-network retry controls, and simulator-only contact-wrapped key metadata
 artifacts.
+
+The setup flag above is for a fresh disposable local account and does not print
+or persist the generated TOTP seed. For an established account with active
+TOTP, provide the current short-lived code through
+`PROOFLINE_SIM_TOTP_CODE`; `simclient` verifies the session without printing the
+code.
 
 ## Docker
 

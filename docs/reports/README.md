@@ -19,10 +19,15 @@ Historical reports keep their original `Safety Recorder` titles, filenames, and 
 
 ## Report Prompts
 
-The source prompt for the first-pass Deep Research review lives in
-[prompts/phase-1-deep-research-technical-review.md](prompts/phase-1-deep-research-technical-review.md).
-The Phase 2 Codex validation workflow lives in
-[../../codex/prompts/95-validate-deep-research-report.md](../../codex/prompts/95-validate-deep-research-report.md).
+Run the
+[Phase 0 preflight](prompts/phase-0-codex-technical-review-preflight.md) in Codex
+Max for a focused single-agent plan, or Ultra when meaningful independent
+read-only lanes justify delegation, and obtain maintainer approval before running the
+[Phase 1 technical review](prompts/phase-1-codex-technical-review.md). Phase 1
+writes its source-cited report under the ignored `.technical-review-drafts/`
+directory and records exact evidence for commands it executes. The independent
+[Phase 2 Codex validation workflow](../../codex/prompts/95-validate-technical-review-report.md)
+checks the draft and publishes the cleaned report under `docs/reports/`.
 
 Report prompts and reports must remain public-safe. Do not include raw tokens,
 secrets, private deployment details, exploit payloads, raw keys, plaintext media,

@@ -1,8 +1,15 @@
-# Phase 0 Deep Research Prompt: Load Report Instructions And Plan Research
+# Phase 0 Codex Prompt: Load Report Instructions And Plan Research
 
-Use this prompt in ChatGPT Deep Research before running the Phase 1 technical review report.
+Use this prompt in Codex Max when the preflight is best handled as one focused
+task. Use Ultra when the plan has meaningful independent read-only research
+lanes that benefit from subagent delegation. Run it before the Phase 1
+technical review report.
 
 Do **not** produce the technical review report in this Phase 0 step.
+
+Phase 0 is read-only. Do **not** edit files, generate issue drafts, create or
+modify GitHub issues, change repository settings, switch branches, create
+commits, or run destructive commands.
 
 This prompt exists because the Phase 1 report prompt is strict. Phase 0 should load the current Phase 1 prompt from the repository, restate the governing rules, and produce a research plan for maintainer approval before the actual report is generated.
 
@@ -52,16 +59,22 @@ Review date:
 Phase 1 prompt path:
 
 ```text
-docs/reports/prompts/phase-1-deep-research-technical-review.md
+docs/reports/prompts/phase-1-codex-technical-review.md
 ```
 
 Expected Phase 2 validation prompt path:
 
 ```text
-codex/prompts/95-validate-deep-research-report.md
+codex/prompts/95-validate-technical-review-report.md
 ```
 
-Target report path, if known:
+Phase 1 draft output path:
+
+```text
+.technical-review-drafts/<YYYY-MM-DD>-proofline-<TARGET_RELEASE_OR_VERSION>-technical-review-draft.md
+```
+
+Expected Phase 2 final report path:
 
 ```text
 docs/reports/<YYYY-MM-DD>-proofline-<TARGET_RELEASE_OR_VERSION>-technical-review.md
@@ -70,12 +83,14 @@ docs/reports/<YYYY-MM-DD>-proofline-<TARGET_RELEASE_OR_VERSION>-technical-review
 Model / tool disclosure:
 
 ```text
-OpenAI ChatGPT Deep Research using <MODEL_NAME>
+OpenAI Codex using <MODEL_NAME> with <MAX_OR_ULTRA_REASONING_MODE>
 ```
 
 ## Goal
 
-Load and internalize the current Phase 1 prompt from the reviewed repository branch/ref or reviewed commit, then produce a research plan that follows that prompt.
+Load and internalize the current Phase 1 prompt from the exact reviewed commit,
+confirm the reviewed ref and commit context, then produce a research and
+validation plan that follows that prompt.
 
 Phase 0 should make sure the actual Phase 1 report run will follow:
 
@@ -92,17 +107,38 @@ Phase 0 should make sure the actual Phase 1 report run will follow:
 
 ## Required Preflight Steps
 
-1. Open and read the current Phase 1 prompt from the reviewed branch/ref or commit:
+1. Confirm that Codex is running with Max effort or Ultra mode, and record the
+   actual model, reasoning mode, and available tools or connectors. Do not imply
+   that an unavailable mode or tool was used.
 
-   ```text
-   docs/reports/prompts/phase-1-deep-research-technical-review.md
+2. Inspect repository state with read-only commands:
+
+   ```bash
+   git status --short --branch --untracked-files=all
+   git branch --show-current
+   git rev-parse HEAD
    ```
 
-2. Confirm the Phase 1 prompt path and source used.
+3. Confirm that the reviewed branch/ref and full commit SHA inputs are complete.
+   Resolve the ref and confirm that it identifies `<REVIEWED_COMMIT_SHA>`. If the
+   commit is unavailable or the ref resolves to a different commit, stop and
+   report the mismatch instead of silently reviewing the current checkout.
 
-3. Summarize the governing Phase 1 requirements in your own words.
+4. Open and read the current Phase 1 prompt from the exact reviewed commit with
+   a non-mutating read such as `git show`, unless the maintainer explicitly
+   supplies and approves a separate prompt-source ref:
 
-4. Identify required repository files and directories to inspect, including:
+   ```text
+   docs/reports/prompts/phase-1-codex-technical-review.md
+   ```
+
+5. Confirm the Phase 1 prompt path, prompt-source ref and commit, reviewed ref,
+   and reviewed commit used. Do not substitute the working-tree copy without
+   disclosing and obtaining approval for that different source.
+
+6. Summarize the governing Phase 1 requirements in your own words.
+
+7. Identify required repository files and directories to inspect, including:
 
    ```text
    README.md
@@ -119,7 +155,7 @@ Phase 0 should make sure the actual Phase 1 report run will follow:
    .dockerignore
    ```
 
-5. Identify future-design and planning documents that must be reviewed when present, including but not limited to:
+8. Identify future-design and planning documents that must be reviewed when present, including but not limited to:
 
    ```text
    docs/incident-modes.md
@@ -129,27 +165,41 @@ Phase 0 should make sure the actual Phase 1 report run will follow:
    docs/ios-local-recorder-prototype.md
    ```
 
-6. Identify the authoritative external source categories required by the Phase 1 prompt, including the v0.8.0 optional backend-support areas:
+9. Identify the authoritative external source categories required by the Phase
+   1 prompt, including optional backend-support areas present in the reviewed
+   tree or claimed for the target release:
 
    - PostgreSQL metadata backend support
    - S3-compatible blob/object storage backend support
    - Valkey/Redis-compatible short-lived coordination backend support
    - exact Go client package documentation on `pkg.go.dev` when package behavior is discussed
 
-7. Identify public governance posture, public voice, README baseline,
+10. Identify public governance posture, public voice, README baseline,
    Apple/iOS/Swift, Android, web-client, protocol, legal-adjacent, or App
    Store/Play Store claims that would need primary sources if the report
    discusses them.
 
-8. Identify the required Source Registry sections and what each section must contain.
+11. Identify the required Source Registry sections and what each section must contain.
 
-9. Identify the citation requirements, including repository citation pinning to `<REVIEWED_COMMIT_SHA>`.
+12. Identify the citation requirements, including repository citation pinning to `<REVIEWED_COMMIT_SHA>`.
 
-10. Identify the validation evidence policy, especially that Deep Research cannot run tests, containers, Docker builds, local shell commands, or simulator smoke tests, while still allowing authoritative external source consultation when available.
+13. Identify safe, relevant validation commands that Phase 1 Codex should run
+    when the environment and task scope permit. Plan how Phase 1 will record the
+    exact command, result, reviewed commit context, limitations, and whether the
+    evidence came from this Codex run or was supplied separately. Do not execute
+    the Phase 1 validation plan during this Phase 0 preflight. If the current
+    checkout is dirty or does not exactly match `<REVIEWED_COMMIT_SHA>`, plan
+    repository inspection with `git show` and execution in a clean isolated
+    temporary copy of the reviewed commit. Do not plan to attribute current
+    working-tree results to the reviewed commit.
 
-11. Identify public-safety restrictions, including prohibited raw tokens, secrets, request bodies, uploaded bytes, plaintext, raw keys, private deployment details, exploit payloads, and user-safety data.
+14. Identify public-safety restrictions, including prohibited raw viewer or
+    incident tokens, secrets, request bodies, uploaded file bytes, Authorization
+    headers, plaintext, raw keys, wrapped-key ciphertext, private deployment
+    details, stored paths, object keys, exploit payloads, user-safety data, and
+    future token-like values.
 
-12. Identify common false-positive patterns the Phase 1 report should avoid, including:
+15. Identify common false-positive patterns the Phase 1 report should avoid, including:
 
     - treating documented future work as current defects
     - treating compatibility names as stale when docs explicitly preserve them
@@ -157,9 +207,11 @@ Phase 0 should make sure the actual Phase 1 report run will follow:
     - treating interaction records as police-specific surveillance features
     - treating preserved compatibility identifiers as stale after the repository/module/artifact rename
 
-13. Produce a proposed research plan.
+16. Produce a proposed research and validation plan. Distinguish checks that are
+    safe and available, checks that require maintainer-supplied evidence or
+    additional authorization, and checks that are unavailable.
 
-14. Stop and wait for maintainer approval before running the actual Phase 1 report.
+17. Stop and wait for maintainer approval before running the actual Phase 1 report.
 
 ## Important Constraints
 
@@ -167,13 +219,25 @@ Do **not** produce the technical review report in Phase 0.
 
 Do **not** treat this preflight as the Phase 1 report.
 
-Do **not** claim tests, containers, Docker builds, local shell commands, GitHub repository settings, or simulator smoke tests were run unless supplied validation evidence proves that.
+Do **not** change files, issue drafts, GitHub issues, repository settings,
+branches, commits, tags, or the reviewed checkout during Phase 0.
 
-Do **not** use ChatGPT-rendered citations as final public Markdown citations.
+Do **not** claim tests, containers, Docker builds, local shell commands, live
+service checks, GitHub repository settings, or simulator smoke tests were run
+unless actual evidence from this Codex session or separately supplied evidence
+proves that. A workflow definition or source-code inspection is not execution
+evidence.
+
+Do **not** use tool-internal, renderer-only, or conversation-local citation IDs
+as final public Markdown citations. This includes raw identifiers such as
+`turnXfileY`, `turnXviewY`, `turnXsearchY`, `turnXfetchY`, or `turnXopenY`.
 
 Do **not** rely on repository-only evidence for external standards, platform, security, CI/CD, Docker, SQLite, dependency, license, Apple/iOS, Android, Swift, web-client, protocol, or legal-adjacent claims when the Phase 1 prompt requires authoritative external sources.
 
-Do **not** include raw tokens, secrets, request bodies, uploaded bytes, plaintext, raw keys, private deployment details, exploit payloads, or user-safety data.
+Do **not** include raw viewer or incident tokens, secrets, request bodies,
+uploaded file bytes, Authorization headers, plaintext, raw keys, wrapped-key
+ciphertext, private deployment details, stored paths, object keys, exploit
+payloads, user-safety data, or future token-like values.
 
 Do **not** claim production readiness.
 
@@ -228,7 +292,8 @@ open-proofline/website/docs/governance-and-political-alignment.md
 open-proofline/website/docs/repository-readme-baseline.md
 ```
 
-For the v0.8.0 optional backend-support review, also plan repository inspection for:
+For optional backend-support areas present in the reviewed tree or claimed for
+the target release, also plan repository inspection for:
 
 - PostgreSQL metadata backend implementation and documentation, including configuration, connection setup, migrations, schema behavior, transaction and constraint behavior, fallback/default behavior, tests or workflows, dependency declarations, and package usage
 - S3-compatible blob/object storage implementation and documentation, including configuration, connection setup, object key construction, upload/download behavior, immutability assumptions, hash/checksum handling, fallback/default behavior, tests or workflows, dependency declarations, and package usage
@@ -312,14 +377,15 @@ Use specific documentation pages rather than broad homepages. For the optional b
 
 ### Validation Evidence
 
-Identify validation evidence that was supplied or missing, such as:
+Identify validation evidence that Phase 1 Codex can produce safely, that was
+supplied separately, or that will remain missing, such as:
 
 ```text
 GitHub Actions run URLs
 local command output
 Codex command output
 uploaded validation summaries
-gofmt output
+non-mutating formatting-check output
 go test output
 go vet output
 Docker build output
@@ -330,7 +396,18 @@ Valkey/Redis-compatible coordination test, smoke-test, or TTL behavior evidence
 attestation verification output
 ```
 
-If validation evidence is not supplied, the Phase 1 report must say the command or backend path was not independently executed or verified by Deep Research. For optional PostgreSQL metadata, S3-compatible storage, and Valkey/Redis-compatible coordination, distinguish code/docs review from live disposable-service execution or supplied smoke-test evidence.
+The plan should name the safe commands Phase 1 Codex will attempt and the
+conditions required to run them. Prefer non-mutating checks and disposable,
+non-secret local test configuration. Do not plan commands that write to
+production services, expose secrets or private deployment details, or modify
+the reviewed source tree. Phase 1 should check repository state before and
+after validation and report any unexpected change.
+
+If validation evidence is not produced or supplied, the Phase 1 report must say
+that the command or backend path was not independently executed or verified by
+Phase 1 Codex. For optional PostgreSQL metadata, S3-compatible storage, and
+Valkey/Redis-compatible coordination, distinguish code/docs review from live
+disposable-service execution or supplied smoke-test evidence.
 
 ## Source Registry Planning
 
@@ -354,6 +431,10 @@ The plan should include the required registry sections from Phase 1:
 
 Every registry entry should include source ID, source type, location, commit/ref/date, review purpose, status, limitations, and related finding IDs or report sections where applicable.
 
+The generated-artifacts section should record the Phase 1 draft path under
+`.technical-review-drafts/` and the expected Phase 2 final report path under
+`docs/reports/`. Phase 1 must not write directly to the final report path.
+
 For optional backend-support areas, the plan should include example `S-*` keys for required authoritative sources. These are examples only; Phase 1 should use exact source keys for the specific sources actually consulted:
 
 ```text
@@ -374,7 +455,9 @@ S-GO-VALKEY-CLIENT
 
 ## Citation Planning
 
-The Phase 0 plan must restate that final public citations are handled through portable citation keys, not ChatGPT UI citation tokens.
+The Phase 0 plan must restate that final public citations are handled through
+portable citation keys, not tool-internal, renderer-only, or
+conversation-local citation IDs.
 
 Portable key families:
 
@@ -387,7 +470,9 @@ V-* for validation evidence
 
 Repository URLs must be pinned to `<REVIEWED_COMMIT_SHA>`, not `main`, `develop`, or a moving release branch.
 
-If ChatGPT-rendered citations appear in the Phase 1 draft, the plan must instruct Phase 2 Codex validation to convert or replace them using the Source Registry.
+If tool-internal or renderer-only citations appear in the Phase 1 draft, the
+plan must instruct Phase 2 Codex validation to convert or replace them using the
+Source Registry.
 
 ## Branch And Issue-Scope Planning
 
@@ -400,6 +485,11 @@ The plan should require follow-up issue suggestions to distinguish:
 - findings that require revalidation on `main` or `develop`
 - planning-only findings
 - sensitive items that should not become public issues
+
+Suspected or unresolved vulnerabilities must follow `SECURITY.md` and GitHub
+private vulnerability reporting. Do not plan public issue drafts or public
+GitHub issues for them. Public issues are limited to sanitized, non-vulnerability
+hardening or documentation follow-up.
 
 Any Phase 2-generated public issue drafts must include:
 
@@ -417,24 +507,34 @@ The Phase 0 plan should map the Phase 1 report to these broad areas:
 1. Documentation consistency, Proofline naming, and compatibility-name notes
 2. Current implementation versus future incident-mode planning
 3. Go backend structure and idiomatic implementation
-4. HTTP API behavior and private/public route separation
+4. HTTP API behavior; separate main API/viewer and private-admin listener groups
+   and muxes; read-only public viewer paths; and private/public route separation
 5. Viewer/incident token generation, hashing, storage, expiry, redaction, and viewer behavior
 6. Logging, metrics, proxy examples, and sensitive data exposure
 7. Upload handling, hash verification, immutable storage, upload limits, and stream-scoped chunk identity
 8. SQLite and PostgreSQL metadata backend support, including configuration, schema/migrations, transactions, constraints, parity with SQLite where claimed, data-integrity boundaries, and validation-evidence limits
 9. Local and S3-compatible blob/object storage support, including object key construction, upload/download behavior, immutability assumptions, hash/checksum handling, local-vs-object-store parity where claimed, path/key traversal risks, and fail-closed behavior
 10. Optional Valkey/Redis-compatible coordination, including key expiry, short-lived coordination semantics, lock/session assumptions, failure behavior, fallback behavior, and avoiding persistence or security overclaiming
-11. ZIP bundle generation, manifest completeness, fail-closed behavior, and path traversal handling
+11. Encrypted ZIP chunk-bundle generation, manifest completeness, fail-closed
+    behavior, server-controlled entry names, no playable/decrypted-export
+    overclaiming, and path traversal handling
 12. Crypto-adjacent simulator envelope and ciphertext-only backend boundary
-13. Future key custody, browser/client-side decryption, break-glass, trusted-contact access, and server escrow boundaries
-14. Future web/iOS/Android/protocol/client planning and platform assumptions
+13. Recipient-key, trusted-contact, sharing-grant, and wrapped-key behavior
+    implemented at the reviewed commit, plus future production key custody,
+    browser/client-side decryption, trusted-contact review, break-glass, and
+    server escrow boundaries
+14. Web-client companion status and scope applicable to the reviewed commit,
+    future iOS/Android/protocol/client planning, and platform assumptions
 15. Deployment guidance, Traefik examples, WireGuard/private boundary, and rate limiting
 16. Docker/GHCR/GitHub Actions/supply-chain hygiene
 17. Public issue/report safety
 
 ## Risks, Ambiguities, And Maintainer Decisions Planning
 
-The Phase 0 plan should identify maintainer decisions needed before Phase 1, including whether PostgreSQL metadata, S3-compatible object storage, and Valkey/Redis-compatible coordination should be treated as release-blocking v0.8.0 review areas or optional backend-support review areas.
+The Phase 0 plan should identify maintainer decisions needed before Phase 1,
+including whether PostgreSQL metadata, S3-compatible object storage, and
+Valkey/Redis-compatible coordination should be treated as release-blocking
+areas for the target release or optional backend-support review areas.
 
 The plan should also identify whether validation evidence exists for those backend paths. Absence of supplied validation evidence must be recorded as a limitation rather than guessed around.
 
@@ -443,18 +543,23 @@ The plan should also identify whether validation evidence exists for those backe
 Return only a Phase 0 preflight response with this structure:
 
 ```markdown
-# Phase 0 Deep Research Preflight
+# Phase 0 Codex Technical Review Preflight
 
 ## Loaded prompt
 
 - Repository:
 - Product name / compatibility-name notes:
+- Codex model and actual reasoning mode:
+- Available tools and connectors:
+- Current branch and HEAD:
 - Reviewed branch/ref:
 - Reviewed commit SHA:
 - Target release/version:
 - Phase 1 prompt path:
+- Phase 1 prompt source ref and commit:
 - Phase 1 prompt source used:
-- Target report path:
+- Phase 1 draft output path:
+- Expected Phase 2 final report path:
 
 ## Summary of governing Phase 1 rules
 
@@ -492,14 +597,16 @@ Do not continue into Phase 1 until the maintainer explicitly approves the plan.
 After Phase 0 returns the plan, the maintainer may approve it with a short instruction such as:
 
 ```text
-Approved. Run Phase 1 using the loaded `docs/reports/prompts/phase-1-deep-research-technical-review.md` as the governing prompt.
+Approved. Run Phase 1 using the loaded `docs/reports/prompts/phase-1-codex-technical-review.md` as the governing prompt in Max, or in Ultra when meaningful independent research lanes justify delegation.
 
 Reviewed branch/ref: `<REVIEWED_BRANCH_OR_REF>`
 Reviewed commit SHA: `<REVIEWED_COMMIT_SHA>`
 Target release/version: `<TARGET_RELEASE_OR_VERSION>`
 Review date: `<YYYY-MM-DD>`
+Phase 1 draft output path: `.technical-review-drafts/<YYYY-MM-DD>-proofline-<TARGET_RELEASE_OR_VERSION>-technical-review-draft.md`
+Expected Phase 2 final report path: `docs/reports/<YYYY-MM-DD>-proofline-<TARGET_RELEASE_OR_VERSION>-technical-review.md`
 
 Follow the Source Registry, citation, validation-evidence, branch-scope, and public-safety rules from the loaded Phase 1 prompt.
 ```
 
-Only after that approval should Deep Research produce the Phase 1 technical review report.
+Only after that approval should Codex produce the Phase 1 technical review draft.

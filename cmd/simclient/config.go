@@ -18,6 +18,7 @@ type config struct {
 	uploadMode            string
 	username              string
 	password              string
+	totpCode              string
 	chunks                int
 	interval              time.Duration
 	mediaType             string
@@ -75,6 +76,7 @@ func parseConfig(args []string) (config, error) {
 	fs.StringVar(&cfg.relayBase, "relay-url", "", "Stream-ingress relay base URL when --upload-mode=relay")
 	fs.StringVar(&cfg.username, "username", os.Getenv("PROOFLINE_SIM_USERNAME"), "Proofline account username")
 	fs.StringVar(&cfg.password, "password", os.Getenv("PROOFLINE_SIM_PASSWORD"), "Proofline account password")
+	cfg.totpCode = strings.TrimSpace(os.Getenv("PROOFLINE_SIM_TOTP_CODE"))
 	fs.IntVar(&cfg.chunks, "chunks", defaultChunks, "Number of chunks to upload")
 	fs.DurationVar(&cfg.interval, "interval", defaultInterval, "Delay between chunk uploads")
 	fs.StringVar(&cfg.mediaType, "media-type", defaultMediaType, "Media type to upload")

@@ -46,20 +46,17 @@ Do not rely on stale assumptions from this prompt if the repository has changed.
 The simulator acts as a local backend reference client for current and future
 recorder flows.
 
-The current `cmd/simclient` uploads fake chunks through the private API and can
-verify encrypted bundle downloads locally. A future local desktop recorder
-simulator client may extend this simulator boundary, but it should remain a
-simulator, not a production desktop app or replacement for planned mobile
-clients.
-
-The future desktop simulator should support adjustable poor-network simulation
-for latency, jitter, request timeouts, bandwidth ceilings, intermittent offline
-windows, upload failure rates, and process restart or resume drills.
+The current `cmd/simclient` uploads generated or local test chunks through the
+authenticated main API and can verify encrypted bundle downloads locally. Its
+desktop recorder mode supports durable encrypted staging, generated, file, and
+ffmpeg sources, complete-chunk retry/resume, and adjustable poor-network
+simulation. It must remain a simulator, not a production desktop app or a
+replacement for planned mobile clients.
 
 It should use the current local account/session flow for private `/v1`
 authentication. Simulator maintenance must not add OAuth, JWT, broad public
-`/v1` exposure, trusted-contact accounts, public account workflows, or extra
-account-management routes incidentally.
+`/v1` exposure, public account workflows, new trusted-contact/key-delivery
+behavior, or extra account-management routes incidentally.
 
 It should exercise:
 
@@ -74,8 +71,10 @@ It should exercise:
 - checkins
 - stream completion
 - optional failure/retry behaviour
-- adjustable poor-network simulation for future desktop recorder flows, when
-  that simulator exists
+- durable encrypted desktop staging and restart/resume drills
+- adjustable poor-network simulation for desktop recorder flows
+- optional direct or regional-relay complete-chunk uploads
+- optional duplicate reconciliation and conflict verification
 - optional encrypted bundle download verification
 - local decrypt verification of downloaded bundles when encryption is enabled
 
@@ -83,8 +82,9 @@ It should exercise:
 
 Check that the simulator:
 
-- uses the private API base URL for `/v1` routes
-- uses the public viewer base URL for printed incident viewer links
+- uses the authenticated main API base URL for `/v1` routes
+- uses the viewer base URL only for viewer bundle requests and omits
+  token-bearing viewer URLs from terminal output
 - creates a media stream before uploading chunks
 - uploads chunks with `stream_id`
 - keeps streamed chunk indexes unique per `(incident_id, stream_id, chunk_index)`
@@ -92,21 +92,22 @@ Check that the simulator:
 - encrypts fake chunks by default
 - supports `--encrypt=false` only for development compatibility
 - supports `--key-file` without printing the key
-- does not print raw keys or plaintext
+- does not print raw keys, TOTP codes, verification credentials, or plaintext
 - sends checkins during simulation
 - completes the stream by default unless configured otherwise
 - can simulate bad-hash failure and retry
-- can simulate poor network conditions through adjustable controls when working
-  on the future desktop recorder simulator
+- can simulate poor network conditions through adjustable desktop-recorder
+  controls
 - can optionally download a completed encrypted bundle
 - can decrypt-verify downloaded encrypted chunks locally
 - prints readable progress output
 - does not require public auth
 - does not assume playable media exists
-- keeps near-term account support local or fixture-only until explicit account
-  and access-control backend work exists
-- does not add resumable uploads, upload leases, or server-visible queue
-  summary routes just to support simulator work unless explicitly requested
+- uses the implemented local account/session and required second-factor setup
+  flow without expanding account-management or public product behavior
+- does not add resumable uploads, partial-upload leases, or server-visible
+  queue summary routes just to support simulator work unless explicitly
+  requested
 
 ## Tests
 
@@ -127,7 +128,14 @@ go vet ./...
 git diff --check
 ```
 
-Manual smoke test. Prefer TOML for repeatable smoke:
+Manual smoke tests must use a disposable local data directory, SQLite path,
+loopback ports, and synthetic credentials. Do not reuse an existing local
+database, inherited deployment configuration, stored credentials, or live
+listeners. Prefer a minimal explicit TOML file or an equally explicit clean
+environment, remove the bootstrap secret after account creation where the
+smoke lifecycle permits, and stop the disposable processes after validation.
+
+Example TOML shape:
 
 ```toml
 [auth]
@@ -149,13 +157,21 @@ curl -sS -X POST http://127.0.0.1:8081/admin/bootstrap \
   --data-urlencode 'password=replace-with-a-long-local-password'
 ```
 
-Then run the simulator with account credentials:
+Then run the simulator with the synthetic account credentials. On a fresh
+database, include `--setup-totp-second-factor` so the new account completes its
+required setup before product-route calls:
 
 ```bash
 PROOFLINE_SIM_USERNAME='admin' \
 PROOFLINE_SIM_PASSWORD='replace-with-a-long-local-password' \
-go run ./cmd/simclient --chunks 5 --interval 1s --download-bundle
+go run ./cmd/simclient --chunks 5 --interval 1s --download-bundle \
+  --setup-totp-second-factor
 ```
+
+For an established local account with active TOTP, supply only the current
+short-lived code through `PROOFLINE_SIM_TOTP_CODE`; never print or persist it in
+the repository. Do not weaken second-factor enforcement to make a smoke test
+pass.
 
 ## Output
 

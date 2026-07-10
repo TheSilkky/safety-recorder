@@ -3,12 +3,12 @@
 This document records the production-cluster expansion path for Proofline Server.
 
 It is a planning and scope document for cluster-related work. Optional
-PostgreSQL metadata, optional S3-compatible object storage, and optional
-Valkey/Redis-compatible coordination startup checks, and local `/v1`
-account/session authentication are implemented, but public product API
-authentication, public account workflows, cloud deployment automation,
-production hardening, and upload-operation use of coordination are not
-implemented.
+PostgreSQL metadata, optional S3-compatible object storage, optional
+Valkey/Redis-compatible coordination for startup checks, route-class counters,
+and short-lived complete-upload leases, and local `/v1` account/session
+authentication are implemented. Public product API deployment, public account
+workflows, cloud deployment automation, production hardening, and resumable or
+partial upload sessions are not implemented.
 
 ## Current Local-First Scope
 
@@ -76,8 +76,8 @@ PostgreSQL stores:
 - local account and session metadata
 - upload operation and idempotency state for complete chunk uploads
 - incident deletion decisions and retry state
-- future trusted-contact, device, and broader access-control metadata, after
-  that design exists
+- account/device recipient-key, trusted-contact relationship, contact-key,
+  sharing-grant, and wrapped-key metadata
 
 PostgreSQL support includes:
 
@@ -162,15 +162,16 @@ no-overwrite behavior must still protect committed state from duplicates.
 
 ## Upload Operation Semantics
 
-Future cluster upload handling should move toward explicit upload operations.
-The detailed planning design is
+Complete chunk uploads now use explicit durable upload operations when clients
+supply `Idempotency-Key`, with optional short-lived coordination leases. The
+detailed design and implemented boundary are documented in
 [Cluster-safe upload operation semantics](cluster-safe-upload-semantics.md).
 Resumable upload and partial-upload lease behavior is planned separately in
 [Resumable upload and upload lease protocol](resumable-upload-lease-protocol.md);
 that design keeps the local desktop recorder simulator on complete encrypted
 chunk retries while deferring resumable uploads and partial-upload sessions.
 
-A safe cluster upload flow should be designed around these steps:
+The implemented complete-upload path follows these steps:
 
 1. Reserve or identify the upload operation using stable incident, stream, chunk index, media type, and idempotency metadata.
 2. Stage encrypted bytes while enforcing staging pressure limits and computing SHA-256 over the uploaded ciphertext.
@@ -268,6 +269,6 @@ Implementation PRs for this scope should update source-of-truth docs together, a
 - `docs/threat-model.md`
 - `docs/retention-backup-deletion.md`
 - `docs/code-map.md`
-- release and Deep Research report prompts when review scope changes
+- release and Codex technical-review prompts when review scope changes
 
 Backlog issues should be created or updated for each backend and cluster-safety milestone before implementation work starts.

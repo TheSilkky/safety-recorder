@@ -191,7 +191,7 @@ prefer neutral user-facing language like `Interaction record`.
 | Post-quantum envelope | Server upload validation, wrapped-key metadata validation, bundle profile hints, docs, and simulator uploads now default to the accepted PQ profile. Web-client evidence upload and review still belong to companion-repository work. | Keep the accepted PQ profile as the preview default across server and web-client evidence upload, wrapped-key delivery, and review flows. |
 | Browser recording | Not implemented. | In scope for v1 preview as a reviewed secondary/fallback capture path, not a replacement for native mobile reliability. |
 | Browser decryption | Not implemented. | In scope for authorized account-owner or trusted-contact review after browser trust model, key custody, and deployment-integrity decisions are accepted. |
-| Trusted contacts | Owner-scoped metadata for contact public keys, grants, and wrapped keys. | Account-based trusted-contact invite/accept, grant-scoped review, wrapped-key delivery, and client-side decrypt UX. |
+| Trusted contacts | Account-to-account invite/accept relationships, owner-scoped contact public keys and grants, and authenticated grant-scoped wrapped-key delivery. Incident reads and client-side decrypt UX are not implemented. | Complete the trusted-contact review and client-side decrypt UX without expanding the backend's ciphertext-only role. |
 | Device sharing | Not implemented. | Each device should have its own key material. Existing trusted devices or a recovery flow should approve new devices, then rewrap relevant CEKs to the new device recipient key. |
 | Regional relay | Health/readiness routes with safe aggregate readiness categories, configured backend-issued upload and fanout capabilities for authorized open streams, service-authenticated core relay preflight/commit/fanout authorization endpoints, configured complete-chunk upload forwarding with temporary ciphertext staging, optimistic encrypted fanout marked unconfirmed, and bounded backend confirmation/rejection state. | Optional temporary, ciphertext-only relay listener subordinate to the core API, with replay, metrics, production service identity, and deployment hardening only after separate review. |
 | Public registration and required setup | Disabled by default; open mode requires SMTP verification; paid mode fails closed. New admin-created and open-registration accounts carry required setup state that blocks main product routes until email challenge, TOTP, or configured WebAuthn setup is completed. Active email challenge, TOTP, and WebAuthn factors require per-session verification. | Explicit preview deployments may enable open registration with email verification, rate limits, deployment controls, account-scoped committed blob quota, configured WebAuthn/passkey factors, and a reviewed recovery policy. |
@@ -724,9 +724,10 @@ Current docs are broadly aligned, but future work should watch these seams:
 - Current server and web-client docs describe browser decryption and recording
   as not implemented. That remains true, but neither should be treated as a
   permanent v1 preview non-goal.
-- Current post-quantum envelope docs describe an implementation plan, not
-  runtime behavior. That remains true now, but the post-quantum envelope should
-  be treated as a v1 preview requirement, not optional later hardening.
+- The accepted post-quantum envelope is now enforced for new chunk uploads and
+  wrapped-key metadata, and the simulator uses it by default. Companion-client
+  upload, key-custody, and decrypt UX still need to adopt and validate the same
+  profile before v1 preview.
 - Current billing docs describe a future Stripe-hosted service boundary. That
   should not become a default v1 preview requirement unless separately scoped.
 - Current runtime protocol and default data-layout identifiers use Proofline

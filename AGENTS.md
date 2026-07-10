@@ -63,14 +63,31 @@
 - Media streams can be marked `open`, `complete`, or `failed`.
 - Completed streams and incidents can be downloaded as encrypted ZIP evidence bundles.
 - Simulator CLI exists for incident upload/check-in/encryption test flows.
-- The current simulator encryption envelope is development/test oriented.
+- The simulator produces the accepted post-quantum payload envelope by default;
+  its local key handling and decrypt verification remain development/test tools,
+  not a production client key-custody model.
 - Future product scope includes emergency incidents, non-emergency interaction records, timed safety checks, and evidence notes.
 - The current backend implements local username/password accounts, main `/v1` account/session authentication, admin account management routes, and owner/admin incident authorization.
 - The current backend implements optional incident mode, capture profile, escalation policy, and sharing state metadata fields on private incident create/read routes, but these fields do not grant access, send notifications, change retention, change key custody, expose trusted-contact workflows, or change public viewer and bundle behavior.
 - The current backend implements private owner-scoped and admin-global incident deletion routes, deletion tombstones, retryable blob deletion, and optional closed-incident retention through a background worker.
-- The current backend does not yet implement mode-driven access, trusted-contact accounts, dead-man switch notifications, public account workflows, or a complete public `/v1` product deployment model beyond local account sessions, optional browser cookie sessions, and route-class limits.
-- Planned production-cluster scope may add cluster-safe idempotent upload semantics and operation-level use of coordination. These additions must not remove SQLite, optional PostgreSQL metadata, local filesystem support, the optional S3-compatible blob backend, or the optional Valkey/Redis-compatible coordination backend.
-- Regional stream-ingress relay work is planning-only unless explicitly scoped for implementation; any future relay must stay upload-only, temporary, ciphertext-only, and subordinate to the core API for authorization, idempotency, durable blob commits, and metadata.
+- The current backend implements account/device recipient-key metadata,
+  account-to-account trusted-contact relationships, contact public-key metadata,
+  sharing grants, wrapped-key storage, and authenticated grant-scoped
+  trusted-contact wrapped-key reads. It does not yet implement mode-driven
+  access, trusted-contact incident reads or decrypt UX, dead-man switch
+  notifications, public account workflows, or a complete public `/v1` product
+  deployment model.
+- Complete chunk uploads implement durable idempotency records and optional
+  short-lived Valkey/Redis-compatible coordination leases. Resumable or partial
+  upload sessions remain planning-only. These paths must preserve SQLite,
+  optional PostgreSQL metadata, local filesystem support, the optional
+  S3-compatible blob backend, and the optional Valkey/Redis-compatible
+  coordination backend.
+- The regional stream-ingress relay implements a bounded complete encrypted
+  chunk upload, temporary staging, core preflight/commit, and optimistic
+  encrypted fanout surface. It must remain upload-only, temporary,
+  ciphertext-only, and subordinate to the core API for authorization,
+  idempotency, durable blob commits, and metadata.
 - Future encryption direction should be a hybrid key custody model.
 - Docker and GitHub Actions/GHCR publishing exist, but deployment expansion should not be added unless explicitly requested.
 

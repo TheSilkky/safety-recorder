@@ -85,16 +85,21 @@ curl -sS -X POST http://127.0.0.1:8081/admin/bootstrap \
 Then restart the server without the bootstrap secret in TOML, the environment,
 or the secret mount. Complete second-factor setup for the bootstrapped admin
 before running private admin actions or simulator flows that depend on admin
-account access.
+account access. For an established account with active TOTP, provide the current
+short-lived code to the simulator through `PROOFLINE_SIM_TOTP_CODE`; the code is
+used only to verify the new session and is not printed.
 
 ## Run The Simulator
 
 In another terminal from the repository root:
 
 ```bash
+read -rsp 'Current simulator TOTP code: ' PROOFLINE_SIM_TOTP_CODE
+export PROOFLINE_SIM_TOTP_CODE
 PROOFLINE_SIM_USERNAME=admin \
 PROOFLINE_SIM_PASSWORD='replace-with-a-long-local-password' \
 go run ./cmd/simclient --chunks 5 --interval 1s --download-bundle
+unset PROOFLINE_SIM_TOTP_CODE
 ```
 
 The simulator:

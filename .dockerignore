@@ -57,9 +57,10 @@ Thumbs.db
 .vscode/
 .idea/
 
-# Local issue/review drafts and helper scripts.
+# Local issue/review/technical-review drafts and helper scripts.
 .backlog-drafts/
 .issue-review-drafts/
+.technical-review-drafts/
 .deep-research-drafts/
 scripts/
 .*-review/

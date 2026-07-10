@@ -39,7 +39,8 @@ client key, or another explicit future decryption capability.
 
 ## Model
 
-The future model should keep these concepts separate:
+The implemented metadata model and future client/custody work should keep these
+concepts separate:
 
 | Concept | Purpose | Security treatment |
 |---|---|---|
@@ -203,19 +204,19 @@ Server-stored wrapped-key records must not include:
 - request bodies, uploaded bytes, stored paths, staging paths, object keys, or
   private deployment details
 
-The first production wrapping format for v1 preview is the accepted
-post-quantum profile in [post-quantum-envelope.md](post-quantum-envelope.md).
-Future runtime code should store profile records through the existing fields
-with:
+The accepted wrapping format for v1 preview is the post-quantum profile in
+[post-quantum-envelope.md](post-quantum-envelope.md). Current runtime code
+validates profile records stored through the existing fields with:
 
 ```text
 wrapping_algorithm = proofline-pq-mlkem768-hkdfsha384-aes256gcm
 wrapping_algorithm_version = 1
 ```
 
-The current routes remain generic metadata storage and delivery routes until
-runtime implementation adds profile validation. They must not be described as
-cryptographic validators merely because they can already store those strings.
+The current routes validate the accepted public wrapping profile and frame
+shape before storing or delivering metadata. This is not decryption, proof of
+recipient private-key possession, production client key custody, or a complete
+cryptographic protocol implementation.
 
 The wrapping format must use stable, documented cryptographic libraries or
 platform APIs. Do not implement custom public-key encryption, KDF, AEAD,
@@ -358,8 +359,10 @@ Implementation should stay split into narrow issues:
    explicitly reviewed.
 8. Future: optionally add grant-scoped bundle manifests only after a separate
    design and tests prove unauthorized actors do not receive wrapped-key records.
-9. Update simulator/client tooling to generate production-shaped wrapped-key
-   records using a reviewed wrapping profile.
+9. Implemented for the reference runtime: validate the accepted PQ wrapped-key
+   profile on the server and keep the simulator's older local age-wrapped
+   artifact behind explicit v1 compatibility mode. Production companion-client
+   generation and key custody remain future work.
 10. Update deployment, security, threat-model, API, and retention docs before
    any public-authenticated contact route is exposed.
 

@@ -342,15 +342,6 @@ func activeGrantForWrappedKey(ctx context.Context, tx *sql.Tx, params incidents.
 	return grant, nil
 }
 
-func (r *Repository) getWrappedKeyRecordForOwner(ctx context.Context, ownerAccountID, wrappedKeyID string) (incidents.WrappedKeyRecord, error) {
-	row := r.db.QueryRowContext(ctx, wrappedKeyRecordSelect()+`
-		WHERE w.owner_account_id = $1 AND w.id = $2`,
-		ownerAccountID,
-		wrappedKeyID,
-	)
-	return scanWrappedKeyRecordForOwner(row)
-}
-
 func getWrappedKeyRecordForOwnerTx(ctx context.Context, tx *sql.Tx, ownerAccountID, wrappedKeyID string) (incidents.WrappedKeyRecord, error) {
 	row := tx.QueryRowContext(ctx, wrappedKeyRecordSelect()+`
 		WHERE w.owner_account_id = $1 AND w.id = $2`,
