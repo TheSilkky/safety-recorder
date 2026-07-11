@@ -4,7 +4,7 @@ This guide starts the Proofline backend locally and runs the simulator against i
 
 ## Requirements
 
-- Go 1.26.4
+- Go 1.26.5
 - SQLite through the bundled Go SQLite driver dependency
 - TOTP generation and validation through the bundled Go OTP dependency
 - WebAuthn/FIDO2 ceremony validation through the bundled go-webauthn dependency

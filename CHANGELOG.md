@@ -44,6 +44,10 @@ preview readiness claim.
   generated helpers under `.local-scripts/`, keeping the Markdown link checker
   public while preventing local script artifacts from ordinary Git staging.
 
+- Updated the repository, CI-selected toolchain, and pinned server/relay
+  builder image to Go 1.26.5 so the standard-library vulnerability scan uses
+  the current security-fix release.
+
 - Consolidated duplicate key-metadata rate-limit classification, removed
   unreachable internal helpers, and reconciled current implementation docs for
   complete-upload coordination, the regional relay, trusted-contact wrapped-key

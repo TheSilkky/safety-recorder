@@ -2,7 +2,7 @@
 
 <p align="center">
   <a href="https://github.com/open-proofline/server/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/open-proofline/server/actions/workflows/ci.yml/badge.svg" /></a>
-  <a href="go.mod"><img alt="Go 1.26.4" src="https://img.shields.io/badge/go-1.26.4-00ADD8?logo=go&logoColor=white" /></a>
+  <a href="go.mod"><img alt="Go 1.26.5" src="https://img.shields.io/badge/go-1.26.5-00ADD8?logo=go&logoColor=white" /></a>
   <a href="LICENSE"><img alt="License: AGPL-3.0-only" src="https://img.shields.io/badge/license-AGPL--3.0--only-blue.svg" /></a>
   <a href="#current-status"><img alt="Status: Experimental" src="https://img.shields.io/badge/status-experimental-orange.svg" /></a>
   <a href="SECURITY.md"><img alt="Security policy" src="https://img.shields.io/badge/security-policy-blue.svg" /></a>
@@ -381,7 +381,7 @@ For more diagrams and package-level details, see [docs/architecture.md](docs/arc
 
 Requirements:
 
-- Go 1.26.4
+- Go 1.26.5
 - SQLite via the bundled Go SQLite driver dependency
 - TOTP generation and validation through the bundled Go OTP dependency
 - WebAuthn/FIDO2 ceremony validation through the bundled go-webauthn dependency

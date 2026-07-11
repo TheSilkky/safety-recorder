@@ -652,7 +652,7 @@ without padding must match the current repository convention.
 
 ### Go
 
-The server repository currently targets Go 1.26.4 and already uses
+The server repository currently targets Go 1.26.5 and already uses
 standard-library AES-GCM for the v1 compatibility envelope. Runtime
 implementation should prefer:
 
