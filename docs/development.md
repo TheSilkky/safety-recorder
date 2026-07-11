@@ -251,6 +251,11 @@ and does not require network access, Node/npm, Docker, cloud services, or
 secrets. If the checker itself changes, also run
 `scripts/check-markdown-links.py --self-test`.
 
+The `scripts/` directory contains tracked, reviewable repository tooling.
+Generated, host-specific, and maintainer-local helpers belong under the ignored
+`.local-scripts/` directory so they cannot be included in public commits by
+ordinary Git staging.
+
 ## Backlog Discipline
 
 New ideas discovered during unrelated work should become issues or backlog items unless they are required to finish the current task. Capture the context, acceptance criteria, tests, docs impact, and out-of-scope items instead of expanding the active diff.

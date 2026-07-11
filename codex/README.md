@@ -80,13 +80,18 @@ Rules:
 
 Generated local artifacts should not be placed under `codex/`.
 
+Tracked reusable repository tooling belongs under `scripts/`; the Markdown link
+checker is public repository tooling. Generated, host-specific, or
+maintainer-local helpers belong under the ignored `.local-scripts/` directory
+and must not be added to `scripts/` incidentally.
+
 Current generated artifact locations:
 
 - `.technical-review-drafts/` for source-cited Codex Phase 1 report drafts that
   still require independent Phase 2 validation before publication
 - `.backlog-drafts/YYYY-MM-DD/<branch-slug>/` or `.backlog-drafts/current/<branch-slug>/` for backlog issue drafts
 - `.issue-review-drafts/YYYY-MM-DD/<branch-slug>/` or `.issue-review-drafts/current/<branch-slug>/` for open-issue review drafts
-- `scripts/create-backlog-issues.sh` only when explicitly generated from reviewed backlog drafts
+- `.local-scripts/create-backlog-issues.sh` only when explicitly generated from reviewed backlog drafts
 
 Backlog and issue-review drafts must not include raw tokens, secrets, private deployment details, exploit details, or user safety data. Public GitHub issues must not be created from drafts until the maintainer reviews them.
 

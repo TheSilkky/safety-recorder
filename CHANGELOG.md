@@ -40,6 +40,10 @@ preview readiness claim.
 - Migrated the public technical-review workflow to Codex maximum-reasoning
   prompts while preserving an independent Phase 2 validation pass.
 
+- Separated tracked repository tooling under `scripts/` from ignored local and
+  generated helpers under `.local-scripts/`, keeping the Markdown link checker
+  public while preventing local script artifacts from ordinary Git staging.
+
 - Consolidated duplicate key-metadata rate-limit classification, removed
   unreachable internal helpers, and reconciled current implementation docs for
   complete-upload coordination, the regional relay, trusted-contact wrapped-key

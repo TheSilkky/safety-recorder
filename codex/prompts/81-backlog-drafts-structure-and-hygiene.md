@@ -32,7 +32,7 @@ Read:
 - `codex/prompts/82-review-open-issues-for-stale-or-fixed.md`, if present
 - `codex/prompts/95-validate-technical-review-report.md`, if present
 - `.backlog-drafts/`, if present
-- `scripts/create-backlog-issues.sh`, if present
+- `.local-scripts/create-backlog-issues.sh`, if present
 - `.gitignore`
 
 If GitHub CLI is available, inspect repository labels:
@@ -228,7 +228,7 @@ new generated drafts are branch-scoped
 new generated drafts include Priority, Type, Labels, and Branch scope
 issue creation scripts fail closed for missing metadata
 committed .backlog-drafts/ is removed or archived
-scripts/create-backlog-issues.sh is removed, archived, or updated to branch-scoped draft paths
+.local-scripts/create-backlog-issues.sh is removed, archived, or updated to branch-scoped draft paths
 ```
 
 ## Validation
@@ -237,8 +237,15 @@ After changes, if any:
 
 ```bash
 git diff --stat
-git diff -- .gitignore .backlog-drafts codex docs scripts
+git diff -- .gitignore codex docs scripts
 git diff --check
+```
+
+If `.local-scripts/create-backlog-issues.sh` exists, also confirm it remains
+ignored:
+
+```bash
+git check-ignore -q .local-scripts/create-backlog-issues.sh
 ```
 
 Validate draft metadata:
