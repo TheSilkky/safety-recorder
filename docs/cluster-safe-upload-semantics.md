@@ -187,8 +187,8 @@ The implemented `upload_operations` table tracks:
 - timestamps for creation and last update
 
 Future cluster work may add staging, blob-committed, failed, ownership-proof,
-expiry, and cleanup fields when operation-level staging or leases are
-implemented.
+expiry, and cleanup fields if operation-level object staging or orphan
+reconciliation is implemented.
 
 Completed chunk metadata remains the durable evidence index. Idempotency rows
 may support a retry window or operational audit trail, but expiring an
@@ -345,33 +345,27 @@ This document focuses on the commit and confirmation semantics once an upload
 attempt has enough data to compute the ciphertext hash and decide whether a
 final chunk can be committed.
 
-## Required Future Work
+## Validation Coverage And Remaining Work
 
-API documentation:
+Current API and deployment docs require redaction of raw idempotency keys and
+distinguish idempotent retry from duplicate reconciliation. HTTP tests cover
+equivalent replay, conflicting key reuse, and the existing no-key duplicate
+behavior. Storage cleanup tests prove that conservative local staging cleanup
+does not delete a committed blob. The simulator exercises stable retry keys,
+ambiguous-response replay, reconciliation conflict, hash mismatch, and bundle
+verification. Local and S3-compatible blob backends use server-controlled
+immutable final identities, with conditional no-overwrite commit for S3, and
+optional Valkey/Redis-compatible coordination now supplies short-lived
+complete-upload leases.
 
-- document reverse-proxy, tracing, metrics, and error-reporting redaction for
-  raw idempotency keys
-- document the relationship between duplicate reconciliation and idempotent
-  retry success
+Remaining work includes:
 
-Backend tests:
-
-- HTTP tests for same chunk identity with different ciphertext
-- cleanup tests proving future staging cleanup does not delete committed
-  evidence
-- race tests for upload versus incident close and stream completion
-
-Simulator changes:
-
-- retry an upload after simulated ambiguous response loss
-- verify conflict behavior for same chunk identity with different ciphertext
-- keep the existing hash-mismatch and bundle verification flows
-
-Backend-specific work:
-
-- extend the blob-store boundary for operation-specific staging and conditional
-  final object commit
-- decide how Valkey/Redis-compatible coordination should be used for leases or
-  reducing duplicate in-progress work
-- update deployment, backup, restore, security, threat-model, retention, and
-  code-map docs before recommending production cluster deployment
+- concurrency and race coverage for upload versus incident close and stream
+  completion across optional backends
+- live reverse-proxy, tracing, metrics, and error-sink validation proving raw
+  idempotency keys stay redacted in the deployed stack
+- any future operation-owned object staging, orphan reconciliation, or expiry
+  policy needed by a reviewed multi-node deployment
+- the separately scoped resumable and partial-upload protocol, if accepted
+- deployment, backup, restore, observability, security, retention, and threat
+  review before recommending a production cluster deployment

@@ -1,5 +1,8 @@
 # Codex Prompt: Pre-Public Repository Sanity Check
 
+> Historical reference only. This prompt records the pre-public repository
+> context at the time and is not a current reusable workflow.
+
 Run sanity checks before making the repository public.
 
 The purpose is low-visibility public access to avoid private-repository limits, not advertising.

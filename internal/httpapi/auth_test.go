@@ -1003,7 +1003,7 @@ func TestTOTPActiveFactorRequiresSessionChallengeAfterLogin(t *testing.T) {
 	response, body = requestWithAuth(t, app.privateHandler, http.MethodPost, "/v1/account/second-factor/totp/verify", "application/json", bytes.NewBufferString(`{"code":"`+code+`"}`), loginResult.Token)
 	response.Body.Close()
 	if response.StatusCode != http.StatusOK {
-		t.Fatalf("TOTP session verify status = %d, want 200", response.StatusCode)
+		t.Fatalf("TOTP session verify status = %d, want 200: %s", response.StatusCode, body)
 	}
 
 	response, body = requestWithAuth(t, app.privateHandler, http.MethodPost, "/v1/incidents", "application/json", bytes.NewBufferString(`{}`), loginResult.Token)
@@ -1082,7 +1082,7 @@ func TestTOTPActiveFactorRequiresBrowserCookieSessionChallenge(t *testing.T) {
 	})
 	response.Body.Close()
 	if response.StatusCode != http.StatusOK {
-		t.Fatalf("TOTP cookie verify status = %d, want 200", response.StatusCode)
+		t.Fatalf("TOTP cookie verify status = %d, want 200: %s", response.StatusCode, body)
 	}
 
 	response, body = requestWithCookieAndHeaders(t, app.privateHandler, http.MethodPost, "/v1/incidents", "application/json", bytes.NewBufferString(`{}`), cookie, map[string]string{
@@ -1130,7 +1130,7 @@ func TestTOTPRejectsInvalidReplayAndStaleEnrollmentCodes(t *testing.T) {
 	response, body = requestWithAuth(t, app.privateHandler, http.MethodPost, "/v1/account/second-factor/totp/verify", "application/json", bytes.NewBufferString(`{"code":"`+code+`"}`), loginToken)
 	response.Body.Close()
 	if response.StatusCode != http.StatusOK {
-		t.Fatalf("valid TOTP status = %d, want 200", response.StatusCode)
+		t.Fatalf("valid TOTP status = %d, want 200: %s", response.StatusCode, body)
 	}
 	response, body = requestWithAuth(t, app.privateHandler, http.MethodPost, "/v1/account/second-factor/totp/verify", "application/json", bytes.NewBufferString(`{"code":"`+code+`"}`), loginToken)
 	defer response.Body.Close()

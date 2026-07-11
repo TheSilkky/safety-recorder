@@ -26,10 +26,6 @@ const (
 	mainRateLimitDownload        mainRateLimitClass = "download"
 )
 
-func (a *API) mainRateLimitMiddleware(next http.Handler) http.Handler {
-	return a.mainRateLimitMiddlewareWithClassFilter(next, nil)
-}
-
 func (a *API) mainAPIRouteRateLimitMiddleware(next http.Handler) http.Handler {
 	return a.mainRateLimitMiddlewareWithClassFilter(next, func(class mainRateLimitClass) bool {
 		return class != mainRateLimitBootstrap
@@ -138,9 +134,9 @@ func classifyMainAPIRateLimit(r *http.Request) (mainRateLimitClass, bool) {
 			}
 		}
 	case "account-recipient-keys":
-		return classifyMainAPIAccountRecipientKeyRateLimit(r, segments)
+		return classifyMainAPIKeyMetadataRateLimit(r, segments)
 	case "contact-public-keys":
-		return classifyMainAPIContactPublicKeyRateLimit(r, segments)
+		return classifyMainAPIKeyMetadataRateLimit(r, segments)
 	case "trusted-contact-relationships":
 		return classifyMainAPITrustedContactRelationshipRateLimit(r, segments)
 	case "trusted-contact":
@@ -199,22 +195,10 @@ func classifyMainAPIAuthRateLimit(r *http.Request, segments []string) (mainRateL
 	return "", false
 }
 
-func classifyMainAPIContactPublicKeyRateLimit(r *http.Request, segments []string) (mainRateLimitClass, bool) {
-	switch {
-	case len(segments) == 2 && (r.Method == http.MethodGet || r.Method == http.MethodPost):
-		return mainRateLimitAccount, true
-	case len(segments) == 3 && (r.Method == http.MethodGet || r.Method == http.MethodPatch):
-		return mainRateLimitAccount, true
-	case len(segments) == 4 && r.Method == http.MethodPost:
-		switch segments[3] {
-		case "revoke", "lost", "replace":
-			return mainRateLimitAccount, true
-		}
-	}
-	return "", false
-}
-
-func classifyMainAPIAccountRecipientKeyRateLimit(r *http.Request, segments []string) (mainRateLimitClass, bool) {
+// classifyMainAPIKeyMetadataRateLimit keeps the account-recipient-key and
+// contact-public-key route families on the same account-scoped limit. Their
+// collection, item, and lifecycle route shapes intentionally match.
+func classifyMainAPIKeyMetadataRateLimit(r *http.Request, segments []string) (mainRateLimitClass, bool) {
 	switch {
 	case len(segments) == 2 && (r.Method == http.MethodGet || r.Method == http.MethodPost):
 		return mainRateLimitAccount, true

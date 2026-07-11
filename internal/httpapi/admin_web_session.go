@@ -22,10 +22,6 @@ func (a *API) parseAdminWebForm(w http.ResponseWriter, r *http.Request, data adm
 	return true
 }
 
-func (a *API) parseAdminWebDashboardForm(w http.ResponseWriter, r *http.Request, principal privatePrincipal, message string) bool {
-	return a.parseAdminWebPageForm(w, r, principal, adminWebPageOverview, message)
-}
-
 func (a *API) parseAdminWebPageForm(w http.ResponseWriter, r *http.Request, principal privatePrincipal, page, message string) bool {
 	r.Body = http.MaxBytesReader(w, r.Body, fieldLimit)
 	defer r.Body.Close()

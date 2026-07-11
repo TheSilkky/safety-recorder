@@ -37,6 +37,26 @@ preview readiness claim.
   non-goals, and validation expectations in
   `docs/private-admin-web-scope.md`.
 
+- Migrated the public technical-review workflow to Codex maximum-reasoning
+  prompts while preserving an independent Phase 2 validation pass.
+
+- Separated tracked repository tooling under `scripts/` from ignored local and
+  generated helpers under `.local-scripts/`, keeping the Markdown link checker
+  public while preventing local script artifacts from ordinary Git staging.
+
+- Updated the repository, CI-selected toolchain, and pinned server/relay
+  builder image to Go 1.26.5 so the standard-library vulnerability scan uses
+  the current security-fix release.
+
+- Consolidated duplicate key-metadata rate-limit classification, removed
+  unreachable internal helpers, and reconciled current implementation docs for
+  complete-upload coordination, the regional relay, trusted-contact wrapped-key
+  delivery, and the accepted post-quantum envelope.
+
+- Updated the simulator for active-TOTP session verification through a
+  short-lived environment value that is never printed, and refreshed its
+  desktop-recorder, poor-network, and disposable-smoke guidance.
+
 - Fixed active email challenge 2FA session enforcement so fresh primary-login
   sessions must complete an email challenge before product-route or private
   admin operator access alongside the existing TOTP and WebAuthn session gates.

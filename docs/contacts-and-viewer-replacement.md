@@ -477,8 +477,10 @@ encrypted access and reviewed grants.
 
 ## Regional Stream Ingress Relay Boundary
 
-The planned regional stream-ingress relay remains planning-only and must be
-treated as an ingress/forwarding surface, not a GPS-inspection service.
+The implemented regional stream-ingress relay must remain an
+ingress/forwarding surface, not a GPS-inspection service. Its current bounded
+surface is documented in
+[regional-stream-ingress-relay.md](regional-stream-ingress-relay.md).
 
 Preferred relay model:
 

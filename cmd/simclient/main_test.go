@@ -112,11 +112,11 @@ func TestClientWriteRoutesUseMainAPIBase(t *testing.T) {
 	}
 	ctx := context.Background()
 
-	sessionToken, err := sim.login(ctx, "test-admin", "test-password")
+	login, err := sim.login(ctx, "test-admin", "test-password")
 	if err != nil {
 		t.Fatalf("login returned error: %v", err)
 	}
-	sim.sessionToken = sessionToken
+	sim.sessionToken = login.Token
 	incidentID, err := sim.createIncident(ctx)
 	if err != nil {
 		t.Fatalf("createIncident returned error: %v", err)
@@ -911,6 +911,70 @@ func TestSetupTOTPSecondFactor(t *testing.T) {
 	}
 	if strings.Join(gotPaths, "\n") != strings.Join(wantPaths, "\n") {
 		t.Fatalf("paths = %v, want %v", gotPaths, wantPaths)
+	}
+}
+
+func TestAuthenticateSimulatorSessionVerifiesRequiredTOTP(t *testing.T) {
+	const code = "123456"
+	var gotPaths []string
+	httpClient := &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		gotPaths = append(gotPaths, r.Method+" "+r.URL.Path)
+		switch r.URL.Path {
+		case "/v1/auth/login":
+			return testResponse(http.StatusCreated, "application/json", `{"token":"session-token","second_factor_verification_required":true}`), nil
+		case "/v1/account/second-factor/totp/verify":
+			if r.Header.Get("Authorization") != "Bearer session-token" {
+				t.Fatal("TOTP verification omitted session Authorization header")
+			}
+			var request struct {
+				Code string `json:"code"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+				t.Fatalf("decode TOTP verification request: %v", err)
+			}
+			if request.Code != code {
+				t.Fatalf("TOTP code = %q, want supplied code", request.Code)
+			}
+			return testResponse(http.StatusOK, "application/json", `{"status":"verified"}`), nil
+		default:
+			return testResponse(http.StatusNotFound, "application/json", `{"error":{"code":"not_found"}}`), nil
+		}
+	})}
+	sim := client{httpClient: httpClient, apiBase: "http://api.example"}
+	var output bytes.Buffer
+
+	err := authenticateSimulatorSession(context.Background(), &output, &sim, config{
+		username: "admin",
+		password: "password",
+		totpCode: code,
+	})
+	if err != nil {
+		t.Fatalf("authenticateSimulatorSession returned error: %v", err)
+	}
+	if sim.sessionToken != "session-token" {
+		t.Fatal("session token was not retained after login")
+	}
+	if got := strings.Join(gotPaths, "\n"); got != "POST /v1/auth/login\nPOST /v1/account/second-factor/totp/verify" {
+		t.Fatalf("paths = %q", got)
+	}
+	if strings.Contains(output.String(), code) || strings.Contains(output.String(), "session-token") {
+		t.Fatalf("authentication output exposed a verification credential: %s", output.String())
+	}
+}
+
+func TestAuthenticateSimulatorSessionRequiresTOTPCode(t *testing.T) {
+	httpClient := &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		return testResponse(http.StatusCreated, "application/json", `{"token":"session-token","second_factor_verification_required":true}`), nil
+	})}
+	sim := client{httpClient: httpClient, apiBase: "http://api.example"}
+	var output bytes.Buffer
+
+	err := authenticateSimulatorSession(context.Background(), &output, &sim, config{username: "admin", password: "password"})
+	if err == nil || !strings.Contains(err.Error(), "PROOFLINE_SIM_TOTP_CODE") {
+		t.Fatalf("error = %v, want TOTP environment guidance", err)
+	}
+	if strings.Contains(err.Error(), "session-token") || strings.Contains(output.String(), "session-token") {
+		t.Fatal("missing-code error exposed the session token")
 	}
 }
 

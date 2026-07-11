@@ -38,18 +38,8 @@ func run(ctx context.Context, out io.Writer, args []string) error {
 		relayBase:  cfg.relayBase,
 	}
 
-	fmt.Fprintln(out, "Logging in...")
-	sessionToken, err := sim.login(ctx, cfg.username, cfg.password)
-	if err != nil {
+	if err := authenticateSimulatorSession(ctx, out, &sim, cfg); err != nil {
 		return err
-	}
-	sim.sessionToken = sessionToken
-	if cfg.setupTOTPSecondFactor {
-		fmt.Fprintln(out, "Setting up TOTP second factor...")
-		if err := sim.setupTOTPSecondFactor(ctx); err != nil {
-			return err
-		}
-		fmt.Fprintln(out, "TOTP second factor verified.")
 	}
 
 	fmt.Fprintln(out, "Creating incident...")

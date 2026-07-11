@@ -1,8 +1,15 @@
-# Codex Prompt: Validate Deep Research Technical Review Report
+# Codex Prompt: Validate Technical Review Report
 
-Validate, clean, and public-harden a Deep Research technical review report for this repository.
+Validate, clean, and public-harden a Codex technical review report for this repository.
 
-This is the Phase 2 workflow after a source-cited Deep Research draft. Phase 1 produces a broad report and portable source registry. Phase 2 checks the report against the reviewed repository commit, converts citations into public-safe Markdown, separates future design from implemented behavior, and scopes any generated draft issues to the current branch.
+This is an independent Phase 2 workflow after a source-cited Codex Phase 1
+draft. Phase 1 produces a broad report and portable source registry and may
+directly execute validation commands when it records exact evidence. Phase 2
+independently checks the draft against the reviewed repository commit,
+converts citations into public-safe Markdown, separates future design from
+implemented behavior, and scopes any generated draft issues to the current
+branch. Do not accept Phase 1 execution claims without checking the recorded
+command, context, and result.
 
 ## Inputs
 
@@ -27,7 +34,7 @@ Reviewed commit SHA:
 Report path:
 
 ```text
-<REPORT_PATH>
+.technical-review-drafts/<YYYY-MM-DD>-proofline-<TARGET_RELEASE_OR_VERSION>-technical-review-draft.md
 ```
 
 Target release / version:
@@ -51,7 +58,8 @@ drafts_only
 Allowed values:
 
 - `drafts_only`: create or update local branch-scoped issue drafts only
-- `create_issues`: create GitHub issues only when the maintainer explicitly requested it
+- `create_issues`: create sanitized non-vulnerability GitHub issues only when
+  the maintainer explicitly requested it
 - `none`: do not create issue drafts or GitHub issues
 
 ## Product Context
@@ -64,20 +72,48 @@ reusable README baseline guidance, and source-of-truth mapping. Report wording
 that summarizes project-wide public posture should use those website source
 documents rather than inventing a server-local governance claim.
 
-Proofline's planned product scope includes emergency incidents, non-emergency interaction records, timed safety checks, and evidence notes. The current backend stores generic incidents by default; optional incident-mode, capture-profile, escalation-policy, and sharing-state metadata are labels only unless the reviewed tree explicitly implements first-class behavior for them. The post-quantum envelope is a v1 preview requirement, but it is not current runtime behavior unless implementation files prove it. Any report claim that Proofline is ready for `v1 preview`, `v1.0.0`, or real-user evidence upload must be checked against `docs/v1-preview-readiness-checklist.md`.
+Proofline's planned product scope includes emergency incidents, non-emergency interaction records, timed safety checks, and evidence notes. The current backend stores generic incidents by default; optional incident-mode, capture-profile, escalation-policy, and sharing-state metadata are labels only unless the reviewed tree explicitly implements first-class behavior for them. Recipient-key, trusted-contact, sharing-grant, wrapped-key, and post-quantum envelope status is commit-specific: preserve implemented server or simulator behavior that code and tests prove without overstating it as completed production key custody, browser/client decryption, or cross-repository conformance. Any report claim that Proofline is ready for `v1 preview`, `v1.0.0`, or real-user evidence upload must be checked against `docs/v1-preview-readiness-checklist.md`.
 
 ## Rules
 
-- Use the current checked-out branch.
+- Use the current checked-out branch as the Phase 2 editing workspace, not as
+  automatic evidence for `<REVIEWED_COMMIT_SHA>`.
+- Confirm `<REVIEWED_BRANCH_OR_REF>` resolves to `<REVIEWED_COMMIT_SHA>`. Ground
+  reviewed-tree facts in commit-addressed reads or a clean isolated copy of that
+  commit. Never attribute dirty working-tree or different-`HEAD` results to the
+  reviewed commit.
 - Pin repository citations and report metadata to `<REVIEWED_COMMIT_SHA>`, not to a moving branch name.
 - Keep changes scoped to report validation, citation cleanup, and branch-scoped draft issues if requested.
 - Do not change application code, CI behavior, repository settings, or GitHub issues unless explicitly requested.
 - Keep the report and any issue drafts public-safe according to `SECURITY.md`.
+- Remove raw viewer, incident, session, or future token-like values; secrets;
+  Authorization headers; request bodies; uploaded file bytes; plaintext; raw
+  keys; wrapped-key ciphertext; private deployment details; stored paths;
+  object keys; exploit payloads; and user-safety data.
 - Do not weaken security warnings.
 - Do not claim production readiness, platform-store approval, legal review, compliance certification, penetration test, or formal audit.
 - Do not treat absence of future-design features as a defect when source-of-truth docs mark them out of scope.
 - Preserve the current backend ciphertext-only implementation boundary unless the report identifies implemented behavior that contradicts it.
+- Preserve separate main API/viewer and private-admin listener groups and muxes,
+  read-only public viewer paths, and the rule that public edges do not route
+  private write or admin surfaces.
+- Preserve that completed evidence bundles are encrypted chunk bundles with
+  server-controlled ZIP entry names, not decrypted or playable media exports.
 - Treat future incident-mode, web/iOS/Android client, key-custody, browser-decryption, break-glass, and post-quantum envelope documents as planning or future preview requirements unless implementation files exist in the reviewed tree.
+- Treat Phase 1 command output as review evidence, not as a substitute for
+  independent Phase 2 verification. Record which commands Phase 2 reruns and
+  which Phase 1 evidence it only inspects.
+- Do not claim that Phase 1 or Phase 2 ran a command unless the report or current
+  validation record includes the exact command, relevant ref or environment,
+  and result.
+- Independently safety-review every command from the Phase 1 draft before
+  execution. Do not access private or production services, inherit deployment
+  credentials or endpoints, or run secret-dependent checks. Run
+  reviewed-commit tests/builds only in an approved clean isolated temporary
+  copy; treat dirty-workspace results as current-workspace evidence only.
+- Route suspected or unresolved vulnerabilities through `SECURITY.md` and
+  GitHub private vulnerability reporting. Do not create public issue drafts,
+  public GitHub issues, or public report details that disclose them.
 
 ## First Steps
 
@@ -87,6 +123,8 @@ Check repository state:
 git status --short --branch --untracked-files=all
 git branch --show-current
 git rev-parse HEAD
+git rev-parse '<REVIEWED_BRANCH_OR_REF>^{commit}'
+git cat-file -e '<REVIEWED_COMMIT_SHA>^{commit}'
 git log --oneline -5
 ```
 
@@ -125,11 +163,25 @@ replacement reports overflow visibly. These source-of-truth documents can grow
 between report-validation runs, and silent truncation can miss new v1 direction
 or post-quantum envelope requirements.
 
+The working-tree reads above establish current publication guidance. Inspect
+every material claim about the reviewed tree with a commit-addressed read such
+as `git show <REVIEWED_COMMIT_SHA>:<path>`, or in an approved clean isolated
+copy of the reviewed commit. If current guidance and reviewed-commit behavior
+differ, record that distinction instead of pinning a working-tree observation
+to the reviewed SHA.
+
 Read the report:
 
 ```bash
-sed -n '1,420p' <REPORT_PATH>
+cat <REPORT_PATH>
 ```
+
+Review the Phase 1 validation evidence in the Source Registry. For each command
+reported as executed, identify the exact command, reviewed ref or commit,
+relevant environment, result, and any retained output or summary. Re-run safe,
+relevant validation when needed to verify a material report claim, and record
+whether Phase 2 independently executed the command or inspected Phase 1
+evidence only.
 
 Before editing, summarize:
 
@@ -141,8 +193,9 @@ Before editing, summarize:
 6. whether future-planning docs are separated from implemented behavior
 7. whether Proofline naming and compatibility-name notes are represented correctly
 8. whether incident-mode planning is represented as planning unless implemented
-9. whether issue drafts should be created and what branch scope they should use
-10. likely files to update and docs-review checks
+9. whether Phase 1 execution claims have exact evidence and which checks Phase 2 should rerun
+10. whether issue drafts should be created and what branch scope they should use
+11. likely files to update and docs-review checks
 
 ## Branch-Scoped Issue Drafts
 
@@ -164,6 +217,11 @@ Every public issue draft should include priority, type, labels, branch scope, su
 
 Use only existing labels. If a good topic label does not exist, use the closest existing label and note the mismatch.
 
+Do not create public issue drafts or public GitHub issues for suspected or
+unresolved vulnerabilities. Follow `SECURITY.md` and GitHub private
+vulnerability reporting. Public issue handling is limited to sanitized
+non-vulnerability hardening or documentation follow-up.
+
 ## Report Validation Checklist
 
 Check and fix, if needed:
@@ -175,18 +233,35 @@ Check and fix, if needed:
   incident-mode, capture-profile, escalation-policy, and sharing-state metadata
   may be described as implemented labels only when the reviewed tree supports
   them.
+- Recipient-key, trusted-contact, sharing-grant, and wrapped-key metadata or API
+  behavior proved at the reviewed commit is not removed as wholly future, and
+  is not overstated as completed production key custody or client decryption.
+- Post-quantum behavior is classified component by component from code and tests
+  at the reviewed commit; implemented server or simulator behavior is neither
+  erased nor treated as proof of complete cross-repository preview readiness.
 - Current `/v1` private boundary and public incident-viewer separation remain clear.
+- Main API/viewer and private-admin routes remain on separate listener groups
+  and muxes; public viewer paths remain read-only; public edges do not route
+  private write or admin surfaces.
 - Current backend ciphertext-only behavior is represented accurately.
+- Completed evidence bundles remain encrypted chunk bundles with
+  server-controlled entry names and are not described as decrypted or playable
+  exports.
 - V1 preview, v1.0.0, and real-user evidence-upload readiness claims are
   checked against `docs/v1-preview-readiness-checklist.md`; if any hard
   blocker remains incomplete, the report must use pre-v1 or experimental
   language instead of preview-ready language.
 - Historical report names are not rewritten as if they used the new product name at the time.
-- ChatGPT internal citation tokens are removed or converted to portable citation keys.
+- Internal renderer or tool citation identifiers are removed or converted to portable citation keys.
+- The report and issue drafts contain none of the prohibited sensitive-data
+  categories listed in Rules.
 - Remove informal or conversational draft language, including humour, mascot references, assistant/meta commentary, and chat-only tone, unless it is quoted as reviewed evidence.
 - Source Registry entries support material claims.
 - External-source omissions are disclosed and affected claims are marked not independently verified.
-- The report does not invent a no-network, no-web, or no-external-source constraint when Phase 1 only restricted claims about executing local commands, tests, builds, containers, or simulator smoke tests.
+- Phase 1 execution claims identify the exact command, relevant ref or
+  environment, result, and limitations; Phase 2 separately records whether it
+  reran the command or inspected the supplied evidence only.
+- The report does not invent a no-network, no-web, or no-external-source constraint unless the maintainer explicitly imposed one.
 - Missing external sources are treated as verification limitations, not as supporting evidence for findings.
 
 ## Common False Positives To Remove Or Downgrade
@@ -201,6 +276,12 @@ Check and fix, if needed:
   escalation policies, sharing-state behavior, or dead-man switch when docs mark
   them as future work.
 - Missing browser decryption, production key custody, or break-glass behavior when docs mark them as future work.
+- Implemented recipient-key, trusted-contact, sharing-grant, or wrapped-key
+  metadata and API surfaces treated as wholly absent or future, or overstated as
+  completed production key custody or client-side review.
+- Implemented post-quantum server or simulator behavior treated as wholly
+  future, or partial behavior overstated as complete web-client, key-custody,
+  decryption, and cross-repository conformance.
 - Preserved protocol, data-layout, route-alias, or migration compatibility names treated as stale after the repository/module/artifact rename.
 - Interaction-record planning treated as current implementation.
 - Backend decryption or server-held keys assumed from future design docs.
@@ -236,5 +317,6 @@ Summarize:
 4. issue drafts created, if any
 5. citation and public-safety cleanup performed
 6. Proofline naming and incident-mode boundary corrections made
-7. validation/docs-review commands run
-8. follow-up work
+7. Phase 1 execution evidence reviewed and Phase 2 checks independently run
+8. validation/docs-review commands run
+9. follow-up work

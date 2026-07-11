@@ -57,10 +57,14 @@ Thumbs.db
 .vscode/
 .idea/
 
-# Codex generated issues / issue review drafts / generated review directories
-# Scripts directory should be local and ignored
+# Codex generated issues / issue review drafts / technical review drafts /
+# generated review directories
 .backlog-drafts/
 .issue-review-drafts/
+.technical-review-drafts/
+# Legacy local output from the former ChatGPT Deep Research workflow.
 .deep-research-drafts/
-scripts/
+# Local operational/generated scripts and their artifacts. Public repository
+# scripts belong in scripts/ and are reviewed like other tracked source files.
+.local-scripts/
 .*-review/

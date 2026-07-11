@@ -30,9 +30,9 @@ Read:
 - `codex/prompts/80-backlog-scan-issue-drafts.md`
 - `codex/prompts/85-create-github-issues-from-drafts.md`
 - `codex/prompts/82-review-open-issues-for-stale-or-fixed.md`, if present
-- `codex/prompts/95-validate-deep-research-report.md`, if present
+- `codex/prompts/95-validate-technical-review-report.md`, if present
 - `.backlog-drafts/`, if present
-- `scripts/create-backlog-issues.sh`, if present
+- `.local-scripts/create-backlog-issues.sh`, if present
 - `.gitignore`
 
 If GitHub CLI is available, inspect repository labels:
@@ -191,7 +191,7 @@ Check:
 - whether any issue creation script points to stale flat paths
 - whether `80-backlog-scan-issue-drafts.md` enforces branch-scoped output and required metadata
 - whether `85-create-github-issues-from-drafts.md` selects a branch-scoped draft directory, preserves branch scope in issue bodies, and passes labels to `gh issue create`
-- whether `95-validate-deep-research-report.md` creates branch-scoped report issue drafts with priority and labels
+- whether `95-validate-technical-review-report.md` creates branch-scoped report issue drafts with priority and labels
 - whether any draft contains raw tokens, secrets, private deployment info, exploit details, or user safety data
 
 ## Permitted changes
@@ -202,7 +202,7 @@ Allowed when implementation is requested:
 
 - update `codex/prompts/80-backlog-scan-issue-drafts.md`
 - update `codex/prompts/85-create-github-issues-from-drafts.md`
-- update `codex/prompts/95-validate-deep-research-report.md`
+- update `codex/prompts/95-validate-technical-review-report.md`
 - update `codex/README.md`
 - update `docs/codex-change-control.md`
 - update `.gitignore`
@@ -228,7 +228,7 @@ new generated drafts are branch-scoped
 new generated drafts include Priority, Type, Labels, and Branch scope
 issue creation scripts fail closed for missing metadata
 committed .backlog-drafts/ is removed or archived
-scripts/create-backlog-issues.sh is removed, archived, or updated to branch-scoped draft paths
+.local-scripts/create-backlog-issues.sh is removed, archived, or updated to branch-scoped draft paths
 ```
 
 ## Validation
@@ -237,8 +237,15 @@ After changes, if any:
 
 ```bash
 git diff --stat
-git diff -- .gitignore .backlog-drafts codex docs scripts
+git diff -- .gitignore codex docs scripts
 git diff --check
+```
+
+If `.local-scripts/create-backlog-issues.sh` exists, also confirm it remains
+ignored:
+
+```bash
+git check-ignore -q .local-scripts/create-backlog-issues.sh
 ```
 
 Validate draft metadata:

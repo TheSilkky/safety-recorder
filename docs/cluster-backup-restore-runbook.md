@@ -184,7 +184,7 @@ main `/v1` routes publicly without a reviewed deployment boundary.
    - For restore drills that do not need coordination, use
      `SAFE_COORDINATION_BACKEND=none` only when that accurately represents the
      deployment shape being tested.
-   - Future operation-level coordination loss should be handled as retryable
+   - Complete-upload coordination loss should be handled as retryable
      operational failure, not as evidence loss, because durable state belongs in
      PostgreSQL and committed blob storage.
 
@@ -285,7 +285,7 @@ startup:
   operator intentionally chooses a private local-first shape and documents the
   operational impact.
 
-If future operation-level coordination is unavailable after startup:
+If complete-upload coordination is unavailable after startup:
 
 - Return retryable operational errors for affected operations.
 - Rely on PostgreSQL constraints, immutable blob commits, and client retries to

@@ -12,10 +12,10 @@ Do **not** modify workflows, Dockerfiles, SQL migrations, Go code, generated fil
 
 Generate a shell script that creates GitHub issues from maintainer-reviewed backlog draft files, preserving priority in the issue body and applying GitHub labels from each draft.
 
-Create:
+Create this ignored local script:
 
 ```text
-scripts/create-backlog-issues.sh
+.local-scripts/create-backlog-issues.sh
 ```
 
 ## Repository
@@ -26,7 +26,8 @@ open-proofline/server
 
 ## Draft directory
 
-Backlog drafts are normally created by `80-backlog-scan-issue-drafts.md` or `95-validate-deep-research-report.md`.
+Backlog drafts are normally created by `80-backlog-scan-issue-drafts.md` or the
+independent Phase 2 `95-validate-technical-review-report.md` workflow.
 
 They should live under a branch-scoped timestamped directory such as:
 
@@ -47,7 +48,7 @@ Before generating the script:
 3. If multiple directories exist and the newest or intended branch scope is unclear, stop and ask which draft directory to use.
 4. Do not use `.backlog-drafts/private-notes/` or any `private-notes/` directory for public issue creation.
 5. Read the selected directory `README.md` and every `NNN-*.md` draft before generating a script.
-6. If an existing `scripts/create-backlog-issues.sh` points at a different or missing draft directory, replace it only after selecting and validating the intended branch-scoped directory.
+6. If an existing `.local-scripts/create-backlog-issues.sh` points at a different or missing draft directory, replace it only after selecting and validating the intended branch-scoped directory.
 
 ## Required draft metadata
 
@@ -246,7 +247,7 @@ This file should summarize:
 
 Allowed files:
 
-- `scripts/create-backlog-issues.sh`
+- `.local-scripts/create-backlog-issues.sh`
 - `.backlog-drafts/<selected-directory>/create-issues-review.md`
 
 Do not change anything else unless needed only for a tiny documentation link.
@@ -257,7 +258,9 @@ After generating the script:
 
 ```bash
 git diff --stat
-git diff -- scripts/create-backlog-issues.sh .backlog-drafts
+test -x .local-scripts/create-backlog-issues.sh
+bash -n .local-scripts/create-backlog-issues.sh
+git check-ignore -q .local-scripts/create-backlog-issues.sh
 git diff --check
 ```
 

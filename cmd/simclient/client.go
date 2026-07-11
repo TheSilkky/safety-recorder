@@ -30,7 +30,8 @@ type createIncidentResponse struct {
 }
 
 type loginResponse struct {
-	Token string `json:"token"`
+	Token                            string `json:"token"`
+	SecondFactorVerificationRequired bool   `json:"second_factor_verification_required"`
 }
 
 type totpEnrollmentResponse struct {
@@ -141,19 +142,19 @@ func (c client) createIncident(ctx context.Context) (string, error) {
 	return response.IncidentID, nil
 }
 
-func (c client) login(ctx context.Context, username, password string) (string, error) {
+func (c client) login(ctx context.Context, username, password string) (loginResponse, error) {
 	request := map[string]string{
 		"username": username,
 		"password": password,
 	}
 	var response loginResponse
 	if err := c.postJSON(ctx, "/v1/auth/login", request, http.StatusCreated, &response); err != nil {
-		return "", fmt.Errorf("login: %w", err)
+		return loginResponse{}, fmt.Errorf("login: %w", err)
 	}
 	if response.Token == "" {
-		return "", fmt.Errorf("login: empty token in response")
+		return loginResponse{}, fmt.Errorf("login: empty token in response")
 	}
-	return response.Token, nil
+	return response, nil
 }
 
 func (c client) setupTOTPSecondFactor(ctx context.Context) error {
@@ -170,6 +171,16 @@ func (c client) setupTOTPSecondFactor(ctx context.Context) error {
 	}
 	if err := c.postJSON(ctx, "/v1/account/second-factor/totp/confirm", map[string]string{"code": code}, http.StatusOK, nil); err != nil {
 		return fmt.Errorf("confirm TOTP second factor: %w", err)
+	}
+	return nil
+}
+
+func (c client) verifyTOTPSecondFactor(ctx context.Context, code string) error {
+	if strings.TrimSpace(code) == "" {
+		return fmt.Errorf("verify TOTP second factor: code is required")
+	}
+	if err := c.postJSON(ctx, "/v1/account/second-factor/totp/verify", map[string]string{"code": code}, http.StatusOK, nil); err != nil {
+		return fmt.Errorf("verify TOTP second factor: %w", err)
 	}
 	return nil
 }

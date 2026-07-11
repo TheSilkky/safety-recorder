@@ -2,7 +2,7 @@
 
 <p align="center">
   <a href="https://github.com/open-proofline/server/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/open-proofline/server/actions/workflows/ci.yml/badge.svg" /></a>
-  <a href="go.mod"><img alt="Go 1.26.4" src="https://img.shields.io/badge/go-1.26.4-00ADD8?logo=go&logoColor=white" /></a>
+  <a href="go.mod"><img alt="Go 1.26.5" src="https://img.shields.io/badge/go-1.26.5-00ADD8?logo=go&logoColor=white" /></a>
   <a href="LICENSE"><img alt="License: AGPL-3.0-only" src="https://img.shields.io/badge/license-AGPL--3.0--only-blue.svg" /></a>
   <a href="#current-status"><img alt="Status: Experimental" src="https://img.shields.io/badge/status-experimental-orange.svg" /></a>
   <a href="SECURITY.md"><img alt="Security policy" src="https://img.shields.io/badge/security-policy-blue.svg" /></a>
@@ -381,7 +381,7 @@ For more diagrams and package-level details, see [docs/architecture.md](docs/arc
 
 Requirements:
 
-- Go 1.26.4
+- Go 1.26.5
 - SQLite via the bundled Go SQLite driver dependency
 - TOTP generation and validation through the bundled Go OTP dependency
 - WebAuthn/FIDO2 ceremony validation through the bundled go-webauthn dependency
@@ -447,7 +447,8 @@ In another terminal, run the simulator:
 ```bash
 PROOFLINE_SIM_USERNAME=admin \
 PROOFLINE_SIM_PASSWORD='replace-with-a-long-local-password' \
-go run ./cmd/simclient --chunks 5 --interval 1s --download-bundle
+go run ./cmd/simclient --chunks 5 --interval 1s --download-bundle \
+  --setup-totp-second-factor
 ```
 
 The simulator creates an incident, creates a viewer token without printing the
@@ -458,6 +459,12 @@ encrypted bundle output, offline bundle verification, the durable
 desktop-recorder mode, local file input, ffmpeg segment capture, and
 poor-network retry controls, and simulator-only contact-wrapped key metadata
 artifacts.
+
+The setup flag above is for a fresh disposable local account and does not print
+or persist the generated TOTP seed. For an established account with active
+TOTP, provide the current short-lived code through
+`PROOFLINE_SIM_TOTP_CODE`; `simclient` verifies the session without printing the
+code.
 
 ## Docker
 
@@ -583,7 +590,7 @@ Use `80-backlog-scan-issue-drafts.md` to generate reviewed local issue drafts un
 
 Review those drafts manually before creating GitHub issues. Drafts are generated review artifacts, not the long-term source of truth once GitHub issues exist.
 
-Only after review, use `85-create-github-issues-from-drafts.md` to generate `scripts/create-backlog-issues.sh` and `.backlog-drafts/.../create-issues-review.md`. Do not run the generated script unless the maintainer explicitly asks for issue creation.
+Only after review, use `85-create-github-issues-from-drafts.md` to generate `.local-scripts/create-backlog-issues.sh` and `.backlog-drafts/.../create-issues-review.md`. Do not run the generated script unless the maintainer explicitly asks for issue creation.
 
 Do not let Codex create GitHub issues directly during the initial scan.
 
