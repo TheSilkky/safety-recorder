@@ -80,6 +80,9 @@ func run(logger *slog.Logger, configFilePath string) error {
 	if err != nil {
 		return withStartupStage(startupStageBlobStoreOpen, err)
 	}
+	if err := ensureBlobStoreReady(ctx, blobStore); err != nil {
+		return withStartupStage(startupStageBlobStoreOpen, err)
+	}
 	if err := runTempUploadCleanup(ctx, logger, blobStore, cfg); err != nil {
 		return withStartupStage(startupStageTempUploadCleanup, err)
 	}
@@ -325,6 +328,10 @@ func newBlobStore(cfg config.Config) (storage.BlobStore, error) {
 			Supported: []string{config.BlobBackendLocal, config.BlobBackendS3},
 		}
 	}
+}
+
+func ensureBlobStoreReady(ctx context.Context, store storage.BlobStore) error {
+	return store.Check(ctx)
 }
 
 func runTempUploadCleanup(ctx context.Context, logger *slog.Logger, store storage.BlobStore, cfg config.Config) error {

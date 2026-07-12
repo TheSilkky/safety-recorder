@@ -3,12 +3,12 @@
 This document records the production-cluster expansion path for Proofline Server.
 
 It is a planning and scope document for cluster-related work. Optional
-PostgreSQL metadata, optional S3-compatible object storage, optional
-Valkey/Redis-compatible coordination for startup checks, route-class counters,
-and short-lived complete-upload leases, and local `/v1` account/session
-authentication are implemented. Public product API deployment, public account
-workflows, cloud deployment automation, production hardening, and resumable or
-partial upload sessions are not implemented.
+PostgreSQL metadata, optional startup-checked S3-compatible object storage,
+optional Valkey/Redis-compatible coordination for startup checks, route-class
+counters, and short-lived complete-upload leases, and local `/v1`
+account/session authentication are implemented. Public product API deployment,
+public account workflows, cloud deployment automation, production hardening,
+and resumable or partial upload sessions are not implemented.
 
 ## Current Local-First Scope
 
@@ -17,7 +17,8 @@ The current backend remains local-first and experimental:
 - SQLite metadata remains supported and remains the default.
 - Optional PostgreSQL metadata is available only when explicitly configured.
 - Local filesystem encrypted blob storage remains supported.
-- Optional S3-compatible encrypted blob storage is available only when explicitly configured.
+- Optional S3-compatible encrypted blob storage is available only when
+  explicitly configured and is checked before the API listeners begin serving.
 - No coordination backend remains the default; Valkey/Redis-compatible
   coordination is available only when explicitly configured.
 - The simulator and local development flow remain supported.
@@ -37,7 +38,7 @@ Planned optional cluster backends:
 | Capability | Local/default backend | Planned cluster backend |
 |---|---|---|
 | Metadata | SQLite | PostgreSQL, implemented as an optional backend |
-| Committed encrypted chunks | Local filesystem | S3-compatible object storage, implemented as an optional backend |
+| Committed encrypted chunks | Local filesystem | S3-compatible object storage, implemented as an optional startup-checked backend |
 | Short-lived coordination | None | Valkey/Redis-compatible coordination, implemented as an optional startup-checked backend |
 
 These backends should be additive. They must not remove or weaken SQLite and local filesystem support.

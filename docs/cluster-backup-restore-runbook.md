@@ -273,6 +273,25 @@ or multipart design adds object-storage staging:
 - Preserve any cleanup design in security, retention, backup, restore, and
   threat-model docs before implementation.
 
+### Blob Backend Unavailable At Startup
+
+If the selected local or S3-compatible blob backend fails its startup check:
+
+- Treat startup failure as expected fail-closed behavior; neither API listener
+  should begin serving.
+- For local storage, restore writable access to the configured committed-blob
+  and temporary-staging directories.
+- For S3-compatible storage, restore writable local temporary staging and
+  bucket reachability/access without placing endpoint, bucket, credential,
+  path, or object details in logs or public diagnostics.
+- Do not bypass the failure by switching backends unless the operator
+  deliberately chooses and documents a different private deployment shape.
+
+The startup check is a point-in-time preflight, not continuous storage
+readiness monitoring. Runtime storage failures must still fail safely and be
+handled through the documented backup, restore, retry, and reconciliation
+procedures.
+
 ### Coordination Service Unavailable
 
 If Valkey/Redis-compatible coordination is configured but unavailable at

@@ -420,6 +420,13 @@ go run ./cmd/api
 
 Values are matched case-insensitively after trimming surrounding whitespace. Unsupported names fail startup with a clear configuration error.
 
+Before either API listener begins serving, the server checks the selected blob
+backend. Local storage requires writable committed-blob and temporary-staging
+directories. S3-compatible storage requires writable local temporary staging
+and a reachable, accessible configured bucket. A failed check stops startup;
+logs retain only the sanitized `blob_store_open` stage and safe error category,
+without backend endpoints, bucket names, credentials, paths, or object keys.
+
 PostgreSQL metadata is implemented as an optional backend for new deployments.
 Prefer a secret file for the DSN:
 

@@ -204,6 +204,11 @@ encrypted evidence bundles.
   mismatched field names and do not return uploaded bytes, stored paths, object
   keys, plaintext, raw keys, raw tokens, request bodies, private deployment
   details, or conflicting stored values.
+- The selected local or S3-compatible blob backend is checked before the API
+  listeners begin serving. Local storage requires writable committed-blob and
+  temporary-staging directories; S3-compatible storage requires writable local
+  temporary staging plus a reachable, accessible configured bucket. Failures
+  stop startup and use only sanitized startup stages and error categories.
 - Optional Valkey/Redis-compatible coordination fails closed at startup when
   explicitly configured but unavailable.
 - TOML configuration can reference selected secret files. Secret files are read
