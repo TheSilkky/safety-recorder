@@ -91,6 +91,65 @@ func TestStartupErrorLogDoesNotExposeFilesystemPath(t *testing.T) {
 	}
 }
 
+func TestEnsureBlobStoreReady(t *testing.T) {
+	checkErr := errors.New("blob backend unavailable")
+	tests := []struct {
+		name string
+		err  error
+	}{
+		{name: "ready"},
+		{name: "unavailable", err: checkErr},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			store := &startupCheckBlobStore{checkErr: tt.err}
+
+			err := ensureBlobStoreReady(context.Background(), store)
+
+			if !errors.Is(err, tt.err) {
+				t.Fatalf("ensureBlobStoreReady error = %v, want %v", err, tt.err)
+			}
+			if store.checkCalls != 1 {
+				t.Fatalf("blob store check calls = %d, want 1", store.checkCalls)
+			}
+		})
+	}
+}
+
+func TestStartupErrorLogDoesNotExposeBlobBackendDetails(t *testing.T) {
+	var logs bytes.Buffer
+	logger := slog.New(slog.NewTextHandler(&logs, nil))
+	privateDetails := []string{
+		"https://private-object-store.example.test",
+		"private-evidence-bucket",
+		"private-access-key",
+		"/private/blob/staging/path",
+		"private-object-key",
+	}
+	err := errors.New(strings.Join(privateDetails, " "))
+
+	logStartupError(logger, withStartupStage(startupStageBlobStoreOpen, err))
+
+	for _, want := range [][]byte{
+		[]byte("component=startup"),
+		[]byte("startup_stage=blob_store_open"),
+		[]byte("error_category=storage"),
+	} {
+		if !bytes.Contains(logs.Bytes(), want) {
+			t.Fatalf("startup log omitted %q: %s", want, logs.String())
+		}
+	}
+	for _, privateDetail := range privateDetails {
+		if bytes.Contains(logs.Bytes(), []byte(privateDetail)) {
+			t.Fatalf("startup log exposed blob backend detail %q: %s", privateDetail, logs.String())
+		}
+	}
+	if bytes.Contains(logs.Bytes(), []byte("safe_error_detail")) {
+		t.Fatalf("startup log exposed raw blob backend error detail: %s", logs.String())
+	}
+}
+
 func TestStartupErrorLogRedactsSecretConfigNameAndUsesSafeDetail(t *testing.T) {
 	var logs bytes.Buffer
 	logger := slog.New(slog.NewTextHandler(&logs, nil))
@@ -326,4 +385,15 @@ func assertServerTimeouts(t *testing.T, server *http.Server, want config.HTTPTim
 			want,
 		)
 	}
+}
+
+type startupCheckBlobStore struct {
+	storage.BlobStore
+	checkErr   error
+	checkCalls int
+}
+
+func (s *startupCheckBlobStore) Check(context.Context) error {
+	s.checkCalls++
+	return s.checkErr
 }

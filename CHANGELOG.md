@@ -11,6 +11,10 @@ preview readiness claim.
   `internal/evidencebundle`, preserving fail-closed bundle integrity checks,
   server-controlled ZIP entry names, and ciphertext-only bundle behavior.
 
+- Added a fail-closed API startup check for the selected local or S3-compatible
+  blob backend before HTTP listeners begin serving, while keeping failure logs
+  limited to the existing sanitized startup stage and error category.
+
 - Extracted shared JSON response and error helpers into a narrower
   `internal/httpapi` boundary, with focused tests preserving existing response
   shapes.

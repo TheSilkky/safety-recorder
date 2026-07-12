@@ -276,6 +276,8 @@ escrow.
 - SQLite metadata and local disk encrypted blob storage by default
 - Optional PostgreSQL metadata backend for new deployments
 - Optional S3-compatible encrypted blob storage for committed chunks
+- Fail-closed startup checks for the selected local or S3-compatible blob
+  backend before the API listeners begin serving
 - Account-scoped committed encrypted blob quota, defaulting to 10 GB per owner
   account as a preview abuse/cost control
 - Local temp-upload staging quota, defaulting to 1 GB for both local and
