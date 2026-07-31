@@ -11,7 +11,7 @@ require (
 	github.com/boombuler/barcode v1.0.1-0.20190219062509-6c824513bacc
 	github.com/go-webauthn/webauthn v0.17.4
 	github.com/jackc/pgx/v5 v5.10.0
-	github.com/mattn/go-sqlite3 v1.14.45
+	github.com/mattn/go-sqlite3 v1.14.47
 	github.com/pquerna/otp v1.5.0
 	github.com/redis/go-redis/v9 v9.20.1
 	golang.org/x/crypto v0.53.0
